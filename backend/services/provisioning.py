@@ -80,6 +80,7 @@ async def provision_tenant(payload: dict) -> dict:
 
     # Step 3 — Create Twilio sub-account, find and purchase a local number
     step = 3
+    subaccount_sid = subaccount_token = purchased_number = None
     try:
         subaccount = await telephony.create_subaccount(business_name)
         subaccount_sid = subaccount["sid"]
@@ -91,7 +92,34 @@ async def provision_tenant(payload: dict) -> dict:
         logger.error("[Step %d] Twilio provisioning failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
-    # Step 4 — Scrape website
+    # Steps 4–11 are wrapped so any failure releases the purchased number before raising
+    try:
+        return await _provision_after_twilio(
+            payload, subaccount_sid, subaccount_token, purchased_number,
+            template, qualification_fields,
+        )
+    except HTTPException:
+        logger.warning("Rolling back: releasing number %s on sub-account %s", purchased_number, subaccount_sid)
+        await telephony.release_number(subaccount_sid, subaccount_token, purchased_number)
+        raise
+
+
+async def _provision_after_twilio(
+    payload: dict,
+    subaccount_sid: str,
+    subaccount_token: str,
+    purchased_number: str,
+    template: str,
+    qualification_fields: dict,
+) -> dict:
+    business_name: str = payload["business_name"]
+    industry: str = payload["industry"]
+    owner_name: str = payload.get("owner_name", "")
+    whatsapp_number: str = payload.get("whatsapp_number", "")
+    website_url: str = payload.get("website_url", "")
+    agent_name: str = payload.get("agent_name", "Alex")
+
+    # Step 4 — Scrape website (non-fatal: provisioning continues without knowledge base)
     step = 4
     scraped_text = ""
     if website_url:
@@ -99,8 +127,7 @@ async def provision_tenant(payload: dict) -> dict:
             scraped_text = await knowledge.scrape_website(website_url)
             logger.info("[Step %d] Scraped website %s", step, website_url)
         except Exception as e:
-            logger.error("[Step %d] Website scrape failed: %s", step, e)
-            raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
+            logger.warning("[Step %d] Website scrape failed (continuing without KB): %s", step, e)
     else:
         logger.info("[Step %d] No website_url provided, skipping scrape", step)
 
@@ -178,8 +205,23 @@ async def provision_tenant(payload: dict) -> dict:
         logger.error("[Step %d] Vapi assistant creation failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
-    # Step 10 — Insert tenant row in Supabase
+    # Step 10 — Import Twilio number into Vapi and assign assistant
     step = 10
+    try:
+        await vapi.import_twilio_number(
+            phone_number=purchased_number,
+            twilio_account_sid=subaccount_sid,
+            twilio_auth_token=subaccount_token,
+            assistant_id=vapi_assistant_id,
+            label=business_name,
+        )
+        logger.info("[Step %d] Linked %s to Vapi assistant %s", step, purchased_number, vapi_assistant_id)
+    except Exception as e:
+        logger.error("[Step %d] Vapi phone import failed: %s", step, e)
+        raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
+
+    # Step 11 — Insert tenant row in Supabase
+    step = 11
     try:
         tenant_data = {
             "business_name": business_name,

@@ -94,6 +94,48 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
     }
 
 
+async def import_twilio_number(
+    phone_number: str,
+    twilio_account_sid: str,
+    twilio_auth_token: str,
+    assistant_id: str,
+    label: str = "",
+) -> str:
+    """Import a Twilio number into Vapi and assign it to an assistant.
+    Returns the Vapi phone number ID."""
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{VAPI_BASE_URL}/phone-number",
+                headers=_headers(),
+                json={
+                    "provider": "twilio",
+                    "number": phone_number,
+                    "twilioAccountSid": twilio_account_sid,
+                    "twilioAuthToken": twilio_auth_token,
+                    "assistantId": assistant_id,
+                    "name": label or phone_number,
+                },
+                timeout=30.0,
+            )
+            res.raise_for_status()
+            vapi_phone_id = res.json()["id"]
+            logger.info(
+                "Imported Twilio number %s into Vapi as %s, assigned to assistant %s",
+                phone_number, vapi_phone_id, assistant_id,
+            )
+            return vapi_phone_id
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Failed to import Twilio number %s into Vapi: %s %s",
+            phone_number, e.response.status_code, e.response.text,
+        )
+        raise
+    except httpx.RequestError as e:
+        logger.error("Network error importing Twilio number %s: %s", phone_number, e)
+        raise
+
+
 async def get_call_details(call_id: str) -> dict:
     try:
         async with httpx.AsyncClient() as client:

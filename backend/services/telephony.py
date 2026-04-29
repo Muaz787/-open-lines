@@ -86,6 +86,22 @@ async def purchase_number(
         raise
 
 
+async def release_number(
+    subaccount_sid: str,
+    subaccount_token: str,
+    phone_number: str,
+) -> None:
+    """Release a purchased number back to Twilio. Used for rollback on failed provisioning."""
+    try:
+        client = _sub_client(subaccount_sid, subaccount_token)
+        numbers = client.incoming_phone_numbers.list(phone_number=phone_number, limit=1)
+        if numbers:
+            numbers[0].delete()
+            logger.info("Released number %s from sub-account %s", phone_number, subaccount_sid)
+    except Exception as e:
+        logger.error("Failed to release number %s on rollback: %s", phone_number, e)
+
+
 async def point_number_to_vapi(
     subaccount_sid: str,
     subaccount_token: str,

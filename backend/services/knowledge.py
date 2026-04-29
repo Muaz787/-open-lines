@@ -14,6 +14,7 @@ FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+PINECONE_INDEX_HOST = os.getenv("PINECONE_INDEX_HOST")
 
 CHUNK_TOKENS = 500
 OVERLAP_TOKENS = 50
@@ -38,10 +39,13 @@ def _get_pinecone_index():
     if _pinecone_index is None:
         if not PINECONE_API_KEY:
             raise RuntimeError("PINECONE_API_KEY must be set")
-        if not PINECONE_INDEX_NAME:
-            raise RuntimeError("PINECONE_INDEX_NAME must be set")
+        if not PINECONE_INDEX_NAME and not PINECONE_INDEX_HOST:
+            raise RuntimeError("PINECONE_INDEX_NAME or PINECONE_INDEX_HOST must be set")
         pc = Pinecone(api_key=PINECONE_API_KEY)
-        _pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+        if PINECONE_INDEX_HOST:
+            _pinecone_index = pc.Index(host=PINECONE_INDEX_HOST)
+        else:
+            _pinecone_index = pc.Index(PINECONE_INDEX_NAME)
     return _pinecone_index
 
 
@@ -61,21 +65,14 @@ async def scrape_website(url: str) -> str:
     if not FIRECRAWL_API_KEY:
         raise RuntimeError("FIRECRAWL_API_KEY must be set")
     app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
-    result = app.crawl_url(
-        url,
-        params={
-            "limit": 20,
-            "scrapeOptions": {"formats": ["markdown"]},
-        },
-    )
-    pages = result.get("data", [])
-    logger.info("Scraped %d pages from %s", len(pages), url)
-    texts = [
-        page.get("markdown", "") or page.get("content", "")
-        for page in pages
-        if page.get("markdown") or page.get("content")
-    ]
-    return "\n\n".join(texts)
+    result = app.scrape_url(url, params={"formats": ["markdown"]})
+    # SDK may return a dict or an object with attribute access
+    if isinstance(result, dict):
+        text = result.get("markdown") or result.get("content", "")
+    else:
+        text = getattr(result, "markdown", None) or getattr(result, "content", "") or ""
+    logger.info("Scraped %d chars from %s", len(text), url)
+    return text
 
 
 async def embed_and_store(namespace: str, text: str, tenant_id: str) -> int:
@@ -90,6 +87,7 @@ async def embed_and_store(namespace: str, text: str, tenant_id: str) -> int:
     response = await openai.embeddings.create(
         model="text-embedding-3-small",
         input=chunks,
+        dimensions=1024,
     )
     embeddings = [item.embedding for item in response.data]
 
@@ -121,6 +119,7 @@ async def query_knowledge_base(namespace: str, query: str, top_k: int = 5) -> st
     response = await openai.embeddings.create(
         model="text-embedding-3-small",
         input=[query],
+        dimensions=1024,
     )
     query_vector = response.data[0].embedding
 

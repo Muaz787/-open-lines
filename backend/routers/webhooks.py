@@ -66,13 +66,23 @@ def _format_whatsapp_message(business_name: str, analysis: dict) -> str:
 
 @router.post("/vapi-call-ended")
 async def vapi_call_ended(payload: dict):
+    logger.info("Vapi webhook payload: %s", json.dumps(payload, default=str))
+
     # Step 1 — Extract call fields
+    # Vapi wraps the payload in a "message" envelope
+    msg = payload.get("message", payload)
     try:
-        call = payload.get("call", {})
-        call_id: str = call.get("id") or payload.get("call_id", "")
-        transcript: str = call.get("transcript") or payload.get("transcript", "")
+        call = msg.get("call", {})
+        call_id: str = call.get("id") or msg.get("call_id", "")
+        transcript: str = call.get("transcript") or msg.get("transcript", "")
         caller_number: str = (call.get("customer") or {}).get("number", "")
-        called_number: str = call.get("phoneNumberId") or payload.get("phoneNumberId", "")
+        # phoneNumber.number holds the actual E.164 number; phoneNumberId is the Vapi ID
+        phone_obj: dict = msg.get("phoneNumber") or call.get("phoneNumber") or {}
+        called_number: str = (
+            phone_obj.get("number")
+            or phone_obj.get("twilioPhoneNumber")
+            or call.get("phoneNumberId", "")
+        )
         started_at: str | None = call.get("startedAt")
         ended_at: str | None = call.get("endedAt")
     except Exception as e:
