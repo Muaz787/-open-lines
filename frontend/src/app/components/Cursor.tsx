@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export default function Cursor() {
   const curRef = useRef<HTMLDivElement>(null)
   const ringRef = useRef<HTMLDivElement>(null)
   const pos = useRef({ mx: 0, my: 0, rx: 0, ry: 0 })
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return
+    setVisible(true)
 
     const onMove = (e: MouseEvent) => {
       pos.current.mx = e.clientX
@@ -48,6 +50,8 @@ export default function Cursor() {
       document.removeEventListener('mousemove', onMove)
     }
   }, [])
+
+  if (!visible) return null
 
   return (
     <>
