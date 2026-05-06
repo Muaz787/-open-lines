@@ -465,7 +465,7 @@ export default function Home() {
           </a>
           <p className="ft-tag">"Open Lines was built to close the gap between businesses and the people who need them."</p>
           <div className="ft-links">
-            <a href="#">Privacy</a>
+            <Link href="/privacy">Privacy</Link>
             <a href="#">Terms</a>
             <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">Book a Demo</a>
           </div>
