@@ -100,12 +100,15 @@ async def _handle_assistant_request(msg: dict) -> dict:
     assistant_id: str = tenant.get("vapi_assistant_id", "")
     base_prompt: str = tenant.get("last_system_prompt") or ""
 
-    if not assistant_id or not base_prompt:
+    if not assistant_id:
+        return {"error": {"message": "No assistant configured"}}
+
+    if not base_prompt:
         logger.warning(
-            "assistant-request: tenant %s missing assistant_id or last_system_prompt — falling back to assistantId only",
+            "assistant-request: tenant %s missing last_system_prompt — returning assistantId only",
             tenant_id,
         )
-        return {"assistantId": assistant_id} if assistant_id else {"error": {"message": "No assistant configured"}}
+        return {"assistantId": assistant_id}
 
     # Today's date in tenant timezone
     tz_str: str = tenant.get("calendar_timezone") or "America/Toronto"
@@ -159,11 +162,15 @@ async def _handle_assistant_request(msg: dict) -> dict:
         system_prompt += _CALENDAR_NOTE
 
     # Tools
-    tools = (
-        vapi_svc.build_calendar_tools(tenant_id)
-        if tenant.get("google_refresh_token")
-        else [vapi_svc.build_caller_lookup_tool(tenant_id)]
-    )
+    try:
+        tools = (
+            vapi_svc.build_calendar_tools(tenant_id)
+            if tenant.get("google_refresh_token")
+            else [vapi_svc.build_caller_lookup_tool(tenant_id)]
+        )
+    except Exception as e:
+        logger.error("assistant-request: failed to build tools for tenant %s: %s", tenant_id, e)
+        return {"assistantId": assistant_id}
 
     logger.info(
         "assistant-request: tenant %s caller %s → %s",
@@ -188,10 +195,18 @@ async def _handle_assistant_request(msg: dict) -> dict:
     }
 
 
+@router.post("/vapi-debug")
+async def vapi_debug(payload: dict):
+    """Temporary: echo back the full Vapi payload so we can inspect it."""
+    logger.info("VAPI DEBUG PAYLOAD: %s", json.dumps(payload, default=str))
+    return {"received": payload}
+
+
 @router.post("/vapi-call-ended")
 async def vapi_call_ended(payload: dict):
     msg = payload.get("message", payload)
     event_type = msg.get("type", "")
+    logger.info("VAPI EVENT: type=%s keys=%s", event_type, list(msg.keys()))
 
     if event_type == "assistant-request":
         return await _handle_assistant_request(msg)
