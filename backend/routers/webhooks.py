@@ -178,9 +178,22 @@ async def _handle_assistant_request(msg: dict) -> dict:
         tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
     )
 
-    # DIAGNOSTIC: return bare assistantId to confirm routing works, overrides re-added after
-    print(f"ASSISTANT-REQUEST: returning bare assistantId={assistant_id}", flush=True)
-    return {"assistantId": assistant_id}
+    overrides: dict = {
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "temperature": 0.7,
+            "messages": [{"role": "system", "content": system_prompt}],
+        },
+    }
+    if personalized_greeting:
+        overrides["firstMessage"] = personalized_greeting
+
+    print(f"ASSISTANT-REQUEST: returning assistantId={assistant_id} overrides_keys={list(overrides.keys())}", flush=True)
+    return {
+        "assistantId": assistant_id,
+        "assistantOverrides": overrides,
+    }
 
 
 @router.post("/vapi-debug")
