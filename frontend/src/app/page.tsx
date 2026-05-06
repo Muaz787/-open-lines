@@ -1,12 +1,48 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
-import { useEffect } from 'react'
 
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
+
+const TYPING_PHRASES = [
+  'Realtors',
+  'Dental Clinics',
+  'Law Firms',
+  'Beauty Salons',
+  'Plumbers',
+  'Restaurants',
+  'Builders',
+]
+
+function useTypewriter(phrases: string[], typeMs = 65, deleteMs = 38, pauseMs = 1800) {
+  const [displayed, setDisplayed] = useState('')
+  const [phraseIdx, setPhraseIdx] = useState(0)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    const phrase = phrases[phraseIdx]
+    if (!deleting && displayed === phrase) {
+      const t = setTimeout(() => setDeleting(true), pauseMs)
+      return () => clearTimeout(t)
+    }
+    if (deleting && displayed === '') {
+      setDeleting(false)
+      setPhraseIdx(i => (i + 1) % phrases.length)
+      return
+    }
+    const t = setTimeout(() => {
+      setDisplayed(deleting
+        ? phrase.slice(0, displayed.length - 1)
+        : phrase.slice(0, displayed.length + 1))
+    }, deleting ? deleteMs : typeMs)
+    return () => clearTimeout(t)
+  }, [displayed, deleting, phraseIdx, phrases, typeMs, deleteMs, pauseMs])
+
+  return displayed
+}
 
 const INDUSTRIES = [
   { id: 're',     label: 'Realtors' },
@@ -49,14 +85,33 @@ const LogoMark = ({ size = 28 }: { size?: number }) => (
 export default function Home() {
   const [isDark, setIsDark]           = useState(false)
   const [activeInd, setActiveInd]     = useState('re')
+  const typedText                     = useTypewriter(TYPING_PHRASES)
   const [transcript, setTranscript]   = useState<{ who: string; msg: string }[]>([])
   const [callRunning, setCallRunning] = useState(false)
   const [callStatus, setCallStatus]   = useState<'ready' | 'live' | 'ended'>('ready')
-  const transcriptRef = useRef<HTMLDivElement>(null)
+  const transcriptRef  = useRef<HTMLDivElement>(null)
+  const demoSectionRef = useRef<HTMLDivElement>(null)
+  const autoPlayedRef  = useRef(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
   }, [isDark])
+
+  // Auto-play demo when section scrolls into view (fires once)
+  useEffect(() => {
+    const el = demoSectionRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !autoPlayedRef.current) {
+        autoPlayedRef.current = true
+        observer.disconnect()
+        // Small delay so the section has settled into view before starting
+        setTimeout(() => runDemo(), 600)
+      }
+    }, { threshold: 0.3 })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runDemo = () => {
     if (callRunning) return
@@ -142,11 +197,6 @@ export default function Home() {
       <section className="hero">
         <div className="hero-grid" />
 
-        <motion.div {...up(0.1)} className="badge">
-          <span className="badge-dot" />
-          AI receptionist · Realtors, Dental, Legal, Beauty &amp; more
-        </motion.div>
-
         <motion.div className="hero-mark" {...up(0)}>
           <svg viewBox="0 0 100 100" fill="none" style={{ width: 110, height: 110, color: 'var(--text)', transition: 'color 0.5s' }}>
             <path d="M 56.8,11.6 A 39,39 0 0,1 56.8,88.4" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"/>
@@ -167,10 +217,14 @@ export default function Home() {
         </motion.div>
 
         <motion.h1 {...up(0.3)} style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-          the line is<br /><em>always open.</em>
+          Your AI Receptionist for
+          <br />
+          <span className="typewriter-phrase">
+            {typedText}<span className="typewriter-cursor">|</span>
+          </span>
         </motion.h1>
         <motion.p className="hero-sub" {...up(0.5)}>
-          Your AI receptionist answers every call, qualifies every lead, and books appointments — 24/7. No hiring. No missed calls. No salary.
+          Answers calls, captures leads, books appointments. 24/7. No staff required.
         </motion.p>
         <motion.div className="hero-cta" {...up(0.7)}>
           <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
@@ -190,13 +244,13 @@ export default function Home() {
       <div className="div-line" />
 
       {/* LIVE DEMO */}
-      <div className="demo-wrap" id="demo">
+      <div className="demo-wrap" id="demo" ref={demoSectionRef}>
         <div className="sec wrap">
           <div className="demo-grid">
             <div>
               <div className="sec-label">Live Experience</div>
               <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Hear it.<br />See it happen.</h2>
-              <p className="sec-sub">Simulate a real call. Watch the transcript appear in real time — exactly what your callers experience.</p>
+              <p className="sec-sub">Watch a real conversation play out below — or call our live AI agent yourself to hear it firsthand.</p>
               <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
                   'Answers calls instantly, 24/7',
@@ -246,10 +300,20 @@ export default function Home() {
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.58.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.29 21 3 13.71 3 4.5c0-.55.45-1 1-1H7.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.23 1.01L6.6 10.8z"/>
                     </svg>
-                    {callRunning ? '⠋ Connecting…' : 'Click to simulate a call'}
+                    {callRunning ? '⠋ Live call in progress…' : 'Replay demo'}
                   </>
                 )}
               </button>
+
+              <div style={{ textAlign: 'center', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Want to hear it live? Call our AI agent directly:</p>
+                <a href="tel:+16475581427" style={{
+                  fontSize: 15, fontWeight: 600, color: 'var(--text)',
+                  letterSpacing: '0.02em', textDecoration: 'none',
+                }}>
+                  +1 (647) 558-1427
+                </a>
+              </div>
             </div>
           </div>
         </div>

@@ -137,6 +137,28 @@ h1 {
 }
 h1 em { font-style: normal; color: var(--text-3); font-weight: 400; }
 
+.hero h1 {
+  font-size: clamp(32px, 4.2vw, 58px);
+  line-height: 1.08;
+}
+
+.typewriter-phrase {
+  color: #3B7EF6;
+  display: inline-block;
+  min-height: 1em;
+}
+.typewriter-cursor {
+  display: inline-block;
+  color: #3B7EF6;
+  font-weight: 300;
+  margin-left: 2px;
+  animation: cursor-blink 1.05s step-start infinite;
+}
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 .hero-sub {
   font-size: clamp(15px, 1.8vw, 18px); font-weight: 300; color: var(--text-2);
   max-width: 460px; line-height: 1.7; margin-bottom: 36px;
