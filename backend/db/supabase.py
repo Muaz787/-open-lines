@@ -171,6 +171,26 @@ async def get_tenants_with_calendar() -> list:
     return res.data or []
 
 
+async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
+    """Return the most recent confirmed appointment for this caller (up to 24h in the past
+    and any future date) so same-day reschedules are caught even after the slot has passed."""
+    from datetime import timedelta
+    window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    res = (
+        get_client()
+        .table("appointments")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("caller_phone", phone)
+        .eq("status", "confirmed")
+        .gte("appointment_datetime", window_start)
+        .order("appointment_datetime", desc=False)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (

@@ -206,19 +206,23 @@ async def book_appointment(tenant_id: str, body: dict):
         logger.error("tools/book: datetime parse failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, "I couldn't parse that date and time. Could you say it again?")
 
-    # Cancel existing upcoming appointment for this caller (reschedule flow)
+    # Cancel existing appointment for this caller (reschedule flow).
+    # Look back 24h so same-day reschedules are caught even if the slot has passed.
     existing_appt = None
     if caller_phone:
         try:
-            existing_appt = await db.get_upcoming_appointment_by_phone(tenant_id, caller_phone)
-            if existing_appt:
-                old_event_id = existing_appt.get("google_event_id", "")
-                if old_event_id:
+            existing_appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
+        except Exception as e:
+            logger.warning("tools/book: appointment lookup failed for tenant %s: %s", tenant_id, e)
+
+        if existing_appt:
+            old_event_id = existing_appt.get("google_event_id", "")
+            if old_event_id:
+                try:
                     await cal_svc.cancel_event(refresh_token, old_event_id)
                     logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
-        except Exception as e:
-            logger.warning("tools/book: could not cancel old appointment for tenant %s: %s", tenant_id, e)
-            existing_appt = None
+                except Exception as e:
+                    logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
 
     try:
         description = (
