@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { Syne, DM_Sans } from 'next/font/google'
-import Cursor from './components/Cursor'
 import './globals.css'
 
 const syne = Syne({
@@ -24,7 +23,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${syne.variable} ${dmSans.variable}`}>
       <body style={{ fontFamily: 'var(--font-dm), sans-serif' }} suppressHydrationWarning>
-        <Cursor />
         {children}
       </body>
     </html>

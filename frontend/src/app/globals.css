@@ -43,31 +43,12 @@ body {
   color: var(--text);
   transition: background 0.5s var(--ease), color 0.5s var(--ease);
   overflow-x: hidden;
-  cursor: none;
 }
 
 /* ── Continuous keyframes (kept in CSS — used in too many places for framer-motion) ── */
 @keyframes blink {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.75); }
-}
-
-/* ── Custom cursor ── */
-#cur {
-  position: fixed; width: 6px; height: 6px;
-  background: var(--text); border-radius: 50%;
-  pointer-events: none; z-index: 9999;
-  transform: translate(-50%, -50%);
-  transition: background 0.3s;
-  mix-blend-mode: difference;
-}
-#cur-ring {
-  position: fixed; width: 28px; height: 28px;
-  border: 1px solid var(--text); border-radius: 50%;
-  pointer-events: none; z-index: 9998;
-  transform: translate(-50%, -50%);
-  transition: width 0.25s var(--ease), height 0.25s var(--ease), opacity 0.3s;
-  mix-blend-mode: difference;
 }
 
 /* ── Nav ── */
@@ -92,7 +73,7 @@ nav {
 
 .nav-right { display: flex; align-items: center; gap: 14px; }
 
-.toggle { width: 40px; height: 22px; background: var(--border-2); border-radius: 11px; position: relative; cursor: none; border: 1px solid var(--border); transition: background 0.3s; }
+.toggle { width: 40px; height: 22px; background: var(--border-2); border-radius: 11px; position: relative; cursor: pointer; border: 1px solid var(--border); transition: background 0.3s; }
 .toggle:hover { background: var(--accent-dim); }
 .toggle-knob { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--text); border-radius: 50%; transition: transform 0.3s var(--ease), background 0.3s; }
 [data-theme="dark"] .toggle-knob { transform: translateX(18px); background: var(--accent); }
@@ -100,7 +81,7 @@ nav {
 .btn-nav {
   padding: 8px 18px; background: var(--text); color: var(--bg);
   border: none; border-radius: 6px; font-size: 13px; font-weight: 500;
-  cursor: none; transition: all 0.25s var(--ease);
+  cursor: pointer; transition: all 0.25s var(--ease);
 }
 .btn-nav:hover { opacity: 0.82; transform: translateY(-1px); }
 
@@ -168,7 +149,7 @@ h1 em { font-style: normal; color: var(--text-3); font-weight: 400; }
 .btn-main {
   padding: 13px 26px; background: var(--text); color: var(--bg);
   border: none; border-radius: 7px; font-size: 14px; font-weight: 500;
-  cursor: none; transition: all 0.25s var(--ease); position: relative; overflow: hidden;
+  cursor: pointer; transition: all 0.25s var(--ease); position: relative; overflow: hidden;
 }
 .btn-main::after { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent); opacity: 0; transition: opacity 0.25s; }
 .btn-main:hover::after { opacity: 1; }
@@ -178,7 +159,7 @@ h1 em { font-style: normal; color: var(--text-3); font-weight: 400; }
 .btn-ghost {
   padding: 13px 26px; background: transparent; color: var(--text-2);
   border: 1px solid var(--border-2); border-radius: 7px; font-size: 14px;
-  cursor: none; transition: all 0.25s var(--ease);
+  cursor: pointer; transition: all 0.25s var(--ease);
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--text); }
 
@@ -212,7 +193,7 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 .call-btn {
   width: 100%; padding: 11px; border-radius: 8px; border: 1px solid rgba(52,199,89,.28);
   background: var(--accent-dim); color: var(--accent); font-size: 13px; font-weight: 500;
-  cursor: none; transition: all 0.25s var(--ease);
+  cursor: pointer; transition: all 0.25s var(--ease);
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 .call-btn:hover:not(:disabled) { background: rgba(52,199,89,.2); }
@@ -220,7 +201,7 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 
 /* ── Industries ── */
 .tab-row { display: flex; gap: 2px; background: var(--border); border-radius: 8px; padding: 3px; width: fit-content; margin: 36px 0; }
-.tab { padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-2); cursor: none; border: none; background: transparent; transition: all 0.2s var(--ease); }
+.tab { padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-2); cursor: pointer; border: none; background: transparent; transition: all 0.2s var(--ease); }
 .tab.on { background: var(--bg-2); color: var(--text); box-shadow: var(--shadow); }
 
 .ind-panel { background: var(--bg-2); border: 1px solid var(--border); border-radius: 14px; padding: 28px; min-height: 260px; transition: background 0.5s; }
@@ -298,14 +279,14 @@ footer {
 .db-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .industry-badge { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; background: var(--accent-dim); color: var(--accent); }
 .phone-chip { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); font-weight: 400; font-family: monospace; }
-.copy-btn { padding: 4px 10px; border: 1px solid var(--border-2); border-radius: 4px; font-size: 11px; cursor: none; background: transparent; color: var(--text-2); transition: all 0.2s; }
+.copy-btn { padding: 4px 10px; border: 1px solid var(--border-2); border-radius: 4px; font-size: 11px; cursor: pointer; background: transparent; color: var(--text-2); transition: all 0.2s; }
 .copy-btn:hover { color: var(--text); border-color: var(--text); }
 
 .db-body { max-width: 1120px; margin: 0 auto; padding: 40px; }
 .db-section-title { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 16px; }
 
 .leads-table { width: 100%; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.lead-row { border-bottom: 1px solid var(--border); cursor: none; transition: background 0.15s; }
+.lead-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
 .lead-row:last-child { border-bottom: none; }
 .lead-row:hover { background: var(--bg-2); }
 .lead-row-main { display: grid; grid-template-columns: 2fr 1.5fr 80px 2fr 100px; gap: 16px; align-items: center; padding: 14px 18px; }
@@ -327,7 +308,7 @@ footer {
 .next-step-arrow { color: var(--accent); }
 
 .status-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-.status-btn { padding: 4px 12px; border: 1px solid var(--border-2); border-radius: 4px; font-size: 11px; font-weight: 500; cursor: none; background: transparent; color: var(--text-2); transition: all 0.2s; }
+.status-btn { padding: 4px 12px; border: 1px solid var(--border-2); border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; background: transparent; color: var(--text-2); transition: all 0.2s; }
 .status-btn:hover { border-color: var(--accent); color: var(--accent); }
 .status-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 
@@ -383,7 +364,7 @@ footer {
 .btn-submit {
   width: 100%; padding: 13px; background: var(--text); color: var(--bg);
   border: none; border-radius: 8px; font-size: 14px; font-weight: 500;
-  cursor: none; transition: all 0.25s var(--ease); margin-top: 8px;
+  cursor: pointer; transition: all 0.25s var(--ease); margin-top: 8px;
 }
 .btn-submit:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
 .btn-submit:disabled { opacity: 0.5; pointer-events: none; }
@@ -397,7 +378,7 @@ footer {
 .success-number { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; color: var(--accent); margin: 16px 0 8px; font-family: monospace; }
 .success-label { font-size: 13px; color: var(--text-2); margin-bottom: 24px; }
 .success-msg { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 8px; }
-.btn-dashboard { display: inline-block; padding: 12px 24px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: none; text-decoration: none; transition: all 0.25s var(--ease); }
+.btn-dashboard { display: inline-block; padding: 12px 24px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; text-decoration: none; transition: all 0.25s var(--ease); }
 .btn-dashboard:hover { opacity: 0.88; transform: translateY(-1px); }
 
 .error-msg { font-size: 13px; color: #FF3B30; margin-top: 12px; text-align: center; }
@@ -405,15 +386,6 @@ footer {
 /* ══════════════════════════════════════════════
    Responsive — tablet (≤ 900 px) & mobile (≤ 640 px)
    ══════════════════════════════════════════════ */
-
-/* Restore native cursor on touch devices */
-@media (hover: none) and (pointer: coarse) {
-  body { cursor: auto; }
-  #cur, #cur-ring { display: none; }
-  button, a, .toggle, .tab, .call-btn, .btn-nav, .btn-main, .btn-ghost,
-  .btn-submit, .btn-dashboard, .status-btn, .copy-btn, .lead-row,
-  .file-remove, .upload-zone { cursor: pointer; }
-}
 
 /* ── Tablet (≤ 900 px) ── */
 @media (max-width: 900px) {
