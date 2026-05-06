@@ -142,6 +142,21 @@ async def list_free_slots(
     return slots[:6]
 
 
+async def cancel_event(refresh_token: str, event_id: str) -> None:
+    """Delete a Google Calendar event by ID."""
+    access = await _access_token(refresh_token)
+    headers = {"Authorization": f"Bearer {access}"}
+    async with httpx.AsyncClient() as http:
+        res = await http.delete(
+            f"{_CAL_BASE}/calendars/primary/events/{event_id}",
+            headers=headers,
+            timeout=15.0,
+        )
+        if res.status_code not in (200, 204, 410):
+            res.raise_for_status()
+        logger.info("Deleted Google Calendar event %s", event_id)
+
+
 async def create_event(
     refresh_token: str,
     title: str,

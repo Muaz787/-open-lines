@@ -187,6 +187,17 @@ async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict 
     return res.data[0] if res.data else None
 
 
+async def update_appointment(appointment_id: str, data: dict) -> dict:
+    res = (
+        get_client()
+        .table("appointments")
+        .update(data)
+        .eq("id", appointment_id)
+        .execute()
+    )
+    return res.data[0]
+
+
 async def get_appointment_by_call_id(call_id: str) -> dict | None:
     res = (
         get_client()

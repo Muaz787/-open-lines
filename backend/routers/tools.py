@@ -206,6 +206,20 @@ async def book_appointment(tenant_id: str, body: dict):
         logger.error("tools/book: datetime parse failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, "I couldn't parse that date and time. Could you say it again?")
 
+    # Cancel existing upcoming appointment for this caller (reschedule flow)
+    existing_appt = None
+    if caller_phone:
+        try:
+            existing_appt = await db.get_upcoming_appointment_by_phone(tenant_id, caller_phone)
+            if existing_appt:
+                old_event_id = existing_appt.get("google_event_id", "")
+                if old_event_id:
+                    await cal_svc.cancel_event(refresh_token, old_event_id)
+                    logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
+        except Exception as e:
+            logger.warning("tools/book: could not cancel old appointment for tenant %s: %s", tenant_id, e)
+            existing_appt = None
+
     try:
         description = (
             f"Booked via Open Lines AI receptionist.\n"
@@ -230,7 +244,7 @@ async def book_appointment(tenant_id: str, body: dict):
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
     try:
-        await db.insert_appointment({
+        appt_data = {
             "tenant_id":             tenant_id,
             "caller_name":           caller_name,
             "caller_phone":          caller_phone,
@@ -240,7 +254,11 @@ async def book_appointment(tenant_id: str, body: dict):
             "status":                "confirmed",
             "vapi_call_id":          call_id,
             "google_event_id":       event.get("id", ""),
-        })
+        }
+        if existing_appt:
+            await db.update_appointment(existing_appt["id"], appt_data)
+        else:
+            await db.insert_appointment(appt_data)
     except Exception as e:
         logger.error("tools/book: failed to save appointment for tenant %s: %s", tenant_id, e)
         # Don't fail the whole response — event was created in Google, just log the DB miss
