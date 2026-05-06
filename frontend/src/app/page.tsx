@@ -1,23 +1,28 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { useEffect } from 'react'
+
+// ── Update this when you have your Calendly link ──
+const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
 
 const INDUSTRIES = [
-  { id: 're',  label: 'Realtors' },
-  { id: 'med', label: 'Medical Clinics' },
-  { id: 'mp',  label: 'Members of Parliament' },
+  { id: 're',     label: 'Realtors' },
+  { id: 'dental', label: 'Dental' },
+  { id: 'legal',  label: 'Legal' },
+  { id: 'beauty', label: 'Beauty' },
 ]
 
 const DEMO_SCRIPT = [
-  { who: 'ai',  msg: "Hi, you've reached Sarah Chen Real Estate. I'm your AI assistant — how can I help you today?" },
+  { who: 'ai',  msg: "Hi, you've reached Shahid Real Estate. I'm Alex, your AI assistant — how can I help you today?" },
   { who: 'you', msg: "Hi, I'm calling about the property on 42 Harbour Boulevard." },
   { who: 'ai',  msg: "42 Harbour Blvd is a 4-bed, 2-bath home listed at $1.15M — pool and double garage included. Are you pre-approved for finance?" },
   { who: 'you', msg: "Yes, we're pre-approved up to $1.3 million." },
-  { who: 'ai',  msg: "Perfect. Sarah has availability Thursday at 2pm or Saturday at 10am. Which works better?" },
-  { who: 'you', msg: "Saturday morning sounds great." },
-  { who: 'ai',  msg: "Confirmed — Saturday at 10am. Sarah will receive a full summary of this call. Anything else I can help with?" },
+  { who: 'ai',  msg: "Perfect. I have Thursday at 2pm or Saturday at 10am available for a viewing. Which works better for you?" },
+  { who: 'you', msg: "Saturday morning works great." },
+  { who: 'ai',  msg: "Done — Saturday at 10am is booked. You'll get a text confirmation shortly. Is there anything else I can help you with?" },
 ]
 
 const up = (delay: number) => ({
@@ -42,8 +47,8 @@ const LogoMark = ({ size = 28 }: { size?: number }) => (
 )
 
 export default function Home() {
-  const [isDark, setIsDark]       = useState(false)
-  const [activeInd, setActiveInd] = useState('re')
+  const [isDark, setIsDark]           = useState(false)
+  const [activeInd, setActiveInd]     = useState('re')
   const [transcript, setTranscript]   = useState<{ who: string; msg: string }[]>([])
   const [callRunning, setCallRunning] = useState(false)
   const [callStatus, setCallStatus]   = useState<'ready' | 'live' | 'ended'>('ready')
@@ -77,25 +82,32 @@ export default function Home() {
   }
 
   const RealtorRows = [
-    { init: 'JD', name: 'John Doe · +1 (555) 019‑2847',     desc: 'Asking about 42 Harbour Blvd. Budget $1.2M. Pre-approved.', tag: 'hot',  label: '🔥 Hot Lead' },
-    { init: 'MR', name: 'Maria Rodriguez · +1 (555) 034‑1190', desc: 'First-time buyer. 3BR in Eastside. Budget $750K.',          tag: 'warm', label: 'Warm' },
-    { init: 'TC', name: 'Thomas Clark · +1 (555) 088‑7312',  desc: 'Seller inquiry. 5BR property. Wants valuation call-back.',   tag: 'ok',   label: 'Seller' },
+    { init: 'JD', name: 'John Doe · +1 (555) 019‑2847',      desc: 'Asking about 42 Harbour Blvd. Budget $1.2M. Pre-approved.', tag: 'hot',  label: '🔥 Hot Lead' },
+    { init: 'MR', name: 'Maria Rodriguez · +1 (555) 034‑1190', desc: 'First-time buyer. 3BR in Eastside. Budget $750K.',           tag: 'warm', label: 'Warm' },
+    { init: 'TC', name: 'Thomas Clark · +1 (555) 088‑7312',   desc: 'Seller inquiry. 5BR property. Wants valuation call-back.',   tag: 'ok',   label: 'Seller' },
   ]
-  const ClinicRows = [
-    { init: 'AL', name: 'Ahmed Lamine · New Patient',   desc: 'GP appointment request. Chest pain symptoms. Flagged for priority booking.', tag: 'urg',  label: 'Urgent' },
-    { init: 'SF', name: 'Sophie Farley · Existing Patient', desc: 'Prescription renewal — recurring medication. Identity verified.',         tag: 'pend', label: 'Pending Approval' },
-    { init: 'RK', name: 'Rachel Kim · Follow-up',       desc: 'Post-procedure check-in. All clear. 6-month review booked.',                  tag: 'res',  label: 'Resolved' },
+  const DentalRows = [
+    { init: 'AL', name: 'Ahmed Lamine · New Patient',      desc: 'Toothache — requesting emergency appointment today.',           tag: 'urg',  label: 'Urgent' },
+    { init: 'SF', name: 'Sophie Farley · Existing Patient', desc: 'Annual check-up booked for Thursday 10am. Confirmed.',         tag: 'sched', label: 'Booked' },
+    { init: 'RK', name: 'Rachel Kim · Inquiry',             desc: 'Asking about whitening treatment cost and availability.',      tag: 'new',  label: 'New' },
   ]
-  const ParliamentRows = [
-    { init: 'NP', name: 'Nancy Patel · Constituent',   desc: 'Flooding on Elmwood St. Requesting urgent council escalation.', tag: 'urg',   label: 'Infrastructure' },
-    { init: 'BT', name: 'Ben Turner · Constituent',     desc: 'Visa delay for family member. Referred to immigration case officer.', tag: 'new', label: 'Referred' },
-    { init: 'CW', name: 'Claire Wong · School Principal', desc: 'Requesting meeting re: school funding. Confirmed Tuesday 10am.', tag: 'sched', label: 'Scheduled' },
+  const LegalRows = [
+    { init: 'NP', name: 'Nancy Patel · New Client',   desc: 'Real estate transaction — closing in 3 weeks. Referred to conveyancing team.', tag: 'new',  label: 'Referred' },
+    { init: 'BT', name: 'Ben Turner · Existing Client', desc: 'Follow-up on family law matter. Case officer notified.',                      tag: 'pend', label: 'Pending' },
+    { init: 'CW', name: 'Claire Wong · Inquiry',        desc: 'Employment dispute. Booked initial consultation for Friday 2pm.',             tag: 'sched', label: 'Booked' },
   ]
-  const IND_ROWS: Record<string, typeof RealtorRows> = { re: RealtorRows, med: ClinicRows, mp: ParliamentRows }
+  const BeautyRows = [
+    { init: 'LS', name: 'Laura S. · +1 (555) 091‑4422', desc: 'Haircut + colour on Saturday at 11am with Maya. Confirmed.',  tag: 'sched', label: 'Booked' },
+    { init: 'DM', name: 'Diana M. · Inquiry',             desc: 'Asking about balayage pricing and next available appointment.', tag: 'new',  label: 'New' },
+    { init: 'RO', name: 'Ryan O. · +1 (555) 063‑8810',  desc: 'Beard trim rescheduled from Tuesday to Thursday at 3pm.',      tag: 'warm', label: 'Rescheduled' },
+  ]
+
+  const IND_ROWS: Record<string, typeof RealtorRows> = { re: RealtorRows, dental: DentalRows, legal: LegalRows, beauty: BeautyRows }
   const IND_HEADS: Record<string, { title: string; live: string }> = {
-    re:  { title: 'Active Lead Queue — Sarah Chen Real Estate', live: 'Live · 3 new today' },
-    med: { title: 'Patient Inquiry Queue — Northside Family Clinic', live: 'Live · 5 calls today' },
-    mp:  { title: 'Constituent Casework — Office of Hon. James Whitfield MP', live: 'Live · 12 this week' },
+    re:     { title: 'Active Lead Queue — Shahid Real Estate',      live: 'Live · 3 new today' },
+    dental: { title: 'Patient Inquiry Queue — Smile Dental Group',  live: 'Live · 5 calls today' },
+    legal:  { title: 'Client Intake — Hartwell & Associates LLP',   live: 'Live · 4 this afternoon' },
+    beauty: { title: 'Booking Queue — Studio Nova Hair & Beauty',   live: 'Live · 8 bookings today' },
   }
 
   return (
@@ -116,8 +128,13 @@ export default function Home() {
             <div className="toggle-knob" />
           </div>
           <Link href="/onboarding">
-            <button className="btn-nav">Get a Demo</button>
+            <button className="btn-nav" style={{ background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-2)' }}>
+              Build Your Agent
+            </button>
           </Link>
+          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+            <button className="btn-nav">Book a Demo</button>
+          </a>
         </div>
       </nav>
 
@@ -127,7 +144,7 @@ export default function Home() {
 
         <motion.div {...up(0.1)} className="badge">
           <span className="badge-dot" />
-          Now live — Realtors &amp; Public Offices
+          AI receptionist · Realtors, Dental, Legal, Beauty &amp; more
         </motion.div>
 
         <motion.div className="hero-mark" {...up(0)}>
@@ -153,14 +170,21 @@ export default function Home() {
           the line is<br /><em>always open.</em>
         </motion.h1>
         <motion.p className="hero-sub" {...up(0.5)}>
-          AI-powered phone handling for Realtors, Clinics, and Public Offices. Instant responses. Zero missed leads.
+          Your AI receptionist answers every call, qualifies every lead, and books appointments — 24/7. No hiring. No missed calls. No salary.
         </motion.p>
         <motion.div className="hero-cta" {...up(0.7)}>
-          <Link href="/onboarding#onboarding">
-            <button className="btn-main">Get a Demo Number</button>
+          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+            <button className="btn-main">Book a Demo</button>
+          </a>
+          <Link href="/onboarding">
+            <button className="btn-ghost">Build your own agent →</button>
           </Link>
-          <a href="#demo"><button className="btn-ghost">See it live →</button></a>
         </motion.div>
+
+        {/* Social proof line */}
+        <motion.p {...up(0.9)} style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 22 }}>
+          Setup in under 10 minutes · No contracts · Cancel any time
+        </motion.p>
       </section>
 
       <div className="div-line" />
@@ -172,7 +196,20 @@ export default function Home() {
             <div>
               <div className="sec-label">Live Experience</div>
               <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Hear it.<br />See it happen.</h2>
-              <p className="sec-sub">Simulate a call with our demo agent. Watch the real-time transcript — exactly what your clients experience.</p>
+              <p className="sec-sub">Simulate a real call. Watch the transcript appear in real time — exactly what your callers experience.</p>
+              <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {[
+                  'Answers calls instantly, 24/7',
+                  'Qualifies leads while they\'re on the line',
+                  'Books appointments directly into your calendar',
+                  'Sends you a WhatsApp summary after every call',
+                ].map(f => (
+                  <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--text-2)' }}>
+                    <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 15 }}>✓</span>
+                    {f}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="phone-card">
@@ -203,7 +240,7 @@ export default function Home() {
 
               <button className="call-btn" onClick={runDemo} disabled={callRunning}>
                 {callStatus === 'ended' ? (
-                  <span style={{ color: 'var(--accent)' }}>✓ Summary sent to WhatsApp</span>
+                  <span style={{ color: 'var(--accent)' }}>✓ Appointment booked · Summary sent to WhatsApp</span>
                 ) : (
                   <>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -223,10 +260,10 @@ export default function Home() {
       {/* INDUSTRIES */}
       <section className="sec" id="industries">
         <div className="wrap">
-          <div className="sec-label">One Platform</div>
-          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Built for every<br />high-stakes office.</h2>
+          <div className="sec-label">8 Industries</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Built for businesses<br />that can't miss a call.</h2>
           <p className="sec-sub" style={{ marginBottom: 0 }}>
-            One agent. Infinite configurations. Click an industry to see it adapt.
+            One platform, pre-configured for your industry. Click to see it in action.
           </p>
 
           <div className="tab-row">
@@ -260,6 +297,17 @@ export default function Home() {
               </motion.div>
             </AnimatePresence>
           </div>
+
+          {/* Other industries strip */}
+          <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-3)', paddingTop: 6 }}>Also available for:</span>
+            {['Plumbers', 'Restaurants', 'Builders', 'Medical Clinics', 'Custom'].map(i => (
+              <span key={i} style={{
+                padding: '4px 12px', border: '1px solid var(--border-2)', borderRadius: 20,
+                fontSize: 11, color: 'var(--text-3)',
+              }}>{i}</span>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -281,7 +329,7 @@ export default function Home() {
               </div>
               <div className="card-lbl">Instant Alert</div>
               <div className="card-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>WhatsApp Summary</div>
-              <div className="card-sub">Delivered within 8 seconds of every call ending.</div>
+              <div className="card-sub">Delivered within seconds of every call ending — name, intent, urgency, and suggested next step.</div>
               <div className="wp-box">
                 <div className="wp-hd">
                   <div className="wp-av" />
@@ -300,25 +348,49 @@ export default function Home() {
             <div className="card">
               <div className="card-icon">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34C759" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
               </div>
-              <div className="card-lbl">Knowledge Base</div>
-              <div className="card-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Live Data Sync</div>
-              <div className="card-sub">Listings, policies, and FAQs — updated every 24 hours automatically.</div>
+              <div className="card-lbl">Calendar Booking</div>
+              <div className="card-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Books While You Sleep</div>
+              <div className="card-sub">Connects to Google Calendar and confirms appointments in real time — no follow-up needed.</div>
               <div className="stats">
-                <div className="stat"><div className="stat-n">42</div><div className="stat-l">Listings synced</div></div>
+                <div className="stat"><div className="stat-n">24/7</div><div className="stat-l">Always available</div></div>
                 <div className="stat"><div className="stat-n">&lt;1s</div><div className="stat-l">Answer latency</div></div>
-                <div className="stat"><div className="stat-n">99.9%</div><div className="stat-l">Uptime</div></div>
-                <div className="stat">
-                  <div className="stat-n" style={{ color: 'var(--accent)', fontSize: 18 }}>●</div>
-                  <div className="stat-l">Last crawl: 2h ago</div>
-                </div>
+                <div className="stat"><div className="stat-n">0</div><div className="stat-l">Missed calls</div></div>
+                <div className="stat"><div className="stat-n" style={{ color: 'var(--accent)', fontSize: 18 }}>●</div><div className="stat-l">Live right now</div></div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <div className="div-line" />
+
+      {/* BOTTOM CTA */}
+      <section className="sec" style={{ textAlign: 'center' }}>
+        <div className="wrap">
+          <div className="sec-label">Get Started</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', maxWidth: 560, margin: '0 auto 14px' }}>
+            Your receptionist.<br />Never off the clock.
+          </h2>
+          <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, maxWidth: 400, margin: '0 auto 36px', lineHeight: 1.7 }}>
+            Not sure which plan fits? We'll walk you through it live — or you can set up your agent right now in under 10 minutes.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+              <button className="btn-main" style={{ padding: '14px 32px', fontSize: 15 }}>Book a Demo</button>
+            </a>
+            <Link href="/onboarding">
+              <button className="btn-ghost" style={{ padding: '14px 32px', fontSize: 15 }}>Build your own agent →</button>
+            </Link>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 18 }}>
+            Setup in under 10 minutes · No contracts · Cancel any time
+          </p>
+        </div>
+      </section>
 
       {/* FOOTER */}
       <footer>
@@ -331,7 +403,7 @@ export default function Home() {
           <div className="ft-links">
             <a href="#">Privacy</a>
             <a href="#">Terms</a>
-            <a href="#">Contact</a>
+            <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">Book a Demo</a>
           </div>
         </div>
         <div className="status-bar">

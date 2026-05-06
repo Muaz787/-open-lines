@@ -44,3 +44,27 @@ create table if not exists calls (
     duration_secs   int,
     created_at      timestamptz default now()
 );
+
+-- Calendar integration columns (run once, idempotent)
+alter table tenants add column if not exists google_refresh_token       text;
+alter table tenants add column if not exists appointment_duration_minutes int default 60;
+alter table tenants add column if not exists calendar_timezone           text default 'America/Toronto';
+
+-- Smart call routing: store pre-built system prompt + Vapi phone number ID
+alter table tenants add column if not exists last_system_prompt text;
+alter table tenants add column if not exists vapi_phone_number_id text;
+
+-- Appointments booked by the AI receptionist
+create table if not exists appointments (
+    id                   uuid primary key default gen_random_uuid(),
+    tenant_id            uuid not null references tenants(id) on delete cascade,
+    caller_name          text,
+    caller_phone         text,
+    service              text,
+    appointment_datetime timestamptz not null,
+    duration_minutes     int default 60,
+    status               text default 'confirmed',  -- confirmed | cancelled | completed
+    vapi_call_id         text,
+    google_event_id      text,
+    created_at           timestamptz default now()
+);

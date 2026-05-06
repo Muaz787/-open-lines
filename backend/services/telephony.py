@@ -35,34 +35,61 @@ async def create_subaccount(business_name: str) -> dict:
         raise
 
 
+# Per-country search config.
+# area_codes: try these first in order; fall through to national search if all miss.
+# Empty list means go straight to national search.
+_COUNTRY_CONFIG: dict[str, dict] = {
+    "CA": {"twilio_code": "CA", "area_codes": ["416", "647", "905", "604", "403", "780", "613", "438"]},
+    "US": {"twilio_code": "US", "area_codes": ["212", "310", "312", "415", "718", "617", "404", "206"]},
+    "GB": {"twilio_code": "GB", "area_codes": []},
+    "AU": {"twilio_code": "AU", "area_codes": []},
+    "IE": {"twilio_code": "IE", "area_codes": []},
+    "NZ": {"twilio_code": "NZ", "area_codes": []},
+}
+
+SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
+
+
 async def find_available_number(
     subaccount_sid: str,
     subaccount_token: str,
-    area_codes: list = ["416", "905", "647"],
+    country_code: str = "CA",
 ) -> str:
+    cc = country_code.upper()
+    if cc not in _COUNTRY_CONFIG:
+        logger.warning("Country %s not supported, falling back to CA", cc)
+        cc = "CA"
+
+    config = _COUNTRY_CONFIG[cc]
+    twilio_code = config["twilio_code"]
+    area_codes: list[str] = config["area_codes"]
     client = _sub_client(subaccount_sid, subaccount_token)
+
+    # Try area codes first (North America)
     for area_code in area_codes:
         try:
-            results = client.available_phone_numbers("CA").local.list(
-                area_code=area_code,
-                limit=1,
+            results = client.available_phone_numbers(twilio_code).local.list(
+                area_code=area_code, limit=1,
             )
             if results:
                 number = results[0].phone_number
-                logger.info(
-                    "Found available number %s in area code %s (sub-account %s)",
-                    number, area_code, subaccount_sid,
-                )
+                logger.info("Found %s in area code %s (sub-account %s)", number, area_code, subaccount_sid)
                 return number
-            logger.info("No numbers available in area code %s", area_code)
         except TwilioRestException as e:
-            logger.error(
-                "Error searching area code %s on sub-account %s: %s",
-                area_code, subaccount_sid, e,
-            )
-    raise ValueError(
-        f"No available numbers found in any of the area codes: {area_codes}"
-    )
+            logger.warning("Area code %s search failed on sub-account %s: %s", area_code, subaccount_sid, e)
+
+    # National fallback — no area code filter
+    try:
+        results = client.available_phone_numbers(twilio_code).local.list(limit=1)
+        if results:
+            number = results[0].phone_number
+            logger.info("Found %s via national search in %s (sub-account %s)", number, twilio_code, subaccount_sid)
+            return number
+    except TwilioRestException as e:
+        logger.error("National search failed for %s on sub-account %s: %s", twilio_code, subaccount_sid, e)
+        raise
+
+    raise ValueError(f"No available local numbers found in {twilio_code}")
 
 
 async def purchase_number(
@@ -100,6 +127,24 @@ async def release_number(
             logger.info("Released number %s from sub-account %s", phone_number, subaccount_sid)
     except Exception as e:
         logger.error("Failed to release number %s on rollback: %s", phone_number, e)
+
+
+async def send_sms(
+    subaccount_sid: str,
+    subaccount_token: str,
+    from_number: str,
+    to_number: str,
+    body: str,
+) -> bool:
+    """Send an SMS from the tenant's provisioned number to the caller."""
+    try:
+        client = _sub_client(subaccount_sid, subaccount_token)
+        message = client.messages.create(body=body, from_=from_number, to=to_number)
+        logger.info("SMS sent to %s (SID %s)", to_number, message.sid)
+        return True
+    except TwilioRestException as e:
+        logger.error("Failed to send SMS to %s: %s", to_number, e)
+        return False
 
 
 async def point_number_to_vapi(

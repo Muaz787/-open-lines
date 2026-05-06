@@ -3,12 +3,14 @@ import json
 import logging
 import httpx
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from openai import AsyncOpenAI
 
 from db import supabase as db
-from services import knowledge
+from services import knowledge, telephony, vapi as vapi_svc
+from routers.calendar import _CALENDAR_NOTE
 
 load_dotenv()
 
@@ -42,7 +44,7 @@ def _parse_duration(started_at: str | None, ended_at: str | None) -> int | None:
         return None
 
 
-def _format_whatsapp_message(business_name: str, analysis: dict) -> str:
+def _format_whatsapp_message(business_name: str, analysis: dict, caller_number: str = "") -> str:
     caller_name = analysis.get("caller_name", "Unknown")
     key_details: dict = analysis.get("key_details") or {}
     urgency = analysis.get("urgency", "unknown")
@@ -54,9 +56,12 @@ def _format_whatsapp_message(business_name: str, analysis: dict) -> str:
         for k, v in key_details.items()
     )
 
+    phone_line = f"📱 *Phone:* {caller_number}\n" if caller_number else ""
+
     return (
         f"📞 *New Call — {business_name}*\n\n"
         f"👤 *{caller_name}*\n"
+        f"{phone_line}"
         f"{detail_lines}\n\n"
         f"⚡ Urgency: *{urgency}*\n"
         f"📝 {summary}\n\n"
@@ -64,13 +69,135 @@ def _format_whatsapp_message(business_name: str, analysis: dict) -> str:
     )
 
 
+async def _handle_assistant_request(msg: dict) -> dict:
+    """
+    Return a personalized assistant config for an incoming call.
+    Injects caller context and today's date so the AI greets the caller by name
+    immediately, without any mid-call tool lookup.
+    """
+    phone_obj: dict = msg.get("phoneNumber") or {}
+    called_number: str = (
+        phone_obj.get("number")
+        or phone_obj.get("twilioPhoneNumber")
+        or ""
+    )
+    caller_phone: str = (msg.get("call") or {}).get("customer", {}).get("number", "")
+
+    if not called_number:
+        logger.error("assistant-request: no called_number in payload")
+        return {"error": {"message": "No phone number in request"}}
+
+    try:
+        tenant = await db.get_tenant_by_phone(called_number)
+    except Exception as e:
+        logger.error("assistant-request: tenant lookup failed for %s: %s", called_number, e)
+        return {"error": {"message": "Tenant lookup failed"}}
+
+    if not tenant:
+        return {"error": {"message": f"No tenant for {called_number}"}}
+
+    tenant_id: str = tenant["id"]
+    assistant_id: str = tenant.get("vapi_assistant_id", "")
+    base_prompt: str = tenant.get("last_system_prompt") or ""
+
+    if not assistant_id or not base_prompt:
+        logger.warning(
+            "assistant-request: tenant %s missing assistant_id or last_system_prompt — falling back to assistantId only",
+            tenant_id,
+        )
+        return {"assistantId": assistant_id} if assistant_id else {"error": {"message": "No assistant configured"}}
+
+    # Today's date in tenant timezone
+    tz_str: str = tenant.get("calendar_timezone") or "America/Toronto"
+    today = datetime.now(ZoneInfo(tz_str))
+    date_note = (
+        f"\n\nTODAY'S DATE: {today.strftime('%A, %B %d, %Y')} ({today.strftime('%Y-%m-%d')}). "
+        "Resolve all relative dates (today, tomorrow, next Monday, etc.) against this date "
+        "before passing to any tool."
+    )
+
+    # Caller context
+    caller_context = ""
+    personalized_greeting = tenant.get("greeting_template", "")
+
+    if caller_phone:
+        try:
+            lead = await db.get_lead_by_phone(tenant_id, caller_phone)
+            if lead:
+                name = lead.get("name") or ""
+                summary = lead.get("summary") or ""
+                lines = [f"RETURNING CALLER: {name}" if name else "RETURNING CALLER (name not captured yet)"]
+                if summary:
+                    lines.append(f"Last call summary: {summary}")
+                try:
+                    upcoming = await db.get_upcoming_appointment_by_phone(tenant_id, caller_phone)
+                    if upcoming:
+                        service = upcoming.get("service", "appointment")
+                        appt_dt_raw = upcoming.get("appointment_datetime", "")
+                        appt_dt = datetime.fromisoformat(appt_dt_raw)
+                        if appt_dt.tzinfo is None:
+                            appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
+                        appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
+                        h = appt_dt.hour % 12 or 12
+                        ampm = "AM" if appt_dt.hour < 12 else "PM"
+                        friendly = f"{appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
+                        lines.append(f"Upcoming appointment: {service} on {friendly}")
+                except Exception:
+                    pass
+                caller_context = (
+                    "\n\nCALLER CONTEXT (this caller has called before — use this immediately in your greeting):\n"
+                    + "\n".join(lines)
+                )
+                greeting_name = name or "there"
+                personalized_greeting = f"Hey {greeting_name}! Great to hear from you again. How can I help you today?"
+        except Exception as e:
+            logger.warning("assistant-request: caller lookup failed for tenant %s: %s", tenant_id, e)
+
+    # Assemble system prompt
+    system_prompt = base_prompt + date_note + caller_context
+    if tenant.get("google_refresh_token"):
+        system_prompt += _CALENDAR_NOTE
+
+    # Tools
+    tools = (
+        vapi_svc.build_calendar_tools(tenant_id)
+        if tenant.get("google_refresh_token")
+        else [vapi_svc.build_caller_lookup_tool(tenant_id)]
+    )
+
+    logger.info(
+        "assistant-request: tenant %s caller %s → %s",
+        tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
+    )
+
+    return {
+        "assistantId": assistant_id,
+        "assistantOverrides": {
+            "firstMessage": personalized_greeting,
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4o",
+                "temperature": 0.7,
+                "messages": [{"role": "system", "content": system_prompt}],
+                "tools": tools,
+            },
+        },
+    }
+
+
 @router.post("/vapi-call-ended")
 async def vapi_call_ended(payload: dict):
-    logger.info("Vapi webhook payload: %s", json.dumps(payload, default=str))
-
-    # Step 1 — Extract call fields
-    # Vapi wraps the payload in a "message" envelope
     msg = payload.get("message", payload)
+    event_type = msg.get("type", "")
+
+    if event_type == "assistant-request":
+        return await _handle_assistant_request(msg)
+
+    if event_type and event_type != "end-of-call-report":
+        logger.debug("Ignoring Vapi event type: %s", event_type)
+        return {"status": "ignored", "type": event_type}
+
+    logger.info("Processing end-of-call-report")
     try:
         call = msg.get("call", {})
         call_id: str = call.get("id") or msg.get("call_id", "")
@@ -85,6 +212,7 @@ async def vapi_call_ended(payload: dict):
         )
         started_at: str | None = call.get("startedAt")
         ended_at: str | None = call.get("endedAt")
+        vapi_duration: int | None = call.get("duration") or call.get("durationSeconds")
     except Exception as e:
         logger.error("Failed to extract call fields from payload: %s", e)
         raise HTTPException(status_code=400, detail="Malformed Vapi payload")
@@ -151,7 +279,7 @@ async def vapi_call_ended(payload: dict):
             "vapi_call_id": call_id,
             "transcript": transcript,
         }
-        duration = _parse_duration(started_at, ended_at)
+        duration = vapi_duration or _parse_duration(started_at, ended_at)
         if duration is not None:
             call_data["duration_secs"] = duration
         await db.insert_call(tenant_id, lead_id, call_data)
@@ -173,8 +301,7 @@ async def vapi_call_ended(payload: dict):
                 "last_call_id": call_id,
             },
         }
-        # Only overwrite name if GPT extracted one and the lead doesn't already have one
-        if caller_name and not (existing_lead and existing_lead.get("name")):
+        if caller_name:
             lead_update["name"] = caller_name
         await db.update_lead(tenant_id, lead_id, lead_update)
         logger.info("Updated lead %s after call %s", lead_id, call_id)
@@ -184,7 +311,7 @@ async def vapi_call_ended(payload: dict):
 
     # Step 7 — Format WhatsApp message
     try:
-        message = _format_whatsapp_message(business_name, analysis)
+        message = _format_whatsapp_message(business_name, analysis, caller_number)
     except Exception as e:
         logger.error("Failed to format WhatsApp message for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to format notification")
@@ -209,7 +336,54 @@ async def vapi_call_ended(payload: dict):
             bool(tenant.get("whatsapp_number")),
         )
 
-    # Step 9 — Return
+    # Step 9 — Send SMS confirmation if an appointment was booked (non-fatal)
+    if caller_number:
+        try:
+            appointment = await db.get_appointment_by_call_id(call_id)
+            if appointment:
+                from zoneinfo import ZoneInfo
+                tz_str = tenant.get("calendar_timezone") or "America/Toronto"
+                appt_dt_raw = appointment.get("appointment_datetime", "")
+                service = appointment.get("service", "appointment")
+                caller_name_for_sms = analysis.get("caller_name") or ""
+
+                try:
+                    appt_dt = datetime.fromisoformat(appt_dt_raw)
+                    if appt_dt.tzinfo is None:
+                        appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
+                    appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
+                    h = appt_dt.hour % 12 or 12
+                    ampm = "AM" if appt_dt.hour < 12 else "PM"
+                    friendly_time = f"{appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
+                except Exception:
+                    friendly_time = appt_dt_raw
+
+                greeting = f"Hi {caller_name_for_sms}! " if caller_name_for_sms else ""
+                sms_body = (
+                    f"{greeting}Your {service} at {business_name} is confirmed "
+                    f"for {friendly_time}. See you then! — {business_name}"
+                )
+
+                subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
+                subaccount_token = tenant.get("twilio_auth_token", "")
+                business_phone   = tenant.get("twilio_phone_number", "")
+
+                if subaccount_sid and subaccount_token and business_phone:
+                    await telephony.send_sms(
+                        subaccount_sid=subaccount_sid,
+                        subaccount_token=subaccount_token,
+                        from_number=business_phone,
+                        to_number=caller_number,
+                        body=sms_body,
+                    )
+                    logger.info(
+                        "Appointment SMS sent to %s for tenant %s (call %s)",
+                        caller_number, tenant_id, call_id,
+                    )
+        except Exception as e:
+            logger.error("Appointment SMS step failed for call %s: %s", call_id, e)
+
+    # Step 10 — Return
     return {"status": "processed"}
 
 

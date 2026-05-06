@@ -1,15 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const INDUSTRIES = [
-  { value: 'realtor',    label: 'Realtor' },
+  { value: 'realtor',    label: 'Realtor / Real Estate' },
   { value: 'clinic',     label: 'Medical Clinic' },
+  { value: 'dental',     label: 'Dental / Physiotherapy' },
+  { value: 'legal',      label: 'Law Firm / Legal Services' },
+  { value: 'plumber',    label: 'Plumbing & HVAC' },
+  { value: 'builder',    label: 'Builder / Contractor' },
+  { value: 'restaurant', label: 'Restaurant / Café' },
+  { value: 'beauty',     label: 'Hair & Beauty Salon' },
   { value: 'parliament', label: 'Member of Parliament' },
+  { value: 'custom',     label: 'Other (describe your business)' },
 ]
 
 const STEPS = [
@@ -17,7 +24,56 @@ const STEPS = [
   'Scraping your website...',
   'Training your AI...',
   'Going live...',
+  'Processing your documents...',
 ]
+
+interface Country {
+  code: string
+  name: string
+  dial: string
+  flag: string
+}
+
+const COUNTRIES: Country[] = [
+  { code: 'CA', name: 'Canada',         dial: '+1',   flag: '🇨🇦' },
+  { code: 'US', name: 'United States',  dial: '+1',   flag: '🇺🇸' },
+  { code: 'GB', name: 'United Kingdom', dial: '+44',  flag: '🇬🇧' },
+  { code: 'AU', name: 'Australia',      dial: '+61',  flag: '🇦🇺' },
+  { code: 'IE', name: 'Ireland',        dial: '+353', flag: '🇮🇪' },
+  { code: 'NZ', name: 'New Zealand',    dial: '+64',  flag: '🇳🇿' },
+]
+
+function detectCountry(): string {
+  try {
+    const lang = navigator.language ?? ''
+    if (lang.includes('-')) {
+      const cc = lang.split('-').pop()?.toUpperCase() ?? ''
+      if (COUNTRIES.some(c => c.code === cc)) return cc
+    }
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (/Toronto|Vancouver|Edmonton|Winnipeg|Halifax|Regina|St_Johns/.test(tz)) return 'CA'
+    if (tz.startsWith('America/')) return 'US'
+    if (/Dublin/.test(tz)) return 'IE'
+    if (/London/.test(tz)) return 'GB'
+    if (tz.startsWith('Australia/')) return 'AU'
+    if (/Auckland|Wellington|Christchurch/.test(tz)) return 'NZ'
+  } catch {}
+  return 'CA'
+}
+
+function fileIcon(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? ''
+  if (ext === 'pdf')  return '📄'
+  if (['docx', 'doc'].includes(ext)) return '📝'
+  if (['xlsx', 'xls'].includes(ext)) return '📊'
+  return '📃'
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 interface ProvisionResult {
   tenant_id: string
@@ -38,29 +94,71 @@ const LogoMark = () => (
 )
 
 export default function OnboardingPage() {
-  const [form, setForm] = useState({
-    business_name: '',
-    industry: 'realtor',
-    owner_name: '',
-    whatsapp_number: '',
-    website_url: '',
-    agent_name: '',
+  const [step, setStep]             = useState<1 | 2>(1)
+  const [form, setForm]             = useState({
+    business_name:        '',
+    industry:             'realtor',
+    owner_name:           '',
+    country:              'CA',
+    wa_country:           'CA',
+    wa_local:             '',
+    website_url:          '',
+    extra_instructions:   '',
+    agent_name:           '',
+    business_description: '',
   })
+  const [files, setFiles]           = useState<File[]>([])
+  const [dragOver, setDragOver]     = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [stepIndex, setStepIndex]   = useState(0)
   const [result, setResult]         = useState<ProvisionResult | null>(null)
   const [error, setError]           = useState<string | null>(null)
+  const fileInputRef                = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const cc = detectCountry()
+    setForm(f => ({ ...f, country: cc, wa_country: cc }))
+  }, [])
 
   useEffect(() => {
     if (!submitting) return
+    const totalSteps = files.length > 0 ? STEPS.length : STEPS.length - 1
     const interval = setInterval(() => {
-      setStepIndex(i => Math.min(i + 1, STEPS.length - 1))
+      setStepIndex(i => Math.min(i + 1, totalSteps - 1))
     }, 7000)
     return () => clearInterval(interval)
-  }, [submitting])
+  }, [submitting, files.length])
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    if (name === 'country') {
+      setForm(f => ({ ...f, country: value, wa_country: value }))
+    } else {
+      setForm(f => ({ ...f, [name]: value }))
+    }
+  }
+
+  const addFiles = useCallback((incoming: FileList | null) => {
+    if (!incoming) return
+    const allowed = ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'txt', 'md', 'csv']
+    const newFiles = Array.from(incoming).filter(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+      return allowed.includes(ext)
+    })
+    setFiles(prev => {
+      const existing = new Set(prev.map(f => f.name))
+      const unique = newFiles.filter(f => !existing.has(f.name))
+      return [...prev, ...unique].slice(0, 10)
+    })
+  }, [])
+
+  const removeFile = (name: string) =>
+    setFiles(prev => prev.filter(f => f.name !== name))
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    addFiles(e.dataTransfer.files)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,8 +167,21 @@ export default function OnboardingPage() {
     setSubmitting(true)
     setStepIndex(0)
 
-    const body: Record<string, string> = { ...form }
-    if (!body.agent_name) delete body.agent_name
+    const dialCode = COUNTRIES.find(c => c.code === form.wa_country)?.dial ?? '+1'
+    const localNum = form.wa_local.replace(/\D/g, '')
+    const whatsapp = localNum ? `${dialCode}${localNum}` : ''
+
+    const body: Record<string, string> = {
+      business_name: form.business_name,
+      industry:      form.industry,
+      country:       form.country,
+    }
+    if (form.owner_name)              body.owner_name              = form.owner_name
+    if (whatsapp)                     body.whatsapp_number         = whatsapp
+    if (form.website_url)             body.website_url             = form.website_url
+    if (form.agent_name)              body.agent_name              = form.agent_name
+    if (form.extra_instructions)      body.extra_instructions      = form.extra_instructions
+    if (form.business_description)    body.business_description    = form.business_description
 
     try {
       const res = await fetch(`${API}/onboarding/provision`, {
@@ -82,7 +193,22 @@ export default function OnboardingPage() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail ?? `Request failed (${res.status})`)
       }
-      setResult(await res.json())
+      const provisioned: ProvisionResult = await res.json()
+
+      // Upload documents if any (non-fatal)
+      if (files.length > 0) {
+        setStepIndex(STEPS.length - 1)
+        try {
+          const fd = new FormData()
+          files.forEach(f => fd.append('files', f))
+          await fetch(`${API}/knowledge/upload/${provisioned.tenant_id}`, {
+            method: 'POST',
+            body: fd,
+          })
+        } catch {}
+      }
+
+      setResult(provisioned)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
     } finally {
@@ -90,14 +216,19 @@ export default function OnboardingPage() {
     }
   }
 
-  const progressPct = submitting ? ((stepIndex + 1) / STEPS.length) * 100 : 0
+  const totalSteps  = files.length > 0 ? STEPS.length : STEPS.length - 1
+  const progressPct = submitting ? ((stepIndex + 1) / totalSteps) * 100 : 0
+  const selectedDial = COUNTRIES.find(c => c.code === form.wa_country)?.dial ?? '+1'
+  const selectedFlag = COUNTRIES.find(c => c.code === form.wa_country)?.flag ?? '🌐'
 
   return (
     <div className="ob-page" id="onboarding">
-      <motion.div className="ob-card"
+      <motion.div
+        className="ob-card"
         initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}>
-
+        transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+        style={{ maxWidth: result || submitting ? 480 : 520 }}
+      >
         <div className="ob-logo">
           <LogoMark />
           <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '0.04em', color: 'var(--text)' }}>open lines</span>
@@ -105,15 +236,13 @@ export default function OnboardingPage() {
 
         <AnimatePresence mode="wait">
 
-          {/* SUCCESS */}
+          {/* ── SUCCESS ── */}
           {result && (
             <motion.div key="success" className="success-wrap"
               initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>🎉</div>
-              <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-                You're live.
-              </div>
+              <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>You're live.</div>
               <div className="success-number">{result.phone_number}</div>
               <div className="success-label">Share this number with your clients</div>
               <Link href={`/dashboard/${result.tenant_id}`}>
@@ -122,12 +251,13 @@ export default function OnboardingPage() {
             </motion.div>
           )}
 
-          {/* LOADING */}
+          {/* ── LOADING ── */}
           {!result && submitting && (
             <motion.div key="loading" className="progress-wrap"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ fontSize: 32, marginBottom: 20 }}>
-                <motion.span animate={{ rotate: 360 }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                <motion.span animate={{ rotate: 360 }}
+                  transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
                   style={{ display: 'inline-block' }}>⚙</motion.span>
               </div>
               <div className="progress-step">
@@ -148,62 +278,240 @@ export default function OnboardingPage() {
             </motion.div>
           )}
 
-          {/* FORM */}
+          {/* ── FORM ── */}
           {!result && !submitting && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+
+              {/* Step indicator */}
+              <div className="step-indicator">
+                <div className="step-node">
+                  <div className={`step-dot ${step === 1 ? 'active' : 'done'}`}>
+                    {step > 1 ? '✓' : '1'}
+                  </div>
+                  <span className={`step-label ${step === 1 ? 'active' : ''}`}>Basics</span>
+                </div>
+                <div className="step-line" />
+                <div className="step-node">
+                  <div className={`step-dot ${step === 2 ? 'active' : 'pending'}`}>2</div>
+                  <span className={`step-label ${step === 2 ? 'active' : ''}`}>Knowledge & Contact</span>
+                </div>
+              </div>
+
               <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-                Get your AI receptionist
+                {step === 1 ? 'Get your AI receptionist' : 'Knowledge & contact'}
               </div>
               <div className="ob-sub">
-                Fill in the details below. We'll provision a real phone number and live AI agent in under 60 seconds.
+                {step === 1
+                  ? "Fill in your business details. We'll provision a real phone number and live AI agent in under 60 seconds."
+                  : 'Upload documents to train your AI, add custom instructions, and set your WhatsApp number for call summaries.'}
               </div>
 
-              <form onSubmit={handleSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Business Name *</label>
-                  <input className="form-input" name="business_name" value={form.business_name}
-                    onChange={handleChange} placeholder="e.g. Shahid Real Estate" required />
+              {/* ── Step 1 ── */}
+              {step === 1 && (
+                <div>
+                  <div className="form-group">
+                    <label className="form-label">Business Name *</label>
+                    <input className="form-input" name="business_name" value={form.business_name}
+                      onChange={handleChange} placeholder="e.g. Riverside Medical Clinic" required />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Industry *</label>
+                    <select className="form-input" name="industry" value={form.industry} onChange={handleChange}>
+                      {INDUSTRIES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+                    </select>
+                  </div>
+
+                  {form.industry === 'custom' && (
+                    <div className="form-group">
+                      <label className="form-label">Describe Your Business *</label>
+                      <textarea
+                        className="form-input"
+                        name="business_description"
+                        value={form.business_description}
+                        onChange={handleChange}
+                        rows={3}
+                        placeholder="e.g. We are a family-run pet grooming salon specialising in dogs and cats, offering baths, haircuts, and nail trims."
+                        style={{ resize: 'vertical', lineHeight: 1.6 }}
+                        required
+                      />
+                      <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                        Your AI agent's script will be generated from this description
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label className="form-label">Country *</label>
+                    <select className="form-input" name="country" value={form.country} onChange={handleChange}>
+                      {COUNTRIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                      A local phone number will be provisioned in this country
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Owner Name</label>
+                    <input className="form-input" name="owner_name" value={form.owner_name}
+                      onChange={handleChange} placeholder="Your full name" />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">
+                      Agent Name{' '}
+                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
+                        (optional, default "Alex")
+                      </span>
+                    </label>
+                    <input className="form-input" name="agent_name" value={form.agent_name}
+                      onChange={handleChange} placeholder="Alex" />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-submit"
+                    disabled={
+                      !form.business_name ||
+                      (form.industry === 'custom' && !form.business_description.trim())
+                    }
+                    onClick={() => setStep(2)}
+                  >
+                    Next →
+                  </button>
                 </div>
+              )}
 
-                <div className="form-group">
-                  <label className="form-label">Industry *</label>
-                  <select className="form-input" name="industry" value={form.industry} onChange={handleChange}>
-                    {INDUSTRIES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
-                  </select>
-                </div>
+              {/* ── Step 2 ── */}
+              {step === 2 && (
+                <form onSubmit={handleSubmit}>
 
-                <div className="form-group">
-                  <label className="form-label">Owner Name</label>
-                  <input className="form-input" name="owner_name" value={form.owner_name}
-                    onChange={handleChange} placeholder="Your full name" />
-                </div>
+                  <div className="form-group">
+                    <label className="form-label">Website URL</label>
+                    <input className="form-input" name="website_url" value={form.website_url}
+                      onChange={handleChange} placeholder="https://yourbusiness.com" type="url" />
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                      We'll scrape this to train your AI on your services and FAQs
+                    </div>
+                  </div>
 
-                <div className="form-group">
-                  <label className="form-label">WhatsApp Number</label>
-                  <input className="form-input" name="whatsapp_number" value={form.whatsapp_number}
-                    onChange={handleChange} placeholder="+1 416 555 0100" />
-                </div>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Documents{' '}
+                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
+                        (optional — up to 10 files, 10 MB each)
+                      </span>
+                    </label>
 
-                <div className="form-group">
-                  <label className="form-label">Website URL</label>
-                  <input className="form-input" name="website_url" value={form.website_url}
-                    onChange={handleChange} placeholder="https://yourbusiness.com" type="url" />
-                </div>
+                    {/* Drop zone */}
+                    <div
+                      className={`upload-zone${dragOver ? ' drag-over' : ''}`}
+                      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <div className="upload-zone-icon">📎</div>
+                      <div className="upload-zone-text">Drop files here or click to browse</div>
+                      <div className="upload-zone-hint">PDF · Word (.docx) · Excel (.xlsx) · Plain text (.txt / .csv / .md)</div>
+                    </div>
 
-                <div className="form-group">
-                  <label className="form-label">Agent Name <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>(optional, default "Alex")</span></label>
-                  <input className="form-input" name="agent_name" value={form.agent_name}
-                    onChange={handleChange} placeholder="Alex" />
-                </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md,.csv"
+                      style={{ display: 'none' }}
+                      onChange={e => addFiles(e.target.files)}
+                    />
 
-                <button type="submit" className="btn-submit" disabled={!form.business_name}>
-                  Provision my line →
-                </button>
+                    {/* File list */}
+                    {files.length > 0 && (
+                      <div className="file-list">
+                        {files.map(f => (
+                          <div key={f.name} className="file-item">
+                            <span className="file-icon">{fileIcon(f.name)}</span>
+                            <span className="file-name">{f.name}</span>
+                            <span className="file-size">{formatBytes(f.size)}</span>
+                            <button type="button" className="file-remove" onClick={() => removeFile(f.name)}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                {error && (
-                  <div className="error-msg">{error}</div>
-                )}
-              </form>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Extra Instructions{' '}
+                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
+                        (optional)
+                      </span>
+                    </label>
+                    <textarea
+                      className="form-input"
+                      name="extra_instructions"
+                      value={form.extra_instructions}
+                      onChange={handleChange}
+                      rows={4}
+                      placeholder={`e.g. Always mention our 24/7 emergency line is 1-800-XXX-XXXX.\nWe don't handle commercial properties.\nIf asked about pricing, say quotes are provided after a consultation.`}
+                      style={{ resize: 'vertical', lineHeight: 1.6 }}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                      These instructions are added directly to your AI agent's behaviour on top of the default script
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">WhatsApp Number</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select
+                        name="wa_country"
+                        value={form.wa_country}
+                        onChange={handleChange}
+                        className="form-input"
+                        style={{ width: 110, flexShrink: 0, paddingRight: 6 }}
+                      >
+                        {COUNTRIES.map(c => (
+                          <option key={c.code} value={c.code}>{c.flag} {c.dial}</option>
+                        ))}
+                      </select>
+                      <input
+                        className="form-input"
+                        name="wa_local"
+                        value={form.wa_local}
+                        onChange={handleChange}
+                        placeholder="416 555 0100"
+                        inputMode="tel"
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
+                      {form.wa_local
+                        ? `Will be saved as ${selectedFlag} ${selectedDial}${form.wa_local.replace(/\D/g, '')}`
+                        : 'Call summaries will be sent here after each call'}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setStep(1)}
+                      style={{ flex: '0 0 auto', padding: '13px 20px' }}
+                    >
+                      ← Back
+                    </button>
+                    <button type="submit" className="btn-submit" style={{ flex: 1, margin: 0 }}>
+                      Provision my line →
+                    </button>
+                  </div>
+
+                  {error && <div className="error-msg">{error}</div>}
+                </form>
+              )}
+
             </motion.div>
           )}
 

@@ -112,6 +112,57 @@ async def embed_and_store(namespace: str, text: str, tenant_id: str) -> int:
     return len(vectors)
 
 
+def extract_text(filename: str, content: bytes) -> str:
+    name = filename.lower()
+    if name.endswith(".pdf"):
+        return _extract_pdf(content)
+    elif name.endswith(".docx"):
+        return _extract_docx(content)
+    elif name.endswith(".xlsx") or name.endswith(".xls"):
+        return _extract_xlsx(content)
+    elif name.endswith((".txt", ".md", ".csv")):
+        return content.decode("utf-8", errors="ignore")
+    else:
+        ext = name.rsplit(".", 1)[-1] if "." in name else "unknown"
+        raise ValueError(f"Unsupported file type .{ext}. Accepted: PDF, Word (.docx), Excel (.xlsx/.xls), plain text (.txt/.csv/.md)")
+
+
+def _extract_pdf(content: bytes) -> str:
+    import io
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(content))
+    pages = [page.extract_text() or "" for page in reader.pages]
+    return "\n\n".join(p for p in pages if p.strip())
+
+
+def _extract_docx(content: bytes) -> str:
+    import io
+    from docx import Document
+    doc = Document(io.BytesIO(content))
+    parts: list[str] = [p.text for p in doc.paragraphs if p.text.strip()]
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    return "\n\n".join(parts)
+
+
+def _extract_xlsx(content: bytes) -> str:
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    rows: list[str] = []
+    for sheet in wb.worksheets:
+        rows.append(f"[Sheet: {sheet.title}]")
+        for row in sheet.iter_rows(values_only=True):
+            cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+            if cells:
+                rows.append(" | ".join(cells))
+    wb.close()
+    return "\n".join(rows)
+
+
 async def query_knowledge_base(namespace: str, query: str, top_k: int = 5) -> str:
     openai = _get_openai()
     index = _get_pinecone_index()

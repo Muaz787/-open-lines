@@ -27,6 +27,31 @@ async def list_leads(
         raise HTTPException(status_code=500, detail="Failed to fetch leads")
 
 
+@router.get("/{tenant_id}/stats")
+async def get_stats(tenant_id: str):
+    try:
+        leads = await db.get_leads(tenant_id, limit=500)
+        calls = await db.get_calls(tenant_id, limit=500)
+        appts = (
+            db.get_client()
+            .table("appointments")
+            .select("id")
+            .eq("tenant_id", tenant_id)
+            .execute()
+        )
+    except Exception as e:
+        logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to fetch stats")
+
+    total_secs = sum(c.get("duration_secs") or 0 for c in calls)
+    return {
+        "total_calls":         len(calls),
+        "total_leads":         len(leads),
+        "minutes_handled":     round(total_secs / 60),
+        "appointments_booked": len(appts.data or []),
+    }
+
+
 @router.get("/{tenant_id}/{lead_id}")
 async def get_lead(tenant_id: str, lead_id: str):
     try:

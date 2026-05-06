@@ -296,10 +296,49 @@ footer {
 .transcript-text { font-size: 12px; color: var(--text-2); line-height: 1.7; white-space: pre-wrap; font-family: monospace; max-height: 200px; overflow-y: auto; }
 .transcript-empty { font-size: 12px; color: var(--text-3); font-style: italic; }
 
+.kd-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.kd-chip { display: flex; flex-direction: column; gap: 2px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; min-width: 90px; }
+.kd-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.kd-value { font-size: 13px; font-weight: 500; color: var(--text); }
+
+.next-step-box { font-size: 12px; color: var(--text-2); background: var(--accent-dim); border-left: 2px solid var(--accent); padding: 8px 12px; border-radius: 0 6px 6px 0; margin-bottom: 14px; line-height: 1.5; }
+.next-step-arrow { color: var(--accent); }
+
+.status-actions { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.status-btn { padding: 4px 12px; border: 1px solid var(--border-2); border-radius: 4px; font-size: 11px; font-weight: 500; cursor: none; background: transparent; color: var(--text-2); transition: all 0.2s; }
+.status-btn:hover { border-color: var(--accent); color: var(--accent); }
+.status-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
 .empty-state { text-align: center; padding: 80px 40px; border: 1px solid var(--border); border-radius: 12px; }
 .empty-state-icon { font-size: 32px; margin-bottom: 12px; }
 .empty-state-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
 .empty-state-sub { font-size: 13px; color: var(--text-2); }
+
+/* ── Step indicator ── */
+.step-indicator { display: flex; align-items: center; margin-bottom: 28px; }
+.step-node { display: flex; align-items: center; gap: 7px; }
+.step-dot { width: 22px; height: 22px; border-radius: 50%; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.25s; }
+.step-dot.active  { background: var(--text); color: var(--bg); }
+.step-dot.done    { background: var(--accent); color: #fff; }
+.step-dot.pending { background: var(--border-2); color: var(--text-3); }
+.step-label { font-size: 11px; font-weight: 500; color: var(--text-3); transition: color 0.25s; }
+.step-label.active { color: var(--text); }
+.step-line { flex: 1; height: 1px; background: var(--border-2); margin: 0 12px; }
+
+/* ── File upload zone ── */
+.upload-zone { border: 2px dashed var(--border-2); border-radius: 10px; padding: 24px 20px; text-align: center; cursor: pointer; transition: all 0.2s var(--ease); background: var(--bg); }
+.upload-zone:hover { border-color: var(--accent); background: var(--accent-dim); }
+.upload-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+.upload-zone-icon { font-size: 22px; margin-bottom: 6px; }
+.upload-zone-text { font-size: 13px; color: var(--text-2); font-weight: 400; }
+.upload-zone-hint { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+.file-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.file-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; }
+.file-icon { font-size: 14px; flex-shrink: 0; }
+.file-name { font-size: 12px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.file-remove { background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 16px; line-height: 1; padding: 0 2px; transition: color 0.2s; flex-shrink: 0; }
+.file-remove:hover { color: #FF3B30; }
 
 /* ── Onboarding page ── */
 .ob-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 80px 24px; background: var(--bg); }

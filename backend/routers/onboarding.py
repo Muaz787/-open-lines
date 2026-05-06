@@ -10,7 +10,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
-VALID_INDUSTRIES = {"realtor", "clinic", "parliament"}
+VALID_INDUSTRIES = {
+    "realtor", "clinic", "parliament",
+    "plumber", "restaurant", "builder", "dental", "legal", "beauty",
+    "custom",
+}
 
 # Sensitive fields stripped before returning tenant data publicly
 _SENSITIVE = {"twilio_auth_token", "twilio_subaccount_sid"}
@@ -24,9 +28,12 @@ class ProvisionRequest(BaseModel):
     business_name: str
     industry: str
     owner_name: str = ""
+    country: str = "CA"
     whatsapp_number: str = ""
     website_url: str = ""
     agent_name: str = "Alex"
+    extra_instructions: str = ""
+    business_description: str = ""
 
     @field_validator("industry")
     @classmethod
