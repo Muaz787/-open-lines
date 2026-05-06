@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "knowledge_base" / "templates"
+TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 QUALIFICATION_FIELDS = {
     "realtor": {
