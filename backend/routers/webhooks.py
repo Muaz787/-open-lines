@@ -83,7 +83,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
     )
     caller_phone: str = (msg.get("call") or {}).get("customer", {}).get("number", "")
 
-    print(f"ASSISTANT-REQUEST: called_number={called_number!r} caller_phone={caller_phone!r} payload_keys={list(msg.keys())}", flush=True)
     if not called_number:
         logger.error("assistant-request: no called_number in payload")
         return {"error": {"message": "No phone number in request"}}
@@ -162,17 +161,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if tenant.get("google_refresh_token"):
         system_prompt += _CALENDAR_NOTE
 
-    # Tools
-    try:
-        tools = (
-            vapi_svc.build_calendar_tools(tenant_id)
-            if tenant.get("google_refresh_token")
-            else [vapi_svc.build_caller_lookup_tool(tenant_id)]
-        )
-    except Exception as e:
-        logger.error("assistant-request: failed to build tools for tenant %s: %s", tenant_id, e)
-        return {"assistantId": assistant_id}
-
     logger.info(
         "assistant-request: tenant %s caller %s → %s",
         tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
@@ -189,7 +177,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if personalized_greeting:
         overrides["firstMessage"] = personalized_greeting
 
-    print(f"ASSISTANT-REQUEST: returning assistantId={assistant_id} overrides_keys={list(overrides.keys())}", flush=True)
     return {
         "assistantId": assistant_id,
         "assistantOverrides": overrides,
@@ -210,9 +197,7 @@ async def vapi_call_ended(payload: dict):
     logger.info("VAPI EVENT: type=%s keys=%s", event_type, list(msg.keys()))
 
     if event_type == "assistant-request":
-        result = await _handle_assistant_request(msg)
-        print(f"ASSISTANT-REQUEST RESPONSE KEYS: {list(result.keys())} assistantId={result.get('assistantId')} error={result.get('error')}", flush=True)
-        return result
+        return await _handle_assistant_request(msg)
 
     if event_type and event_type != "end-of-call-report":
         logger.debug("Ignoring Vapi event type: %s", event_type)
