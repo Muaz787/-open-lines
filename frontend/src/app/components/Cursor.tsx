@@ -9,17 +9,20 @@ export default function Cursor() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return
-    setVisible(true)
-
-    const onMove = (e: MouseEvent) => {
-      pos.current.mx = e.clientX
-      pos.current.my = e.clientY
+    // Show cursor only on first real mouse move; hide permanently on any touch
+    const onTouch = () => setVisible(false)
+    const onMouseMove = (e: MouseEvent) => {
+      setVisible(true)
       if (curRef.current) {
         curRef.current.style.left = `${e.clientX}px`
         curRef.current.style.top = `${e.clientY}px`
       }
+      pos.current.mx = e.clientX
+      pos.current.my = e.clientY
     }
+
+    document.addEventListener('touchstart', onTouch, { passive: true })
+    document.addEventListener('mousemove', onMouseMove)
 
     const raf = () => {
       pos.current.rx += (pos.current.mx - pos.current.rx) * 0.1
@@ -38,8 +41,6 @@ export default function Cursor() {
     const shrink = () => {
       if (ringRef.current) { ringRef.current.style.width = '28px'; ringRef.current.style.height = '28px' }
     }
-
-    document.addEventListener('mousemove', onMove)
     document.querySelectorAll('button, a, .toggle').forEach(el => {
       el.addEventListener('mouseenter', expand)
       el.addEventListener('mouseleave', shrink)
@@ -47,7 +48,8 @@ export default function Cursor() {
 
     return () => {
       cancelAnimationFrame(rafId)
-      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('touchstart', onTouch)
     }
   }, [])
 
