@@ -183,13 +183,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
     }
 
 
-@router.post("/vapi-debug")
-async def vapi_debug(payload: dict):
-    """Temporary: echo back the full Vapi payload so we can inspect it."""
-    logger.info("VAPI DEBUG PAYLOAD: %s", json.dumps(payload, default=str))
-    return {"received": payload}
-
-
 @router.post("/vapi-call-ended")
 async def vapi_call_ended(payload: dict):
     msg = payload.get("message", payload)
