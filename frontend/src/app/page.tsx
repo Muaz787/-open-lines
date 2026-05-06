@@ -442,7 +442,7 @@ export default function Home() {
           <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, maxWidth: 400, margin: '0 auto 36px', lineHeight: 1.7 }}>
             Not sure which plan fits? We'll walk you through it live — or you can set up your agent right now in under 10 minutes.
           </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="cta-row" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
               <button className="btn-main" style={{ padding: '14px 32px', fontSize: 15 }}>Book a Demo</button>
             </a>

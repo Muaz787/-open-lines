@@ -8,6 +8,8 @@ export default function Cursor() {
   const pos = useRef({ mx: 0, my: 0, rx: 0, ry: 0 })
 
   useEffect(() => {
+    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return
+
     const onMove = (e: MouseEvent) => {
       pos.current.mx = e.clientX
       pos.current.my = e.clientY

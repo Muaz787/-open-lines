@@ -401,3 +401,101 @@ footer {
 .btn-dashboard:hover { opacity: 0.88; transform: translateY(-1px); }
 
 .error-msg { font-size: 13px; color: #FF3B30; margin-top: 12px; text-align: center; }
+
+/* ══════════════════════════════════════════════
+   Responsive — tablet (≤ 900 px) & mobile (≤ 640 px)
+   ══════════════════════════════════════════════ */
+
+/* Restore native cursor on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  body { cursor: auto; }
+  #cur, #cur-ring { display: none; }
+  button, a, .toggle, .tab, .call-btn, .btn-nav, .btn-main, .btn-ghost,
+  .btn-submit, .btn-dashboard, .status-btn, .copy-btn, .lead-row,
+  .file-remove, .upload-zone { cursor: pointer; }
+}
+
+/* ── Tablet (≤ 900 px) ── */
+@media (max-width: 900px) {
+  /* Nav: hide middle links and secondary nav button */
+  .nav-mid { display: none; }
+  .nav-right > a:first-of-type { display: none; }   /* "Build Your Agent" */
+
+  /* Sections */
+  .sec { padding: 72px 24px; }
+
+  /* Demo grid → single column, copy first */
+  .demo-grid { grid-template-columns: 1fr; gap: 40px; }
+  .demo-grid > :first-child { order: 2; }
+  .demo-grid > :last-child  { order: 1; }
+
+  /* Platform cards → single column */
+  .dash-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Mobile (≤ 640 px) ── */
+@media (max-width: 640px) {
+  /* Nav */
+  nav { padding: 0 16px; height: 52px; }
+  .nav-right { gap: 10px; }
+  .btn-nav { padding: 7px 14px; font-size: 12px; }
+
+  /* Hero */
+  .hero { padding: 80px 20px 56px; }
+  .hero h1 { font-size: clamp(30px, 8.5vw, 44px); }
+  .hero-sub { font-size: 15px; max-width: 100%; }
+  .hero-cta { flex-direction: column; align-items: stretch; width: 100%; max-width: 360px; }
+  .hero-cta > a { display: block; width: 100%; }
+  .hero-cta .btn-main,
+  .hero-cta .btn-ghost { width: 100%; text-align: center; }
+
+  /* Section defaults */
+  .sec { padding: 56px 20px; }
+  h2 { font-size: clamp(24px, 7.5vw, 36px); }
+  .sec-sub { font-size: 15px; max-width: 100%; }
+
+  /* Industry tabs: scroll horizontally */
+  .tab-row {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-row::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; }
+
+  /* Industry panel */
+  .ind-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+
+  /* Bottom CTA */
+  .cta-row { flex-direction: column; align-items: stretch; max-width: 360px; margin-left: auto; margin-right: auto; }
+  .cta-row > a { display: block; width: 100%; }
+  .cta-row .btn-main,
+  .cta-row .btn-ghost { width: 100%; text-align: center; }
+
+  /* Footer */
+  footer { padding: 20px 20px 28px; flex-direction: column; align-items: flex-start; gap: 16px; }
+  .ft-left { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .ft-tag { max-width: 100%; }
+
+  /* Dashboard page */
+  .db-header { padding: 16px 20px; }
+  .db-body { padding: 20px; }
+
+  /* Leads table: show name + status pill only */
+  .lead-row-main {
+    grid-template-columns: 1fr 80px;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .lead-row-main > :nth-child(3),  /* calls/mins col */
+  .lead-summary,
+  .lead-time { display: none; }
+
+  /* Empty state */
+  .empty-state { padding: 56px 20px; }
+
+  /* Onboarding card */
+  .ob-card { padding: 28px 20px; }
+}
