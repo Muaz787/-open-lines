@@ -170,18 +170,21 @@ async def _handle_assistant_request(msg: dict) -> dict:
         tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
     )
 
+    overrides: dict = {
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "temperature": 0.7,
+            "messages": [{"role": "system", "content": system_prompt}],
+            "tools": tools,
+        },
+    }
+    if personalized_greeting:
+        overrides["firstMessage"] = personalized_greeting
+
     return {
         "assistantId": assistant_id,
-        "assistantOverrides": {
-            "firstMessage": personalized_greeting,
-            "model": {
-                "provider": "openai",
-                "model": "gpt-4o",
-                "temperature": 0.7,
-                "messages": [{"role": "system", "content": system_prompt}],
-                "tools": tools,
-            },
-        },
+        "assistantOverrides": overrides,
     }
 
 
