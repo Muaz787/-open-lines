@@ -83,6 +83,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     )
     caller_phone: str = (msg.get("call") or {}).get("customer", {}).get("number", "")
 
+    print(f"ASSISTANT-REQUEST: called_number={called_number!r} caller_phone={caller_phone!r} payload_keys={list(msg.keys())}", flush=True)
     if not called_number:
         logger.error("assistant-request: no called_number in payload")
         return {"error": {"message": "No phone number in request"}}
@@ -209,7 +210,9 @@ async def vapi_call_ended(payload: dict):
     logger.info("VAPI EVENT: type=%s keys=%s", event_type, list(msg.keys()))
 
     if event_type == "assistant-request":
-        return await _handle_assistant_request(msg)
+        result = await _handle_assistant_request(msg)
+        print(f"ASSISTANT-REQUEST RESPONSE KEYS: {list(result.keys())} assistantId={result.get('assistantId')} error={result.get('error')}", flush=True)
+        return result
 
     if event_type and event_type != "end-of-call-report":
         logger.debug("Ignoring Vapi event type: %s", event_type)
