@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Terms and conditions for using the Open Lines platform.',
 }
 
-const LAST_UPDATED = 'May 6, 2026'
+const LAST_UPDATED = 'May 8, 2026'
 const CONTACT_EMAIL = 'muaz91@hotmail.com'
 
 const LogoMark = () => (
@@ -53,7 +53,7 @@ export default function TermsOfService() {
 
         <Section title="1. Agreement to these terms">
           <P>By accessing or using Open Lines (the &quot;Service&quot;), you agree to be bound by these Terms of Service (&quot;Terms&quot;). If you are using the Service on behalf of a business, you represent that you have the authority to bind that business to these Terms. If you do not agree, do not use the Service.</P>
-          <P>Open Lines is operated by Muaz Muhamed (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;). Contact: <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P>Open Lines is operated by Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;). Contact: <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
         <Section title="2. Description of the service">
@@ -128,7 +128,7 @@ export default function TermsOfService() {
         <Section title="14. Contact">
           <P>For questions about these Terms:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
-            <strong>Open Lines</strong><br />
+            <strong>Open Lines Technologies Inc.</strong><br />
             <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>
@@ -136,7 +136,7 @@ export default function TermsOfService() {
         <div className="div-line" style={{ margin: '48px 0 32px' }} />
 
         <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>
-          © {new Date().getFullYear()} Open Lines. All rights reserved.
+          © {new Date().getFullYear()} Open Lines Technologies Inc. All rights reserved.
         </p>
       </div>
     </div>

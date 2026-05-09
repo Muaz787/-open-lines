@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'How Open Lines collects, uses, and protects your data.',
 }
 
-const LAST_UPDATED = 'May 6, 2026'
+const LAST_UPDATED = 'May 8, 2026'
 const CONTACT_EMAIL = 'muaz91@hotmail.com'
 
 const LogoMark = () => (
@@ -52,7 +52,7 @@ export default function PrivacyPolicy() {
         <div className="div-line" style={{ marginBottom: 48 }} />
 
         <Section title="1. Who we are">
-          <P>Open Lines (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides an AI-powered voice receptionist platform that answers phone calls, captures lead information, and books appointments on behalf of businesses (&quot;tenants&quot;). This policy explains how we collect, use, and protect personal data when you interact with our platform — whether as a business that signs up to use Open Lines, or as a caller who speaks with an Open Lines AI agent.</P>
+          <P>Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides an AI-powered voice receptionist platform that answers phone calls, captures lead information, and books appointments on behalf of businesses (&quot;tenants&quot;). This policy explains how we collect, use, and protect personal data when you interact with our platform — whether as a business that signs up to use Open Lines, or as a caller who speaks with an Open Lines AI agent.</P>
           <P>Questions or requests regarding this policy can be sent to <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
@@ -130,7 +130,7 @@ export default function PrivacyPolicy() {
         <Section title="10. Contact">
           <P>For any privacy-related questions or requests:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
-            <strong>Open Lines</strong><br />
+            <strong>Open Lines Technologies Inc.</strong><br />
             <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>
@@ -138,7 +138,7 @@ export default function PrivacyPolicy() {
         <div className="div-line" style={{ margin: '48px 0 32px' }} />
 
         <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>
-          © {new Date().getFullYear()} Open Lines. All rights reserved.
+          © {new Date().getFullYear()} Open Lines Technologies Inc. All rights reserved.
         </p>
       </div>
     </div>
