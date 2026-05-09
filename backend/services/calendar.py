@@ -10,10 +10,6 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI")
-
 _AUTH_URL    = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_URL   = "https://oauth2.googleapis.com/token"
 _CAL_BASE    = "https://www.googleapis.com/calendar/v3"
@@ -30,6 +26,8 @@ _PERIOD_HOURS: dict[str, tuple[int, int]] = {
 
 
 def build_oauth_url(state: str) -> str:
+    GOOGLE_CLIENT_ID    = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
     if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
         raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI must be set")
     params = {
@@ -46,6 +44,9 @@ def build_oauth_url(state: str) -> str:
 
 async def exchange_code(code: str) -> dict:
     """Exchange an authorisation code for access + refresh tokens."""
+    GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
         raise RuntimeError("Google OAuth env vars must be set")
     async with httpx.AsyncClient() as http:
@@ -61,6 +62,8 @@ async def exchange_code(code: str) -> dict:
 
 
 async def _access_token(refresh_token: str) -> str:
+    GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         raise RuntimeError("Google OAuth env vars must be set")
     async with httpx.AsyncClient() as http:
