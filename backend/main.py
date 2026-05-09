@@ -17,6 +17,11 @@ APP_ENV = os.getenv("APP_ENV", "development")
 origins = ["http://localhost:3000"]
 if FRONTEND_URL:
     origins.append(FRONTEND_URL)
+    # Also allow the www/non-www counterpart so either variant works
+    if FRONTEND_URL.startswith("https://www."):
+        origins.append("https://" + FRONTEND_URL[len("https://www."):])
+    elif FRONTEND_URL.startswith("https://"):
+        origins.append("https://www." + FRONTEND_URL[len("https://"):])
 
 app.add_middleware(
     CORSMiddleware,
