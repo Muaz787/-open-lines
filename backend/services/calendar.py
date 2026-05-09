@@ -25,9 +25,12 @@ _PERIOD_HOURS: dict[str, tuple[int, int]] = {
 }
 
 
+_PROD_REDIRECT_URI = "https://backend-production-71174.up.railway.app/calendar/callback"
+
+
 def build_oauth_url(state: str) -> str:
     GOOGLE_CLIENT_ID    = os.getenv("GOOGLE_CLIENT_ID")
-    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+    GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", _PROD_REDIRECT_URI)
     if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
         raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI must be set")
     params = {
@@ -46,7 +49,7 @@ async def exchange_code(code: str) -> dict:
     """Exchange an authorisation code for access + refresh tokens."""
     GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-    GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI")
+    GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", _PROD_REDIRECT_URI)
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
         raise RuntimeError("Google OAuth env vars must be set")
     async with httpx.AsyncClient() as http:
