@@ -47,19 +47,6 @@ async def health():
     return {"status": "ok", "version": "0.1.0", "environment": APP_ENV}
 
 
-@app.get("/debug/env")
-async def debug_env():
-    """Temporary: confirm Google OAuth env vars are present (values hidden)."""
-    google_keys = {k: v for k, v in os.environ.items() if "GOOGLE" in k}
-    return {
-        "GOOGLE_CLIENT_ID":     bool(os.getenv("GOOGLE_CLIENT_ID")),
-        "GOOGLE_CLIENT_SECRET": bool(os.getenv("GOOGLE_CLIENT_SECRET")),
-        "GOOGLE_REDIRECT_URI":  bool(os.getenv("GOOGLE_REDIRECT_URI")),
-        "GOOGLE_REDIRECT_URI_value": os.getenv("GOOGLE_REDIRECT_URI", "NOT SET"),
-        "all_google_keys": list(google_keys.keys()),
-    }
-
-
 async def _sync_ngrok_url() -> None:
     """Detect the current ngrok tunnel URL and re-patch any connected Vapi assistants."""
     try:
