@@ -14,14 +14,14 @@ app = FastAPI(title="Open Lines API")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 APP_ENV = os.getenv("APP_ENV", "development")
 
-origins = ["http://localhost:3000"]
-if FRONTEND_URL:
+origins = [
+    "http://localhost:3000",
+    "https://openlines.ai",
+    "https://www.openlines.ai",
+    "https://open-lines.vercel.app",
+]
+if FRONTEND_URL and FRONTEND_URL not in origins:
     origins.append(FRONTEND_URL)
-    # Also allow the www/non-www counterpart so either variant works
-    if FRONTEND_URL.startswith("https://www."):
-        origins.append("https://" + FRONTEND_URL[len("https://www."):])
-    elif FRONTEND_URL.startswith("https://"):
-        origins.append("https://www." + FRONTEND_URL[len("https://"):])
 
 app.add_middleware(
     CORSMiddleware,
