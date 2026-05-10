@@ -182,9 +182,9 @@ export default function Home() {
           <div className="toggle" onClick={() => setIsDark(d => !d)}>
             <div className="toggle-knob" />
           </div>
-          <Link href="/onboarding">
+          <Link href="/login">
             <button className="btn-nav" style={{ background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-2)' }}>
-              Build Your Agent
+              Sign in
             </button>
           </Link>
           <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
