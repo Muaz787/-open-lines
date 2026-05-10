@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -106,6 +107,8 @@ export default function OnboardingPage() {
     extra_instructions:   '',
     agent_name:           '',
     business_description: '',
+    email:                '',
+    password:             '',
   })
   const [files, setFiles]           = useState<File[]>([])
   const [dragOver, setDragOver]     = useState(false)
@@ -182,6 +185,8 @@ export default function OnboardingPage() {
     if (form.agent_name)              body.agent_name              = form.agent_name
     if (form.extra_instructions)      body.extra_instructions      = form.extra_instructions
     if (form.business_description)    body.business_description    = form.business_description
+    if (form.email)                   body.email                   = form.email
+    if (form.password)                body.password                = form.password
 
     try {
       const res = await fetch(`${API}/onboarding/provision`, {
@@ -194,6 +199,11 @@ export default function OnboardingPage() {
         throw new Error(data.detail ?? `Request failed (${res.status})`)
       }
       const provisioned: ProvisionResult = await res.json()
+
+      // Sign in immediately so the dashboard session is established
+      if (form.email && form.password) {
+        await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
+      }
 
       // Upload documents if any (non-fatal)
       if (files.length > 0) {
@@ -370,11 +380,29 @@ export default function OnboardingPage() {
                       onChange={handleChange} placeholder="Alex" />
                   </div>
 
+                  <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 20px', paddingTop: 20 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 14 }}>
+                      Create your account
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Email *</label>
+                      <input className="form-input" name="email" type="email" value={form.email}
+                        onChange={handleChange} placeholder="you@business.com" required />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Password *</label>
+                      <input className="form-input" name="password" type="password" value={form.password}
+                        onChange={handleChange} placeholder="Min. 8 characters" required minLength={8} />
+                    </div>
+                  </div>
+
                   <button
                     type="button"
                     className="btn-submit"
                     disabled={
                       !form.business_name ||
+                      !form.email ||
+                      form.password.length < 8 ||
                       (form.industry === 'custom' && !form.business_description.trim())
                     }
                     onClick={() => setStep(2)}

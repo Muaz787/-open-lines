@@ -54,6 +54,10 @@ alter table tenants add column if not exists calendar_timezone           text de
 alter table tenants add column if not exists last_system_prompt text;
 alter table tenants add column if not exists vapi_phone_number_id text;
 
+-- Auth: link Supabase auth user to tenant
+alter table tenants add column if not exists user_id uuid;
+alter table tenants add column if not exists email text;
+
 -- Appointments booked by the AI receptionist
 create table if not exists appointments (
     id                   uuid primary key default gen_random_uuid(),

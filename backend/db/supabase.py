@@ -20,6 +20,20 @@ def get_client() -> Client:
 
 
 # ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+
+async def create_auth_user(email: str, password: str, tenant_id: str) -> str:
+    res = get_client().auth.admin.create_user({
+        "email": email,
+        "password": password,
+        "email_confirm": True,
+        "user_metadata": {"tenant_id": tenant_id},
+    })
+    return res.user.id
+
+
+# ---------------------------------------------------------------------------
 # Tenants
 # ---------------------------------------------------------------------------
 

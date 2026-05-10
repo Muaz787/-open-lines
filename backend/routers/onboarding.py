@@ -34,6 +34,8 @@ class ProvisionRequest(BaseModel):
     agent_name: str = "Alex"
     extra_instructions: str = ""
     business_description: str = ""
+    email: str = ""
+    password: str = ""
 
     @field_validator("industry")
     @classmethod
@@ -53,8 +55,18 @@ class ProvisionRequest(BaseModel):
 @router.post("/provision")
 async def provision(body: ProvisionRequest):
     try:
-        result = await provisioning.provision_tenant(body.model_dump())
+        provision_data = body.model_dump(exclude={"email", "password"})
+        result = await provisioning.provision_tenant(provision_data)
         logger.info("Provisioned tenant %s (%s)", result.get("tenant_id"), body.business_name)
+
+        if body.email and body.password:
+            try:
+                user_id = await db.create_auth_user(body.email, body.password, result["tenant_id"])
+                await db.update_tenant(result["tenant_id"], {"user_id": user_id, "email": body.email})
+                logger.info("Created auth user for tenant %s", result["tenant_id"])
+            except Exception as e:
+                logger.error("Auth user creation failed for tenant %s: %s", result.get("tenant_id"), e)
+
         return result
     except HTTPException:
         raise

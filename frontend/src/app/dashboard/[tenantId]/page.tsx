@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -147,6 +148,7 @@ function formatApptDate(iso: string): string {
 
 function DashboardPage() {
   const { tenantId }  = useParams<{ tenantId: string }>()
+  const router        = useRouter()
   const searchParams  = useSearchParams()
 
   const [tenant, setTenant]           = useState<Tenant | null>(null)
@@ -167,6 +169,18 @@ function DashboardPage() {
   const [calToast, setCalToast]             = useState<string | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
+
+  // Auth guard
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) router.replace('/login')
+    })
+  }, [router])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -334,9 +348,16 @@ function DashboardPage() {
             )}
           </div>
         </div>
-        <Link href="/" style={{ fontSize: 12, color: 'var(--text-3)', textDecoration: 'none' }}>
-          ← Back
-        </Link>
+        <button
+          onClick={handleLogout}
+          style={{
+            fontSize: 12, color: 'var(--text-3)', background: 'none',
+            border: '1px solid var(--border-2)', borderRadius: 6,
+            padding: '6px 12px', cursor: 'pointer',
+          }}
+        >
+          Sign out
+        </button>
       </div>
 
       {/* Toast */}
