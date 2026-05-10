@@ -170,17 +170,11 @@ function DashboardPage() {
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
 
-  // Auth guard + force dark mode
+  // Auth guard
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) router.replace('/login')
     })
-    const prev = document.documentElement.getAttribute('data-theme')
-    document.documentElement.setAttribute('data-theme', 'dark')
-    return () => {
-      if (prev) document.documentElement.setAttribute('data-theme', prev)
-      else document.documentElement.removeAttribute('data-theme')
-    }
   }, [router])
 
   const handleLogout = async () => {
@@ -357,14 +351,10 @@ function DashboardPage() {
         <button
           onClick={handleLogout}
           style={{
-            fontSize: 11, fontWeight: 600, letterSpacing: '0.06em',
-            color: 'var(--text-3)', background: 'none',
+            fontSize: 12, color: 'var(--text-3)', background: 'none',
             border: '1px solid var(--border-2)', borderRadius: 6,
-            padding: '7px 14px', cursor: 'pointer', transition: 'all 0.2s',
-            textTransform: 'uppercase',
+            padding: '6px 12px', cursor: 'pointer',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)' }}
         >
           Sign out
         </button>
@@ -391,18 +381,29 @@ function DashboardPage() {
 
         {/* ── Stats strip ── */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 36 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 12,
+            marginBottom: 32,
+          }}>
             {[
-              { label: 'Calls Handled',       value: stats.total_calls,          unit: '' },
-              { label: 'Leads Captured',      value: stats.total_leads,          unit: '' },
-              { label: 'Minutes on the Phone', value: stats.minutes_handled,     unit: 'min' },
-              { label: 'Appointments Booked', value: stats.appointments_booked,  unit: '' },
+              { label: 'Calls Handled',      value: stats.total_calls,         unit: '' },
+              { label: 'Leads Captured',     value: stats.total_leads,         unit: '' },
+              { label: 'Minutes on the Phone', value: stats.minutes_handled,   unit: 'min' },
+              { label: 'Appointments Booked', value: stats.appointments_booked, unit: '' },
             ].map(({ label, value, unit }) => (
-              <div key={label} className="db-stat-card">
-                <div className="db-stat-label">{label}</div>
-                <div className="db-stat-value">
-                  {value.toLocaleString()}
-                  {unit && <span className="db-stat-unit">{unit}</span>}
+              <div key={label} style={{
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '16px 18px',
+                background: 'var(--bg-2)',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 8 }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-syne), sans-serif' }}>
+                  {value.toLocaleString()}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)', marginLeft: 4 }}>{unit}</span>}
                 </div>
               </div>
             ))}
@@ -575,7 +576,7 @@ function DashboardPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div className="db-section-title">Lead Queue</div>
-          <div style={{ fontSize: 10, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 600 }}>Auto-refreshes every 30s</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Auto-refreshes every 30s</div>
         </div>
 
         {leads.length === 0 ? (
