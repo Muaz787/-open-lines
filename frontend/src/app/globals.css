@@ -65,7 +65,7 @@ nav {
 
 .nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
 .logo-svg { width: 28px; height: 28px; flex-shrink: 0; color: var(--text); transition: color 0.5s; }
-.logo-name { font-size: 14px; font-weight: 400; letter-spacing: 0.04em; color: var(--text); transition: color 0.5s; }
+.logo-name { font-size: 14px; font-weight: 500; letter-spacing: 0.04em; color: var(--text); transition: color 0.5s; }
 
 .nav-mid { display: flex; gap: 28px; }
 .nav-mid a { font-size: 13px; font-weight: 400; color: var(--text-2); text-decoration: none; letter-spacing: 0.01em; transition: color 0.2s; }
