@@ -8,7 +8,7 @@ response that the AI uses to continue the conversation.
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException
@@ -124,6 +124,10 @@ async def check_availability(tenant_id: str, body: dict):
     if not date_str:
         return _result(tc_id, "I need a date to check availability. What date were you thinking?")
 
+    # Extract caller phone so we can detect a reschedule mid-call
+    msg_body     = body.get("message", body)
+    caller_phone = (msg_body.get("call") or {}).get("customer", {}).get("number", "")
+
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -137,6 +141,25 @@ async def check_availability(tenant_id: str, body: dict):
     duration_minutes = tenant.get("appointment_duration_minutes") or 60
     timezone         = tenant.get("calendar_timezone") or "America/Toronto"
 
+    # If the caller already has an appointment, exclude its time block from the
+    # busy check so the agent doesn't falsely report that slot as unavailable.
+    exclude_range = None
+    if caller_phone:
+        try:
+            existing = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
+            if existing:
+                ex_start = datetime.fromisoformat(existing["appointment_datetime"])
+                if ex_start.tzinfo is None:
+                    ex_start = ex_start.replace(tzinfo=ZoneInfo(timezone))
+                ex_end = ex_start + timedelta(minutes=duration_minutes)
+                exclude_range = (ex_start, ex_end)
+                logger.info(
+                    "tools/availability: reschedule detected for %s — excluding %s to %s",
+                    caller_phone, ex_start.isoformat(), ex_end.isoformat(),
+                )
+        except Exception as e:
+            logger.warning("tools/availability: existing-appt check failed: %s", e)
+
     try:
         slots = await cal_svc.list_free_slots(
             refresh_token=refresh_token,
@@ -144,6 +167,7 @@ async def check_availability(tenant_id: str, body: dict):
             duration_minutes=duration_minutes,
             timezone=timezone,
             period=period,
+            exclude_range=exclude_range,
         )
     except Exception as e:
         logger.error("tools/availability: calendar query failed for tenant %s: %s", tenant_id, e)

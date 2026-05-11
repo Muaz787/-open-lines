@@ -93,8 +93,14 @@ async def list_free_slots(
     duration_minutes: int,
     timezone: str,
     period: str = "any",
+    exclude_range: tuple[datetime, datetime] | None = None,
 ) -> list[str]:
-    """Return available slot strings (e.g. '2:00 PM') for the given date."""
+    """Return available slot strings (e.g. '2:00 PM') for the given date.
+
+    exclude_range: if provided, any Google Calendar busy period that aligns with
+    this (start, end) pair is ignored — used during reschedules so the caller's
+    existing appointment doesn't block the new slot search.
+    """
     tz = ZoneInfo(timezone)
     appt_date = date_type.fromisoformat(date_str)
 
@@ -119,10 +125,23 @@ async def list_free_slots(
         res.raise_for_status()
         raw_busy = res.json().get("calendars", {}).get("primary", {}).get("busy", [])
 
+    # Normalise exclude_range to local tz once (avoids repeated conversions below)
+    ex_start_tz = ex_end_tz = None
+    if exclude_range:
+        ex_start_tz = exclude_range[0].astimezone(tz)
+        ex_end_tz   = exclude_range[1].astimezone(tz)
+
     busy: list[tuple[datetime, datetime]] = []
     for bp in raw_busy:
         b_start = datetime.fromisoformat(bp["start"].replace("Z", "+00:00")).astimezone(tz)
         b_end   = datetime.fromisoformat(bp["end"].replace("Z", "+00:00")).astimezone(tz)
+        # Drop this busy period if it matches the caller's existing appointment
+        # (±2 min tolerance covers any timezone-rounding edge cases)
+        if ex_start_tz is not None:
+            if (abs((b_start - ex_start_tz).total_seconds()) < 120
+                    and abs((b_end - ex_end_tz).total_seconds()) < 120):
+                logger.debug("Excluding reschedule conflict: %s–%s", b_start, b_end)
+                continue
         busy.append((b_start, b_end))
 
     now = datetime.now(tz)
