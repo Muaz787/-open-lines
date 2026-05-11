@@ -53,6 +53,17 @@ interface Stats {
   appointments_booked: number
 }
 
+interface Insight {
+  title: string
+  body: string
+  type: 'opportunity' | 'warning' | 'trend' | 'success'
+}
+
+interface InsightsData {
+  insights: Insight[]
+  generated_at: string | null
+}
+
 interface Appointment {
   id: string
   caller_name?: string
@@ -162,6 +173,8 @@ function DashboardPage() {
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
 
   const [stats, setStats] = useState<Stats | null>(null)
+  const [insights, setInsights]         = useState<InsightsData | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
 
   // Calendar state
   const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
@@ -181,6 +194,15 @@ function DashboardPage() {
     await supabase.auth.signOut()
     router.replace('/login')
   }
+
+  const fetchInsights = useCallback(async () => {
+    setInsightsLoading(true)
+    try {
+      const res = await fetch(`${API}/leads/${tenantId}/insights`)
+      if (res.ok) setInsights(await res.json())
+    } catch {}
+    finally { setInsightsLoading(false) }
+  }, [tenantId])
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -217,12 +239,13 @@ function DashboardPage() {
     }
     init()
     fetchCalendar()
+    fetchInsights()
     const interval = setInterval(() => {
       fetchLeads()
       fetch(`${API}/leads/${tenantId}/stats`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
     }, 30_000)
     return () => clearInterval(interval)
-  }, [tenantId, fetchLeads, fetchCalendar])
+  }, [tenantId, fetchLeads, fetchCalendar, fetchInsights])
 
   // Show toast if redirected back from OAuth
   useEffect(() => {
@@ -381,18 +404,15 @@ function DashboardPage() {
 
         {/* ── Stats strip ── */}
         {stats && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 12,
-            marginBottom: 32,
-          }}>
+          <div className="db-stats">
             {[
-              { label: 'Calls Handled',      value: stats.total_calls,         unit: '' },
-              { label: 'Leads Captured',     value: stats.total_leads,         unit: '' },
-              { label: 'Minutes on the Phone', value: stats.minutes_handled,   unit: 'min' },
-              { label: 'Appointments Booked', value: stats.appointments_booked, unit: '' },
-            ].map(({ label, value, unit }) => (
+              { label: 'Calls Handled',       value: stats.total_calls,          unit: '',    raw: stats.total_calls },
+              { label: 'Leads Captured',      value: stats.total_leads,          unit: '',    raw: stats.total_leads },
+              { label: 'Minutes on the Phone', value: stats.minutes_handled,     unit: 'min', raw: stats.minutes_handled },
+              { label: 'Appointments Booked', value: stats.appointments_booked,  unit: '',    raw: stats.appointments_booked },
+            ].map(({ label, value, unit, raw }) => {
+              const noData = unit === 'min' && raw === 0 && stats.total_calls > 0
+              return (
               <div key={label} style={{
                 border: '1px solid var(--border)',
                 borderRadius: 10,
@@ -402,11 +422,102 @@ function DashboardPage() {
                 <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 8 }}>
                   {label}
                 </div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-syne), sans-serif' }}>
-                  {value.toLocaleString()}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)', marginLeft: 4 }}>{unit}</span>}
+                <div style={{ fontSize: 26, fontWeight: 700, color: noData ? 'var(--text-3)' : 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-syne), sans-serif' }}>
+                  {noData
+                    ? <span title="Duration data unavailable for historical calls">—</span>
+                    : <>{value.toLocaleString()}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)', marginLeft: 4 }}>{unit}</span>}</>
+                  }
                 </div>
               </div>
-            ))}
+            )})}
+          </div>
+        )}
+
+        {/* ── AI Insights ── */}
+        {(insights || insightsLoading) && (
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 15, lineHeight: 1 }}>✦</span>
+                <div className="db-section-title" style={{ margin: 0 }}>AI Insights</div>
+              </div>
+              <button
+                onClick={fetchInsights}
+                disabled={insightsLoading}
+                style={{
+                  fontSize: 11, color: 'var(--text-3)', background: 'none',
+                  border: '1px solid var(--border-2)', borderRadius: 5,
+                  padding: '4px 10px', cursor: insightsLoading ? 'default' : 'pointer',
+                  opacity: insightsLoading ? 0.5 : 1,
+                }}
+              >
+                {insightsLoading ? 'Thinking…' : 'Refresh'}
+              </button>
+            </div>
+
+            <div style={{
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              overflow: 'hidden',
+              background: 'var(--bg-2)',
+            }}>
+              {insightsLoading && !insights?.insights.length ? (
+                <div style={{ padding: '24px 20px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-3)', fontSize: 13 }}>
+                  <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>◌</span>
+                  Analyzing your calls and leads…
+                </div>
+              ) : insights?.insights.length === 0 ? (
+                <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--text-3)' }}>
+                  Not enough data yet — insights appear after a few calls.
+                </div>
+              ) : (
+                <div>
+                  {(insights?.insights ?? []).map((ins, i) => {
+                    const typeColors: Record<string, { bg: string; dot: string }> = {
+                      opportunity: { bg: 'var(--accent-dim)',          dot: 'var(--accent)' },
+                      success:     { bg: 'rgba(52,199,89,0.12)',        dot: '#34C759' },
+                      warning:     { bg: 'rgba(255,149,0,0.12)',        dot: '#FF9500' },
+                      trend:       { bg: 'rgba(59,126,246,0.12)',       dot: '#3B7EF6' },
+                    }
+                    const colors = typeColors[ins.type] ?? typeColors.trend
+                    return (
+                      <div key={i} style={{
+                        display: 'grid', gridTemplateColumns: '8px 1fr', gap: 14,
+                        padding: '16px 20px',
+                        borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                        alignItems: 'start',
+                      }}>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: colors.dot, marginTop: 5, flexShrink: 0,
+                        }} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                            {ins.title}
+                            <span style={{
+                              marginLeft: 8, fontSize: 10, fontWeight: 600,
+                              letterSpacing: '0.06em', textTransform: 'uppercase',
+                              background: colors.bg, color: colors.dot,
+                              padding: '2px 7px', borderRadius: 4,
+                            }}>
+                              {ins.type}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                            {ins.body}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {insights?.generated_at && (
+                    <div style={{ padding: '10px 20px', fontSize: 11, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
+                      Generated {timeAgo(insights.generated_at)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -430,7 +541,7 @@ function DashboardPage() {
                 {/* Accent top bar */}
                 <div style={{ height: 3, background: 'linear-gradient(90deg, #4285F4, #34A853, #FBBC05, #EA4335)' }} />
 
-                <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 20 }}>
+                <div className="db-cal-connect" style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 20 }}>
                   {/* Google Calendar icon */}
                   <div style={{
                     width: 56, height: 56, borderRadius: 14, background: 'var(--bg)',

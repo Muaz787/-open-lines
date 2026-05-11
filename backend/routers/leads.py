@@ -1,5 +1,10 @@
+import json
 import logging
+import os
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Query
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from db import supabase as db
@@ -7,6 +12,18 @@ from db import supabase as db
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+_openai: AsyncOpenAI | None = None
+
+
+def _get_openai() -> AsyncOpenAI:
+    global _openai
+    if _openai is None:
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("OPENAI_API_KEY must be set")
+        _openai = AsyncOpenAI(api_key=key)
+    return _openai
 
 
 class LeadUpdateRequest(BaseModel):
@@ -49,6 +66,63 @@ async def get_stats(tenant_id: str):
         "total_leads":         len(leads),
         "minutes_handled":     round(total_secs / 60),
         "appointments_booked": len(appts.data or []),
+    }
+
+
+@router.get("/{tenant_id}/insights")
+async def get_insights(tenant_id: str):
+    try:
+        leads = await db.get_leads(tenant_id, limit=500)
+        calls = await db.get_calls(tenant_id, limit=500)
+    except Exception as e:
+        logger.error("Failed to fetch data for insights tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to fetch data")
+
+    if len(leads) < 3:
+        return {"insights": [], "generated_at": None}
+
+    hot  = sum(1 for l in leads if l.get("urgency") == "hot")
+    warm = sum(1 for l in leads if l.get("urgency") == "warm")
+    cold = sum(1 for l in leads if l.get("urgency") == "cold")
+
+    recent_summaries = [
+        {
+            "urgency": l.get("urgency", ""),
+            "summary": l.get("summary", ""),
+            "status": l.get("status", ""),
+        }
+        for l in leads[:60]
+        if l.get("summary")
+    ]
+
+    prompt = (
+        f"Total calls: {len(calls)}\n"
+        f"Total leads: {len(leads)}\n"
+        f"Urgency breakdown: hot={hot}, warm={warm}, cold={cold}\n\n"
+        f"Recent lead summaries:\n{json.dumps(recent_summaries, indent=2)}\n\n"
+        "Generate 3-4 concise, actionable business insights from this call and lead data.\n"
+        "Focus on patterns, missed opportunities, and specific follow-up recommendations.\n"
+        "Return JSON: {\"insights\": [{\"title\": str, \"body\": str, \"type\": \"opportunity|warning|trend|success\"}]}"
+    )
+
+    try:
+        resp = await _get_openai().chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a concise business intelligence analyst for an AI voice receptionist. Be specific and actionable."},
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.6,
+        )
+        result = json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        logger.error("GPT-4o insights failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Insights generation failed")
+
+    return {
+        "insights": result.get("insights", []),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

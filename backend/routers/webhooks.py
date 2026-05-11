@@ -209,9 +209,14 @@ async def vapi_call_ended(payload: dict):
             or phone_obj.get("twilioPhoneNumber")
             or call.get("phoneNumberId", "")
         )
-        started_at: str | None = call.get("startedAt")
-        ended_at: str | None = call.get("endedAt")
-        vapi_duration: int | None = call.get("duration") or call.get("durationSeconds")
+        started_at: str | None = call.get("startedAt") or msg.get("startedAt")
+        ended_at: str | None = call.get("endedAt") or msg.get("endedAt")
+        vapi_duration: int | None = (
+            call.get("durationSeconds")
+            or call.get("duration")
+            or msg.get("durationSeconds")
+            or msg.get("duration")
+        )
     except Exception as e:
         logger.error("Failed to extract call fields from payload: %s", e)
         raise HTTPException(status_code=400, detail="Malformed Vapi payload")

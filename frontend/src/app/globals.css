@@ -50,6 +50,9 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.75); }
 }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 /* ── Nav ── */
 nav {
@@ -285,6 +288,14 @@ footer {
 .db-body { max-width: 1120px; margin: 0 auto; padding: 40px; }
 .db-section-title { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 16px; }
 
+/* Stats grid — responsive via class */
+.db-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
 .leads-table { width: 100%; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
 .lead-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
 .lead-row:last-child { border-bottom: none; }
@@ -395,13 +406,29 @@ footer {
   /* Sections */
   .sec { padding: 72px 24px; }
 
-  /* Demo grid → single column, copy first */
+  /* Demo grid → single column, copy first then phone card */
   .demo-grid { grid-template-columns: 1fr; gap: 40px; }
-  .demo-grid > :first-child { order: 2; }
-  .demo-grid > :last-child  { order: 1; }
+  .demo-grid > :first-child { order: 1; }
+  .demo-grid > :last-child  { order: 2; }
 
   /* Platform cards → single column */
   .dash-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Tablet dashboard (≤ 768 px) ── */
+@media (max-width: 768px) {
+  .db-body { padding: 24px; }
+
+  /* Stats: 2×2 grid */
+  .db-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 24px; }
+
+  /* Leads: hide summary + time, keep name / status / urgency */
+  .lead-row-main {
+    grid-template-columns: 2fr 80px 80px;
+    gap: 10px;
+  }
+  .lead-summary,
+  .lead-time { display: none; }
 }
 
 /* ── Mobile (≤ 640 px) ── */
@@ -452,22 +479,37 @@ footer {
   .ft-tag { max-width: 100%; }
 
   /* Dashboard page */
-  .db-header { padding: 16px 20px; }
-  .db-body { padding: 20px; }
+  .db-header { padding: 14px 16px; gap: 10px; }
+  .db-biz { font-size: 17px; }
+  .phone-chip { font-size: 12px; }
+  .db-body { padding: 16px; }
+
+  /* Stats: stays 2×2, tighter */
+  .db-stats { gap: 8px; margin-bottom: 20px; }
+  .db-stats > div { padding: 14px 12px !important; }
+  .db-stats > div > :first-child { font-size: 10px !important; margin-bottom: 6px !important; }
+  .db-stats > div > :last-child { font-size: 22px !important; }
 
   /* Leads table: show name + status pill only */
   .lead-row-main {
-    grid-template-columns: 1fr 80px;
+    grid-template-columns: 1fr 76px;
     gap: 8px;
     padding: 12px 14px;
   }
-  .lead-row-main > :nth-child(3),  /* calls/mins col */
+  .lead-row-main > :nth-child(3),
   .lead-summary,
   .lead-time { display: none; }
 
-  /* Empty state */
-  .empty-state { padding: 56px 20px; }
+  /* Lead transcript expanded padding */
+  .lead-transcript { padding: 14px; }
 
-  /* Onboarding card */
-  .ob-card { padding: 28px 20px; }
+  /* Empty state */
+  .empty-state { padding: 48px 16px; }
+
+  /* Onboarding / Login cards */
+  .ob-page { padding: 60px 16px; }
+  .ob-card { padding: 24px 18px; border-radius: 14px; }
+
+  /* Calendar connect card inner — override via parent class */
+  .db-cal-connect { padding: 20px 18px !important; }
 }
