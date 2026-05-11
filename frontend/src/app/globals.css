@@ -389,9 +389,8 @@ footer {
 
 /* ── Tablet (≤ 900 px) ── */
 @media (max-width: 900px) {
-  /* Nav: hide middle links and secondary nav button */
+  /* Nav: hide middle links */
   .nav-mid { display: none; }
-  .nav-right > a:first-of-type { display: none; }   /* "Build Your Agent" */
 
   /* Sections */
   .sec { padding: 72px 24px; }
@@ -409,8 +408,9 @@ footer {
 @media (max-width: 640px) {
   /* Nav */
   nav { padding: 0 16px; height: 52px; }
-  .nav-right { gap: 10px; }
-  .btn-nav { padding: 7px 14px; font-size: 12px; }
+  .nav-right { gap: 8px; }
+  .btn-nav { padding: 7px 12px; font-size: 12px; }
+  .nav-right > a:last-of-type { display: none; } /* hide Book a Demo — it's in the hero */
 
   /* Hero */
   .hero { padding: 80px 20px 56px; }
