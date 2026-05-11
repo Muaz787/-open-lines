@@ -340,54 +340,7 @@ async def vapi_call_ended(payload: dict):
             bool(tenant.get("whatsapp_number")),
         )
 
-    # Step 9 — Send SMS confirmation if an appointment was booked (non-fatal)
-    if caller_number:
-        try:
-            appointment = await db.get_appointment_by_call_id(call_id)
-            if appointment:
-                from zoneinfo import ZoneInfo
-                tz_str = tenant.get("calendar_timezone") or "America/Toronto"
-                appt_dt_raw = appointment.get("appointment_datetime", "")
-                service = appointment.get("service", "appointment")
-                caller_name_for_sms = analysis.get("caller_name") or ""
-
-                try:
-                    appt_dt = datetime.fromisoformat(appt_dt_raw)
-                    if appt_dt.tzinfo is None:
-                        appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
-                    appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
-                    h = appt_dt.hour % 12 or 12
-                    ampm = "AM" if appt_dt.hour < 12 else "PM"
-                    friendly_time = f"{appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
-                except Exception:
-                    friendly_time = appt_dt_raw
-
-                greeting = f"Hi {caller_name_for_sms}! " if caller_name_for_sms else ""
-                sms_body = (
-                    f"{greeting}Your {service} at {business_name} is confirmed "
-                    f"for {friendly_time}. See you then! — {business_name}"
-                )
-
-                subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
-                subaccount_token = tenant.get("twilio_auth_token", "")
-                business_phone   = tenant.get("twilio_phone_number", "")
-
-                if subaccount_sid and subaccount_token and business_phone:
-                    await telephony.send_sms(
-                        subaccount_sid=subaccount_sid,
-                        subaccount_token=subaccount_token,
-                        from_number=business_phone,
-                        to_number=caller_number,
-                        body=sms_body,
-                    )
-                    logger.info(
-                        "Appointment SMS sent to %s for tenant %s (call %s)",
-                        caller_number, tenant_id, call_id,
-                    )
-        except Exception as e:
-            logger.error("Appointment SMS step failed for call %s: %s", call_id, e)
-
-    # Step 10 — Return
+    # Step 9 — Return
     return {"status": "processed"}
 
 

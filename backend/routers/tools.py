@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException
 from services import calendar as cal_svc
+from services import telephony
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -155,8 +156,13 @@ async def check_availability(tenant_id: str, body: dict):
             "Would you like to try a different day?"
         )
 
-    slots_text = ", ".join(slots)
-    return _result(tc_id, f"Available times on {date_str}: {slots_text}. Which works best for you?")
+    offer = slots[:2]
+    has_more = len(slots) > 2
+    offer_text = " or ".join(offer)
+    msg = f"I have {offer_text} available on {date_str} — does either of those work for you?"
+    if has_more:
+        msg += " I have more times if neither works."
+    return _result(tc_id, msg)
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +277,28 @@ async def book_appointment(tenant_id: str, body: dict):
     h = start_dt.hour % 12 or 12
     ampm = "AM" if start_dt.hour < 12 else "PM"
     friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}"
+
+    # Send SMS confirmation now — more reliable than waiting for end-of-call-report
+    try:
+        subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
+        subaccount_token = tenant.get("twilio_auth_token", "")
+        business_phone   = tenant.get("twilio_phone_number", "")
+        if subaccount_sid and subaccount_token and business_phone and caller_phone:
+            greeting = f"Hi {caller_name}! " if caller_name else ""
+            sms_body = (
+                f"{greeting}Your {service} at {business_name} is confirmed "
+                f"for {friendly}. See you then! — {business_name}"
+            )
+            await telephony.send_sms(
+                subaccount_sid=subaccount_sid,
+                subaccount_token=subaccount_token,
+                from_number=business_phone,
+                to_number=caller_phone,
+                body=sms_body,
+            )
+            logger.info("Appointment SMS sent to %s for tenant %s", caller_phone, tenant_id)
+    except Exception as e:
+        logger.error("tools/book: SMS failed for tenant %s: %s", tenant_id, e)
 
     confirmation = (
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "

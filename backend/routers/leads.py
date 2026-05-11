@@ -78,7 +78,7 @@ async def get_insights(tenant_id: str):
         logger.error("Failed to fetch data for insights tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to fetch data")
 
-    if len(leads) < 3:
+    if len(calls) < 3:
         return {"insights": [], "generated_at": None}
 
     hot  = sum(1 for l in leads if l.get("urgency") == "hot")
