@@ -20,8 +20,16 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Open Lines — The line is always open.',
-  description: 'AI-powered phone handling for Realtors, Clinics, and Public Offices.',
+  title: 'Open Lines AI — The line is always open.',
+  description: 'Open Lines AI answers calls, captures leads, and books appointments 24/7. No staff required. AI voice receptionist for realtors, clinics, and small businesses.',
+  keywords: ['Open Lines AI', 'AI receptionist', 'AI phone answering', 'voice AI', 'automated receptionist'],
+  openGraph: {
+    title: 'Open Lines AI — The line is always open.',
+    description: 'AI voice receptionist that answers calls, captures leads, and books appointments 24/7.',
+    url: 'https://openlines.ai',
+    siteName: 'Open Lines AI',
+    type: 'website',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
