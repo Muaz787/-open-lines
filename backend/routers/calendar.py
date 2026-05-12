@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+_raw_frontend = os.getenv("FRONTEND_URL", "https://open-lines.vercel.app")
+FRONTEND_URL = _raw_frontend if _raw_frontend.startswith("http") else f"https://{_raw_frontend}"
 
 _CALENDAR_NOTE = """
 
