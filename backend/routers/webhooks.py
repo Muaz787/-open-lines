@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import httpx
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -19,7 +18,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")
 
 _openai: AsyncOpenAI | None = None
 
@@ -320,25 +318,16 @@ async def vapi_call_ended(payload: dict):
         logger.error("Failed to format WhatsApp message for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to format notification")
 
-    # Step 8 — POST to Make webhook (non-fatal on failure)
-    if MAKE_WEBHOOK_URL and tenant.get("whatsapp_number"):
+    # Step 8 — WhatsApp notification to business (non-fatal on failure)
+    whatsapp_number = tenant.get("whatsapp_number", "")
+    if whatsapp_number:
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    MAKE_WEBHOOK_URL,
-                    json={"to": tenant["whatsapp_number"], "message": message},
-                    timeout=10.0,
-                )
-                resp.raise_for_status()
+            await telephony.send_whatsapp(to_number=whatsapp_number, body=message)
             logger.info("WhatsApp notification sent for tenant %s call %s", tenant_id, call_id)
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
     else:
-        logger.info(
-            "Skipping WhatsApp notification (MAKE_WEBHOOK_URL=%s, whatsapp_number=%s)",
-            bool(MAKE_WEBHOOK_URL),
-            bool(tenant.get("whatsapp_number")),
-        )
+        logger.info("Skipping WhatsApp notification (no whatsapp_number for tenant %s)", tenant_id)
 
     # Step 9 — Return
     return {"status": "processed"}

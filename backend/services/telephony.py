@@ -129,6 +129,25 @@ async def release_number(
         logger.error("Failed to release number %s on rollback: %s", phone_number, e)
 
 
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+
+async def send_whatsapp(to_number: str, body: str) -> bool:
+    """Send a WhatsApp message via the main Twilio account (sandbox or Business API)."""
+    try:
+        client = _master_client()
+        msg = client.messages.create(
+            body=body,
+            from_=TWILIO_WHATSAPP_FROM,
+            to=f"whatsapp:{to_number}",
+        )
+        logger.info("WhatsApp sent to %s (SID %s)", to_number, msg.sid)
+        return True
+    except TwilioRestException as e:
+        logger.error("Failed to send WhatsApp to %s: %s", to_number, e)
+        return False
+
+
 async def send_sms(
     subaccount_sid: str,
     subaccount_token: str,
