@@ -136,10 +136,10 @@ async def list_free_slots(
         b_start = datetime.fromisoformat(bp["start"].replace("Z", "+00:00")).astimezone(tz)
         b_end   = datetime.fromisoformat(bp["end"].replace("Z", "+00:00")).astimezone(tz)
         # Drop this busy period if it matches the caller's existing appointment
-        # (±2 min tolerance covers any timezone-rounding edge cases)
+        # (±5 min tolerance handles DST edge cases and calendar rounding)
         if ex_start_tz is not None:
-            if (abs((b_start - ex_start_tz).total_seconds()) < 120
-                    and abs((b_end - ex_end_tz).total_seconds()) < 120):
+            if (abs((b_start - ex_start_tz).total_seconds()) < 300
+                    and abs((b_end - ex_end_tz).total_seconds()) < 300):
                 logger.debug("Excluding reschedule conflict: %s–%s", b_start, b_end)
                 continue
         busy.append((b_start, b_end))
