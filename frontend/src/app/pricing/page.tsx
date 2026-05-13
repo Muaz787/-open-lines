@@ -142,7 +142,7 @@ export default function PricingPage() {
       </nav>
 
       {/* ── Hero ── */}
-      <div style={{ padding: '120px 40px 72px', textAlign: 'center' }}>
+      <div className="pricing-hero">
         <div className="sec-label" style={{ marginBottom: 16 }}>Pricing</div>
         <h1 style={{
           fontSize: 'clamp(28px, 4vw, 48px)', fontWeight: 700,
@@ -160,7 +160,7 @@ export default function PricingPage() {
       </div>
 
       {/* ── Pricing cards ── */}
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 24px 80px' }}>
+      <div className="pricing-cards-wrap">
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -170,6 +170,7 @@ export default function PricingPage() {
           {PLANS.map(plan => (
             <div
               key={plan.name}
+              className={plan.popular ? 'plan-popular-card' : undefined}
               style={{
                 background: 'var(--bg-2)',
                 border: plan.popular ? `2px solid var(--accent)` : '1px solid var(--border-2)',
@@ -258,7 +259,7 @@ export default function PricingPage() {
 
       {/* ── What's always included ── */}
       <div style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '80px 40px' }}>
+        <div className="pricing-inner">
           <div style={{ textAlign: 'center', marginBottom: 52 }}>
             <div className="sec-label" style={{ marginBottom: 14 }}>Every plan</div>
             <h2 style={{ margin: 0 }}>Everything you need, out of the box.</h2>
@@ -293,7 +294,7 @@ export default function PricingPage() {
       </div>
 
       {/* ── FAQ ── */}
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '80px 40px' }}>
+      <div className="pricing-faq-inner">
         <div style={{ textAlign: 'center', marginBottom: 52 }}>
           <div className="sec-label" style={{ marginBottom: 14 }}>FAQ</div>
           <h2 style={{ margin: 0 }}>Common questions.</h2>
@@ -320,12 +321,12 @@ export default function PricingPage() {
 
       {/* ── Bottom CTA ── */}
       <div style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: 640, margin: '0 auto', padding: '80px 40px', textAlign: 'center' }}>
+        <div className="pricing-cta-inner">
           <h2 style={{ marginBottom: 16 }}>Your line is waiting.</h2>
           <p style={{ fontSize: 16, color: 'var(--text-2)', marginBottom: 36, lineHeight: 1.7, fontWeight: 300 }}>
             Set up your AI receptionist in under 10 minutes. No engineers needed.
           </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="pricing-cta-btns">
             <Link href="/onboarding">
               <button className="btn-main">Start for free →</button>
             </Link>

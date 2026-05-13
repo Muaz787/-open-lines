@@ -133,7 +133,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
         initial={{ x: 440 }} animate={{ x: 0 }} exit={{ x: 440 }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0, width: 420,
+          position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(420px, 100vw)',
           background: 'var(--bg-2)', borderLeft: '1px solid var(--border-2)',
           boxShadow: '-8px 0 40px rgba(0,0,0,0.12)',
           zIndex: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column',

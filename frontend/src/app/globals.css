@@ -338,6 +338,17 @@ footer {
 .empty-state-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
 .empty-state-sub { font-size: 13px; color: var(--text-2); }
 
+/* ── Pricing page ── */
+.pricing-hero { padding: 120px 40px 72px; text-align: center; }
+.pricing-cards-wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px 80px; }
+.pricing-inner { max-width: 1080px; margin: 0 auto; padding: 80px 40px; }
+.pricing-faq-inner { max-width: 720px; margin: 0 auto; padding: 80px 40px; }
+.pricing-cta-inner { max-width: 640px; margin: 0 auto; padding: 80px 40px; text-align: center; }
+.pricing-cta-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+/* ── Legal pages (Privacy / Terms) ── */
+.legal-body { max-width: 720px; margin: 0 auto; padding: 112px 40px 80px; }
+
 /* ── Step indicator ── */
 .step-indicator { display: flex; align-items: center; margin-bottom: 28px; }
 .step-node { display: flex; align-items: center; gap: 7px; }
@@ -523,4 +534,19 @@ footer {
 
   /* Calendar connect card inner — override via parent class */
   .db-cal-connect { padding: 20px 18px !important; }
+
+  /* Pricing page */
+  .pricing-hero { padding: 80px 20px 48px; }
+  .pricing-cards-wrap { padding: 0 16px 48px; }
+  .pricing-inner { padding: 48px 20px; }
+  .pricing-faq-inner { padding: 48px 20px; }
+  .pricing-cta-inner { padding: 48px 20px; }
+  .pricing-cta-btns { flex-direction: column; align-items: stretch; max-width: 340px; margin-left: auto; margin-right: auto; }
+  .pricing-cta-btns a { display: block; width: 100%; }
+  .pricing-cta-btns .btn-main,
+  .pricing-cta-btns .btn-ghost { width: 100%; text-align: center; }
+  .plan-popular-card { transform: none !important; }
+
+  /* Legal pages */
+  .legal-body { padding: 80px 20px 48px; }
 }

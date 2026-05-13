@@ -39,7 +39,7 @@ export default function TermsOfService() {
       </nav>
 
       {/* Content */}
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '112px 40px 80px' }}>
+      <div className="legal-body">
 
         <div className="sec-label" style={{ marginBottom: 16 }}>Legal</div>
         <h1 style={{ fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.1, marginBottom: 12 }}>
