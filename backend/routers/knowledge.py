@@ -17,6 +17,27 @@ class TextRequest(BaseModel):
     text: str
 
 
+class WebsiteRequest(BaseModel):
+    website_url: str
+
+
+@router.patch("/website/{tenant_id}")
+async def update_website_url(tenant_id: str, body: WebsiteRequest):
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        logger.error("Tenant lookup failed for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Tenant lookup failed")
+
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    url = body.website_url.strip()
+    await db.update_tenant(tenant_id, {"website_url": url})
+    logger.info("Updated website_url for tenant %s → %s", tenant_id, url)
+    return {"status": "ok", "website_url": url}
+
+
 @router.post("/upload/{tenant_id}")
 async def upload_documents(
     tenant_id: str,

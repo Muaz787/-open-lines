@@ -20,6 +20,10 @@ interface Props {
 }
 
 export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: Props) {
+  const [urlInput, setUrlInput]           = useState(websiteUrl ?? '')
+  const [urlSaving, setUrlSaving]         = useState(false)
+  const [urlMsg, setUrlMsg]               = useState<string | null>(null)
+
   const [syncLoading, setSyncLoading]     = useState(false)
   const [syncMsg, setSyncMsg]             = useState<string | null>(null)
 
@@ -34,6 +38,25 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
 
   const [clearLoading, setClearLoading]   = useState(false)
   const [clearMsg, setClearMsg]           = useState<string | null>(null)
+
+  const saveUrl = async () => {
+    const url = urlInput.trim()
+    if (!url) return
+    setUrlSaving(true)
+    setUrlMsg(null)
+    try {
+      const res = await fetch(`${API}/knowledge/website/${tenantId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ website_url: url }),
+      })
+      setUrlMsg(res.ok ? 'URL saved.' : 'Failed to save URL')
+    } catch {
+      setUrlMsg('Network error — try again')
+    } finally {
+      setUrlSaving(false)
+    }
+  }
 
   const syncWebsite = async () => {
     setSyncLoading(true)
@@ -170,41 +193,72 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
 
           {/* ── Website ── */}
           <div>
-            <div style={labelStyle}>Website</div>
-            <div style={{
-              border: '1px solid var(--border)', borderRadius: 10,
-              background: 'var(--bg)', overflow: 'hidden',
-            }}>
-              <div style={{ padding: '14px 16px' }}>
-                <div style={{ fontSize: 12, color: 'var(--text-2)', marginBottom: 6, wordBreak: 'break-all', lineHeight: 1.5 }}>
-                  {websiteUrl || <span style={{ color: 'var(--text-3)' }}>No website URL on file</span>}
-                </div>
-                {lastCrawlAt && (
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 12 }}>
-                    Last synced {new Date(lastCrawlAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </div>
-                )}
-                <button
-                  onClick={syncWebsite}
-                  disabled={syncLoading || !websiteUrl}
-                  style={{
-                    fontSize: 12, fontWeight: 600,
-                    color: 'var(--bg)',
-                    background: websiteUrl ? 'var(--text)' : 'var(--text-3)',
-                    border: 'none', borderRadius: 7, padding: '8px 16px',
-                    cursor: websiteUrl ? 'pointer' : 'not-allowed',
-                    opacity: syncLoading ? 0.65 : 1, transition: 'opacity 0.2s',
-                  }}
-                >
-                  {syncLoading ? 'Syncing…' : 'Re-sync Website'}
-                </button>
-                {syncMsg && (
-                  <div style={{ fontSize: 11, marginTop: 8, color: syncMsg.startsWith('Synced') ? okColor : errColor }}>
-                    {syncMsg}
-                  </div>
-                )}
+            <div style={labelStyle}>Website URL</div>
+
+            {/* Editable URL input */}
+            <input
+              type="url"
+              value={urlInput}
+              onChange={e => { setUrlInput(e.target.value); setUrlMsg(null) }}
+              placeholder="https://yourbusiness.com"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '10px 12px',
+                background: 'var(--bg)', border: '1px solid var(--border-2)',
+                borderRadius: 8, fontSize: 13, color: 'var(--text)',
+                outline: 'none', fontFamily: 'var(--font-dm), sans-serif',
+              }}
+            />
+
+            {/* Save URL button — only shown when URL has changed */}
+            {urlInput.trim() !== (websiteUrl ?? '') && (
+              <button
+                onClick={saveUrl}
+                disabled={urlSaving || !urlInput.trim()}
+                style={{
+                  marginTop: 8, fontSize: 12, fontWeight: 600,
+                  color: 'var(--bg)', background: 'var(--accent)',
+                  border: 'none', borderRadius: 7, padding: '8px 14px',
+                  cursor: urlSaving ? 'not-allowed' : 'pointer',
+                  opacity: urlSaving ? 0.65 : 1, transition: 'opacity 0.2s',
+                }}
+              >
+                {urlSaving ? 'Saving…' : 'Save URL'}
+              </button>
+            )}
+            {urlMsg && (
+              <div style={{ fontSize: 11, marginTop: 6, color: urlMsg === 'URL saved.' ? okColor : errColor }}>
+                {urlMsg}
               </div>
-            </div>
+            )}
+
+            {/* Last synced info */}
+            {lastCrawlAt && (
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
+                Last synced {new Date(lastCrawlAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
+            )}
+
+            {/* Re-sync button — outside the box, below */}
+            <button
+              onClick={syncWebsite}
+              disabled={syncLoading || !urlInput.trim()}
+              style={{
+                marginTop: 10, fontSize: 12, fontWeight: 600,
+                color: 'var(--bg)',
+                background: urlInput.trim() ? 'var(--text)' : 'var(--text-3)',
+                border: 'none', borderRadius: 7, padding: '8px 16px',
+                cursor: urlInput.trim() && !syncLoading ? 'pointer' : 'not-allowed',
+                opacity: syncLoading ? 0.65 : 1, transition: 'opacity 0.2s',
+              }}
+            >
+              {syncLoading ? 'Syncing…' : 'Re-sync Website'}
+            </button>
+            {syncMsg && (
+              <div style={{ fontSize: 11, marginTop: 8, color: syncMsg.startsWith('Synced') ? okColor : errColor }}>
+                {syncMsg}
+              </div>
+            )}
           </div>
 
           {/* ── Upload Files ── */}
