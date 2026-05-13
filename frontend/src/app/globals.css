@@ -392,6 +392,59 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 .stat-n { font-size: 22px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
 .stat-l { font-size: 10px; color: var(--text-3); font-weight: 400; }
 
+/* ── Comparison section ── */
+.cmp-wrap {
+  background: var(--bg-2);
+  transition: background 0.5s;
+}
+.cmp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 72px;
+  align-items: center;
+  padding-top: 88px;
+  padding-bottom: 88px;
+}
+.cmp-copy { max-width: 360px; }
+
+.cmp-table-wrap {
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cmp-table thead tr {
+  border-bottom: 1px solid var(--border);
+}
+.cmp-table th {
+  padding: 18px 20px 16px;
+  text-align: left;
+  font-weight: 400;
+}
+.cmp-table th:first-child { width: 34%; }
+.cmp-col-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.cmp-col-ours { color: var(--accent); }
+
+.cmp-table td { padding: 13px 20px; font-size: 13px; }
+.cmp-label { color: var(--text-3); font-size: 12px; }
+.cmp-human { color: var(--text-2); }
+.cmp-ours  { color: var(--accent); font-weight: 600; }
+.cmp-row-shaded { background: var(--bg-2); }
+.cmp-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
+
 /* ── Footer ── */
 footer {
   padding: 24px 40px; border-top: 1px solid var(--border);
@@ -563,6 +616,10 @@ footer {
   /* Problem cards → 2 columns */
   .prob-grid { grid-template-columns: repeat(2, 1fr); }
 
+  /* Comparison → stack */
+  .cmp-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; }
+  .cmp-copy { max-width: 100%; }
+
   /* Demo grid → single column, copy first then phone card */
   .demo-grid { grid-template-columns: 1fr; gap: 40px; }
   .demo-grid > :first-child { order: 1; }
@@ -606,6 +663,10 @@ footer {
   .hero-cta > a { display: block; width: 100%; }
   .hero-cta .btn-main,
   .hero-cta .btn-ghost { width: 100%; text-align: center; }
+
+  /* Comparison table: tighter padding */
+  .cmp-table td, .cmp-table th { padding: 11px 14px; }
+  .cmp-grid { padding-top: 48px; padding-bottom: 48px; gap: 28px; }
 
   /* Problem cards → single column, always show back face */
   .prob-grid { grid-template-columns: 1fr; gap: 12px; }

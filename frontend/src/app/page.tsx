@@ -542,6 +542,67 @@ export default function Home() {
 
       <div className="div-line" />
 
+      {/* COMPARISON */}
+      <div className="cmp-wrap">
+        <div className="wrap cmp-grid">
+
+          {/* Left: copy */}
+          <div className="cmp-copy">
+            <div className="sec-label" style={{ marginBottom: 16 }}>The math</div>
+            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 16 }}>
+              Lower cost.<br />Better coverage.
+            </h2>
+            <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.75, marginBottom: 10 }}>
+              <strong style={{ color: 'var(--text)', fontWeight: 700 }}>Save up to $45,000 a year.</strong> That's the difference between a full-time receptionist and Open Lines — with better availability, zero turnover, and a line that never goes to voicemail.
+            </p>
+            <Link href="/pricing">
+              <button className="btn-ghost" style={{ marginTop: 20, fontSize: 13 }}>See pricing →</button>
+            </Link>
+          </div>
+
+          {/* Right: table */}
+          <div className="cmp-table-wrap">
+            <table className="cmp-table">
+              <thead>
+                <tr>
+                  <th />
+                  <th>
+                    <div className="cmp-col-head">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                      Human Receptionist
+                    </div>
+                  </th>
+                  <th>
+                    <div className="cmp-col-head cmp-col-ours">
+                      <svg width="16" height="16" viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M15.9,3.2 A11,11 0 0,1 15.9,24.8"/><path d="M12.1,24.8 A11,11 0 0,1 12.1,3.2"/><line x1="10.5" y1="12.5" x2="10.5" y2="16.5"/><line x1="14" y1="9.5" x2="14" y2="18.5"/><line x1="17.5" y1="11.5" x2="17.5" y2="17"/></svg>
+                      Open Lines AI
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { label: 'Availability',    human: '9–5, Mon–Fri',   ours: '24/7, every day' },
+                  { label: 'Starting cost',   human: '$2,800 / mo',    ours: 'From $79 / mo' },
+                  { label: 'Annual cost',     human: '$33,600+',       ours: 'From $948 / yr' },
+                  { label: 'Setup time',      human: 'Weeks',          ours: 'Under 10 min' },
+                  { label: 'Turnover risk',   human: 'High',           ours: 'None' },
+                  { label: 'Scales with calls', human: 'No',           ours: 'Yes' },
+                ].map((row, i) => (
+                  <tr key={i} className={i % 2 === 0 ? 'cmp-row-shaded' : ''}>
+                    <td className="cmp-label">{row.label}</td>
+                    <td className="cmp-human">{row.human}</td>
+                    <td className="cmp-ours">{row.ours}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="div-line" />
+
       {/* BOTTOM CTA */}
       <section className="sec" style={{ textAlign: 'center' }}>
         <div className="wrap">
