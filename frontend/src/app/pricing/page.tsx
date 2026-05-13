@@ -207,7 +207,7 @@ export default function PricingPage() {
                 {/* Price */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginBottom: 4 }}>
                   <span style={{
-                    fontSize: 52, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1,
+                    fontSize: 40, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1,
                     color: 'var(--text)', fontFamily: 'var(--font-syne), sans-serif',
                   }}>
                     ${plan.price}
