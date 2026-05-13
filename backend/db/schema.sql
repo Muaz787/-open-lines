@@ -58,6 +58,12 @@ alter table tenants add column if not exists vapi_phone_number_id text;
 alter table tenants add column if not exists user_id uuid;
 alter table tenants add column if not exists email text;
 
+-- Stripe billing
+alter table tenants add column if not exists stripe_customer_id     text;
+alter table tenants add column if not exists stripe_subscription_id text;
+alter table tenants add column if not exists subscription_plan      text;
+alter table tenants add column if not exists subscription_status    text default 'none';
+
 -- Appointments booked by the AI receptionist
 create table if not exists appointments (
     id                   uuid primary key default gen_random_uuid(),

@@ -205,6 +205,18 @@ async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | 
     return res.data[0] if res.data else None
 
 
+async def get_tenant_by_stripe_customer(customer_id: str) -> dict | None:
+    res = (
+        get_client()
+        .table("tenants")
+        .select("*")
+        .eq("stripe_customer_id", customer_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (

@@ -41,6 +41,8 @@ interface Tenant {
   twilio_phone_number?: string
   website_url?: string
   last_crawl_at?: string
+  subscription_plan?: string
+  subscription_status?: string
 }
 
 interface CalendarStatus {
@@ -182,6 +184,8 @@ function DashboardPage() {
   // Calendar state
   const [kbOpen, setKbOpen]                 = useState(false)
 
+  const [billingLoading, setBillingLoading] = useState<string | null>(null)
+
   const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
   const [appointments, setAppointments]     = useState<Appointment[]>([])
   const [calToast, setCalToast]             = useState<string | null>(null)
@@ -254,7 +258,9 @@ function DashboardPage() {
 
   // Show toast if redirected back from OAuth
   useEffect(() => {
-    const calParam = searchParams.get('calendar')
+    const calParam     = searchParams.get('calendar')
+    const billingParam = searchParams.get('billing')
+
     if (calParam === 'connected') {
       setCalToast('Google Calendar connected!')
       fetchCalendar()
@@ -262,6 +268,14 @@ function DashboardPage() {
     } else if (calParam === 'error') {
       setCalToast('Calendar connection failed. Please try again.')
       setTimeout(() => setCalToast(null), 5000)
+    } else if (billingParam === 'success') {
+      setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
+      setTimeout(() => setCalToast(null), 5000)
+      // Re-fetch tenant so plan badge updates without a hard reload
+      fetch(`${API}/onboarding/status/${tenantId}`).then(r => r.ok ? r.json() : null).then(d => d && setTenant(d))
+    } else if (billingParam === 'canceled') {
+      setCalToast('Checkout canceled — no charge was made.')
+      setTimeout(() => setCalToast(null), 4000)
     }
   }, [searchParams, fetchCalendar])
 
@@ -273,6 +287,30 @@ function DashboardPage() {
       await fetchCalendar()
     } finally {
       setCalDisconnecting(false)
+    }
+  }
+
+  const handleCheckout = async (plan: string) => {
+    if (tenant?.subscription_plan === plan && tenant?.subscription_status === 'active') return
+    setBillingLoading(plan)
+    try {
+      const res = await fetch(`${API}/billing/create-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId, plan }),
+      })
+      const data = await res.json()
+      if (res.ok && data.checkout_url) {
+        window.location.href = data.checkout_url
+      } else {
+        setCalToast(data.detail || 'Failed to start checkout — try again')
+        setTimeout(() => setCalToast(null), 5000)
+        setBillingLoading(null)
+      }
+    } catch {
+      setCalToast('Network error — try again')
+      setTimeout(() => setCalToast(null), 5000)
+      setBillingLoading(null)
     }
   }
 
@@ -469,6 +507,79 @@ function DashboardPage() {
             )})}
           </div>
         )}
+
+        {/* ── Billing / Plan ── */}
+        <div style={{ marginBottom: 32 }}>
+          <div className="db-section-title">Subscription</div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)', overflow: 'hidden' }}>
+
+            {/* Current plan header */}
+            <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                {tenant?.subscription_plan
+                  ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
+                  : 'No active plan'}
+              </span>
+              {tenant?.subscription_status === 'active' && (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', letterSpacing: '0.06em' }}>
+                  ACTIVE
+                </span>
+              )}
+              {tenant?.subscription_status === 'past_due' && (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>
+                  PAST DUE
+                </span>
+              )}
+              {tenant?.subscription_status === 'canceled' && (
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>
+                  CANCELED
+                </span>
+              )}
+            </div>
+
+            {/* Plan options */}
+            <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {([
+                { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
+                { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
+                { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
+              ] as const).map(plan => {
+                const isCurrent = tenant?.subscription_plan === plan.id && tenant?.subscription_status === 'active'
+                const isLoading = billingLoading === plan.id
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => handleCheckout(plan.id)}
+                    disabled={billingLoading !== null}
+                    style={{
+                      flex: 1, minWidth: 110,
+                      padding: '11px 14px', textAlign: 'left',
+                      border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border-2)'}`,
+                      borderRadius: 8,
+                      background: isCurrent ? 'var(--accent-dim)' : 'var(--bg)',
+                      cursor: isCurrent || (billingLoading !== null && !isLoading) ? 'default' : 'pointer',
+                      opacity: billingLoading !== null && !isLoading ? 0.45 : 1,
+                      transition: 'opacity 0.2s, border-color 0.2s',
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>
+                      {plan.label}{isCurrent && ' ✓'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      {isLoading ? 'Redirecting to Stripe…' : `${plan.price} · ${plan.minutes}`}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
+              {tenant?.subscription_status === 'active'
+                ? 'Click a different plan to upgrade or downgrade — you\'ll be taken to Stripe.'
+                : 'Select a plan to activate your subscription. You\'ll be redirected to Stripe checkout.'}
+            </div>
+          </div>
+        </div>
 
         {/* ── AI Insights ── */}
         {(insights || insightsLoading) && (
