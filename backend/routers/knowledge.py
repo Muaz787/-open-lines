@@ -4,10 +4,20 @@ from pydantic import BaseModel
 
 from db import supabase as db
 from services import knowledge
+from services.provisioning import rebuild_and_push_system_prompt
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+
+async def _reprompt_after_change(tenant: dict) -> None:
+    """Non-fatal reprompt — logs a warning on failure so the KB response is never blocked."""
+    try:
+        await rebuild_and_push_system_prompt(tenant)
+        logger.info("System prompt rebuilt after KB change for tenant %s", tenant["id"])
+    except Exception as e:
+        logger.warning("Reprompt after KB change failed for tenant %s (non-fatal): %s", tenant["id"], e)
 
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB per file
 MAX_FILES = 10
@@ -84,6 +94,9 @@ async def upload_documents(
             logger.error("Failed to embed %s for tenant %s: %s", fname, tenant_id, e)
             results.append({"file": fname, "status": "error", "reason": "embedding failed"})
 
+    if any(r["status"] == "ok" for r in results):
+        await _reprompt_after_change(tenant)
+
     return {"tenant_id": tenant_id, "results": results}
 
 
@@ -105,10 +118,12 @@ async def add_text(tenant_id: str, body: TextRequest):
     try:
         vectors = await knowledge.embed_and_store(namespace, body.text, tenant_id)
         logger.info("Added manual text for tenant %s → %d vectors", tenant_id, vectors)
-        return {"status": "ok", "vectors_stored": vectors}
     except Exception as e:
         logger.error("Failed to embed text for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to store text")
+
+    await _reprompt_after_change(tenant)
+    return {"status": "ok", "vectors_stored": vectors}
 
 
 @router.post("/clear/{tenant_id}")
