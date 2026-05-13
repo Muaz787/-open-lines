@@ -76,6 +76,35 @@ nav {
 
 .nav-right { display: flex; align-items: center; gap: 14px; }
 
+/* Hamburger button — hidden on desktop */
+.hamburger {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  background: transparent; border: 1px solid var(--border-2);
+  border-radius: 7px; cursor: pointer; color: var(--text);
+  transition: border-color 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+.hamburger:hover { border-color: var(--text); }
+
+/* Mobile menu panel */
+.mobile-menu {
+  display: none;
+  position: fixed; top: 56px; left: 0; right: 0; z-index: 190;
+  background: rgba(249,249,249,0.97);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0 12px;
+}
+[data-theme="dark"] .mobile-menu { background: rgba(7,9,13,0.97); }
+.mobile-menu-link {
+  display: block; padding: 13px 24px;
+  font-size: 15px; font-weight: 500; color: var(--text-2);
+  text-decoration: none; transition: color 0.15s;
+}
+.mobile-menu-link:hover { color: var(--text); }
+
 .toggle { width: 40px; height: 22px; background: var(--border-2); border-radius: 11px; position: relative; cursor: pointer; border: 1px solid var(--border); transition: background 0.3s; }
 .toggle:hover { background: var(--accent-dim); }
 .toggle-knob { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--text); border-radius: 50%; transition: transform 0.3s var(--ease), background 0.3s; }
@@ -421,8 +450,10 @@ footer {
 
 /* ── Tablet (≤ 900 px) ── */
 @media (max-width: 900px) {
-  /* Nav: hide middle links */
+  /* Nav: hide middle links, show hamburger + mobile menu */
   .nav-mid { display: none; }
+  .hamburger { display: flex; }
+  .mobile-menu { display: block; }
 
   /* Sections */
   .sec { padding: 72px 24px; }
@@ -459,6 +490,8 @@ footer {
   .nav-right { gap: 8px; }
   .btn-nav { padding: 7px 12px; font-size: 12px; }
   .nav-right > a:last-of-type { display: none; } /* hide Book a Demo — it's in the hero */
+  .mobile-menu { top: 52px; }
+  .mobile-menu-link { padding: 12px 20px; font-size: 14px; }
 
   /* Hero */
   .hero { padding: 80px 20px 56px; }

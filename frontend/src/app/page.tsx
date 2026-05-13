@@ -165,6 +165,9 @@ export default function Home() {
     beauty: { title: 'Booking Queue — Studio Nova Hair & Beauty',   live: 'Live · 8 bookings today' },
   }
 
+  const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = () => setMenuOpen(false)
+
   return (
     <>
       {/* NAV */}
@@ -191,8 +194,45 @@ export default function Home() {
           <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
             <button className="btn-nav">Book a Demo</button>
           </a>
+          {/* Hamburger — mobile only */}
+          <button
+            className="hamburger"
+            onClick={() => setMenuOpen(o => !o)}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {menuOpen ? (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
         </div>
       </nav>
+
+      {/* Mobile menu */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            className="mobile-menu"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+          >
+            <a href="#demo"       className="mobile-menu-link" onClick={closeMenu}>How it works</a>
+            <a href="#industries" className="mobile-menu-link" onClick={closeMenu}>Industries</a>
+            <a href="#platform"   className="mobile-menu-link" onClick={closeMenu}>Platform</a>
+            <Link href="/pricing" className="mobile-menu-link" onClick={closeMenu}>Pricing</Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* HERO */}
       <section className="hero">
