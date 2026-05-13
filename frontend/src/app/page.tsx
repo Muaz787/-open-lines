@@ -8,13 +8,18 @@ import Link from 'next/link'
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
 
 const TYPING_PHRASES = [
-  'Realtors',
-  'Dental Clinics',
+  'Real Estate & Property Management',
+  'Medical & Wellness',
   'Law Firms',
-  'Beauty Salons',
+  'Lifestyle, Events, & Activities',
   'Plumbers',
   'Restaurants',
-  'Builders',
+  'Construction & Building Design',
+  'Transportation & Logistics',
+  'Home Services',
+  'Landscape & Garden',
+  'E-commerce & Retail',
+  'Automotive',
 ]
 
 function useTypewriter(phrases: string[], typeMs = 65, deleteMs = 38, pauseMs = 1800) {
