@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 
@@ -603,6 +603,60 @@ export default function Home() {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="div-line" />
+
+      {/* HOW IT WORKS — Process steps */}
+      <div className="process-wrap">
+        <div className="wrap process-grid">
+
+          {/* Left: copy */}
+          <div className="process-copy">
+            <div className="sec-label" style={{ marginBottom: 16 }}>How it works</div>
+            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 16 }}>
+              Live in minutes.<br />Smarter every call.
+            </h2>
+            <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.75, marginBottom: 28 }}>
+              Getting started takes under 10 minutes. From there, your AI handles every call — and improves with every interaction.
+            </p>
+            <Link href="/onboarding">
+              <button className="btn-main" style={{ fontSize: 14 }}>Get started →</button>
+            </Link>
+          </div>
+
+          {/* Right: staggered cards */}
+          <div className="process-cards">
+            {[
+              {
+                n: '01',
+                title: 'Sign up & connect',
+                body: 'Enter your business details and website. Your AI agent is trained and your dedicated phone number goes live in under 10 minutes.',
+              },
+              {
+                n: '02',
+                title: 'Calls handled from day one',
+                body: 'Your AI answers every call, qualifies leads, books appointments, and sends you a WhatsApp summary after each one.',
+              },
+              {
+                n: '03',
+                title: 'It gets smarter over time',
+                body: 'Update your knowledge base anytime. The AI learns from every interaction and improves with your business.',
+              },
+            ].map((step, i) => (
+              <div key={i} className="process-card" style={{ '--step-offset': `${i * 28}px` } as React.CSSProperties}>
+                <div className="process-num">{step.n}</div>
+                <div style={{ fontFamily: 'var(--font-syne), sans-serif', fontWeight: 700, fontSize: 15, marginBottom: 8, color: 'var(--text)' }}>
+                  {step.title}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.65 }}>
+                  {step.body}
+                </div>
+              </div>
+            ))}
+          </div>
+
         </div>
       </div>
 

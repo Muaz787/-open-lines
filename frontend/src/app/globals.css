@@ -445,6 +445,48 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 .cmp-row-shaded { background: var(--bg-2); }
 .cmp-table tbody tr:not(:last-child) td { border-bottom: 1px solid var(--border); }
 
+/* ── Process / How it works ── */
+.process-wrap {
+  background: var(--bg);
+  transition: background 0.5s;
+}
+.process-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 72px;
+  align-items: center;
+  padding-top: 88px;
+  padding-bottom: 88px;
+}
+.process-copy { max-width: 360px; }
+
+.process-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.process-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  padding: 24px 26px;
+  margin-left: var(--step-offset, 0px);
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+}
+.process-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+.process-num {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 10px;
+  font-family: var(--font-dm), sans-serif;
+}
+
 /* ── Footer ── */
 footer {
   padding: 24px 40px; border-top: 1px solid var(--border);
@@ -627,6 +669,11 @@ footer {
 
   /* Platform cards → single column */
   .dash-grid { grid-template-columns: 1fr; }
+
+  /* Process → stack */
+  .process-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; }
+  .process-copy { max-width: 100%; }
+  .process-card { margin-left: 0 !important; }
 }
 
 /* ── Tablet dashboard (≤ 768 px) ── */
