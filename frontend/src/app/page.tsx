@@ -8,16 +8,17 @@ import Link from 'next/link'
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
 
 const TYPING_PHRASES = [
-  'Real Estate & Property Management',
+  'Realtors',
+  'Property Managers',
   'Medical & Wellness',
   'Law Firms',
   'Lifestyle, Events, & Activities',
   'Plumbers',
   'Restaurants',
-  'Construction & Building Design',
-  'Transportation & Logistics',
+  'Builders',
+  'Logistics',
   'Home Services',
-  'Landscape & Garden',
+  'Landscaping',
   'E-commerce & Retail',
   'Automotive',
 ]
