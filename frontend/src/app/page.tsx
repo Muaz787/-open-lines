@@ -12,7 +12,6 @@ const TYPING_PHRASES = [
   'Property Managers',
   'Medical & Wellness',
   'Law Firms',
-  'Lifestyle, Events, & Activities',
   'Plumbers',
   'Restaurants',
   'Builders',
