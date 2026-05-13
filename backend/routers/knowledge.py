@@ -1,10 +1,12 @@
 import logging
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Header, UploadFile, File
+from typing import Annotated
 from pydantic import BaseModel
 
 from db import supabase as db
 from services import knowledge
 from services.provisioning import rebuild_and_push_system_prompt
+from services.security import verify_tenant_owner, scan_for_injection, validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,14 @@ class WebsiteRequest(BaseModel):
 
 
 @router.patch("/website/{tenant_id}")
-async def update_website_url(tenant_id: str, body: WebsiteRequest):
+async def update_website_url(
+    tenant_id: str,
+    body: WebsiteRequest,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
+    validate_public_url(body.website_url.strip())
+
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -52,7 +61,10 @@ async def update_website_url(tenant_id: str, body: WebsiteRequest):
 async def upload_documents(
     tenant_id: str,
     files: list[UploadFile] = File(...),
+    authorization: Annotated[str | None, Header()] = None,
 ):
+    await verify_tenant_owner(tenant_id, authorization)
+
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -87,6 +99,12 @@ async def upload_documents(
             continue
 
         try:
+            scan_for_injection(text, source=f"file:{fname}")
+        except HTTPException as e:
+            results.append({"file": fname, "status": "error", "reason": e.detail})
+            continue
+
+        try:
             vectors = await knowledge.embed_and_store(namespace, text, tenant_id)
             results.append({"file": fname, "status": "ok", "vectors_stored": vectors})
             logger.info("Uploaded %s for tenant %s → %d vectors", fname, tenant_id, vectors)
@@ -101,9 +119,17 @@ async def upload_documents(
 
 
 @router.post("/text/{tenant_id}")
-async def add_text(tenant_id: str, body: TextRequest):
+async def add_text(
+    tenant_id: str,
+    body: TextRequest,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
+
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="text cannot be empty")
+
+    scan_for_injection(body.text, source="manual text")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -127,7 +153,11 @@ async def add_text(tenant_id: str, body: TextRequest):
 
 
 @router.post("/clear/{tenant_id}")
-async def clear_knowledge(tenant_id: str):
+async def clear_knowledge(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:

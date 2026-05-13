@@ -356,6 +356,9 @@ async def sync_knowledge(body: dict):
     if not namespace:
         raise HTTPException(status_code=400, detail="Tenant has no pinecone_namespace configured")
 
+    from services.security import validate_public_url
+    validate_public_url(website_url)
+
     try:
         result = await knowledge.refresh_tenant_knowledge(tenant_id, website_url, namespace)
     except Exception as e:

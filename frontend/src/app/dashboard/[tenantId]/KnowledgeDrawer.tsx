@@ -2,8 +2,15 @@
 
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { supabase } from '@/lib/supabase'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 interface UploadResult {
   file: string
@@ -45,12 +52,14 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setUrlSaving(true)
     setUrlMsg(null)
     try {
+      const ah  = await authHeaders()
       const res = await fetch(`${API}/knowledge/website/${tenantId}`, {
         method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ website_url: url }),
       })
-      setUrlMsg(res.ok ? 'URL saved.' : 'Failed to save URL')
+      const data = await res.json()
+      setUrlMsg(res.ok ? 'URL saved.' : data.detail || 'Failed to save URL')
     } catch {
       setUrlMsg('Network error — try again')
     } finally {
@@ -86,7 +95,12 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     const form = new FormData()
     arr.forEach(f => form.append('files', f))
     try {
-      const res  = await fetch(`${API}/knowledge/upload/${tenantId}`, { method: 'POST', body: form })
+      const ah  = await authHeaders()
+      const res = await fetch(`${API}/knowledge/upload/${tenantId}`, {
+        method:  'POST',
+        headers: { ...ah },
+        body:    form,
+      })
       const data = await res.json()
       setUploadResults(data.results ?? [])
     } catch {
@@ -101,9 +115,10 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setTextLoading(true)
     setTextMsg(null)
     try {
-      const res  = await fetch(`${API}/knowledge/text/${tenantId}`, {
+      const ah  = await authHeaders()
+      const res = await fetch(`${API}/knowledge/text/${tenantId}`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ text }),
       })
       const data = await res.json()
@@ -121,7 +136,8 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setClearLoading(true)
     setClearMsg(null)
     try {
-      const res = await fetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST' })
+      const ah  = await authHeaders()
+      const res = await fetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST', headers: { ...ah } })
       setClearMsg(res.ok ? 'Knowledge base cleared.' : 'Clear failed — try again')
     } catch {
       setClearMsg('Network error')
