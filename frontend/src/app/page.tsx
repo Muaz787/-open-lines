@@ -177,6 +177,7 @@ export default function Home() {
           <a href="#demo">How it works</a>
           <a href="#industries">Industries</a>
           <a href="#platform">Platform</a>
+          <Link href="/pricing">Pricing</Link>
         </div>
         <div className="nav-right">
           <div className="toggle" onClick={() => setIsDark(d => !d)}>
