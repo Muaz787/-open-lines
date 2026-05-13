@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { KnowledgeDrawer } from './KnowledgeDrawer'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -38,6 +39,8 @@ interface Tenant {
   business_name: string
   industry: string
   twilio_phone_number?: string
+  website_url?: string
+  last_crawl_at?: string
 }
 
 interface CalendarStatus {
@@ -177,6 +180,8 @@ function DashboardPage() {
   const [insightsLoading, setInsightsLoading] = useState(false)
 
   // Calendar state
+  const [kbOpen, setKbOpen]                 = useState(false)
+
   const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
   const [appointments, setAppointments]     = useState<Appointment[]>([])
   const [calToast, setCalToast]             = useState<string | null>(null)
@@ -371,16 +376,35 @@ function DashboardPage() {
             )}
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            fontSize: 12, color: 'var(--text-3)', background: 'none',
-            border: '1px solid var(--border-2)', borderRadius: 6,
-            padding: '6px 12px', cursor: 'pointer',
-          }}
-        >
-          Sign out
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setKbOpen(true)}
+            style={{
+              fontSize: 12, color: 'var(--text-2)', background: 'none',
+              border: '1px solid var(--border-2)', borderRadius: 6,
+              padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'border-color 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+            Knowledge Base
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{
+              fontSize: 12, color: 'var(--text-3)', background: 'none',
+              border: '1px solid var(--border-2)', borderRadius: 6,
+              padding: '6px 12px', cursor: 'pointer',
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
 
       {/* Toast */}
@@ -888,6 +912,18 @@ function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Knowledge Base drawer */}
+      <AnimatePresence>
+        {kbOpen && (
+          <KnowledgeDrawer
+            tenantId={tenantId}
+            websiteUrl={tenant?.website_url}
+            lastCrawlAt={tenant?.last_crawl_at}
+            onClose={() => setKbOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -186,6 +186,12 @@ async def query_knowledge_base(namespace: str, query: str, top_k: int = 5) -> st
     return "\n\n".join(texts)
 
 
+def clear_namespace(namespace: str) -> None:
+    index = _get_pinecone_index()
+    index.delete(delete_all=True, namespace=namespace)
+    logger.info("Cleared Pinecone namespace '%s'", namespace)
+
+
 async def refresh_tenant_knowledge(
     tenant_id: str, website_url: str, namespace: str
 ) -> dict:
