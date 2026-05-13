@@ -368,4 +368,13 @@ async def sync_knowledge(body: dict):
         logger.error("Failed to update last_crawl_at for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to update tenant crawl timestamp")
 
+    # Refresh tenant record so reprompt sees the updated last_crawl_at
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        from services.provisioning import rebuild_and_push_system_prompt
+        await rebuild_and_push_system_prompt(tenant)
+        logger.info("System prompt rebuilt after knowledge sync for tenant %s", tenant_id)
+    except Exception as e:
+        logger.warning("System prompt rebuild after sync failed for tenant %s (non-fatal): %s", tenant_id, e)
+
     return {"status": "synced", "vectors_stored": result["vectors_stored"]}

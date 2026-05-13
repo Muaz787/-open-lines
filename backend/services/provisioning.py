@@ -83,6 +83,85 @@ def _load_template(industry: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
+    """Rebuild the system prompt from the current KB and push it to the Vapi assistant.
+
+    Returns {"status": "updated", "assistant_id": str} on success.
+    Raises ValueError for missing/unsupported config, RuntimeError for downstream failures.
+    """
+    from services.vapi import _CALLER_LOOKUP_NOTE, update_assistant, build_calendar_tools, build_caller_lookup_tool
+    from routers.calendar import _CALENDAR_NOTE
+
+    tenant_id     = tenant["id"]
+    industry      = tenant.get("industry", "")
+    business_name = tenant["business_name"]
+    agent_name    = tenant.get("agent_name", "Alex")
+    assistant_id  = tenant.get("vapi_assistant_id")
+
+    if not assistant_id:
+        raise ValueError("Tenant has no Vapi assistant")
+    if industry == "custom":
+        raise ValueError("Custom industry tenants must be re-provisioned manually")
+
+    template = _load_template(industry)
+
+    qualification_fields   = QUALIFICATION_FIELDS.get(industry, {})
+    qualification_questions = "\n".join(f"- {q}" for q in qualification_fields.values())
+
+    knowledge_context = "No website content available."
+    try:
+        pinecone_namespace = tenant.get("pinecone_namespace", "")
+        if pinecone_namespace:
+            result = await knowledge.query_knowledge_base(pinecone_namespace, "overview", top_k=20)
+            if result:
+                knowledge_context = result
+    except Exception as e:
+        logger.warning("KB fetch failed during reprompt for tenant %s (continuing): %s", tenant_id, e)
+
+    system_prompt = template.format(
+        business_name=business_name,
+        agent_name=agent_name,
+        qualification_questions=qualification_questions,
+        knowledge_context=knowledge_context,
+    )
+
+    extra = (tenant.get("extra_instructions") or "").strip()
+    if extra:
+        system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FROM {business_name.upper()}\n{extra}"
+
+    base_system_prompt = system_prompt
+
+    system_prompt += _CALLER_LOOKUP_NOTE
+    if tenant.get("google_refresh_token"):
+        system_prompt += _CALENDAR_NOTE
+
+    tools = (
+        build_calendar_tools(tenant_id)
+        if tenant.get("google_refresh_token")
+        else [build_caller_lookup_tool(tenant_id)]
+    )
+    model_payload: dict = {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.7,
+        "messages": [{"role": "system", "content": system_prompt}],
+        "tools": tools,
+    }
+
+    try:
+        await update_assistant(assistant_id, {"model": model_payload})
+        logger.info("Reprompted assistant %s for tenant %s", assistant_id, tenant_id)
+    except Exception as e:
+        raise RuntimeError(f"Vapi assistant update failed: {e}") from e
+
+    try:
+        await db.update_tenant(tenant_id, {"last_system_prompt": base_system_prompt})
+    except Exception as e:
+        logger.warning("Could not store last_system_prompt for tenant %s: %s", tenant_id, e)
+
+    return {"status": "updated", "assistant_id": assistant_id}
+
+
 async def _generate_custom_content(
     business_name: str,
     agent_name: str,
