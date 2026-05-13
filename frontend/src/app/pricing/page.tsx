@@ -145,7 +145,7 @@ export default function PricingPage() {
       <div style={{ padding: '120px 40px 72px', textAlign: 'center' }}>
         <div className="sec-label" style={{ marginBottom: 16 }}>Pricing</div>
         <h1 style={{
-          fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 700,
+          fontSize: 'clamp(28px, 4vw, 48px)', fontWeight: 700,
           letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 18,
           fontFamily: 'var(--font-syne), sans-serif',
         }}>
