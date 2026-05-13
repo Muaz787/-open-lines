@@ -44,6 +44,29 @@ function useTypewriter(phrases: string[], typeMs = 65, deleteMs = 38, pauseMs = 
   return displayed
 }
 
+const PROBLEMS = [
+  {
+    icon: '📵',
+    title: 'Missed calls, lost revenue.',
+    body: "Most callers won't leave a voicemail — they'll call your competitor. The first business to pick up wins the client, and right now that's not you.",
+  },
+  {
+    icon: '🌙',
+    title: 'No coverage after hours.',
+    body: "Your phone goes to voicemail after 5pm, on weekends, and during your busiest moments — exactly when new clients are trying to reach you.",
+  },
+  {
+    icon: '📋',
+    title: 'Leads that never convert.',
+    body: "Your team spends hours returning calls only to find the prospect wasn't a fit, wanted the wrong service, or already booked elsewhere.",
+  },
+  {
+    icon: '💸',
+    title: "Overhead that doesn't scale.",
+    body: "A full-time receptionist costs $2,800–$4,000 a month. Part-time staff means gaps. Neither adapts to call volume or grows with your business.",
+  },
+]
+
 const INDUSTRIES = [
   { id: 're',     label: 'Realtors' },
   { id: 'dental', label: 'Dental' },
@@ -92,6 +115,7 @@ export default function Home() {
   const transcriptRef  = useRef<HTMLDivElement>(null)
   const demoSectionRef = useRef<HTMLDivElement>(null)
   const autoPlayedRef  = useRef(false)
+  const [activeProb, setActiveProb] = useState<number | null>(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
@@ -280,6 +304,51 @@ export default function Home() {
         <motion.p {...up(0.9)} style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 22 }}>
           Setup in under 10 minutes · No contracts · Cancel any time
         </motion.p>
+      </section>
+
+      <div className="div-line" />
+
+      {/* THE PROBLEM */}
+      <section className="sec">
+        <div className="wrap">
+          <div className="sec-label" style={{ marginBottom: 14 }}>The problem</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 48 }}>
+            Every missed call is a lost client.
+          </h2>
+          <div className="prob-grid">
+            {PROBLEMS.map((p, i) => (
+              <div
+                key={i}
+                className={`prob-card${activeProb === i ? ' active' : ''}`}
+                onMouseEnter={() => setActiveProb(i)}
+                onMouseLeave={() => setActiveProb(null)}
+                onClick={() => setActiveProb(activeProb === i ? null : i)}
+              >
+                {/* Default face: icon + title footer */}
+                <div className="prob-face">
+                  <div className="prob-icon">{p.icon}</div>
+                  <div className="prob-footer">
+                    <span className="prob-title">{p.title}</span>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="prob-chevron">
+                      <path d="M2 9L7 4L12 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+
+                {/* Hover back: full text */}
+                <div className="prob-back">
+                  <div className="prob-back-header">
+                    <span className="prob-title">{p.title}</span>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="prob-chevron">
+                      <path d="M2 5L7 10L12 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </div>
+                  <p className="prob-desc">{p.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       <div className="div-line" />

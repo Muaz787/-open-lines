@@ -203,6 +203,108 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 .sec-sub { font-size: 16px; font-weight: 300; color: var(--text-2); max-width: 400px; line-height: 1.7; }
 .div-line { width: 100%; height: 1px; background: var(--border); }
 
+/* ── Problem cards ── */
+.prob-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.prob-card {
+  position: relative;
+  height: 300px;
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  background: var(--bg-2);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.prob-card:hover,
+.prob-card.active {
+  border-color: var(--border-2);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ── Default face ── */
+.prob-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
+}
+.prob-icon {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
+  padding-bottom: 16px;
+  user-select: none;
+}
+.prob-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px 20px;
+  border-top: 1px solid var(--border);
+}
+.prob-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.prob-chevron {
+  color: var(--text-3);
+  flex-shrink: 0;
+  margin-top: 1px;
+  transition: color 0.2s;
+}
+
+/* ── Hover / active back ── */
+.prob-back {
+  position: absolute;
+  inset: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
+}
+.prob-back-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+.prob-desc {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+  font-weight: 300;
+}
+
+/* Swap layers on hover / active */
+.prob-card:hover .prob-face,
+.prob-card.active .prob-face {
+  opacity: 0;
+  transform: translateY(-14px);
+}
+.prob-card:hover .prob-back,
+.prob-card.active .prob-back {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* ── Demo Section ── */
 .demo-wrap { background: var(--bg-2); transition: background 0.5s; }
 .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center; }
@@ -458,6 +560,9 @@ footer {
   /* Sections */
   .sec { padding: 72px 24px; }
 
+  /* Problem cards → 2 columns */
+  .prob-grid { grid-template-columns: repeat(2, 1fr); }
+
   /* Demo grid → single column, copy first then phone card */
   .demo-grid { grid-template-columns: 1fr; gap: 40px; }
   .demo-grid > :first-child { order: 1; }
@@ -501,6 +606,18 @@ footer {
   .hero-cta > a { display: block; width: 100%; }
   .hero-cta .btn-main,
   .hero-cta .btn-ghost { width: 100%; text-align: center; }
+
+  /* Problem cards → single column, always show back face */
+  .prob-grid { grid-template-columns: 1fr; gap: 12px; }
+  .prob-card { height: auto; }
+  .prob-face { display: none; }
+  .prob-back {
+    position: static;
+    opacity: 1;
+    transform: none;
+    padding: 18px 20px;
+  }
+  .prob-back-header { margin-bottom: 10px; }
 
   /* Section defaults */
   .sec { padding: 56px 20px; }
