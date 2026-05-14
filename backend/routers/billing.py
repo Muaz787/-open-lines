@@ -216,18 +216,20 @@ async def create_subscription(body: dict):
         try:
             existing = stripe.Subscription.retrieve(existing_sub_id)
             if existing.status in ("active", "trialing", "past_due"):
-                items = existing.get("items", {}).get("data", [])
-                if items:
+                # Use attribute access — StripeObjects don't reliably support chained .get()
+                sub_items = existing.items.data if existing.items else []
+                if sub_items:
                     stripe.Subscription.modify(
                         existing_sub_id,
-                        items=[{"id": items[0]["id"], "price": price_id}],
+                        items=[{"id": sub_items[0].id, "price": price_id}],
                         proration_behavior="create_prorations",
                     )
                     await db.update_tenant(tenant_id, {"subscription_plan": plan})
                     logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
                     return {"needs_payment": False, "subscription_id": existing_sub_id}
-        except stripe.InvalidRequestError:
-            pass  # subscription gone — fall through to create new
+        except stripe.StripeError as e:
+            logger.warning("Could not modify existing subscription %s for tenant %s: %s — will create new", existing_sub_id, tenant_id, e)
+            # Fall through to create a fresh subscription
 
     # Create a new incomplete subscription so we can collect payment via Payment Element
     try:
