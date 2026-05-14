@@ -173,6 +173,127 @@ async def stripe_webhook(request: Request):
     return {"status": "ok"}
 
 
+@router.post("/create-subscription")
+async def create_subscription(body: dict):
+    tenant_id: str = body.get("tenant_id", "")
+    plan: str      = body.get("plan", "").lower()
+
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+    if plan not in PRICE_IDS:
+        raise HTTPException(status_code=400, detail="plan must be starter, pro, or business")
+
+    price_id = PRICE_IDS[plan]
+    if not price_id:
+        raise HTTPException(status_code=500, detail=f"STRIPE_PRICE_{plan.upper()} not configured on server")
+
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Get or create Stripe customer
+    customer_id: str = tenant.get("stripe_customer_id", "") or ""
+    if not customer_id:
+        try:
+            params: dict = {"metadata": {"tenant_id": tenant_id}}
+            if tenant.get("email"):
+                params["email"] = tenant["email"]
+            if tenant.get("business_name"):
+                params["name"] = tenant["business_name"]
+            customer = stripe.Customer.create(**params)
+            customer_id = customer.id
+            await db.update_tenant(tenant_id, {"stripe_customer_id": customer_id})
+        except stripe.StripeError as e:
+            logger.error("Failed to create Stripe customer for tenant %s: %s", tenant_id, e)
+            raise HTTPException(status_code=500, detail="Failed to create Stripe customer")
+
+    # If an active/past_due subscription already exists, update its plan (upgrade/downgrade)
+    existing_sub_id: str = tenant.get("stripe_subscription_id", "") or ""
+    if existing_sub_id:
+        try:
+            existing = stripe.Subscription.retrieve(existing_sub_id)
+            if existing.status in ("active", "trialing", "past_due"):
+                items = existing.get("items", {}).get("data", [])
+                if items:
+                    stripe.Subscription.modify(
+                        existing_sub_id,
+                        items=[{"id": items[0]["id"], "price": price_id}],
+                        proration_behavior="create_prorations",
+                    )
+                    await db.update_tenant(tenant_id, {"subscription_plan": plan})
+                    logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
+                    return {"needs_payment": False, "subscription_id": existing_sub_id}
+        except stripe.InvalidRequestError:
+            pass  # subscription gone — fall through to create new
+
+    # Create a new incomplete subscription so we can collect payment via Payment Element
+    try:
+        sub = stripe.Subscription.create(
+            customer=customer_id,
+            items=[{"price": price_id}],
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+            expand=["latest_invoice.payment_intent"],
+            metadata={"tenant_id": tenant_id, "plan": plan},
+        )
+    except stripe.StripeError as e:
+        logger.error("Stripe subscription creation failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to create subscription")
+
+    try:
+        client_secret = sub.latest_invoice.payment_intent.client_secret
+    except Exception as e:
+        logger.error("Could not extract client_secret from subscription for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Subscription created but could not get payment intent")
+
+    await db.update_tenant(tenant_id, {
+        "stripe_customer_id":     customer_id,
+        "stripe_subscription_id": sub.id,
+        "subscription_plan":      plan,
+        "subscription_status":    "incomplete",
+    })
+    logger.info("Subscription %s created (incomplete) for tenant %s plan %s", sub.id, tenant_id, plan)
+    return {"needs_payment": True, "client_secret": client_secret, "subscription_id": sub.id}
+
+
+@router.post("/confirm-payment")
+async def confirm_payment(body: dict):
+    """Called by the frontend after Payment Element confirms — syncs subscription status to DB."""
+    tenant_id: str       = body.get("tenant_id", "")
+    subscription_id: str = body.get("subscription_id", "")
+
+    if not tenant_id or not subscription_id:
+        raise HTTPException(status_code=400, detail="tenant_id and subscription_id are required")
+
+    try:
+        sub = stripe.Subscription.retrieve(subscription_id)
+    except stripe.StripeError as e:
+        logger.error("Stripe subscription retrieve failed for %s: %s", subscription_id, e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve subscription from Stripe")
+
+    stripe_status: str = sub.status or ""
+    our_status = {
+        "active": "active", "trialing": "active",
+        "past_due": "past_due", "unpaid": "past_due",
+        "canceled": "canceled", "incomplete_expired": "canceled",
+    }.get(stripe_status, stripe_status)
+
+    items = (sub.get("items") or {}).get("data", [])
+    price_id = items[0].get("price", {}).get("id", "") if items else ""
+    plan = next((k for k, v in PRICE_IDS.items() if v == price_id), "starter")
+
+    await db.update_tenant(tenant_id, {
+        "stripe_subscription_id": subscription_id,
+        "subscription_plan":      plan,
+        "subscription_status":    our_status,
+    })
+    logger.info("Payment confirmed for tenant %s: plan=%s status=%s", tenant_id, plan, our_status)
+    return {"status": our_status, "plan": plan}
+
+
 @router.post("/sync/{tenant_id}")
 async def sync_subscription(tenant_id: str):
     """

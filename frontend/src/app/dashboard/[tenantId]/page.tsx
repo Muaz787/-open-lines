@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { KnowledgeDrawer } from './KnowledgeDrawer'
+import { PaymentForm } from './PaymentForm'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -184,8 +185,8 @@ function DashboardPage() {
   // Calendar state
   const [kbOpen, setKbOpen]                 = useState(false)
 
-  const [billingLoading, setBillingLoading] = useState<string | null>(null)
   const [dbMenuOpen, setDbMenuOpen]         = useState(false)
+  const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
   const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
   const [appointments, setAppointments]     = useState<Appointment[]>([])
@@ -302,28 +303,20 @@ function DashboardPage() {
     }
   }
 
-  const handleCheckout = async (plan: string) => {
-    if (tenant?.subscription_plan === plan && tenant?.subscription_status === 'active') return
-    setBillingLoading(plan)
+  const handlePlanClick = (plan: { id: string; label: string; price: string }) => {
+    if (tenant?.subscription_plan === plan.id && tenant?.subscription_status === 'active') return
+    setPayingPlan(plan)
+  }
+
+  const handlePaymentSuccess = async () => {
+    setPayingPlan(null)
+    setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
+    setTimeout(() => setCalToast(null), 6000)
+    // Refresh tenant to show updated plan
     try {
-      const res = await fetch(`${API}/billing/create-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: tenantId, plan }),
-      })
-      const data = await res.json()
-      if (res.ok && data.checkout_url) {
-        window.location.href = data.checkout_url
-      } else {
-        setCalToast(data.detail || 'Failed to start checkout — try again')
-        setTimeout(() => setCalToast(null), 5000)
-        setBillingLoading(null)
-      }
-    } catch {
-      setCalToast('Network error — try again')
-      setTimeout(() => setCalToast(null), 5000)
-      setBillingLoading(null)
-    }
+      const res = await fetch(`${API}/onboarding/status/${tenantId}`)
+      if (res.ok) setTenant(await res.json())
+    } catch {}
   }
 
   const saveDuration = async (minutes: number) => {
@@ -598,47 +591,57 @@ function DashboardPage() {
               )}
             </div>
 
-            {/* Plan options */}
-            <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {([
-                { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
-                { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
-                { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
-              ] as const).map(plan => {
-                const isCurrent = tenant?.subscription_plan === plan.id && tenant?.subscription_status === 'active'
-                const isLoading = billingLoading === plan.id
-                return (
-                  <button
-                    key={plan.id}
-                    onClick={() => handleCheckout(plan.id)}
-                    disabled={billingLoading !== null}
-                    style={{
-                      flex: 1, minWidth: 110,
-                      padding: '11px 14px', textAlign: 'left',
-                      border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border-2)'}`,
-                      borderRadius: 8,
-                      background: isCurrent ? 'var(--accent-dim)' : 'var(--bg)',
-                      cursor: isCurrent || (billingLoading !== null && !isLoading) ? 'default' : 'pointer',
-                      opacity: billingLoading !== null && !isLoading ? 0.45 : 1,
-                      transition: 'opacity 0.2s, border-color 0.2s',
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>
-                      {plan.label}{isCurrent && ' ✓'}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                      {isLoading ? 'Redirecting to Stripe…' : `${plan.price} · ${plan.minutes}`}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+            {/* Inline payment form when a plan is selected */}
+            {payingPlan ? (
+              <PaymentForm
+                tenantId={tenantId}
+                plan={payingPlan.id}
+                planLabel={`${payingPlan.label} ${payingPlan.price}`}
+                onSuccess={handlePaymentSuccess}
+                onCancel={() => setPayingPlan(null)}
+              />
+            ) : (
+              <>
+                {/* Plan option buttons */}
+                <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {([
+                    { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
+                    { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
+                    { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
+                  ] as const).map(plan => {
+                    const isCurrent = tenant?.subscription_plan === plan.id && tenant?.subscription_status === 'active'
+                    return (
+                      <button
+                        key={plan.id}
+                        onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
+                        style={{
+                          flex: 1, minWidth: 110,
+                          padding: '11px 14px', textAlign: 'left',
+                          border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border-2)'}`,
+                          borderRadius: 8,
+                          background: isCurrent ? 'var(--accent-dim)' : 'var(--bg)',
+                          cursor: isCurrent ? 'default' : 'pointer',
+                          transition: 'opacity 0.2s, border-color 0.2s',
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>
+                          {plan.label}{isCurrent && ' ✓'}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                          {plan.price} · {plan.minutes}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
 
-            <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
-              {tenant?.subscription_status === 'active'
-                ? 'Click a different plan to upgrade or downgrade — you\'ll be taken to Stripe.'
-                : 'Select a plan to activate your subscription. You\'ll be redirected to Stripe checkout.'}
-            </div>
+                <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
+                  {tenant?.subscription_status === 'active'
+                    ? 'Click a different plan to upgrade or downgrade.'
+                    : 'Select a plan to enter your payment details — no redirect.'}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
