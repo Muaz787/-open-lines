@@ -659,7 +659,7 @@ footer {
   .prob-grid { grid-template-columns: repeat(2, 1fr); }
 
   /* Comparison → stack */
-  .cmp-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; }
+  .cmp-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; padding-left: 24px; padding-right: 24px; }
   .cmp-copy { max-width: 100%; }
 
   /* Demo grid → single column, copy first then phone card */
@@ -671,7 +671,7 @@ footer {
   .dash-grid { grid-template-columns: 1fr; }
 
   /* Process → stack */
-  .process-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; }
+  .process-grid { grid-template-columns: 1fr; gap: 40px; padding-top: 64px; padding-bottom: 64px; padding-left: 24px; padding-right: 24px; }
   .process-copy { max-width: 100%; }
   .process-card { margin-left: 0 !important; }
 }
@@ -711,9 +711,14 @@ footer {
   .hero-cta .btn-main,
   .hero-cta .btn-ghost { width: 100%; text-align: center; }
 
-  /* Comparison table: tighter padding */
-  .cmp-table td, .cmp-table th { padding: 11px 14px; }
-  .cmp-grid { padding-top: 48px; padding-bottom: 48px; gap: 28px; }
+  /* Comparison table */
+  .cmp-grid { padding-top: 48px; padding-bottom: 48px; padding-left: 20px; padding-right: 20px; gap: 28px; }
+  .cmp-table td { padding: 10px 10px; font-size: 12px; }
+  .cmp-table th { padding: 14px 10px 12px; }
+  .cmp-col-head { font-size: 11px; gap: 5px; white-space: nowrap; }
+  .cmp-col-head svg { display: none; }
+  .cmp-ours, .cmp-human { white-space: nowrap; }
+  .cmp-table th:first-child { width: 30%; }
 
   /* Problem cards → single column, always show back face */
   .prob-grid { grid-template-columns: 1fr; gap: 12px; }
@@ -731,6 +736,9 @@ footer {
   .sec { padding: 56px 20px; }
   h2 { font-size: clamp(24px, 7.5vw, 36px); }
   .sec-sub { font-size: 15px; max-width: 100%; }
+
+  /* Process section */
+  .process-grid { padding-left: 20px; padding-right: 20px; padding-top: 48px; padding-bottom: 48px; gap: 24px; }
 
   /* Industry tabs: scroll horizontally */
   .tab-row {
