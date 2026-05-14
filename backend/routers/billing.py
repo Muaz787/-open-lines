@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import stripe
 from fastapi import APIRouter, HTTPException, Request
@@ -81,38 +82,46 @@ async def create_checkout(body: dict):
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
-    # Stripe requires the raw bytes to verify the signature — do NOT parse as JSON first
+    # Stripe requires raw bytes to verify the signature — do NOT parse as JSON first
     payload    = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
     if not STRIPE_WEBHOOK_SECRET:
-        logger.error("STRIPE_WEBHOOK_SECRET is not set — cannot verify webhook signature")
+        logger.error("STRIPE_WEBHOOK_SECRET is not set")
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
 
+    # Step 1: verify signature only — discard the SDK object (may be typed, not a plain dict)
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except stripe.SignatureVerificationError as e:
         logger.warning("Stripe webhook: invalid signature — %s", e)
         raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
-        logger.error("Stripe webhook parse error: %s", e)
-        raise HTTPException(status_code=400, detail="Invalid payload")
+        logger.error("Stripe webhook signature check error: %s", e)
+        raise HTTPException(status_code=400, detail="Signature check failed")
 
-    event_type: str = event["type"]
+    # Step 2: parse raw JSON for safe plain-dict access (avoids stripe SDK object quirks)
+    try:
+        event: dict = json.loads(payload)
+    except Exception as e:
+        logger.error("Stripe webhook JSON parse error: %s", e)
+        raise HTTPException(status_code=400, detail="JSON parse failed")
+
+    event_type: str = event.get("type", "")
     logger.info("Stripe webhook received: %s", event_type)
 
     if event_type == "checkout.session.completed":
-        session     = event["data"]["object"]
-        tenant_id   = session.get("client_reference_id") or (session.get("metadata") or {}).get("tenant_id", "")
-        plan        = (session.get("metadata") or {}).get("plan", "starter")
-        customer_id = session.get("customer")
-        sub_id      = session.get("subscription")
+        session: dict   = event.get("data", {}).get("object", {})
+        tenant_id: str  = session.get("client_reference_id") or (session.get("metadata") or {}).get("tenant_id", "")
+        plan: str       = (session.get("metadata") or {}).get("plan", "starter")
+        customer_id: str = session.get("customer", "")
+        sub_id: str      = session.get("subscription", "")
 
         logger.info("checkout.session.completed — tenant_id=%s plan=%s customer=%s sub=%s",
                     tenant_id, plan, customer_id, sub_id)
 
         if not tenant_id:
-            logger.error("checkout.session.completed: no tenant_id in client_reference_id or metadata")
+            logger.error("checkout.session.completed: no tenant_id found — client_reference_id and metadata both empty")
             return {"status": "ok", "warning": "no tenant_id"}
 
         try:
@@ -124,23 +133,18 @@ async def stripe_webhook(request: Request):
             })
             logger.info("Tenant %s activated on %s plan", tenant_id, plan)
         except Exception as e:
-            logger.error("Failed to update subscription for tenant %s: %s", tenant_id, e)
+            logger.error("DB update failed for tenant %s: %s", tenant_id, e)
             raise HTTPException(status_code=500, detail=f"DB update failed: {e}")
 
     elif event_type == "customer.subscription.updated":
-        sub         = event["data"]["object"]
-        customer_id = sub.get("customer", "")
-        stripe_status = sub.get("status", "")
-        # Map Stripe statuses to our simplified set
+        sub: dict       = event.get("data", {}).get("object", {})
+        customer_id     = sub.get("customer", "")
+        stripe_status   = sub.get("status", "")
         our_status = {
-            "active":           "active",
-            "trialing":         "active",
-            "past_due":         "past_due",
-            "unpaid":           "past_due",
-            "canceled":         "canceled",
-            "incomplete":       "incomplete",
-            "incomplete_expired": "canceled",
-            "paused":           "paused",
+            "active": "active", "trialing": "active",
+            "past_due": "past_due", "unpaid": "past_due",
+            "canceled": "canceled", "incomplete": "incomplete",
+            "incomplete_expired": "canceled", "paused": "paused",
         }.get(stripe_status, stripe_status)
 
         try:
@@ -152,7 +156,7 @@ async def stripe_webhook(request: Request):
             logger.error("Failed to update subscription status for customer %s: %s", customer_id, e)
 
     elif event_type == "customer.subscription.deleted":
-        sub         = event["data"]["object"]
+        sub     = event.get("data", {}).get("object", {})
         customer_id = sub.get("customer", "")
 
         try:
