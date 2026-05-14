@@ -368,60 +368,81 @@ async def subscription_details(tenant_id: str):
 
     sub_id      = tenant.get("stripe_subscription_id", "") or ""
     customer_id = tenant.get("stripe_customer_id", "") or ""
+    db_plan     = tenant.get("subscription_plan") or "starter"
+    db_status   = tenant.get("subscription_status") or "none"
 
     if not sub_id:
         return {"has_subscription": False}
 
+    # ── Live Stripe data ──────────────────────────────────────────────────────
+    # Wrapped entirely — any Stripe issue falls back to DB-only response so the
+    # page always renders rather than showing a blank "no subscription" state.
     try:
-        sub = stripe.Subscription.retrieve(
-            sub_id,
-            expand=["default_payment_method", "latest_invoice"],
-        )
-    except stripe.InvalidRequestError:
-        return {"has_subscription": False}
-    except stripe.StripeError as e:
-        logger.error("subscription_details stripe error for %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Stripe error")
+        # expand only default_payment_method; latest_invoice is not used here
+        sub = stripe.Subscription.retrieve(sub_id, expand=["default_payment_method"])
 
-    # Payment method: try subscription default, then customer default
-    pm = sub.default_payment_method
-    if not pm and customer_id:
+        sub_status           = str(sub.status or "")
+        cancel_at_period_end = bool(sub.cancel_at_period_end)
+        period_start         = int(sub.current_period_start or 0) or None
+        period_end           = int(sub.current_period_end   or 0) or None
+
+        # Payment method: subscription default → customer default
+        pm = sub.default_payment_method
+        if not pm and customer_id:
+            try:
+                cust         = stripe.Customer.retrieve(customer_id, expand=["invoice_settings.default_payment_method"])
+                inv_settings = getattr(cust, "invoice_settings", None)
+                if inv_settings:
+                    pm = getattr(inv_settings, "default_payment_method", None)
+            except Exception:
+                pm = None
+
+        pm_info = None
+        if pm:
+            try:
+                card = getattr(pm, "card", None)
+                if card:
+                    pm_info = {
+                        "brand":     str(getattr(card, "brand",      "") or ""),
+                        "last4":     str(getattr(card, "last4",      "") or ""),
+                        "exp_month": int(getattr(card, "exp_month",  0)  or 0),
+                        "exp_year":  int(getattr(card, "exp_year",   0)  or 0),
+                    }
+            except Exception:
+                pass
+
+        # Upcoming invoice amount
+        next_amount = None
         try:
-            cust = stripe.Customer.retrieve(
-                customer_id,
-                expand=["invoice_settings.default_payment_method"],
-            )
-            pm = cust.invoice_settings.default_payment_method if cust.invoice_settings else None
+            upcoming    = stripe.Invoice.upcoming(customer=customer_id, subscription=sub_id)
+            next_amount = int(upcoming.amount_due or 0) or None
         except Exception:
             pass
 
-    pm_info = None
-    if pm and hasattr(pm, "card") and pm.card:
-        pm_info = {
-            "brand":     pm.card.brand,
-            "last4":     pm.card.last4,
-            "exp_month": pm.card.exp_month,
-            "exp_year":  pm.card.exp_year,
+    except stripe.InvalidRequestError:
+        # Subscription deleted from Stripe — treat as no subscription
+        return {"has_subscription": False}
+    except Exception as e:
+        # Any other Stripe/network error — return DB fallback so page doesn't break
+        logger.error("subscription_details failed for %s: %s", tenant_id, e)
+        return {
+            "has_subscription":     True,
+            "plan":                 db_plan,
+            "status":               db_status,
+            "cancel_at_period_end": False,
+            "current_period_start": None,
+            "current_period_end":   None,
+            "next_invoice_amount":  None,
+            "payment_method":       None,
         }
-
-    # Upcoming invoice amount
-    next_amount = None
-    try:
-        upcoming = stripe.Invoice.upcoming(customer=customer_id, subscription=sub_id)
-        next_amount = upcoming.amount_due
-    except Exception:
-        pass
-
-    # Map plan from DB (most reliable) or fall back to price lookup
-    plan = tenant.get("subscription_plan") or "starter"
 
     return {
         "has_subscription":      True,
-        "plan":                  plan,
-        "status":                sub.status,
-        "cancel_at_period_end":  sub.cancel_at_period_end,
-        "current_period_start":  sub.current_period_start,
-        "current_period_end":    sub.current_period_end,
+        "plan":                  db_plan,
+        "status":                sub_status,
+        "cancel_at_period_end":  cancel_at_period_end,
+        "current_period_start":  period_start,
+        "current_period_end":    period_end,
         "next_invoice_amount":   next_amount,
         "payment_method":        pm_info,
     }

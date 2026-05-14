@@ -325,15 +325,16 @@ function SubscriptionPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const handlePlanClick = (plan: Plan) => {
-    const currentId = subDetails?.plan
-    const isActive  = subDetails?.status === 'active' && !subDetails?.cancel_at_period_end
+    if (!subDetails) return  // still loading or errored
+    const currentId = subDetails.plan
+    const isActive  = subDetails.status === 'active' && !subDetails.cancel_at_period_end
     if (plan.id === currentId && isActive) return
     setConfirmPlan(plan)
   }
 
   const handleConfirm = async () => {
-    if (!confirmPlan) return
-    const isActiveSub = subDetails?.has_subscription &&
+    if (!confirmPlan || !subDetails) return
+    const isActiveSub = subDetails.has_subscription &&
       subDetails.status === 'active' &&
       !subDetails.cancel_at_period_end
 
@@ -525,11 +526,11 @@ function SubscriptionPage() {
 
       {/* Modals */}
       <AnimatePresence>
-        {confirmPlan && (
+        {confirmPlan && subDetails && (
           <ConfirmModal
             currentPlan={currentPlan}
             newPlan={confirmPlan}
-            subDetails={subDetails!}
+            subDetails={subDetails}
             processing={confirming}
             onConfirm={handleConfirm}
             onCancel={() => setConfirmPlan(null)}
