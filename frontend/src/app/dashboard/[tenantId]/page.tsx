@@ -459,6 +459,23 @@ function DashboardPage() {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.16, ease: 'easeOut' }}
           >
+            <button className="db-mobile-item" style={{ opacity: 0.5, cursor: 'default' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+              </svg>
+              Dashboard
+            </button>
+            <Link
+              href={`/dashboard/${tenantId}/subscription`}
+              className="db-mobile-item"
+              onClick={() => setDbMenuOpen(false)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+              Manage Subscription
+            </Link>
             <button
               className="db-mobile-item"
               onClick={() => { setKbOpen(true); setDbMenuOpen(false) }}
@@ -468,18 +485,6 @@ function DashboardPage() {
                 <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
               </svg>
               Knowledge Base
-            </button>
-            <button
-              className="db-mobile-item"
-              onClick={() => {
-                setDbMenuOpen(false)
-                setTimeout(() => document.getElementById('db-subscription')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-              </svg>
-              Subscription
             </button>
             <div className="db-mobile-divider" />
             <button className="db-mobile-item db-mobile-item-danger" onClick={handleLogout}>
@@ -566,80 +571,79 @@ function DashboardPage() {
         <div id="db-subscription" style={{ marginBottom: 32 }}>
           <div className="db-section-title">Subscription</div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)', overflow: 'hidden' }}>
-
-            {/* Current plan header */}
-            <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                {tenant?.subscription_plan
-                  ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
-                  : 'No active plan'}
-              </span>
-              {tenant?.subscription_status === 'active' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', letterSpacing: '0.06em' }}>
-                  ACTIVE
-                </span>
-              )}
-              {tenant?.subscription_status === 'past_due' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>
-                  PAST DUE
-                </span>
-              )}
-              {tenant?.subscription_status === 'canceled' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>
-                  CANCELED
-                </span>
-              )}
-            </div>
-
-            {/* Inline payment form when a plan is selected */}
-            {payingPlan ? (
-              <PaymentForm
-                tenantId={tenantId}
-                plan={payingPlan.id}
-                planLabel={`${payingPlan.label} ${payingPlan.price}`}
-                onSuccess={handlePaymentSuccess}
-                onCancel={() => setPayingPlan(null)}
-              />
+            {tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due' ? (
+              /* Active plan — show status + link to manage page */
+              <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                    {tenant.subscription_plan
+                      ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
+                      : 'Active Plan'}
+                  </span>
+                  {tenant.subscription_status === 'active' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', letterSpacing: '0.06em' }}>ACTIVE</span>
+                  )}
+                  {tenant.subscription_status === 'canceling' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>CANCELING</span>
+                  )}
+                  {tenant.subscription_status === 'past_due' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>PAST DUE</span>
+                  )}
+                </div>
+                <Link
+                  href={`/dashboard/${tenantId}/subscription`}
+                  style={{
+                    fontSize: 12, fontWeight: 600, color: 'var(--accent)',
+                    textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '7px 14px', border: '1px solid var(--accent)',
+                    borderRadius: 7, background: 'var(--accent-dim)',
+                  }}
+                >
+                  Manage →
+                </Link>
+              </div>
             ) : (
+              /* No active subscription — let them pick a plan and subscribe */
               <>
-                {/* Plan option buttons */}
-                <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {([
-                    { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
-                    { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
-                    { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
-                  ] as const).map(plan => {
-                    const isCurrent = tenant?.subscription_plan === plan.id && tenant?.subscription_status === 'active'
-                    return (
-                      <button
-                        key={plan.id}
-                        onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
-                        style={{
-                          flex: 1, minWidth: 110,
-                          padding: '11px 14px', textAlign: 'left',
-                          border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border-2)'}`,
-                          borderRadius: 8,
-                          background: isCurrent ? 'var(--accent-dim)' : 'var(--bg)',
-                          cursor: isCurrent ? 'default' : 'pointer',
-                          transition: 'opacity 0.2s, border-color 0.2s',
-                        }}
-                      >
-                        <div style={{ fontSize: 13, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>
-                          {plan.label}{isCurrent && ' ✓'}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                          {plan.price} · {plan.minutes}
-                        </div>
-                      </button>
-                    )
-                  })}
+                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', fontSize: 13, color: 'var(--text-3)' }}>
+                  No active plan — choose one to get started.
                 </div>
-
-                <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
-                  {tenant?.subscription_status === 'active'
-                    ? 'Click a different plan to upgrade or downgrade.'
-                    : 'Select a plan to enter your payment details — no redirect.'}
-                </div>
+                {payingPlan ? (
+                  <PaymentForm
+                    tenantId={tenantId}
+                    plan={payingPlan.id}
+                    planLabel={`${payingPlan.label} · ${payingPlan.price}`}
+                    onSuccess={handlePaymentSuccess}
+                    onCancel={() => setPayingPlan(null)}
+                  />
+                ) : (
+                  <>
+                    <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {([
+                        { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
+                        { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
+                        { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
+                      ] as const).map(plan => (
+                        <button
+                          key={plan.id}
+                          onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
+                          style={{
+                            flex: 1, minWidth: 110, padding: '11px 14px', textAlign: 'left',
+                            border: '1px solid var(--border-2)', borderRadius: 8,
+                            background: 'var(--bg)', cursor: 'pointer',
+                            transition: 'border-color 0.15s',
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{plan.label}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{plan.price} · {plan.minutes}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
+                      Select a plan to enter payment details — no redirect needed.
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

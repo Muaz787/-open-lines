@@ -546,6 +546,7 @@ footer {
   width: 100%; padding: 13px 20px;
   font-size: 14px; font-weight: 500; color: var(--text-2);
   background: none; border: none; cursor: pointer; text-align: left;
+  text-decoration: none;
   transition: color 0.15s, background 0.15s;
 }
 .db-mobile-item:hover { color: var(--text); background: var(--border); }

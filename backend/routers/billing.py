@@ -356,3 +356,168 @@ async def sync_subscription(tenant_id: str):
     except stripe.StripeError as e:
         logger.error("Stripe sync failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail=f"Stripe error: {e}")
+
+
+# ── Subscription management endpoints ───────────────────────────────────────
+
+@router.get("/subscription-details/{tenant_id}")
+async def subscription_details(tenant_id: str):
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id      = tenant.get("stripe_subscription_id", "") or ""
+    customer_id = tenant.get("stripe_customer_id", "") or ""
+
+    if not sub_id:
+        return {"has_subscription": False}
+
+    try:
+        sub = stripe.Subscription.retrieve(
+            sub_id,
+            expand=["default_payment_method", "latest_invoice"],
+        )
+    except stripe.InvalidRequestError:
+        return {"has_subscription": False}
+    except stripe.StripeError as e:
+        logger.error("subscription_details stripe error for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Stripe error")
+
+    # Payment method: try subscription default, then customer default
+    pm = sub.default_payment_method
+    if not pm and customer_id:
+        try:
+            cust = stripe.Customer.retrieve(
+                customer_id,
+                expand=["invoice_settings.default_payment_method"],
+            )
+            pm = cust.invoice_settings.default_payment_method if cust.invoice_settings else None
+        except Exception:
+            pass
+
+    pm_info = None
+    if pm and hasattr(pm, "card") and pm.card:
+        pm_info = {
+            "brand":     pm.card.brand,
+            "last4":     pm.card.last4,
+            "exp_month": pm.card.exp_month,
+            "exp_year":  pm.card.exp_year,
+        }
+
+    # Upcoming invoice amount
+    next_amount = None
+    try:
+        upcoming = stripe.Invoice.upcoming(customer=customer_id, subscription=sub_id)
+        next_amount = upcoming.amount_due
+    except Exception:
+        pass
+
+    # Map plan from DB (most reliable) or fall back to price lookup
+    plan = tenant.get("subscription_plan") or "starter"
+
+    return {
+        "has_subscription":      True,
+        "plan":                  plan,
+        "status":                sub.status,
+        "cancel_at_period_end":  sub.cancel_at_period_end,
+        "current_period_start":  sub.current_period_start,
+        "current_period_end":    sub.current_period_end,
+        "next_invoice_amount":   next_amount,
+        "payment_method":        pm_info,
+    }
+
+
+@router.get("/invoices/{tenant_id}")
+async def list_invoices(tenant_id: str):
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id", "") or ""
+    if not customer_id:
+        return []
+
+    try:
+        invoices = stripe.Invoice.list(customer=customer_id, limit=12)
+    except stripe.StripeError as e:
+        logger.error("list_invoices stripe error for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Stripe error")
+
+    result = []
+    for inv in invoices.data:
+        result.append({
+            "id":                  inv.id,
+            "amount_paid":         inv.amount_paid,
+            "amount_due":          inv.amount_due,
+            "currency":            inv.currency,
+            "status":              inv.status,
+            "created":             inv.created,
+            "invoice_pdf":         inv.invoice_pdf,
+            "hosted_invoice_url":  inv.hosted_invoice_url,
+        })
+    return result
+
+
+@router.post("/portal/{tenant_id}")
+async def customer_portal(tenant_id: str):
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id", "") or ""
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer linked to this tenant")
+
+    return_url = f"{FRONTEND_URL}/dashboard/{tenant_id}/subscription"
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url,
+        )
+    except stripe.StripeError as e:
+        logger.error("Customer portal creation failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Could not open billing portal")
+
+    return {"url": session.url}
+
+
+@router.post("/cancel/{tenant_id}")
+async def cancel_subscription(tenant_id: str):
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id = tenant.get("stripe_subscription_id", "") or ""
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    try:
+        stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+    except stripe.StripeError as e:
+        logger.error("Cancel subscription failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to cancel subscription")
+
+    await db.update_tenant(tenant_id, {"subscription_status": "canceling"})
+    logger.info("Subscription set to cancel at period end for tenant %s", tenant_id)
+    return {"status": "canceling"}
+
+
+@router.post("/reactivate/{tenant_id}")
+async def reactivate_subscription(tenant_id: str):
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id = tenant.get("stripe_subscription_id", "") or ""
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No subscription found")
+
+    try:
+        stripe.Subscription.modify(sub_id, cancel_at_period_end=False)
+    except stripe.StripeError as e:
+        logger.error("Reactivate subscription failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to reactivate subscription")
+
+    await db.update_tenant(tenant_id, {"subscription_status": "active"})
+    logger.info("Subscription reactivated for tenant %s", tenant_id)
+    return {"status": "active"}
