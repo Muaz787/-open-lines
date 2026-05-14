@@ -185,6 +185,7 @@ function DashboardPage() {
   const [kbOpen, setKbOpen]                 = useState(false)
 
   const [billingLoading, setBillingLoading] = useState<string | null>(null)
+  const [dbMenuOpen, setDbMenuOpen]         = useState(false)
 
   const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
   const [appointments, setAppointments]     = useState<Appointment[]>([])
@@ -418,17 +419,12 @@ function DashboardPage() {
           </svg>
           <span className="logo-name" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Open Lines</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+        {/* Desktop nav actions */}
+        <div className="db-nav-actions">
           <button
             onClick={() => setKbOpen(true)}
-            style={{
-              fontSize: 12, color: 'var(--text-2)', background: 'none',
-              border: '1px solid var(--border-2)', borderRadius: 6,
-              padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'border-color 0.15s, color 0.15s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-3)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)' }}
+            className="db-nav-btn"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
@@ -436,18 +432,72 @@ function DashboardPage() {
             </svg>
             Knowledge Base
           </button>
-          <button
-            onClick={handleLogout}
-            style={{
-              fontSize: 12, color: 'var(--text-3)', background: 'none',
-              border: '1px solid var(--border-2)', borderRadius: 6,
-              padding: '6px 12px', cursor: 'pointer',
-            }}
-          >
-            Sign out
-          </button>
+          <button onClick={handleLogout} className="db-nav-btn db-nav-btn-ghost">Sign out</button>
         </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className="db-hamburger"
+          onClick={() => setDbMenuOpen(o => !o)}
+          aria-label={dbMenuOpen ? 'Close menu' : 'Open menu'}
+        >
+          {dbMenuOpen ? (
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+          )}
+        </button>
       </div>
+
+      {/* Mobile dropdown menu */}
+      <AnimatePresence>
+        {dbMenuOpen && (
+          <motion.div
+            className="db-mobile-menu"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+          >
+            <button
+              className="db-mobile-item"
+              onClick={() => { setKbOpen(true); setDbMenuOpen(false) }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+              Knowledge Base
+            </button>
+            <button
+              className="db-mobile-item"
+              onClick={() => {
+                setDbMenuOpen(false)
+                setTimeout(() => document.getElementById('db-subscription')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+              Subscription
+            </button>
+            <div className="db-mobile-divider" />
+            <button className="db-mobile-item db-mobile-item-danger" onClick={handleLogout}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Sign out
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Business identity strip ── */}
       <div className="db-header">
@@ -520,7 +570,7 @@ function DashboardPage() {
         )}
 
         {/* ── Billing / Plan ── */}
-        <div style={{ marginBottom: 32 }}>
+        <div id="db-subscription" style={{ marginBottom: 32 }}>
           <div className="db-section-title">Subscription</div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)', overflow: 'hidden' }}>
 
