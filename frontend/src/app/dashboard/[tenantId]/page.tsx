@@ -270,9 +270,20 @@ function DashboardPage() {
       setTimeout(() => setCalToast(null), 5000)
     } else if (billingParam === 'success') {
       setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
-      setTimeout(() => setCalToast(null), 5000)
-      // Re-fetch tenant so plan badge updates without a hard reload
-      fetch(`${API}/onboarding/status/${tenantId}`).then(r => r.ok ? r.json() : null).then(d => d && setTenant(d))
+      setTimeout(() => setCalToast(null), 6000)
+      // Webhook may arrive a few seconds after Stripe redirects back — poll until plan is set
+      const pollTenant = (attemptsLeft: number) => {
+        fetch(`${API}/onboarding/status/${tenantId}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (!d) return
+            setTenant(d)
+            if (!d.subscription_status || d.subscription_status === 'none' || d.subscription_status === 'incomplete') {
+              if (attemptsLeft > 0) setTimeout(() => pollTenant(attemptsLeft - 1), 2000)
+            }
+          })
+      }
+      pollTenant(5) // retry up to 5× every 2s (10s total)
     } else if (billingParam === 'canceled') {
       setCalToast('Checkout canceled — no charge was made.')
       setTimeout(() => setCalToast(null), 4000)
