@@ -225,8 +225,7 @@ async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest
 
 @router.post("/repair/{tenant_id}")
 async def calendar_repair(tenant_id: str):
-    """Force-update the Vapi assistant tool URLs to the current APP_BACKEND_URL.
-    Use this whenever tool URLs get stale (e.g. after a ngrok session or domain change)."""
+    """Force-update the Vapi assistant tool URLs to the current APP_BACKEND_URL."""
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -239,19 +238,25 @@ async def calendar_repair(tenant_id: str):
     if not assistant_id:
         raise HTTPException(status_code=400, detail="No Vapi assistant on this tenant")
 
-    try:
-        current = await vapi.get_assistant(assistant_id)
-        messages = (current.get("model") or {}).get("messages") or []
-        tools = vapi.build_calendar_tools(tenant_id) if tenant.get("google_refresh_token") \
-            else [vapi.build_caller_lookup_tool(tenant_id)]
-        await vapi.update_assistant(assistant_id, {
-            "model": {
-                "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
-                "tools": tools, "messages": messages,
-            },
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Vapi update failed: {e}")
+    tools = vapi.build_calendar_tools(tenant_id) if tenant.get("google_refresh_token") \
+        else [vapi.build_caller_lookup_tool(tenant_id)]
+
+    # Try tools-only patch first (avoids any issues with messages format)
+    import httpx as _httpx
+    async with _httpx.AsyncClient() as client:
+        res = await client.patch(
+            f"https://api.vapi.ai/assistant/{assistant_id}",
+            headers=vapi._headers(),
+            json={"model": {"tools": tools}},
+            timeout=30.0,
+        )
+        if res.status_code != 200:
+            return {
+                "status": "error",
+                "vapi_status": res.status_code,
+                "vapi_error": res.text,
+                "attempted_urls": {t["function"]["name"]: t["server"]["url"] for t in tools},
+            }
 
     tool_urls = {t["function"]["name"]: t["server"]["url"] for t in tools}
     logger.info("Repaired Vapi tool URLs for tenant %s: %s", tenant_id, tool_urls)
