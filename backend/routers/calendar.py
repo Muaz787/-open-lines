@@ -223,6 +223,45 @@ async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest
 # GET /calendar/appointments/{tenant_id}
 # ---------------------------------------------------------------------------
 
+@router.post("/repair/{tenant_id}")
+async def calendar_repair(tenant_id: str):
+    """Force-update the Vapi assistant tool URLs to the current APP_BACKEND_URL.
+    Use this whenever tool URLs get stale (e.g. after a ngrok session or domain change)."""
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tenant lookup failed: {e}")
+
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    assistant_id = tenant.get("vapi_assistant_id")
+    if not assistant_id:
+        raise HTTPException(status_code=400, detail="No Vapi assistant on this tenant")
+
+    try:
+        current = await vapi.get_assistant(assistant_id)
+        messages = (current.get("model") or {}).get("messages") or []
+        tools = vapi.build_calendar_tools(tenant_id) if tenant.get("google_refresh_token") \
+            else [vapi.build_caller_lookup_tool(tenant_id)]
+        await vapi.update_assistant(assistant_id, {
+            "model": {
+                "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
+                "tools": tools, "messages": messages,
+            },
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vapi update failed: {e}")
+
+    tool_urls = {t["function"]["name"]: t["server"]["url"] for t in tools}
+    logger.info("Repaired Vapi tool URLs for tenant %s: %s", tenant_id, tool_urls)
+    return {"status": "repaired", "tool_urls": tool_urls}
+
+
+# ---------------------------------------------------------------------------
+# GET /calendar/appointments/{tenant_id}
+# ---------------------------------------------------------------------------
+
 @router.get("/appointments/{tenant_id}")
 async def get_appointments(tenant_id: str):
     try:
