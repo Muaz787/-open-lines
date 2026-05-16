@@ -318,6 +318,10 @@ async def calendar_debug(tenant_id: str):
             result["vapi_tool_names"] = tool_names
             result["has_check_availability"] = "check_availability" in tool_names
             result["has_book_appointment"] = "book_appointment" in tool_names
+            result["vapi_tool_urls"] = {
+                t.get("function", {}).get("name"): (t.get("server") or {}).get("url")
+                for t in tools
+            }
         except Exception as e:
             result["vapi_tools_error"] = str(e)
 
