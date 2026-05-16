@@ -1,10 +1,14 @@
 import os
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
 from services import calendar as cal_svc
+from services.calendar import CalendarTokenExpiredError
+import httpx
 from services import vapi
 from db import supabase as db
 
@@ -227,3 +231,61 @@ async def get_appointments(tenant_id: str):
         logger.error("Appointments fetch failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Appointments fetch failed")
     return appts
+
+
+# ---------------------------------------------------------------------------
+# GET /calendar/debug/{tenant_id}  — diagnose exactly where the failure is
+# ---------------------------------------------------------------------------
+
+@router.get("/debug/{tenant_id}")
+async def calendar_debug(tenant_id: str):
+    result: dict = {}
+
+    # Step 1: tenant + token
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        return {"step": "tenant_lookup", "error": str(e)}
+
+    refresh_token = (tenant or {}).get("google_refresh_token")
+    result["has_refresh_token"] = bool(refresh_token)
+    result["timezone"] = tenant.get("calendar_timezone") or "America/Toronto"
+    if not refresh_token:
+        return {**result, "step": "no_token", "error": "google_refresh_token is null in DB"}
+
+    # Step 2: exchange refresh token for access token
+    try:
+        access_token = await cal_svc._access_token(refresh_token)
+        result["access_token_ok"] = True
+    except CalendarTokenExpiredError as e:
+        result["access_token_ok"] = False
+        return {**result, "step": "access_token", "error": f"CalendarTokenExpiredError: {e}"}
+    except Exception as e:
+        result["access_token_ok"] = False
+        return {**result, "step": "access_token", "error": str(e)}
+
+    # Step 3: events.list for today
+    tz = ZoneInfo(result["timezone"])
+    today = datetime.now(tz).date()
+    time_min = datetime(today.year, today.month, today.day, 9,  0, tzinfo=tz).isoformat()
+    time_max = datetime(today.year, today.month, today.day, 17, 0, tzinfo=tz).isoformat()
+    try:
+        async with httpx.AsyncClient() as http:
+            res = await http.get(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"timeMin": time_min, "timeMax": time_max, "singleEvents": "true", "orderBy": "startTime"},
+                timeout=15.0,
+            )
+        result["events_list_status"] = res.status_code
+        if res.status_code == 200:
+            result["events_list_ok"] = True
+            result["event_count"] = len(res.json().get("items", []))
+        else:
+            result["events_list_ok"] = False
+            result["events_list_error"] = res.text
+    except Exception as e:
+        result["events_list_ok"] = False
+        result["events_list_error"] = str(e)
+
+    return result
