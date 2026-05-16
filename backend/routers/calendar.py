@@ -108,10 +108,11 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
             tools = vapi.build_calendar_tools(tenant_id)
             # Fetch current assistant to get existing system prompt
             current = await vapi.get_assistant(assistant_id)
-            messages = (current.get("model") or {}).get("messages") or []
+            raw_messages = (current.get("model") or {}).get("messages") or []
+            # Strip to role+content only — Vapi GET may return extra metadata fields
+            messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
             if messages and messages[0].get("role") == "system":
                 existing_prompt = messages[0]["content"]
-                # Remove any previously appended calendar note, then re-append fresh
                 if "CALENDAR BOOKING TOOLS AVAILABLE" in existing_prompt:
                     existing_prompt = existing_prompt[:existing_prompt.index("\n\nCALENDAR BOOKING TOOLS AVAILABLE")]
                 messages[0]["content"] = existing_prompt + _CALENDAR_NOTE
@@ -170,7 +171,8 @@ async def calendar_disconnect(tenant_id: str):
     if assistant_id:
         try:
             current = await vapi.get_assistant(assistant_id)
-            messages = (current.get("model") or {}).get("messages") or []
+            raw_messages = (current.get("model") or {}).get("messages") or []
+            messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
             if messages and messages[0].get("role") == "system":
                 existing_prompt = messages[0]["content"]
                 if "CALENDAR BOOKING TOOLS AVAILABLE" in existing_prompt:
@@ -247,7 +249,7 @@ async def calendar_repair(tenant_id: str):
         res = await client.patch(
             f"https://api.vapi.ai/assistant/{assistant_id}",
             headers=vapi._headers(),
-            json={"model": {"provider": "openai", "tools": tools}},
+            json={"model": {"provider": "openai", "model": "gpt-4o", "tools": tools}},
             timeout=30.0,
         )
         if res.status_code != 200:
