@@ -146,19 +146,22 @@ async def list_free_slots(
     access = await _access_token(refresh_token)
     headers = {"Authorization": f"Bearer {access}"}
 
+    # Use events.list (authorized under calendar.events scope) instead of
+    # freeBusy (which requires calendar.readonly and would need an extra scope).
     async with httpx.AsyncClient() as http:
-        res = await http.post(
-            f"{_CAL_BASE}/freeBusy",
+        res = await http.get(
+            f"{_CAL_BASE}/calendars/primary/events",
             headers=headers,
-            json={
-                "timeMin": window_start.isoformat(),
-                "timeMax": window_end.isoformat(),
-                "items":   [{"id": "primary"}],
+            params={
+                "timeMin":      window_start.isoformat(),
+                "timeMax":      window_end.isoformat(),
+                "singleEvents": "true",
+                "orderBy":      "startTime",
             },
             timeout=15.0,
         )
         res.raise_for_status()
-        raw_busy = res.json().get("calendars", {}).get("primary", {}).get("busy", [])
+        items = res.json().get("items", [])
 
     # Normalise exclude_range to local tz once (avoids repeated conversions below)
     ex_start_tz = ex_end_tz = None
@@ -167,9 +170,23 @@ async def list_free_slots(
         ex_end_tz   = exclude_range[1].astimezone(tz)
 
     busy: list[tuple[datetime, datetime]] = []
-    for bp in raw_busy:
-        b_start = datetime.fromisoformat(bp["start"].replace("Z", "+00:00")).astimezone(tz)
-        b_end   = datetime.fromisoformat(bp["end"].replace("Z", "+00:00")).astimezone(tz)
+    for event in items:
+        start_info = event.get("start", {})
+        end_info   = event.get("end", {})
+        start_str  = start_info.get("dateTime") or start_info.get("date")
+        end_str    = end_info.get("dateTime")   or end_info.get("date")
+        if not start_str or not end_str:
+            continue
+        try:
+            # All-day events have date-only strings — treat them as full-day blocks
+            if "T" not in start_str:
+                b_start = datetime.fromisoformat(start_str).replace(hour=0,  minute=0,  tzinfo=tz)
+                b_end   = datetime.fromisoformat(end_str).replace(  hour=23, minute=59, tzinfo=tz)
+            else:
+                b_start = datetime.fromisoformat(start_str.replace("Z", "+00:00")).astimezone(tz)
+                b_end   = datetime.fromisoformat(end_str.replace(  "Z", "+00:00")).astimezone(tz)
+        except Exception:
+            continue
         # Drop this busy period if it matches the caller's existing appointment
         # (±5 min tolerance handles DST edge cases and calendar rounding)
         if ex_start_tz is not None:
