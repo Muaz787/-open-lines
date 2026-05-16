@@ -247,7 +247,7 @@ async def calendar_repair(tenant_id: str):
         res = await client.patch(
             f"https://api.vapi.ai/assistant/{assistant_id}",
             headers=vapi._headers(),
-            json={"model": {"tools": tools}},
+            json={"model": {"provider": "openai", "tools": tools}},
             timeout=30.0,
         )
         if res.status_code != 200:

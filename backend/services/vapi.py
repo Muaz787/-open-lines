@@ -8,7 +8,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
-_raw_backend = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app")
+_raw_backend = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app").strip()
 APP_BACKEND_URL = _raw_backend if _raw_backend.startswith("http") else f"https://{_raw_backend}"
 VAPI_BASE_URL = "https://api.vapi.ai"
 
