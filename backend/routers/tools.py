@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException
 from services import calendar as cal_svc
+from services.calendar import CalendarTokenExpiredError
 from services import telephony
 from db import supabase as db
 
@@ -169,6 +170,13 @@ async def check_availability(tenant_id: str, body: dict):
             period=period,
             exclude_range=exclude_range,
         )
+    except CalendarTokenExpiredError:
+        logger.error("tools/availability: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+        try:
+            await db.update_tenant(tenant_id, {"google_refresh_token": None})
+        except Exception:
+            pass
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
     except Exception as e:
         logger.error("tools/availability: calendar query failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
@@ -251,6 +259,13 @@ async def book_appointment(tenant_id: str, body: dict):
                 try:
                     await cal_svc.cancel_event(refresh_token, old_event_id)
                     logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
+                except CalendarTokenExpiredError:
+                    logger.error("tools/book: calendar token expired during reschedule for tenant %s — auto-disconnecting", tenant_id)
+                    try:
+                        await db.update_tenant(tenant_id, {"google_refresh_token": None})
+                    except Exception:
+                        pass
+                    return _result(tc_id, _CALENDAR_ERROR_MSG)
                 except Exception as e:
                     logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
 
@@ -273,6 +288,13 @@ async def book_appointment(tenant_id: str, body: dict):
             "Booked appointment for tenant %s: %s on %s at %s (event %s)",
             tenant_id, service, date_str, time_str, event.get("id"),
         )
+    except CalendarTokenExpiredError:
+        logger.error("tools/book: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+        try:
+            await db.update_tenant(tenant_id, {"google_refresh_token": None})
+        except Exception:
+            pass
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
     except Exception as e:
         logger.error("tools/book: calendar event creation failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)

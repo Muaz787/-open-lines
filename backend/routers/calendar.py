@@ -74,6 +74,13 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
         logger.error("No refresh_token in Google response for tenant %s", tenant_id)
         return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
 
+    # Validate the token works before storing — catches bad tokens from Testing-mode
+    # expiry edge cases or misconfigured OAuth apps before they silently break calls.
+    token_ok = await cal_svc.verify_token(refresh_token)
+    if not token_ok:
+        logger.error("Token verification failed immediately after exchange for tenant %s — rejecting", tenant_id)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:

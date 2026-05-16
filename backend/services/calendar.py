@@ -16,6 +16,10 @@ _CAL_BASE    = "https://www.googleapis.com/calendar/v3"
 _SCOPES      = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly"
 _SLOT_STEP   = 30  # minutes between candidate slots
 
+
+class CalendarTokenExpiredError(Exception):
+    """Google refresh token has been revoked, expired, or is otherwise invalid."""
+
 # Business hour window per period (local time, inclusive start, exclusive end)
 _PERIOD_HOURS: dict[str, tuple[int, int]] = {
     "morning":   (9, 12),
@@ -76,8 +80,39 @@ async def _access_token(refresh_token: str) -> str:
             "client_secret": GOOGLE_CLIENT_SECRET,
             "grant_type":    "refresh_token",
         }, timeout=15.0)
+        if res.status_code == 400:
+            try:
+                err = res.json().get("error", "")
+            except Exception:
+                err = ""
+            if err in ("invalid_grant", "token_revoked"):
+                logger.warning("Google refresh token is expired/revoked — raising CalendarTokenExpiredError")
+                raise CalendarTokenExpiredError(f"Google token invalid: {err}")
         res.raise_for_status()
         return res.json()["access_token"]
+
+
+async def verify_token(refresh_token: str) -> bool:
+    """Test that a refresh token can successfully obtain an access token and
+    reach the Calendar API. Called right after OAuth exchange to catch bad tokens
+    before they get stored."""
+    try:
+        access = await _access_token(refresh_token)
+        async with httpx.AsyncClient() as http:
+            res = await http.get(
+                f"{_CAL_BASE}/users/me/calendarList?maxResults=1",
+                headers={"Authorization": f"Bearer {access}"},
+                timeout=8.0,
+            )
+            ok = res.status_code == 200
+            if not ok:
+                logger.warning("verify_token: calendarList returned %s", res.status_code)
+            return ok
+    except CalendarTokenExpiredError:
+        return False
+    except Exception as e:
+        logger.warning("verify_token failed: %s", e)
+        return False
 
 
 def _fmt_slot(dt: datetime) -> str:
