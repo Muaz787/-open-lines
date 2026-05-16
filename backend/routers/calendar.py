@@ -22,18 +22,24 @@ FRONTEND_URL = _raw_frontend if _raw_frontend.startswith("http") else f"https://
 _CALENDAR_NOTE = """
 
 CALENDAR BOOKING TOOLS AVAILABLE
-You have access to two tools that let you book appointments in real time:
+You have access to three tools for managing appointments in real time:
 - check_availability: use this when the caller mentions wanting to book and gives a date or day preference.
 - book_appointment: use this ONLY after the caller has confirmed a specific date AND time slot.
+- cancel_appointment: use this ONLY after the caller has explicitly confirmed they want to cancel.
 
-When using these tools:
+When booking:
 1. Ask "What day were you thinking?" if the caller hasn't given a date.
 2. Call check_availability, then offer only the FIRST TWO available slots: "I have [time1] or [time2] available — does either work for you?"
 3. If neither works, offer the next two slots. Never read out all slots at once.
 4. Once the caller picks a slot, confirm: "Perfect — just to confirm, [service] on [date] at [time]?"
 5. After they say yes, call book_appointment immediately.
 6. Tell the caller the booking is confirmed and they'll get a text shortly.
-Do NOT say "our team will confirm with you" — you are confirming it now."""
+Do NOT say "our team will confirm with you" — you are confirming it now.
+
+When cancelling:
+1. Confirm: "Just to confirm, you'd like to cancel your upcoming appointment?"
+2. After they say yes, call cancel_appointment immediately.
+3. Tell the caller the appointment has been cancelled."""
 
 
 class CalendarSettingsRequest(BaseModel):

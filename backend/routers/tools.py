@@ -351,3 +351,77 @@ async def book_appointment(tenant_id: str, body: dict):
         "You'll receive a text confirmation shortly."
     )
     return _result(tc_id, confirmation)
+
+
+# ---------------------------------------------------------------------------
+# POST /tools/{tenant_id}/cancel
+# ---------------------------------------------------------------------------
+
+@router.post("/{tenant_id}/cancel")
+async def cancel_appointment(tenant_id: str, body: dict):
+    try:
+        tc_id, _, _ = _parse_tool_call(body)
+    except Exception as e:
+        logger.error("tools/cancel: bad payload for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=400, detail="Malformed tool-call payload")
+
+    msg = body.get("message", body)
+    caller_phone = (msg.get("call") or {}).get("customer", {}).get("number", "")
+
+    if not caller_phone:
+        return _result(tc_id, "I wasn't able to find your phone number to look up the appointment. Could you confirm the number on file?")
+
+    try:
+        appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
+    except Exception as e:
+        logger.error("tools/cancel: appointment lookup failed for tenant %s: %s", tenant_id, e)
+        return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
+
+    if not appt:
+        return _result(tc_id, "I don't see any upcoming appointment for your number. Is it possible it's under a different phone number?")
+
+    # Cancel Google Calendar event
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        logger.error("tools/cancel: tenant lookup failed %s: %s", tenant_id, e)
+        return _result(tc_id, "I had trouble processing the cancellation. Please call back and we'll get that sorted.")
+
+    refresh_token = (tenant or {}).get("google_refresh_token")
+    event_id = appt.get("google_event_id", "")
+
+    if refresh_token and event_id:
+        try:
+            await cal_svc.cancel_event(refresh_token, event_id)
+        except CalendarTokenExpiredError:
+            logger.error("tools/cancel: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+            try:
+                await db.update_tenant(tenant_id, {"google_refresh_token": None})
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning("tools/cancel: could not delete calendar event %s: %s", event_id, e)
+
+    # Mark appointment cancelled in DB
+    try:
+        await db.update_appointment(appt["id"], {**appt, "status": "cancelled"})
+    except Exception as e:
+        logger.error("tools/cancel: failed to update appointment status for tenant %s: %s", tenant_id, e)
+
+    service  = appt.get("service", "appointment")
+    appt_dt_raw = appt.get("appointment_datetime", "")
+    friendly = appt_dt_raw
+    try:
+        tz_str  = (tenant or {}).get("calendar_timezone") or "America/Toronto"
+        appt_dt = datetime.fromisoformat(appt_dt_raw)
+        if appt_dt.tzinfo is None:
+            appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
+        appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
+        h    = appt_dt.hour % 12 or 12
+        ampm = "AM" if appt_dt.hour < 12 else "PM"
+        friendly = f"{appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
+    except Exception:
+        pass
+
+    logger.info("Cancelled appointment %s for tenant %s caller %s", appt["id"], tenant_id, caller_phone)
+    return _result(tc_id, f"Done — your {service} on {friendly} has been cancelled. Is there anything else I can help you with?")

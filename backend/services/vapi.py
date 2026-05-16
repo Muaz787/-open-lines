@@ -335,6 +335,19 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
             },
             "server": {"url": f"{base}/book", "timeoutSeconds": 20},
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "cancel_appointment",
+                "description": (
+                    "Cancel the caller's upcoming appointment. "
+                    "Call this ONLY after the caller has explicitly confirmed they want to cancel. "
+                    "Do not call this speculatively."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+            "server": {"url": f"{base}/cancel", "timeoutSeconds": 15},
+        },
     ]
 
 
