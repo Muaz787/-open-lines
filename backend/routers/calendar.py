@@ -288,4 +288,37 @@ async def calendar_debug(tenant_id: str):
         result["events_list_ok"] = False
         result["events_list_error"] = str(e)
 
+    # Step 4: run list_free_slots end-to-end (same path as the tool call)
+    tomorrow = datetime.now(tz).date()
+    from datetime import timedelta
+    tomorrow_str = (datetime.now(tz) + timedelta(days=1)).strftime("%Y-%m-%d")
+    try:
+        slots = await cal_svc.list_free_slots(
+            refresh_token=refresh_token,
+            date_str=tomorrow_str,
+            duration_minutes=tenant.get("appointment_duration_minutes") or 60,
+            timezone=result["timezone"],
+            period="any",
+        )
+        result["slots_test_ok"] = True
+        result["slots_date"] = tomorrow_str
+        result["slots"] = slots
+    except Exception as e:
+        result["slots_test_ok"] = False
+        result["slots_error"] = str(e)
+
+    # Step 5: check what tools Vapi assistant has configured
+    assistant_id = tenant.get("vapi_assistant_id")
+    result["vapi_assistant_id"] = assistant_id
+    if assistant_id:
+        try:
+            current = await vapi.get_assistant(assistant_id)
+            tools = (current.get("model") or {}).get("tools") or []
+            tool_names = [t.get("function", {}).get("name") for t in tools]
+            result["vapi_tool_names"] = tool_names
+            result["has_check_availability"] = "check_availability" in tool_names
+            result["has_book_appointment"] = "book_appointment" in tool_names
+        except Exception as e:
+            result["vapi_tools_error"] = str(e)
+
     return result
