@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _AUTH_URL    = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_URL   = "https://oauth2.googleapis.com/token"
 _CAL_BASE    = "https://www.googleapis.com/calendar/v3"
-_SCOPES      = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly"
+_SCOPES      = "https://www.googleapis.com/auth/calendar.events"
 _SLOT_STEP   = 30  # minutes between candidate slots
 
 
@@ -100,13 +100,13 @@ async def verify_token(refresh_token: str) -> bool:
         access = await _access_token(refresh_token)
         async with httpx.AsyncClient() as http:
             res = await http.get(
-                f"{_CAL_BASE}/users/me/calendarList?maxResults=1",
+                f"{_CAL_BASE}/calendars/primary/events?maxResults=1",
                 headers={"Authorization": f"Bearer {access}"},
                 timeout=8.0,
             )
             ok = res.status_code == 200
             if not ok:
-                logger.warning("verify_token: calendarList returned %s", res.status_code)
+                logger.warning("verify_token: events.list returned %s", res.status_code)
             return ok
     except CalendarTokenExpiredError:
         return False
