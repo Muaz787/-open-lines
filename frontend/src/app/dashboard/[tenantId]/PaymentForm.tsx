@@ -1,10 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+import { useState, useEffect, useRef } from 'react'
+import { loadStripe, StripeCardNumberElement, PaymentRequest } from '@stripe/stripe-js'
 import {
   Elements,
-  PaymentElement,
+  CardNumberElement,
+  CardExpiryElement,
+  CardCvcElement,
+  PaymentRequestButtonElement,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js'
@@ -12,42 +15,112 @@ import {
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '')
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+const CARD_STYLE = {
+  style: {
+    base: {
+      color: '#DDE8F2',
+      fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+      fontSize: '14px',
+      fontWeight: '400',
+      letterSpacing: '0.01em',
+      '::placeholder': { color: '#445566' },
+    },
+    invalid: { color: '#FF453A' },
+  },
+}
+
 function CheckoutForm({
   tenantId,
   subscriptionId,
+  clientSecret,
   planLabel,
   onSuccess,
   onCancel,
 }: {
   tenantId: string
   subscriptionId: string
+  clientSecret: string
   planLabel: string
   onSuccess: () => void
   onCancel: () => void
 }) {
   const stripe   = useStripe()
   const elements = useElements()
-  const [error, setError]         = useState<string | null>(null)
-  const [processing, setProcessing] = useState(false)
+
+  const [cardholderName, setCardholderName] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ number?: string; expiry?: string; cvc?: string }>({})
+  const [formError, setFormError]     = useState<string | null>(null)
+  const [processing, setProcessing]   = useState(false)
+
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null)
+  const [prReady, setPrReady]               = useState(false)
+
+  // Keep ref so the paymentmethod closure always has the latest secret
+  const secretRef = useRef(clientSecret)
+  useEffect(() => { secretRef.current = clientSecret }, [clientSecret])
+
+  useEffect(() => {
+    if (!stripe) return
+    const pr = stripe.paymentRequest({
+      country: 'CA',
+      currency: 'cad',
+      total: { label: `Open Lines — ${planLabel}`, amount: 0 },
+      requestPayerName: true,
+      requestPayerEmail: true,
+    })
+    pr.canMakePayment().then(result => { if (result) setPrReady(true) })
+
+    pr.on('paymentmethod', async (ev) => {
+      const { error } = await stripe.confirmCardPayment(
+        secretRef.current,
+        { payment_method: ev.paymentMethod.id },
+        { handleActions: false },
+      )
+      if (error) {
+        ev.complete('fail')
+        setFormError(error.message ?? 'Payment failed.')
+        return
+      }
+      ev.complete('success')
+      try {
+        await fetch(`${API}/billing/confirm-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenantId, subscription_id: subscriptionId }),
+        })
+      } catch {}
+      onSuccess()
+    })
+
+    setPaymentRequest(pr)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stripe])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!stripe || !elements) return
+    const cardNumber = elements.getElement(CardNumberElement)
+    if (!cardNumber) return
+    if (!cardholderName.trim()) {
+      setFormError('Please enter the cardholder name.')
+      return
+    }
     setProcessing(true)
-    setError(null)
+    setFormError(null)
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required',
+    const { error } = await stripe.confirmCardPayment(secretRef.current, {
+      payment_method: {
+        card: cardNumber as StripeCardNumberElement,
+        billing_details: { name: cardholderName.trim() },
+      },
     })
 
-    if (confirmError) {
-      setError(confirmError.message ?? 'Payment failed — please try again.')
+    if (error) {
+      setFormError(error.message ?? 'Payment failed — please try again.')
       setProcessing(false)
       return
     }
 
-    // Immediately sync subscription status to DB (don't wait for webhook)
     try {
       await fetch(`${API}/billing/confirm-payment`, {
         method: 'POST',
@@ -55,66 +128,98 @@ function CheckoutForm({
         body: JSON.stringify({ tenant_id: tenantId, subscription_id: subscriptionId }),
       })
     } catch {}
-
     onSuccess()
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <PaymentElement options={{ layout: 'tabs' }} />
+    <form onSubmit={handleSubmit} className="pay-form">
 
-      {error && (
-        <div style={{
-          fontSize: 12, color: '#FF3B30',
-          padding: '9px 12px',
-          background: 'rgba(255,59,48,.08)',
-          border: '1px solid rgba(255,59,48,.18)',
-          borderRadius: 6,
-        }}>
-          {error}
-        </div>
+      {/* Apple Pay / Google Pay */}
+      {prReady && paymentRequest && (
+        <>
+          <PaymentRequestButtonElement
+            options={{
+              paymentRequest,
+              style: {
+                paymentRequestButton: { type: 'default', theme: 'dark', height: '44px' },
+              },
+            }}
+          />
+          <div className="pay-divider"><span>or pay with card</span></div>
+        </>
       )}
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-        <button
-          type="submit"
-          disabled={!stripe || processing}
-          style={{
-            flex: 1,
-            padding: '12px 20px',
-            background: processing ? 'var(--accent)' : 'var(--text)',
-            color: 'var(--bg)',
-            border: 'none',
-            borderRadius: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: !stripe || processing ? 'default' : 'pointer',
-            opacity: !stripe || processing ? 0.7 : 1,
-            transition: 'opacity 0.2s',
-          }}
-        >
+      {/* Cardholder name */}
+      <div className="pay-field">
+        <label className="pay-label">Cardholder name</label>
+        <input
+          className="pay-input"
+          type="text"
+          placeholder="Jane Smith"
+          value={cardholderName}
+          onChange={e => setCardholderName(e.target.value)}
+          autoComplete="cc-name"
+        />
+      </div>
+
+      {/* Card number */}
+      <div className="pay-field">
+        <label className="pay-label">Card number</label>
+        <div className="pay-element-wrap">
+          <CardNumberElement
+            options={{ ...CARD_STYLE, showIcon: true }}
+            onChange={e => setFieldErrors(prev => ({ ...prev, number: e.error?.message }))}
+          />
+        </div>
+        {fieldErrors.number && <span className="pay-field-err">{fieldErrors.number}</span>}
+      </div>
+
+      {/* Expiry + CVC */}
+      <div className="pay-row">
+        <div className="pay-field">
+          <label className="pay-label">Expiry date</label>
+          <div className="pay-element-wrap">
+            <CardExpiryElement
+              options={CARD_STYLE}
+              onChange={e => setFieldErrors(prev => ({ ...prev, expiry: e.error?.message }))}
+            />
+          </div>
+          {fieldErrors.expiry && <span className="pay-field-err">{fieldErrors.expiry}</span>}
+        </div>
+        <div className="pay-field">
+          <label className="pay-label">CVC</label>
+          <div className="pay-element-wrap">
+            <CardCvcElement
+              options={CARD_STYLE}
+              onChange={e => setFieldErrors(prev => ({ ...prev, cvc: e.error?.message }))}
+            />
+          </div>
+          {fieldErrors.cvc && <span className="pay-field-err">{fieldErrors.cvc}</span>}
+        </div>
+      </div>
+
+      {formError && <div className="pay-err">{formError}</div>}
+
+      <div className="pay-actions">
+        <button type="submit" disabled={!stripe || processing} className="pay-submit">
           {processing ? 'Processing…' : `Subscribe — ${planLabel}`}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={processing}
-          style={{
-            padding: '12px 16px',
-            background: 'transparent',
-            color: 'var(--text-3)',
-            border: '1px solid var(--border-2)',
-            borderRadius: 8,
-            fontSize: 13,
-            cursor: processing ? 'default' : 'pointer',
-          }}
-        >
+        <button type="button" onClick={onCancel} disabled={processing} className="pay-cancel">
           Cancel
         </button>
       </div>
+
+      <p className="pay-secure">
+        <svg width="11" height="13" viewBox="0 0 11 13" fill="none" aria-hidden="true">
+          <path d="M5.5 0C3.567 0 2 1.343 2 3v1H1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9V3C9 1.343 7.433 0 5.5 0Zm0 1.5C6.88 1.5 7.5 2.2 7.5 3v1h-4V3c0-.8.62-1.5 2-1.5ZM5.5 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" fill="currentColor"/>
+        </svg>
+        Secured by Stripe · 256-bit SSL encryption
+      </p>
     </form>
   )
 }
+
+// ─── Public component ─────────────────────────────────────────────────────────
 
 export interface PaymentFormProps {
   tenantId: string
@@ -125,9 +230,9 @@ export interface PaymentFormProps {
 }
 
 export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: PaymentFormProps) {
-  const [clientSecret, setClientSecret]   = useState<string | null>(null)
+  const [clientSecret, setClientSecret]     = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string>('')
-  const [loadError, setLoadError]         = useState<string | null>(null)
+  const [loadError, setLoadError]           = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -139,34 +244,25 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
       .then(r => r.json())
       .then(data => {
         if (cancelled) return
-        if (data.needs_payment === false) {
-          // Upgrade with existing payment method — no payment step needed
-          onSuccess()
-          return
-        }
+        if (data.needs_payment === false) { onSuccess(); return }
         if (data.client_secret) {
           setClientSecret(data.client_secret)
           setSubscriptionId(data.subscription_id)
         } else {
-          setLoadError(data.detail ?? 'Could not initialize payment. Please try again.')
+          setLoadError(data.detail ?? 'Could not initialise payment. Please try again.')
         }
       })
-      .catch(() => {
-        if (!cancelled) setLoadError('Network error — please try again.')
-      })
+      .catch(() => { if (!cancelled) setLoadError('Network error — please try again.') })
     return () => { cancelled = true }
   }, [tenantId, plan, onSuccess])
 
   if (loadError) {
     return (
       <div style={{ padding: '14px 18px', fontSize: 13 }}>
-        <span style={{ color: '#FF3B30' }}>{loadError}</span>
+        <span style={{ color: '#FF453A' }}>{loadError}</span>
         <button
           onClick={onCancel}
-          style={{
-            marginLeft: 12, fontSize: 12, color: 'var(--text-3)',
-            background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline',
-          }}
+          style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-3)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
         >
           Cancel
         </button>
@@ -183,9 +279,9 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
   }
 
   return (
-    <div style={{ padding: '18px' }}>
-      <div style={{ marginBottom: 16, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-        Complete payment for <span style={{ color: 'var(--accent)' }}>{planLabel}</span>
+    <div className="pay-wrap">
+      <div className="pay-header">
+        Complete payment for <span className="pay-plan">{planLabel}</span>
       </div>
       <Elements
         stripe={stripePromise}
@@ -195,23 +291,12 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
             theme: 'night',
             variables: {
               colorPrimary: '#1A6BFF',
-              colorBackground: '#1A2236',
-              colorText: '#E2E8F0',
-              colorTextSecondary: '#94A3B8',
-              colorDanger: '#FF3B30',
-              fontFamily: 'system-ui, -apple-system, sans-serif',
+              colorBackground: '#111820',
+              colorText: '#DDE8F2',
+              colorTextSecondary: '#7A92AA',
+              colorDanger: '#FF453A',
+              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
               borderRadius: '8px',
-              spacingUnit: '4px',
-            },
-            rules: {
-              '.Input': {
-                border: '1px solid rgba(255,255,255,0.12)',
-                boxShadow: 'none',
-              },
-              '.Input:focus': {
-                border: '1px solid #1A6BFF',
-                boxShadow: '0 0 0 2px rgba(26,107,255,0.18)',
-              },
             },
           },
         }}
@@ -219,6 +304,7 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
         <CheckoutForm
           tenantId={tenantId}
           subscriptionId={subscriptionId}
+          clientSecret={clientSecret}
           planLabel={planLabel}
           onSuccess={onSuccess}
           onCancel={onCancel}
