@@ -160,21 +160,23 @@ function ConfirmModal({
         )}
 
         {/* Charge note */}
-        <div style={{
-          fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65,
-          padding: '12px 14px', background: 'var(--bg)',
-          border: '1px solid var(--border)', borderRadius: 8, marginBottom: 18,
-        }}>
-          {!hasActiveSub && (
-            <>You&apos;ll enter your payment details next. You won&apos;t be charged until you confirm payment.</>
-          )}
-          {upgrade && periodEnd && (
-            <>A prorated charge will apply today for the remainder of your billing period. Your full {newPlan.price}/mo charge begins on {periodEnd}.</>
-          )}
-          {downgrade && periodEnd && (
-            <>Your plan will switch to {newPlan.label} at the end of your current period on {periodEnd}. No charge today.</>
-          )}
-        </div>
+        {(!hasActiveSub || upgrade || downgrade) && (
+          <div style={{
+            fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65,
+            padding: '12px 14px', background: 'var(--bg)',
+            border: '1px solid var(--border)', borderRadius: 8, marginBottom: 18,
+          }}>
+            {!hasActiveSub && (
+              <>You&apos;ll enter your payment details next. You won&apos;t be charged until you confirm payment.</>
+            )}
+            {upgrade && (
+              <>A prorated charge will apply today for the remainder of your billing period.{periodEnd ? <> Your full {newPlan.price}/mo charge begins on {periodEnd}.</> : null}</>
+            )}
+            {downgrade && (
+              <>Your plan will switch to {newPlan.label} at the end of your current period{periodEnd ? <> on {periodEnd}</> : null}. No charge today.</>
+            )}
+          </div>
+        )}
 
         {/* Payment method (for upgrades with card on file) */}
         {hasActiveSub && pm && (
