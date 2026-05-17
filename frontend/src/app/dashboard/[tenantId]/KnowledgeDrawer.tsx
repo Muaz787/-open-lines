@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 
@@ -17,6 +17,11 @@ interface UploadResult {
   status: string
   vectors_stored?: number
   reason?: string
+}
+
+interface KbFile {
+  name: string
+  uploaded_at: string
 }
 
 interface Props {
@@ -45,6 +50,34 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
 
   const [clearLoading, setClearLoading]   = useState(false)
   const [clearMsg, setClearMsg]           = useState<string | null>(null)
+
+  const [kbFiles, setKbFiles]             = useState<KbFile[]>([])
+  const [repairLoading, setRepairLoading] = useState(false)
+  const [repairMsg, setRepairMsg]         = useState<string | null>(null)
+
+  useEffect(() => {
+    authHeaders().then(ah =>
+      fetch(`${API}/knowledge/files/${tenantId}`, { headers: ah })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.files) setKbFiles(d.files) })
+        .catch(() => {})
+    )
+  }, [tenantId])
+
+  const repairPrompt = async () => {
+    setRepairLoading(true)
+    setRepairMsg(null)
+    try {
+      const ah  = await authHeaders()
+      const res = await fetch(`${API}/knowledge/repair-prompt/${tenantId}`, { method: 'POST', headers: ah })
+      const data = await res.json()
+      setRepairMsg(res.ok ? 'AI prompt updated successfully.' : data.detail || 'Repair failed')
+    } catch {
+      setRepairMsg('Network error — try again')
+    } finally {
+      setRepairLoading(false)
+    }
+  }
 
   const saveUrl = async () => {
     const url = urlInput.trim()
@@ -327,6 +360,30 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
             )}
           </div>
 
+          {/* ── Uploaded Files List ── */}
+          {kbFiles.length > 0 && (
+            <div>
+              <div style={labelStyle}>Uploaded Files</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {kbFiles.map((f, i) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 12px', borderRadius: 8,
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    fontSize: 12,
+                  }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', color: 'var(--text)' }}>
+                      📄 {f.name}
+                    </span>
+                    <span style={{ color: 'var(--text-3)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {new Date(f.uploaded_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Add Text ── */}
           <div>
             <div style={labelStyle}>Add Text Manually</div>
@@ -361,6 +418,32 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
             {textMsg && (
               <div style={{ fontSize: 11, marginTop: 8, color: textMsg.startsWith('Added') ? okColor : errColor }}>
                 {textMsg}
+              </div>
+            )}
+          </div>
+
+          {/* ── Repair Prompt ── */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+            <div style={labelStyle}>AI Prompt</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, lineHeight: 1.5 }}>
+              Re-push the latest knowledge base and instructions to the AI. Use this after uploading new files or changing settings.
+            </div>
+            <button
+              onClick={repairPrompt}
+              disabled={repairLoading}
+              style={{
+                fontSize: 12, fontWeight: 600, color: 'var(--bg)',
+                background: 'var(--text)',
+                border: 'none', borderRadius: 7, padding: '8px 16px',
+                cursor: repairLoading ? 'not-allowed' : 'pointer',
+                opacity: repairLoading ? 0.65 : 1, transition: 'opacity 0.2s',
+              }}
+            >
+              {repairLoading ? 'Updating…' : 'Update AI Prompt'}
+            </button>
+            {repairMsg && (
+              <div style={{ fontSize: 11, marginTop: 8, color: repairMsg.startsWith('AI prompt') ? okColor : errColor }}>
+                {repairMsg}
               </div>
             )}
           </div>

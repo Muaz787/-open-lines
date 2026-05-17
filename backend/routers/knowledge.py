@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Header, UploadFile, File
 from typing import Annotated
 from pydantic import BaseModel
@@ -114,6 +115,17 @@ async def upload_documents(
 
     if any(r["status"] == "ok" for r in results):
         await _reprompt_after_change(tenant)
+        # Track successfully uploaded file names
+        now = datetime.now(timezone.utc).isoformat()
+        existing: list = tenant.get("kb_files") or []
+        new_entries = [
+            {"name": r["file"], "uploaded_at": now}
+            for r in results if r["status"] == "ok"
+        ]
+        # Avoid duplicates by name; keep newest
+        names_added = {e["name"] for e in new_entries}
+        kept = [f for f in existing if f.get("name") not in names_added]
+        await db.update_tenant(tenant_id, {"kb_files": kept + new_entries})
 
     return {"tenant_id": tenant_id, "results": results}
 
@@ -145,11 +157,48 @@ async def add_text(
         vectors = await knowledge.embed_and_store(namespace, body.text, tenant_id)
         logger.info("Added manual text for tenant %s → %d vectors", tenant_id, vectors)
     except Exception as e:
-        logger.error("Failed to embed text for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to store text")
+        err = str(e)
+        logger.error("Failed to embed text for tenant %s: %s", tenant_id, err)
+        if "dimension" in err.lower():
+            raise HTTPException(status_code=500, detail="Pinecone index dimension mismatch — check PINECONE_INDEX_HOST points to a 1024-dim index")
+        raise HTTPException(status_code=500, detail=f"Failed to store text: {err}")
 
     await _reprompt_after_change(tenant)
     return {"status": "ok", "vectors_stored": vectors}
+
+
+@router.get("/files/{tenant_id}")
+async def list_files(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Tenant lookup failed")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return {"files": tenant.get("kb_files") or []}
+
+
+@router.post("/repair-prompt/{tenant_id}")
+async def repair_prompt(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Tenant lookup failed")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    try:
+        result = await rebuild_and_push_system_prompt(tenant)
+        return result
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/clear/{tenant_id}")

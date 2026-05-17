@@ -64,6 +64,10 @@ alter table tenants add column if not exists stripe_subscription_id text;
 alter table tenants add column if not exists subscription_plan      text;
 alter table tenants add column if not exists subscription_status    text default 'none';
 
+-- Knowledge base file tracking
+alter table tenants add column if not exists kb_files jsonb default '[]'::jsonb;
+alter table tenants add column if not exists extra_instructions text;
+
 -- Appointments booked by the AI receptionist
 create table if not exists appointments (
     id                   uuid primary key default gen_random_uuid(),
