@@ -222,7 +222,7 @@ async def create_subscription(body: dict):
                     stripe.Subscription.modify(
                         existing_sub_id,
                         items=[{"id": sub_items[0].id, "price": price_id}],
-                        proration_behavior="create_prorations",
+                        proration_behavior="always_invoice",
                     )
                     await db.update_tenant(tenant_id, {"subscription_plan": plan})
                     logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
