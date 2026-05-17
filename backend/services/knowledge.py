@@ -43,7 +43,9 @@ def _get_pinecone_index():
             raise RuntimeError("PINECONE_INDEX_NAME or PINECONE_INDEX_HOST must be set")
         pc = Pinecone(api_key=PINECONE_API_KEY)
         if PINECONE_INDEX_HOST:
-            _pinecone_index = pc.Index(host=PINECONE_INDEX_HOST)
+            # Strip scheme — pinecone-client 3.x adds https:// internally
+            host = PINECONE_INDEX_HOST.removeprefix("https://").removeprefix("http://")
+            _pinecone_index = pc.Index(host=host)
         else:
             _pinecone_index = pc.Index(PINECONE_INDEX_NAME)
     return _pinecone_index
