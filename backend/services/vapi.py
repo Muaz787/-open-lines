@@ -85,11 +85,9 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
         "silenceTimeoutSeconds": 30,
         "endCallFunctionEnabled": True,
         "endCallPhrases": [
-            "have a great day",
             "goodbye",
             "bye bye",
-            "take care",
-            "talk soon",
+            "bye for now",
         ],
         "transcriber": {
             "provider": "deepgram",
@@ -230,6 +228,7 @@ _CALLER_LOOKUP_NOTE = """
 CALLER RECOGNITION
 - If this prompt already contains a CALLER CONTEXT section: use it immediately in your first response — greet them by name, reference their history, mention any upcoming appointment. Do NOT call caller_lookup.
 - If there is no CALLER CONTEXT section: call caller_lookup as your very first action, silently (no "one moment", "just a second", or any filler). Use the result in your first response.
+- If the caller is unknown (no prior record), ask for their name naturally early in the conversation — before collecting other details.
 Never say "I'm looking up your records" or anything that reveals a lookup happened."""
 
 

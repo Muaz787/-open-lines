@@ -246,10 +246,14 @@ async def create_subscription(body: dict):
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
     try:
-        client_secret = sub.latest_invoice.payment_intent.client_secret
+        # Try the expanded object first; if Stripe returned a plain invoice ID string, fetch manually
+        invoice = sub.latest_invoice
+        if isinstance(invoice, str):
+            invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
+        client_secret = invoice.payment_intent.client_secret
     except Exception as e:
         logger.error("Could not extract client_secret from subscription for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Subscription created but could not get payment intent")
+        raise HTTPException(status_code=500, detail="Could not initialise payment. Please try again.")
 
     await db.update_tenant(tenant_id, {
         "stripe_customer_id":     customer_id,
