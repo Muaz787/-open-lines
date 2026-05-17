@@ -194,6 +194,44 @@ async def repair_prompt(
         raise HTTPException(status_code=500, detail="Tenant lookup failed")
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Custom industry: can't rebuild from template — patch existing Vapi prompt in-place
+    if tenant.get("industry") == "custom":
+        from services.vapi import (
+            get_assistant, update_assistant,
+            _CALLER_LOOKUP_NOTE, build_calendar_tools, build_caller_lookup_tool,
+        )
+        from routers.calendar import _CALENDAR_NOTE
+        assistant_id = tenant.get("vapi_assistant_id")
+        if not assistant_id:
+            raise HTTPException(status_code=400, detail="No Vapi assistant on this tenant")
+        try:
+            current = await get_assistant(assistant_id)
+            raw_messages = (current.get("model") or {}).get("messages") or []
+            messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
+            if messages and messages[0].get("role") == "system":
+                prompt = messages[0]["content"]
+                # Strip stale CALLER RECOGNITION block and re-append fresh one
+                if "\nCALLER RECOGNITION" in prompt:
+                    prompt = prompt[:prompt.index("\nCALLER RECOGNITION")]
+                if "\nCALENDAR BOOKING TOOLS AVAILABLE" in prompt:
+                    prompt = prompt[:prompt.index("\nCALENDAR BOOKING TOOLS AVAILABLE")]
+                prompt += _CALLER_LOOKUP_NOTE
+                if tenant.get("google_refresh_token"):
+                    prompt += _CALENDAR_NOTE
+                messages[0]["content"] = prompt
+            tools = (
+                build_calendar_tools(tenant_id)
+                if tenant.get("google_refresh_token")
+                else [build_caller_lookup_tool(tenant_id)]
+            )
+            await update_assistant(assistant_id, {
+                "model": {"provider": "openai", "model": "gpt-4o", "temperature": 0.7, "messages": messages, "tools": tools}
+            })
+            return {"status": "updated", "assistant_id": assistant_id}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Vapi update failed: {e}")
+
     try:
         result = await rebuild_and_push_system_prompt(tenant)
         return result
