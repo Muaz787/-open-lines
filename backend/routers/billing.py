@@ -31,11 +31,13 @@ def _get_payment_intent(invoice_id: str):
     try:
         inv = stripe.Invoice.retrieve(invoice_id, expand=["payments"])
         payments = getattr(inv, "payments", None)
-        if payments and payments.data:
-            pi_ref = payments.data[0].payment
-            if isinstance(pi_ref, str):
-                return stripe.PaymentIntent.retrieve(pi_ref)
-            return pi_ref
+        if not (payments and payments.data):
+            return None
+        pi_ref = payments.data[0].payment
+        # pi_ref is either a bare string ID or a partially-expanded object — retrieve by ID either way
+        pi_id = pi_ref if isinstance(pi_ref, str) else getattr(pi_ref, "id", None)
+        if pi_id:
+            return stripe.PaymentIntent.retrieve(pi_id)
     except stripe.StripeError:
         pass
     return None
