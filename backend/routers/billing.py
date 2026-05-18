@@ -210,13 +210,16 @@ async def create_subscription(body: dict):
             logger.error("Failed to create Stripe customer for tenant %s: %s", tenant_id, e)
             raise HTTPException(status_code=500, detail="Failed to create Stripe customer")
 
-    # If an active/past_due subscription already exists, update its plan (upgrade/downgrade)
+    # If a subscription already exists, handle based on its status
     existing_sub_id: str = tenant.get("stripe_subscription_id", "") or ""
     if existing_sub_id:
         try:
-            existing = stripe.Subscription.retrieve(existing_sub_id)
+            existing = stripe.Subscription.retrieve(
+                existing_sub_id,
+                expand=["latest_invoice.payment_intent"],
+            )
             if existing.status in ("active", "trialing", "past_due"):
-                # Use attribute access — StripeObjects don't reliably support chained .get()
+                # Upgrade/downgrade — modify the existing subscription
                 sub_items = existing.items.data if existing.items else []
                 if sub_items:
                     stripe.Subscription.modify(
@@ -227,9 +230,27 @@ async def create_subscription(body: dict):
                     await db.update_tenant(tenant_id, {"subscription_plan": plan})
                     logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
                     return {"needs_payment": False, "subscription_id": existing_sub_id}
+
+            elif existing.status == "incomplete":
+                # Reuse the existing incomplete subscription's payment intent
+                invoice = existing.latest_invoice
+                if isinstance(invoice, str):
+                    invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
+                pi = invoice.payment_intent if invoice else None
+                if pi:
+                    secret = pi.client_secret if not isinstance(pi, str) else stripe.PaymentIntent.retrieve(pi).client_secret
+                    if secret:
+                        logger.info("Reusing incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
+                        return {"needs_payment": True, "client_secret": secret, "subscription_id": existing_sub_id}
+                # No usable payment intent — cancel stale incomplete sub and create fresh
+                stripe.Subscription.cancel(existing_sub_id)
+                logger.info("Cancelled stale incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
+
+            elif existing.status in ("canceled", "incomplete_expired"):
+                pass  # Fall through to create a new subscription
+
         except stripe.StripeError as e:
-            logger.warning("Could not modify existing subscription %s for tenant %s: %s — will create new", existing_sub_id, tenant_id, e)
-            # Fall through to create a fresh subscription
+            logger.warning("Could not handle existing subscription %s for tenant %s: %s — will create new", existing_sub_id, tenant_id, e)
 
     # Create a new incomplete subscription so we can collect payment via Payment Element
     try:
