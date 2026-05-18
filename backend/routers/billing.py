@@ -26,6 +26,12 @@ PRICE_IDS: dict[str, str] = {
 stripe.api_key = STRIPE_SECRET_KEY
 
 
+def _get_payment_intent(invoice_id: str):
+    """Return the first PaymentIntent for an invoice (Stripe Basil API compatible)."""
+    pis = stripe.PaymentIntent.list(invoice=invoice_id, limit=1)
+    return pis.data[0] if pis.data else None
+
+
 @router.post("/create-checkout")
 async def create_checkout(body: dict):
     tenant_id: str = body.get("tenant_id", "")
@@ -216,7 +222,7 @@ async def create_subscription(body: dict):
         try:
             existing = stripe.Subscription.retrieve(
                 existing_sub_id,
-                expand=["latest_invoice.payment_intent"],
+                expand=["latest_invoice"],
             )
             logger.info(
                 "Existing sub %s status=%s for tenant %s, plan requested=%s",
@@ -252,11 +258,10 @@ async def create_subscription(body: dict):
             elif existing.status == "incomplete":
                 # Reuse the existing incomplete subscription's payment intent
                 invoice = existing.latest_invoice
-                if isinstance(invoice, str):
-                    invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
-                pi = invoice.payment_intent if invoice else None
+                invoice_id = invoice if isinstance(invoice, str) else (invoice.id if invoice else None)
+                pi = _get_payment_intent(invoice_id) if invoice_id else None
                 if pi:
-                    secret = pi.client_secret if not isinstance(pi, str) else stripe.PaymentIntent.retrieve(pi).client_secret
+                    secret = pi.client_secret
                     if secret:
                         logger.info("Reusing incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
                         return {"needs_payment": True, "client_secret": secret, "subscription_id": existing_sub_id}
@@ -277,7 +282,7 @@ async def create_subscription(body: dict):
             items=[{"price": price_id}],
             payment_behavior="default_incomplete",
             payment_settings={"save_default_payment_method": "on_subscription"},
-            expand=["latest_invoice.payment_intent"],
+            expand=["latest_invoice"],
             metadata={"tenant_id": tenant_id, "plan": plan},
         )
     except stripe.StripeError as e:
@@ -296,11 +301,9 @@ async def create_subscription(body: dict):
         return {"needs_payment": False, "subscription_id": sub.id}
 
     try:
-        # Try the expanded object first; if Stripe returned a plain invoice ID string, fetch manually
         invoice = sub.latest_invoice
-        if isinstance(invoice, str):
-            invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
-        pi = getattr(invoice, "payment_intent", None) if invoice else None
+        invoice_id = invoice if isinstance(invoice, str) else (invoice.id if invoice else None)
+        pi = _get_payment_intent(invoice_id) if invoice_id else None
         # payment_intent can be None if invoice is $0 / fully credited
         if pi is None:
             await db.update_tenant(tenant_id, {
@@ -311,10 +314,7 @@ async def create_subscription(body: dict):
             })
             logger.info("Subscription %s has no payment_intent (zero invoice) for tenant %s", sub.id, tenant_id)
             return {"needs_payment": False, "subscription_id": sub.id}
-        # pi can be an unexpanded string ID or a full PaymentIntent object
-        if isinstance(pi, str):
-            pi = stripe.PaymentIntent.retrieve(pi)
-        client_secret = getattr(pi, "client_secret", None)
+        client_secret = pi.client_secret
         if not client_secret:
             # PaymentIntent already succeeded (paid via credit balance); no further action needed
             await db.update_tenant(tenant_id, {
