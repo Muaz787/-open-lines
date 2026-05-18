@@ -370,6 +370,59 @@ export function UpdatePaymentForm({ tenantId, onSuccess, onCancel }: UpdatePayme
   )
 }
 
+// ─── Upgrade payment form (proration charge for existing subscribers) ─────────
+
+export interface UpgradePaymentFormProps {
+  tenantId: string
+  subscriptionId: string
+  clientSecret: string
+  amountDue: number
+  currency: string
+  planLabel: string
+  onSuccess: () => void
+  onCancel: () => void
+}
+
+export function UpgradePaymentForm({
+  tenantId, subscriptionId, clientSecret, amountDue, currency, planLabel, onSuccess, onCancel,
+}: UpgradePaymentFormProps) {
+  const fmtAmount = new Intl.NumberFormat('en-CA', {
+    style: 'currency', currency: currency.toUpperCase(), minimumFractionDigits: 2,
+  }).format(amountDue / 100)
+
+  return (
+    <div className="pay-wrap">
+      <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--accent-dim)', borderRadius: 8, border: '1px solid var(--accent)', fontSize: 13 }}>
+        <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmtAmount}</span>
+        <span style={{ color: 'var(--text-2)', marginLeft: 6 }}>charged today — prorated upgrade to {planLabel}</span>
+      </div>
+      <Elements
+        stripe={stripePromise}
+        options={{
+          clientSecret,
+          appearance: {
+            theme: 'night',
+            variables: {
+              colorPrimary: '#1A6BFF', colorBackground: '#111820',
+              colorText: '#DDE8F2', colorTextSecondary: '#7A92AA',
+              colorDanger: '#FF453A', borderRadius: '8px',
+            },
+          },
+        }}
+      >
+        <CheckoutForm
+          tenantId={tenantId}
+          subscriptionId={subscriptionId}
+          clientSecret={clientSecret}
+          planLabel={planLabel}
+          onSuccess={onSuccess}
+          onCancel={onCancel}
+        />
+      </Elements>
+    </div>
+  )
+}
+
 // ─── Public component ─────────────────────────────────────────────────────────
 
 export interface PaymentFormProps {

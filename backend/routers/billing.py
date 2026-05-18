@@ -643,6 +643,154 @@ async def reactivate_subscription(tenant_id: str):
     return {"status": "active"}
 
 
+@router.post("/proration-preview")
+async def proration_preview(body: dict):
+    """Return the prorated amount the customer would pay to upgrade now."""
+    tenant_id = body.get("tenant_id", "")
+    plan      = body.get("plan", "").lower()
+    price_id  = PRICE_IDS.get(plan)
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id      = tenant.get("stripe_subscription_id") or ""
+    customer_id = tenant.get("stripe_customer_id") or ""
+    if not sub_id or not customer_id:
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    try:
+        sub  = stripe.Subscription.retrieve(sub_id)
+        item = sub.items.data[0]
+        upcoming = stripe.Invoice.upcoming(
+            customer=customer_id,
+            subscription=sub_id,
+            subscription_items=[{"id": item.id, "price": price_id}],
+            subscription_proration_behavior="always_invoice",
+        )
+        return {
+            "amount_due":   upcoming.amount_due,
+            "currency":     upcoming.currency,
+            "period_end":   sub.current_period_end,
+        }
+    except stripe.StripeError as e:
+        logger.error("Proration preview failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upgrade-plan")
+async def upgrade_plan(body: dict):
+    """
+    Immediately modify the subscription to the new (higher) plan with proration.
+    Returns the PaymentIntent client_secret so the frontend can collect the charge.
+    """
+    tenant_id = body.get("tenant_id", "")
+    plan      = body.get("plan", "").lower()
+    price_id  = PRICE_IDS.get(plan)
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id = tenant.get("stripe_subscription_id") or ""
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    try:
+        sub  = stripe.Subscription.retrieve(sub_id)
+        item = sub.items.data[0]
+
+        updated = stripe.Subscription.modify(
+            sub_id,
+            items=[{"id": item.id, "price": price_id}],
+            proration_behavior="always_invoice",
+            expand=["latest_invoice.payment_intent"],
+        )
+
+        invoice = updated.latest_invoice
+        if isinstance(invoice, str):
+            invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
+
+        pi = invoice.payment_intent if invoice else None
+        if isinstance(pi, str):
+            pi = stripe.PaymentIntent.retrieve(pi)
+
+        # Already paid (e.g. auto-charged via saved card)
+        if pi and getattr(pi, "status", "") == "succeeded":
+            await db.update_tenant(tenant_id, {"subscription_plan": plan})
+            logger.info("Upgrade to %s auto-charged for tenant %s", plan, tenant_id)
+            return {"needs_payment": False, "subscription_id": sub_id}
+
+        client_secret = getattr(pi, "client_secret", None) if pi else None
+        amount_due    = getattr(invoice, "amount_due", 0) if invoice else 0
+        currency      = getattr(invoice, "currency", "cad") if invoice else "cad"
+
+        if not client_secret:
+            # No outstanding charge (zero proration) — just update DB
+            await db.update_tenant(tenant_id, {"subscription_plan": plan})
+            logger.info("Upgrade to %s (zero proration) for tenant %s", plan, tenant_id)
+            return {"needs_payment": False, "subscription_id": sub_id}
+
+        logger.info("Upgrade to %s needs payment (amount=%s) for tenant %s", plan, amount_due, tenant_id)
+        return {
+            "needs_payment":   True,
+            "client_secret":   client_secret,
+            "amount_due":      amount_due,
+            "currency":        currency,
+            "subscription_id": sub_id,
+        }
+
+    except stripe.StripeError as e:
+        logger.error("Upgrade failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail=f"Upgrade failed: {e.user_message or str(e)}")
+
+
+@router.post("/downgrade-plan")
+async def downgrade_plan(body: dict):
+    """
+    Schedule a downgrade to take effect at the next billing cycle.
+    No proration charge — current plan continues until period end.
+    """
+    tenant_id = body.get("tenant_id", "")
+    plan      = body.get("plan", "").lower()
+    price_id  = PRICE_IDS.get(plan)
+    if not price_id:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sub_id = tenant.get("stripe_subscription_id") or ""
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No active subscription")
+
+    try:
+        sub  = stripe.Subscription.retrieve(sub_id)
+        item = sub.items.data[0]
+        period_end = sub.current_period_end
+
+        stripe.Subscription.modify(
+            sub_id,
+            items=[{"id": item.id, "price": price_id}],
+            proration_behavior="none",
+            billing_cycle_anchor="unchanged",
+        )
+
+        # Update DB to reflect the new plan (billing changes at next cycle)
+        await db.update_tenant(tenant_id, {"subscription_plan": plan})
+        logger.info("Downgrade to %s scheduled for tenant %s (period_end=%s)", plan, tenant_id, period_end)
+        return {"status": "scheduled", "effective_date": period_end, "plan": plan}
+
+    except stripe.StripeError as e:
+        logger.error("Downgrade failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail=f"Downgrade failed: {e.user_message or str(e)}")
+
+
 @router.post("/setup-intent/{tenant_id}")
 async def create_setup_intent(tenant_id: str):
     """Create a Stripe SetupIntent so the customer can add/update a payment method in-app."""

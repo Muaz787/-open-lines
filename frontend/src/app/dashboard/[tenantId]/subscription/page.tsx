@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { PaymentForm, UpdatePaymentForm } from '../PaymentForm'
+import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm } from '../PaymentForm'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -79,6 +79,8 @@ function ConfirmModal({
   newPlan,
   subDetails,
   processing,
+  prorationAmount,
+  prorationLoading,
   onConfirm,
   onCancel,
 }: {
@@ -86,6 +88,8 @@ function ConfirmModal({
   newPlan: Plan
   subDetails: SubDetails
   processing: boolean
+  prorationAmount?: number | null
+  prorationLoading?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -174,6 +178,20 @@ function ConfirmModal({
             )}
             {downgrade && (
               <>Your plan will switch to {newPlan.label} at the end of your current period{periodEnd ? <> on {periodEnd}</> : null}. No charge today.</>
+            )}
+            {upgrade && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-2)' }}>
+                {prorationLoading ? 'Calculating charge…' :
+                  prorationAmount != null
+                    ? `Charged today: ${new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(prorationAmount / 100)} (prorated)`
+                    : 'A prorated amount will be charged today'
+                }
+              </div>
+            )}
+            {downgrade && periodEnd && (
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-3)' }}>
+                Takes effect {periodEnd}. No charge today — your saved card will be billed at the new rate on {periodEnd}.
+              </div>
             )}
           </div>
         )}
@@ -300,6 +318,11 @@ function SubscriptionPage() {
   const [portalLoading, setPortalLoading] = useState(false)
   const [updatingCard, setUpdatingCard]   = useState(false)
   const [menuOpen, setMenuOpen]           = useState(false)
+  const [prorationAmount, setProrationAmount]   = useState<number | null>(null)
+  const [prorationLoading, setProrationLoading] = useState(false)
+  const [upgradePayment, setUpgradePayment]     = useState<{
+    clientSecret: string; amountDue: number; currency: string; plan: Plan; subscriptionId: string
+  } | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -327,6 +350,27 @@ function SubscriptionPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  useEffect(() => {
+    if (!confirmPlan || !subDetails?.has_subscription || !subDetails?.plan) {
+      setProrationAmount(null)
+      return
+    }
+    const order: PlanId[] = ['starter', 'pro', 'business']
+    const isUp = order.indexOf(confirmPlan.id) > order.indexOf(subDetails.plan as PlanId)
+    if (!isUp) { setProrationAmount(null); return }
+
+    setProrationLoading(true)
+    fetch(`${API}/billing/proration-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.amount_due != null) setProrationAmount(d.amount_due) })
+      .catch(() => {})
+      .finally(() => setProrationLoading(false))
+  }, [confirmPlan, subDetails?.has_subscription, subDetails?.plan, tenantId])
+
   const handlePlanClick = (plan: Plan) => {
     if (!subDetails) return  // still loading or errored
     const currentId = subDetails.plan
@@ -342,36 +386,56 @@ function SubscriptionPage() {
       !subDetails.cancel_at_period_end
 
     if (!isActiveSub) {
-      // No active subscription → show payment form
+      // New subscriber — show payment form
       setConfirmPlan(null)
       setPayingPlan(confirmPlan)
       return
     }
 
-    // Active subscription → direct upgrade/downgrade
+    const order: PlanId[] = ['starter', 'pro', 'business']
+    const isUp = order.indexOf(confirmPlan.id) > order.indexOf((subDetails.plan ?? 'starter') as PlanId)
+
     setConfirming(true)
     try {
-      const res  = await fetch(`${API}/billing/create-subscription`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
-      })
-      let data: Record<string, unknown>
-      try {
-        data = await res.json()
-      } catch {
-        showToast(`Server error (status ${res.status}) — check Railway logs`)
-        return
-      }
-      if (res.ok && data.needs_payment === false) {
+      if (isUp) {
+        // Upgrade — collect prorated payment
+        const res  = await fetch(`${API}/billing/upgrade-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
+        })
+        const data = await res.json()
+        if (!res.ok) { showToast(data.detail ?? 'Upgrade failed — try again'); return }
+
         setConfirmPlan(null)
-        showToast(`✓ Switched to ${confirmPlan.label} plan`)
-        await fetchData().catch(() => {})
-      } else if (res.ok && data.needs_payment) {
-        setConfirmPlan(null)
-        setPayingPlan(confirmPlan)
+        if (data.needs_payment) {
+          setUpgradePayment({
+            clientSecret: data.client_secret,
+            amountDue:    data.amount_due,
+            currency:     data.currency ?? 'cad',
+            plan:         confirmPlan,
+            subscriptionId: data.subscription_id,
+          })
+        } else {
+          showToast(`✓ Upgraded to ${confirmPlan.label}`)
+          await fetchData().catch(() => {})
+        }
       } else {
-        showToast((data.detail as string) ?? 'Plan change failed — try again')
+        // Downgrade — schedule for next cycle
+        const res  = await fetch(`${API}/billing/downgrade-plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
+        })
+        const data = await res.json()
+        if (!res.ok) { showToast(data.detail ?? 'Downgrade failed — try again'); return }
+
+        setConfirmPlan(null)
+        const effectiveDate = data.effective_date
+          ? new Date(data.effective_date * 1000).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'next billing date'
+        showToast(`↓ Downgraded to ${confirmPlan.label} — takes effect ${effectiveDate}`)
+        await fetchData().catch(() => {})
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'unknown'
@@ -543,6 +607,8 @@ function SubscriptionPage() {
             newPlan={confirmPlan}
             subDetails={subDetails}
             processing={confirming}
+            prorationAmount={prorationAmount}
+            prorationLoading={prorationLoading}
             onConfirm={handleConfirm}
             onCancel={() => setConfirmPlan(null)}
           />
@@ -679,6 +745,39 @@ function SubscriptionPage() {
             <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Choose a plan below to get started.</div>
           </div>
         )}
+
+        {/* ── Upgrade payment (proration charge) ── */}
+        <AnimatePresence>
+          {upgradePayment && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+              style={{ maxWidth: 460, marginBottom: 32 }}
+            >
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Upgrade to {upgradePayment.plan.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                    {upgradePayment.plan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                  </span>
+                </div>
+                <UpgradePaymentForm
+                  tenantId={tenantId}
+                  subscriptionId={upgradePayment.subscriptionId}
+                  clientSecret={upgradePayment.clientSecret}
+                  amountDue={upgradePayment.amountDue}
+                  currency={upgradePayment.currency}
+                  planLabel={`${upgradePayment.plan.label} · ${upgradePayment.plan.price}/mo`}
+                  onSuccess={async () => {
+                    setUpgradePayment(null)
+                    showToast(`✓ Upgraded to ${upgradePayment.plan.label}`)
+                    await fetchData().catch(() => {})
+                  }}
+                  onCancel={() => setUpgradePayment(null)}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Update payment method (inline card form) ── */}
         <AnimatePresence>
