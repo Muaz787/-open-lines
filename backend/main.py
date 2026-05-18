@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 load_dotenv()
 
@@ -24,6 +25,26 @@ origins = [
 if FRONTEND_URL and FRONTEND_URL not in origins:
     origins.append(FRONTEND_URL)
 
+class _CatchAllMiddleware(BaseHTTPMiddleware):
+    """Catch unhandled Python exceptions and return JSON.
+    Must be added BEFORE CORSMiddleware so that add_middleware's LIFO ordering
+    places it INSIDE CORSMiddleware — ensuring error responses still get CORS headers.
+    """
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            logger.error(
+                "Unhandled exception on %s %s: %s",
+                request.method, request.url.path, exc, exc_info=True,
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
+            )
+
+
+app.add_middleware(_CatchAllMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -33,15 +54,6 @@ app.add_middleware(
 )
 
 from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
-    )
 
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
