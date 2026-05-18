@@ -10,9 +10,9 @@ import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm } from '../PaymentFo
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
-  { id: 'starter',  label: 'Starter',  price: '$79',  perMonth: 7900,  minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
-  { id: 'pro',      label: 'Pro',       price: '$159', perMonth: 15900, minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'WhatsApp alerts'] },
-  { id: 'business', label: 'Business',  price: '$299', perMonth: 29900, minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
+  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
+  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'WhatsApp alerts'] },
+  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
 ] as const
 
 type PlanId = 'starter' | 'pro' | 'business'

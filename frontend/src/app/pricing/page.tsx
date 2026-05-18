@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Pricing — Open Lines AI',
-  description: 'Simple, transparent pricing for AI phone handling. From $79/month — no setup fees, no contracts.',
+  description: 'Simple, transparent pricing for AI phone handling. From $99/month — no setup fees, no contracts.',
 }
 
 const LogoMark = () => (
@@ -26,7 +26,7 @@ const Check = () => (
 const PLANS = [
   {
     name: 'Starter',
-    price: 79,
+    price: 99,
     minutes: 150,
     overage: '0.35',
     popular: false,
@@ -47,7 +47,7 @@ const PLANS = [
   },
   {
     name: 'Pro',
-    price: 159,
+    price: 199,
     minutes: 400,
     overage: '0.35',
     popular: true,
@@ -68,9 +68,9 @@ const PLANS = [
   },
   {
     name: 'Business',
-    price: 299,
+    price: 379,
     minutes: 900,
-    overage: '0.29',
+    overage: '0.35',
     popular: false,
     accent: '#3B7EF6',
     features: [
@@ -79,12 +79,11 @@ const PLANS = [
       'Everything in Pro',
       'Custom AI personality & name',
       'Priority support',
-      'Lower overage rate',
       'Early access to new features',
     ],
     cta: 'Get started',
     ctaHref: '/onboarding',
-    note: '$0.29 / min overage',
+    note: '$0.35 / min overage',
   },
 ]
 

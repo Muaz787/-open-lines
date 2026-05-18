@@ -588,8 +588,8 @@ export default function Home() {
               <tbody>
                 {[
                   { label: 'Availability',    human: '9–5, Mon–Fri',   ours: '24/7, every day' },
-                  { label: 'Starting cost',   human: '$2,800 / mo',    ours: 'From $79 / mo' },
-                  { label: 'Annual cost',     human: '$33,600+',       ours: 'From $948 / yr' },
+                  { label: 'Starting cost',   human: '$2,800 / mo',    ours: 'From $99 / mo' },
+                  { label: 'Annual cost',     human: '$33,600+',       ours: 'From $1,188 / yr' },
                   { label: 'Setup time',      human: 'Weeks',          ours: 'Under 10 min' },
                   { label: 'Turnover risk',   human: 'High',           ours: 'None' },
                   { label: 'Scales with calls', human: 'No',           ours: 'Yes' },

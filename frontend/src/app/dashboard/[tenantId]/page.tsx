@@ -620,9 +620,9 @@ function DashboardPage() {
                   <>
                     <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {([
-                        { id: 'starter',  label: 'Starter',  price: '$79/mo',  minutes: '150 min' },
-                        { id: 'pro',      label: 'Pro',       price: '$159/mo', minutes: '400 min' },
-                        { id: 'business', label: 'Business',  price: '$299/mo', minutes: '900 min' },
+                        { id: 'starter',  label: 'Starter',  price: '$99/mo',  minutes: '150 min' },
+                        { id: 'pro',      label: 'Pro',       price: '$199/mo', minutes: '400 min' },
+                        { id: 'business', label: 'Business',  price: '$379/mo', minutes: '900 min' },
                       ] as const).map(plan => (
                         <button
                           key={plan.id}
