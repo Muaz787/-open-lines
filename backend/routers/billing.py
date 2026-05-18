@@ -27,9 +27,18 @@ stripe.api_key = STRIPE_SECRET_KEY
 
 
 def _get_payment_intent(invoice_id: str):
-    """Return the first PaymentIntent for an invoice (Stripe Basil API compatible)."""
-    pis = stripe.PaymentIntent.list(invoice=invoice_id, limit=1)
-    return pis.data[0] if pis.data else None
+    """Return the PaymentIntent for an invoice using the Stripe Basil API (invoice.payments)."""
+    try:
+        inv = stripe.Invoice.retrieve(invoice_id, expand=["payments"])
+        payments = getattr(inv, "payments", None)
+        if payments and payments.data:
+            pi_ref = payments.data[0].payment
+            if isinstance(pi_ref, str):
+                return stripe.PaymentIntent.retrieve(pi_ref)
+            return pi_ref
+    except stripe.StripeError:
+        pass
+    return None
 
 
 @router.post("/create-checkout")
