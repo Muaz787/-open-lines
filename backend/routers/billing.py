@@ -641,3 +641,62 @@ async def reactivate_subscription(tenant_id: str):
     await db.update_tenant(tenant_id, {"subscription_status": "active"})
     logger.info("Subscription reactivated for tenant %s", tenant_id)
     return {"status": "active"}
+
+
+@router.post("/setup-intent/{tenant_id}")
+async def create_setup_intent(tenant_id: str):
+    """Create a Stripe SetupIntent so the customer can add/update a payment method in-app."""
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id") or ""
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer linked to this tenant")
+
+    try:
+        si = stripe.SetupIntent.create(
+            customer=customer_id,
+            payment_method_types=["card"],
+            usage="off_session",
+        )
+    except stripe.StripeError as e:
+        logger.error("SetupIntent creation failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Could not initialise payment form")
+
+    return {"client_secret": si.client_secret}
+
+
+@router.post("/update-payment-method")
+async def update_payment_method(body: dict):
+    """Attach a new PaymentMethod to the customer and set it as default on the subscription."""
+    tenant_id = body.get("tenant_id", "")
+    pm_id     = body.get("payment_method_id", "")
+
+    if not tenant_id or not pm_id:
+        raise HTTPException(status_code=400, detail="tenant_id and payment_method_id are required")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id") or ""
+    sub_id      = tenant.get("stripe_subscription_id") or ""
+
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer linked")
+
+    try:
+        # Attach PM to customer
+        stripe.PaymentMethod.attach(pm_id, customer=customer_id)
+        # Set as customer invoice default
+        stripe.Customer.modify(customer_id, invoice_settings={"default_payment_method": pm_id})
+        # Set as subscription default so next invoice uses it
+        if sub_id:
+            stripe.Subscription.modify(sub_id, default_payment_method=pm_id)
+    except stripe.StripeError as e:
+        logger.error("Update payment method failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail=f"Could not update payment method: {e.user_message or str(e)}")
+
+    logger.info("Payment method updated for tenant %s", tenant_id)
+    return {"status": "updated"}

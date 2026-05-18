@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { PaymentForm } from '../PaymentForm'
+import { PaymentForm, UpdatePaymentForm } from '../PaymentForm'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -298,6 +298,7 @@ function SubscriptionPage() {
   const [reactivating, setReactivating]  = useState(false)
   const [payingPlan, setPayingPlan]       = useState<Plan | null>(null)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [updatingCard, setUpdatingCard]   = useState(false)
   const [menuOpen, setMenuOpen]           = useState(false)
 
   useEffect(() => {
@@ -627,17 +628,15 @@ function SubscriptionPage() {
             {/* Action buttons */}
             <div style={{ padding: '0 20px 16px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
-                onClick={openPortal}
-                disabled={portalLoading}
+                onClick={() => setUpdatingCard(true)}
                 style={{
                   padding: '8px 16px', fontSize: 12, fontWeight: 500,
                   border: '1px solid var(--border-2)', borderRadius: 7,
                   background: 'var(--bg)', color: 'var(--text-2)',
-                  cursor: portalLoading ? 'default' : 'pointer',
-                  opacity: portalLoading ? 0.65 : 1,
+                  cursor: 'pointer',
                 }}
               >
-                {portalLoading ? 'Opening…' : 'Update payment method'}
+                Update payment method
               </button>
               {isCanceling ? (
                 <button
@@ -680,6 +679,31 @@ function SubscriptionPage() {
             <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Choose a plan below to get started.</div>
           </div>
         )}
+
+        {/* ── Update payment method (inline card form) ── */}
+        <AnimatePresence>
+          {updatingCard && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+              style={{ maxWidth: 460, marginBottom: 32 }}
+            >
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Update payment method</span>
+                </div>
+                <UpdatePaymentForm
+                  tenantId={tenantId}
+                  onSuccess={async () => {
+                    setUpdatingCard(false)
+                    showToast('✓ Payment method updated')
+                    await fetchData()
+                  }}
+                  onCancel={() => setUpdatingCard(false)}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Payment form (when collecting new payment) ── */}
         <AnimatePresence>
