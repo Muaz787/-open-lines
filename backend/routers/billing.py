@@ -432,24 +432,24 @@ async def sync_subscription(tenant_id: str):
         if sub is None:
             raise HTTPException(status_code=404, detail="No Stripe subscription found for this customer")
 
-        stripe_status = sub.get("status", "")
+        stripe_status = str(getattr(sub, "status", "") or "")
         our_status = {
             "active": "active", "trialing": "active",
             "past_due": "past_due", "unpaid": "past_due",
             "canceled": "canceled", "incomplete_expired": "canceled",
         }.get(stripe_status, stripe_status)
 
-        # Extract plan from subscription items
-        items = (sub.get("items") or {}).get("data", [])
-        price_id = items[0].get("price", {}).get("id", "") if items else ""
+        # Extract plan from subscription items (use attribute access — SDK objects aren't dicts)
+        items = list(getattr(sub.items, "data", []) if getattr(sub, "items", None) else [])
+        price_id = str(getattr(getattr(items[0], "price", None), "id", "") or "") if items else ""
         plan = next(
             (k for k, v in PRICE_IDS.items() if v == price_id),
             tenant.get("subscription_plan", "starter"),
         )
 
         await db.update_tenant(tenant_id, {
-            "stripe_subscription_id": sub["id"],
-            "stripe_customer_id":     sub["customer"],
+            "stripe_subscription_id": sub.id,
+            "stripe_customer_id":     sub.customer,
             "subscription_plan":      plan,
             "subscription_status":    our_status,
         })
