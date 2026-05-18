@@ -218,18 +218,36 @@ async def create_subscription(body: dict):
                 existing_sub_id,
                 expand=["latest_invoice.payment_intent"],
             )
+            logger.info(
+                "Existing sub %s status=%s for tenant %s, plan requested=%s",
+                existing_sub_id, existing.status, tenant_id, plan,
+            )
+        except stripe.InvalidRequestError:
+            logger.warning("Sub %s not found in Stripe for tenant %s — will create new", existing_sub_id, tenant_id)
+            existing = None
+        except stripe.StripeError as e:
+            logger.error("Failed to retrieve sub %s for tenant %s: %s", existing_sub_id, tenant_id, e)
+            raise HTTPException(status_code=500, detail=f"Could not retrieve existing subscription: {e.user_message or str(e)}")
+
+        if existing is not None:
             if existing.status in ("active", "trialing", "past_due"):
                 # Upgrade/downgrade — modify the existing subscription
-                sub_items = existing.items.data if existing.items else []
-                if sub_items:
+                sub_items = (existing.items.data if existing.items else []) or []
+                if not sub_items:
+                    logger.error("No items on sub %s for tenant %s", existing_sub_id, tenant_id)
+                    raise HTTPException(status_code=500, detail="Could not modify subscription — no items found")
+                try:
                     stripe.Subscription.modify(
                         existing_sub_id,
                         items=[{"id": sub_items[0].id, "price": price_id}],
                         proration_behavior="always_invoice",
                     )
-                    await db.update_tenant(tenant_id, {"subscription_plan": plan})
-                    logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
-                    return {"needs_payment": False, "subscription_id": existing_sub_id}
+                except stripe.StripeError as se:
+                    logger.error("Stripe modify failed for sub %s tenant %s: %s", existing_sub_id, tenant_id, se)
+                    raise HTTPException(status_code=500, detail=f"Plan change failed: {se.user_message or str(se)}")
+                await db.update_tenant(tenant_id, {"subscription_plan": plan})
+                logger.info("Plan changed to %s for tenant %s (sub %s)", plan, tenant_id, existing_sub_id)
+                return {"needs_payment": False, "subscription_id": existing_sub_id}
 
             elif existing.status == "incomplete":
                 # Reuse the existing incomplete subscription's payment intent
@@ -243,14 +261,14 @@ async def create_subscription(body: dict):
                         logger.info("Reusing incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
                         return {"needs_payment": True, "client_secret": secret, "subscription_id": existing_sub_id}
                 # No usable payment intent — cancel stale incomplete sub and create fresh
-                stripe.Subscription.cancel(existing_sub_id)
+                try:
+                    stripe.Subscription.cancel(existing_sub_id)
+                except stripe.StripeError:
+                    pass
                 logger.info("Cancelled stale incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
 
             elif existing.status in ("canceled", "incomplete_expired"):
                 pass  # Fall through to create a new subscription
-
-        except stripe.StripeError as e:
-            logger.warning("Could not handle existing subscription %s for tenant %s: %s — will create new", existing_sub_id, tenant_id, e)
 
     # Create a new incomplete subscription so we can collect payment via Payment Element
     try:

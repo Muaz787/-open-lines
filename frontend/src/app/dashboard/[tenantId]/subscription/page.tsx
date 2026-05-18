@@ -355,19 +355,26 @@ function SubscriptionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
       })
-      const data = await res.json()
+      let data: Record<string, unknown>
+      try {
+        data = await res.json()
+      } catch {
+        showToast(`Server error (status ${res.status}) — check Railway logs`)
+        return
+      }
       if (res.ok && data.needs_payment === false) {
         setConfirmPlan(null)
         showToast(`✓ Switched to ${confirmPlan.label} plan`)
-        await fetchData()
+        await fetchData().catch(() => {})
       } else if (res.ok && data.needs_payment) {
         setConfirmPlan(null)
         setPayingPlan(confirmPlan)
       } else {
-        showToast(data.detail ?? 'Plan change failed — try again')
+        showToast((data.detail as string) ?? 'Plan change failed — try again')
       }
-    } catch {
-      showToast('Network error — try again')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'unknown'
+      showToast(`Network error — ${msg}`)
     } finally {
       setConfirming(false)
     }
