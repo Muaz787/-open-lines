@@ -155,6 +155,7 @@ async def stripe_webhook(request: Request):
 
     elif event_type == "customer.subscription.updated":
         sub: dict       = event.get("data", {}).get("object", {})
+        sub_id          = sub.get("id", "")
         customer_id     = sub.get("customer", "")
         stripe_status   = sub.get("status", "")
         our_status = {
@@ -166,24 +167,29 @@ async def stripe_webhook(request: Request):
 
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
-            if tenant:
+            if tenant and tenant.get("stripe_subscription_id") == sub_id:
                 await db.update_tenant(tenant["id"], {"subscription_status": our_status})
-                logger.info("Subscription status updated to %s for customer %s", our_status, customer_id)
+                logger.info("Subscription status updated to %s for customer %s sub %s", our_status, customer_id, sub_id)
+            elif tenant:
+                logger.info("Ignoring subscription.updated for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
         except Exception as e:
             logger.error("Failed to update subscription status for customer %s: %s", customer_id, e)
 
     elif event_type == "customer.subscription.deleted":
-        sub     = event.get("data", {}).get("object", {})
+        sub         = event.get("data", {}).get("object", {})
+        sub_id      = sub.get("id", "")
         customer_id = sub.get("customer", "")
 
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
-            if tenant:
+            if tenant and tenant.get("stripe_subscription_id") == sub_id:
                 await db.update_tenant(tenant["id"], {
                     "subscription_status": "canceled",
                     "subscription_plan":   None,
                 })
-                logger.info("Subscription canceled for customer %s", customer_id)
+                logger.info("Subscription canceled for customer %s sub %s", customer_id, sub_id)
+            elif tenant:
+                logger.info("Ignoring subscription.deleted for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
         except Exception as e:
             logger.error("Failed to cancel subscription for customer %s: %s", customer_id, e)
 
@@ -408,18 +414,23 @@ async def sync_subscription(tenant_id: str):
     sub_id      = tenant.get("stripe_subscription_id")
     customer_id = tenant.get("stripe_customer_id")
 
-    if not sub_id and not customer_id:
+    if not customer_id and not sub_id:
         raise HTTPException(status_code=400, detail="No Stripe subscription linked to this tenant")
 
     try:
-        if sub_id:
+        # Always prefer the active/trialing sub for this customer — avoids syncing a stale
+        # cancelled sub_id that was left in the DB after a webhook race condition.
+        sub = None
+        if customer_id:
+            for status_filter in ("active", "trialing", "past_due", "incomplete"):
+                subs = stripe.Subscription.list(customer=customer_id, limit=1, status=status_filter)
+                if subs.data:
+                    sub = subs.data[0]
+                    break
+        if sub is None and sub_id:
             sub = stripe.Subscription.retrieve(sub_id)
-        else:
-            # Find latest subscription for this customer
-            subs = stripe.Subscription.list(customer=customer_id, limit=1, status="all")
-            if not subs.data:
-                raise HTTPException(status_code=404, detail="No Stripe subscription found for this customer")
-            sub = subs.data[0]
+        if sub is None:
+            raise HTTPException(status_code=404, detail="No Stripe subscription found for this customer")
 
         stripe_status = sub.get("status", "")
         our_status = {
