@@ -522,10 +522,11 @@ function SubscriptionPage() {
           <motion.div
             initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
             style={{
-              position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+              position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)',
               background: 'var(--text)', color: 'var(--bg)', padding: '10px 20px',
-              borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 200,
+              borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 400,
               boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              whiteSpace: 'nowrap',
             }}
           >
             {toast}
@@ -685,22 +686,29 @@ function SubscriptionPage() {
           {payingPlan && (
             <motion.div
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-              style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', marginBottom: 32, overflow: 'hidden' }}
+              style={{ maxWidth: 460, marginBottom: 32 }}
             >
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                Subscribe to {payingPlan.label} — {payingPlan.price}/mo
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                    {payingPlan.label} Plan
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                    {payingPlan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                  </span>
+                </div>
+                <PaymentForm
+                  tenantId={tenantId}
+                  plan={payingPlan.id}
+                  planLabel={`${payingPlan.label} · ${payingPlan.price}/mo`}
+                  onSuccess={async () => {
+                    setPayingPlan(null)
+                    showToast('🎉 Subscription activated!')
+                    await fetchData()
+                  }}
+                  onCancel={() => setPayingPlan(null)}
+                />
               </div>
-              <PaymentForm
-                tenantId={tenantId}
-                plan={payingPlan.id}
-                planLabel={`${payingPlan.label} · ${payingPlan.price}/mo`}
-                onSuccess={async () => {
-                  setPayingPlan(null)
-                  showToast('🎉 Subscription activated!')
-                  await fetchData()
-                }}
-                onCancel={() => setPayingPlan(null)}
-              />
             </motion.div>
           )}
         </AnimatePresence>
