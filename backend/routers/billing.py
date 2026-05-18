@@ -266,14 +266,52 @@ async def create_subscription(body: dict):
         logger.error("Stripe subscription creation failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
+    # If subscription went active immediately (e.g. covered by customer credit balance)
+    if getattr(sub, "status", None) == "active":
+        await db.update_tenant(tenant_id, {
+            "stripe_customer_id":     customer_id,
+            "stripe_subscription_id": sub.id,
+            "subscription_plan":      plan,
+            "subscription_status":    "active",
+        })
+        logger.info("Subscription %s active immediately (credit balance) for tenant %s", sub.id, tenant_id)
+        return {"needs_payment": False, "subscription_id": sub.id}
+
     try:
         # Try the expanded object first; if Stripe returned a plain invoice ID string, fetch manually
         invoice = sub.latest_invoice
         if isinstance(invoice, str):
             invoice = stripe.Invoice.retrieve(invoice, expand=["payment_intent"])
-        client_secret = invoice.payment_intent.client_secret
+        pi = getattr(invoice, "payment_intent", None) if invoice else None
+        # payment_intent can be None if invoice is $0 / fully credited
+        if pi is None:
+            await db.update_tenant(tenant_id, {
+                "stripe_customer_id":     customer_id,
+                "stripe_subscription_id": sub.id,
+                "subscription_plan":      plan,
+                "subscription_status":    "active",
+            })
+            logger.info("Subscription %s has no payment_intent (zero invoice) for tenant %s", sub.id, tenant_id)
+            return {"needs_payment": False, "subscription_id": sub.id}
+        # pi can be an unexpanded string ID or a full PaymentIntent object
+        if isinstance(pi, str):
+            pi = stripe.PaymentIntent.retrieve(pi)
+        client_secret = getattr(pi, "client_secret", None)
+        if not client_secret:
+            # PaymentIntent already succeeded (paid via credit balance); no further action needed
+            await db.update_tenant(tenant_id, {
+                "stripe_customer_id":     customer_id,
+                "stripe_subscription_id": sub.id,
+                "subscription_plan":      plan,
+                "subscription_status":    "active",
+            })
+            logger.info("Subscription %s PaymentIntent has no client_secret (already paid) for tenant %s", sub.id, tenant_id)
+            return {"needs_payment": False, "subscription_id": sub.id}
+    except stripe.StripeError as se:
+        logger.error("Stripe error extracting payment intent for tenant %s sub %s: %s", tenant_id, sub.id, se)
+        raise HTTPException(status_code=500, detail=f"Stripe error: {se.user_message or str(se)}")
     except Exception as e:
-        logger.error("Could not extract client_secret from subscription for tenant %s: %s", tenant_id, e)
+        logger.error("Unexpected error extracting payment intent for tenant %s sub %s: %s", tenant_id, sub.id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Could not initialise payment. Please try again.")
 
     await db.update_tenant(tenant_id, {
