@@ -68,6 +68,16 @@ alter table tenants add column if not exists subscription_status    text default
 alter table tenants add column if not exists kb_files jsonb default '[]'::jsonb;
 alter table tenants add column if not exists extra_instructions text;
 
+-- Knowledge base source tracking
+create table if not exists kb_entries (
+    id          uuid primary key default gen_random_uuid(),
+    tenant_id   uuid not null references tenants(id) on delete cascade,
+    type        text not null,          -- 'file' | 'text' | 'website'
+    label       text not null,          -- filename, text preview, or URL
+    preview     text,                   -- first 200 chars (text entries only)
+    added_at    timestamptz default now()
+);
+
 -- Appointments booked by the AI receptionist
 create table if not exists appointments (
     id                   uuid primary key default gen_random_uuid(),

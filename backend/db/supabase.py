@@ -254,3 +254,41 @@ async def get_appointment_by_call_id(call_id: str) -> dict | None:
         .execute()
     )
     return res.data[0] if res.data else None
+
+
+# ---------------------------------------------------------------------------
+# KB Entries
+# ---------------------------------------------------------------------------
+
+async def insert_kb_entry(tenant_id: str, type_: str, label: str, preview: str | None = None) -> dict:
+    res = get_client().table("kb_entries").insert({
+        "tenant_id": tenant_id,
+        "type": type_,
+        "label": label,
+        **({"preview": preview} if preview else {}),
+    }).execute()
+    return res.data[0]
+
+
+async def get_kb_entries(tenant_id: str) -> list:
+    res = (
+        get_client()
+        .table("kb_entries")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .order("added_at", desc=True)
+        .execute()
+    )
+    return res.data or []
+
+
+async def delete_kb_entry(tenant_id: str, entry_id: str) -> None:
+    get_client().table("kb_entries").delete().eq("id", entry_id).eq("tenant_id", tenant_id).execute()
+
+
+async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
+    get_client().table("kb_entries").delete().eq("tenant_id", tenant_id).eq("type", "website").execute()
+    res = get_client().table("kb_entries").insert({
+        "tenant_id": tenant_id, "type": "website", "label": label,
+    }).execute()
+    return res.data[0]

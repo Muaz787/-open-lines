@@ -77,7 +77,7 @@ async def scrape_website(url: str) -> str:
     return text
 
 
-async def embed_and_store(namespace: str, text: str, tenant_id: str) -> int:
+async def embed_and_store(namespace: str, text: str, tenant_id: str, source_id: str | None = None) -> int:
     chunks = _chunk_text(text)
     if not chunks:
         logger.warning("No chunks produced for tenant %s", tenant_id)
@@ -95,23 +95,32 @@ async def embed_and_store(namespace: str, text: str, tenant_id: str) -> int:
 
     vectors = [
         {
-            "id": f"{tenant_id}-{i}",
+            "id": f"{source_id}-{i}" if source_id else f"{tenant_id}-{i}",
             "values": embeddings[i],
-            "metadata": {"text": chunks[i], "tenant_id": tenant_id},
+            "metadata": {
+                "text": chunks[i],
+                "tenant_id": tenant_id,
+                **({"source_id": source_id} if source_id else {}),
+            },
         }
         for i in range(len(chunks))
     ]
 
-    # Upsert in batches of 100 (Pinecone recommended limit)
     batch_size = 100
     for start in range(0, len(vectors), batch_size):
         index.upsert(vectors=vectors[start : start + batch_size], namespace=namespace)
 
     logger.info(
-        "Stored %d vectors in Pinecone namespace '%s' for tenant %s",
-        len(vectors), namespace, tenant_id,
+        "Stored %d vectors in Pinecone namespace '%s' for tenant %s (source=%s)",
+        len(vectors), namespace, tenant_id, source_id or "none",
     )
     return len(vectors)
+
+
+def delete_by_source(namespace: str, source_id: str) -> None:
+    index = _get_pinecone_index()
+    index.delete(filter={"source_id": source_id}, namespace=namespace)
+    logger.info("Deleted vectors for source %s in namespace '%s'", source_id, namespace)
 
 
 def extract_text(filename: str, content: bytes) -> str:

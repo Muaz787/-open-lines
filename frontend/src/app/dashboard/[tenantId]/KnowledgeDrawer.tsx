@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 
@@ -19,9 +19,12 @@ interface UploadResult {
   reason?: string
 }
 
-interface KbFile {
-  name: string
-  uploaded_at: string
+interface KbEntry {
+  id: string
+  type: 'file' | 'text' | 'website'
+  label: string
+  preview?: string
+  added_at: string
 }
 
 interface Props {
@@ -29,6 +32,17 @@ interface Props {
   websiteUrl?: string
   lastCrawlAt?: string
   onClose: () => void
+}
+
+const TYPE_ICON: Record<string, string> = { file: '📄', text: '📝', website: '🌐' }
+
+function timeAgoShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const d = Math.floor(diff / 86400000)
+  if (d === 0) return 'Today'
+  if (d === 1) return 'Yesterday'
+  if (d < 30) return `${d}d ago`
+  return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
 }
 
 export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: Props) {
@@ -51,18 +65,31 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
   const [clearLoading, setClearLoading]   = useState(false)
   const [clearMsg, setClearMsg]           = useState<string | null>(null)
 
-  const [kbFiles, setKbFiles]             = useState<KbFile[]>([])
   const [repairLoading, setRepairLoading] = useState(false)
   const [repairMsg, setRepairMsg]         = useState<string | null>(null)
 
-  useEffect(() => {
-    authHeaders().then(ah =>
-      fetch(`${API}/knowledge/files/${tenantId}`, { headers: ah })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.files) setKbFiles(d.files) })
-        .catch(() => {})
-    )
+  const [entries, setEntries]             = useState<KbEntry[]>([])
+  const [deletingId, setDeletingId]       = useState<string | null>(null)
+
+  const loadEntries = useCallback(async () => {
+    const ah = await authHeaders()
+    fetch(`${API}/knowledge/entries/${tenantId}`, { headers: ah })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.entries) setEntries(d.entries) })
+      .catch(() => {})
   }, [tenantId])
+
+  useEffect(() => { loadEntries() }, [loadEntries])
+
+  const deleteEntry = async (id: string) => {
+    setDeletingId(id)
+    try {
+      const ah = await authHeaders()
+      await fetch(`${API}/knowledge/entries/${tenantId}/${id}`, { method: 'DELETE', headers: ah })
+      setEntries(prev => prev.filter(e => e.id !== id))
+    } catch {}
+    finally { setDeletingId(null) }
+  }
 
   const repairPrompt = async () => {
     setRepairLoading(true)
@@ -113,6 +140,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
       setSyncMsg(res.ok
         ? `Synced — ${data.vectors_stored} vectors stored`
         : data.detail || 'Sync failed')
+      if (res.ok) loadEntries()
     } catch {
       setSyncMsg('Network error — try again')
     } finally {
@@ -130,12 +158,11 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     try {
       const ah  = await authHeaders()
       const res = await fetch(`${API}/knowledge/upload/${tenantId}`, {
-        method:  'POST',
-        headers: { ...ah },
-        body:    form,
+        method: 'POST', headers: { ...ah }, body: form,
       })
       const data = await res.json()
       setUploadResults(data.results ?? [])
+      if (data.results?.some((r: UploadResult) => r.status === 'ok')) loadEntries()
     } catch {
       setUploadResults([{ file: 'Upload', status: 'error', reason: 'Network error' }])
     } finally {
@@ -155,7 +182,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
         body:    JSON.stringify({ text }),
       })
       const data = await res.json()
-      if (res.ok) { setTextMsg(`Added — ${data.vectors_stored} vectors stored`); setText('') }
+      if (res.ok) { setTextMsg(`Added — ${data.vectors_stored} vectors stored`); setText(''); loadEntries() }
       else          setTextMsg(data.detail || 'Failed')
     } catch {
       setTextMsg('Network error — try again')
@@ -183,24 +210,17 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
     textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 10,
   }
-
   const okColor  = 'var(--accent)'
   const errColor = '#FF3B30'
 
   return (
     <>
-      {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0,
-          background: 'rgba(0,0,0,0.35)',
-          zIndex: 190,
-        }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 190 }}
       />
 
-      {/* Panel */}
       <motion.div
         initial={{ x: 440 }} animate={{ x: 0 }} exit={{ x: 440 }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
@@ -225,53 +245,90 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
               What your AI knows about your business
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: '1px solid var(--border-2)',
-              borderRadius: 6, cursor: 'pointer',
-              color: 'var(--text-3)', fontSize: 16, lineHeight: 1,
-              width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            ×
-          </button>
+          <button onClick={onClose} style={{
+            background: 'none', border: '1px solid var(--border-2)',
+            borderRadius: 6, cursor: 'pointer', color: 'var(--text-3)',
+            fontSize: 16, lineHeight: 1, width: 30, height: 30,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>×</button>
         </div>
 
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 28, flex: 1 }}>
 
+          {/* ── Sources ── */}
+          <div>
+            <div style={labelStyle}>Sources ({entries.length})</div>
+            <div style={{
+              border: '1px solid var(--border)', borderRadius: 10,
+              overflow: 'hidden', background: 'var(--bg)',
+            }}>
+              {entries.length === 0 ? (
+                <div style={{ padding: '16px 14px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>
+                  No sources yet — add your website, upload files, or paste text below.
+                </div>
+              ) : (
+                entries.map((e, i) => (
+                  <div key={e.id} style={{
+                    display: 'grid', gridTemplateColumns: '1fr auto',
+                    alignItems: 'center', gap: 10,
+                    padding: '10px 12px',
+                    borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICON[e.type] ?? '📄'}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 12, color: 'var(--text)', fontWeight: 500,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{e.label}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>
+                          {e.type} · {timeAgoShort(e.added_at)}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteEntry(e.id)}
+                      disabled={deletingId === e.id}
+                      title="Remove from knowledge base"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-3)', fontSize: 16, lineHeight: 1,
+                        padding: '2px 4px', borderRadius: 4,
+                        opacity: deletingId === e.id ? 0.4 : 1,
+                        transition: 'color 0.15s',
+                      }}
+                      onMouseEnter={e2 => (e2.currentTarget.style.color = errColor)}
+                      onMouseLeave={e2 => (e2.currentTarget.style.color = 'var(--text-3)')}
+                    >×</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* ── Website ── */}
           <div>
             <div style={labelStyle}>Website URL</div>
-
-            {/* Editable URL input */}
             <input
               type="url"
               value={urlInput}
               onChange={e => { setUrlInput(e.target.value); setUrlMsg(null) }}
               placeholder="https://yourbusiness.com"
               style={{
-                width: '100%', boxSizing: 'border-box',
-                padding: '10px 12px',
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px',
                 background: 'var(--bg)', border: '1px solid var(--border-2)',
                 borderRadius: 8, fontSize: 13, color: 'var(--text)',
                 outline: 'none', fontFamily: 'var(--font-dm), sans-serif',
               }}
             />
-
-            {/* Save URL button — only shown when URL has changed */}
             {urlInput.trim() !== (websiteUrl ?? '') && (
-              <button
-                onClick={saveUrl}
-                disabled={urlSaving || !urlInput.trim()}
-                style={{
-                  marginTop: 8, fontSize: 12, fontWeight: 600,
-                  color: 'var(--bg)', background: 'var(--accent)',
-                  border: 'none', borderRadius: 7, padding: '8px 14px',
-                  cursor: urlSaving ? 'not-allowed' : 'pointer',
-                  opacity: urlSaving ? 0.65 : 1, transition: 'opacity 0.2s',
-                }}
-              >
+              <button onClick={saveUrl} disabled={urlSaving || !urlInput.trim()} style={{
+                marginTop: 8, fontSize: 12, fontWeight: 600,
+                color: 'var(--bg)', background: 'var(--accent)',
+                border: 'none', borderRadius: 7, padding: '8px 14px',
+                cursor: urlSaving ? 'not-allowed' : 'pointer',
+                opacity: urlSaving ? 0.65 : 1, transition: 'opacity 0.2s',
+              }}>
                 {urlSaving ? 'Saving…' : 'Save URL'}
               </button>
             )}
@@ -280,27 +337,18 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
                 {urlMsg}
               </div>
             )}
-
-            {/* Last synced info */}
             {lastCrawlAt && (
               <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>
                 Last synced {new Date(lastCrawlAt).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
               </div>
             )}
-
-            {/* Re-sync button — outside the box, below */}
-            <button
-              onClick={syncWebsite}
-              disabled={syncLoading || !urlInput.trim()}
-              style={{
-                marginTop: 10, fontSize: 12, fontWeight: 600,
-                color: 'var(--bg)',
-                background: urlInput.trim() ? 'var(--text)' : 'var(--text-3)',
-                border: 'none', borderRadius: 7, padding: '8px 16px',
-                cursor: urlInput.trim() && !syncLoading ? 'pointer' : 'not-allowed',
-                opacity: syncLoading ? 0.65 : 1, transition: 'opacity 0.2s',
-              }}
-            >
+            <button onClick={syncWebsite} disabled={syncLoading || !urlInput.trim()} style={{
+              marginTop: 10, fontSize: 12, fontWeight: 600, color: 'var(--bg)',
+              background: urlInput.trim() ? 'var(--text)' : 'var(--text-3)',
+              border: 'none', borderRadius: 7, padding: '8px 16px',
+              cursor: urlInput.trim() && !syncLoading ? 'pointer' : 'not-allowed',
+              opacity: syncLoading ? 0.65 : 1, transition: 'opacity 0.2s',
+            }}>
               {syncLoading ? 'Syncing…' : 'Re-sync Website'}
             </button>
             {syncMsg && (
@@ -327,9 +375,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
               }}
             >
               <input
-                ref={fileInputRef}
-                type="file"
-                multiple
+                ref={fileInputRef} type="file" multiple
                 accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv"
                 style={{ display: 'none' }}
                 onChange={e => e.target.files && handleFiles(e.target.files)}
@@ -342,7 +388,6 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
                 PDF, Word, Excel, TXT, CSV · max 10 MB each
               </div>
             </div>
-
             {uploadResults.length > 0 && (
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {uploadResults.map((r, i) => (
@@ -360,30 +405,6 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
             )}
           </div>
 
-          {/* ── Uploaded Files List ── */}
-          {kbFiles.length > 0 && (
-            <div>
-              <div style={labelStyle}>Uploaded Files</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {kbFiles.map((f, i) => (
-                  <div key={i} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '8px 12px', borderRadius: 8,
-                    background: 'var(--bg)', border: '1px solid var(--border)',
-                    fontSize: 12,
-                  }}>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', color: 'var(--text)' }}>
-                      📄 {f.name}
-                    </span>
-                    <span style={{ color: 'var(--text-3)', fontSize: 11, whiteSpace: 'nowrap' }}>
-                      {new Date(f.uploaded_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* ── Add Text ── */}
           <div>
             <div style={labelStyle}>Add Text Manually</div>
@@ -394,25 +415,20 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
               rows={6}
               style={{
                 width: '100%', boxSizing: 'border-box', resize: 'vertical',
-                padding: '12px 14px',
-                background: 'var(--bg)', border: '1px solid var(--border-2)',
-                borderRadius: 8, fontSize: 12, color: 'var(--text)',
-                lineHeight: 1.6, fontFamily: 'var(--font-dm), sans-serif',
-                outline: 'none',
+                padding: '12px 14px', background: 'var(--bg)',
+                border: '1px solid var(--border-2)', borderRadius: 8,
+                fontSize: 12, color: 'var(--text)', lineHeight: 1.6,
+                fontFamily: 'var(--font-dm), sans-serif', outline: 'none',
               }}
             />
-            <button
-              onClick={addText}
-              disabled={textLoading || !text.trim()}
-              style={{
-                marginTop: 10, fontSize: 12, fontWeight: 600,
-                color: text.trim() ? 'var(--bg)' : 'var(--text-3)',
-                background: text.trim() ? 'var(--text)' : 'var(--bg-3)',
-                border: 'none', borderRadius: 7, padding: '9px 18px',
-                cursor: text.trim() && !textLoading ? 'pointer' : 'not-allowed',
-                opacity: textLoading ? 0.65 : 1, transition: 'opacity 0.2s, background 0.2s',
-              }}
-            >
+            <button onClick={addText} disabled={textLoading || !text.trim()} style={{
+              marginTop: 10, fontSize: 12, fontWeight: 600,
+              color: text.trim() ? 'var(--bg)' : 'var(--text-3)',
+              background: text.trim() ? 'var(--text)' : 'var(--bg-3)',
+              border: 'none', borderRadius: 7, padding: '9px 18px',
+              cursor: text.trim() && !textLoading ? 'pointer' : 'not-allowed',
+              opacity: textLoading ? 0.65 : 1, transition: 'opacity 0.2s, background 0.2s',
+            }}>
               {textLoading ? 'Processing…' : 'Add to Knowledge Base'}
             </button>
             {textMsg && (
@@ -428,17 +444,12 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, lineHeight: 1.5 }}>
               Re-push the latest knowledge base and instructions to the AI. Use this after uploading new files or changing settings.
             </div>
-            <button
-              onClick={repairPrompt}
-              disabled={repairLoading}
-              style={{
-                fontSize: 12, fontWeight: 600, color: 'var(--bg)',
-                background: 'var(--text)',
-                border: 'none', borderRadius: 7, padding: '8px 16px',
-                cursor: repairLoading ? 'not-allowed' : 'pointer',
-                opacity: repairLoading ? 0.65 : 1, transition: 'opacity 0.2s',
-              }}
-            >
+            <button onClick={repairPrompt} disabled={repairLoading} style={{
+              fontSize: 12, fontWeight: 600, color: 'var(--bg)', background: 'var(--text)',
+              border: 'none', borderRadius: 7, padding: '8px 16px',
+              cursor: repairLoading ? 'not-allowed' : 'pointer',
+              opacity: repairLoading ? 0.65 : 1, transition: 'opacity 0.2s',
+            }}>
               {repairLoading ? 'Updating…' : 'Update AI Prompt'}
             </button>
             {repairMsg && (
@@ -454,18 +465,13 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 12, lineHeight: 1.5 }}>
               Remove all stored content. Use this before a full re-sync to start clean.
             </div>
-            <button
-              onClick={clearKnowledge}
-              disabled={clearLoading}
-              style={{
-                fontSize: 12, fontWeight: 600, color: errColor,
-                background: 'rgba(255,59,48,0.08)',
-                border: '1px solid rgba(255,59,48,0.2)',
-                borderRadius: 7, padding: '8px 16px',
-                cursor: clearLoading ? 'not-allowed' : 'pointer',
-                opacity: clearLoading ? 0.65 : 1, transition: 'opacity 0.2s',
-              }}
-            >
+            <button onClick={clearKnowledge} disabled={clearLoading} style={{
+              fontSize: 12, fontWeight: 600, color: errColor,
+              background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.2)',
+              borderRadius: 7, padding: '8px 16px',
+              cursor: clearLoading ? 'not-allowed' : 'pointer',
+              opacity: clearLoading ? 0.65 : 1, transition: 'opacity 0.2s',
+            }}>
               {clearLoading ? 'Clearing…' : 'Clear Knowledge Base'}
             </button>
             {clearMsg && (
@@ -474,6 +480,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
               </div>
             )}
           </div>
+
         </div>
       </motion.div>
     </>

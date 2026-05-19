@@ -371,6 +371,11 @@ async def sync_knowledge(body: dict):
         logger.error("Failed to update last_crawl_at for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to update tenant crawl timestamp")
 
+    try:
+        await db.upsert_kb_website_entry(tenant_id, website_url)
+    except Exception as e:
+        logger.warning("Failed to track website KB entry for tenant %s (non-fatal): %s", tenant_id, e)
+
     # Refresh tenant record so reprompt sees the updated last_crawl_at
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
