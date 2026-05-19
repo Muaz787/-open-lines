@@ -649,10 +649,8 @@ export default function Home() {
                 key={i}
                 className="process-card"
                 style={{ '--step-offset': `${i * 28}px` } as React.CSSProperties}
-                initial={{ opacity: 0, y: 22 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.5, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] }}
+                whileHover={{ y: -6, boxShadow: '0 12px 36px rgba(0,0,0,0.09)' }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               >
                 <div className="process-num">{step.n}</div>
                 <div style={{ fontFamily: 'var(--font-syne), sans-serif', fontWeight: 700, fontSize: 15, marginBottom: 8, color: 'var(--text)' }}>
