@@ -645,7 +645,15 @@ export default function Home() {
                 body: 'Update your knowledge base anytime. The AI learns from every interaction and improves with your business.',
               },
             ].map((step, i) => (
-              <div key={i} className="process-card" style={{ '--step-offset': `${i * 28}px` } as React.CSSProperties}>
+              <motion.div
+                key={i}
+                className="process-card"
+                style={{ '--step-offset': `${i * 28}px` } as React.CSSProperties}
+                initial={{ opacity: 0, y: 22 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.5, delay: i * 0.12, ease: [0.22, 1, 0.36, 1] }}
+              >
                 <div className="process-num">{step.n}</div>
                 <div style={{ fontFamily: 'var(--font-syne), sans-serif', fontWeight: 700, fontSize: 15, marginBottom: 8, color: 'var(--text)' }}>
                   {step.title}
@@ -653,7 +661,7 @@ export default function Home() {
                 <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.65 }}>
                   {step.body}
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
 
