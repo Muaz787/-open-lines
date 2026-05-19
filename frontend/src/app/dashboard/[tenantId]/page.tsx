@@ -1007,12 +1007,23 @@ function DashboardPage() {
           </div>
         ) : (
           <div className="leads-table">
+            {/* Header row */}
+            <div className="leads-header">
+              <div className="leads-header-cell">Lead</div>
+              <div className="leads-header-cell">Status</div>
+              <div className="leads-header-cell">Urgency</div>
+              <div className="leads-header-cell">Summary</div>
+              <div className="leads-header-cell">Last call</div>
+              <div />
+            </div>
+
             {leads.map(lead => {
               const detail        = detailMap[lead.id]
               const currentStatus = statusMap[lead.id] ?? lead.status
               const keyDetails    = detail?.metadata?.key_details ?? {}
               const nextStep      = detail?.metadata?.suggested_next_step
               const validCalls    = detail ? getValidCalls(detail.calls) : []
+              const isExpanded    = expandedId === lead.id
 
               return (
                 <div key={lead.id} className="lead-row" onClick={() => toggleExpand(lead.id)}>
@@ -1022,17 +1033,7 @@ function DashboardPage() {
                       <div className="av">{initials(lead.name, lead.phone)}</div>
                       <div>
                         <div className="lead-name">{lead.name ?? 'Unknown'}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span className="lead-phone">{lead.phone ?? '—'}</span>
-                          {lead.phone && (
-                            <button
-                              className="copy-btn"
-                              onClick={(e) => copyLeadPhone(e, lead.phone!, lead.id)}
-                            >
-                              {copiedPhone === lead.id ? '✓' : 'Copy'}
-                            </button>
-                          )}
-                        </div>
+                        <div className="lead-phone">{lead.phone ?? '—'}</div>
                       </div>
                     </div>
 
@@ -1047,11 +1048,12 @@ function DashboardPage() {
 
                     {/* Col 3: Urgency */}
                     <div>
-                      {lead.urgency && (
-                        <span className={`pill ${urgencyClass(lead.urgency)}`}>
-                          {lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)}
-                        </span>
-                      )}
+                      {lead.urgency
+                        ? <span className={`pill ${urgencyClass(lead.urgency)}`}>
+                            {lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)}
+                          </span>
+                        : <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>
+                      }
                     </div>
 
                     {/* Col 4: Summary */}
@@ -1059,6 +1061,13 @@ function DashboardPage() {
 
                     {/* Col 5: Time */}
                     <div className="lead-time">{timeAgo(lead.created_at)}</div>
+
+                    {/* Col 6: Chevron */}
+                    <div className={`lead-chevron${isExpanded ? ' open' : ''}`}>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
                   </div>
 
                   <AnimatePresence>
@@ -1066,6 +1075,37 @@ function DashboardPage() {
                       <motion.div className="lead-transcript"
                         initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
+
+                        {/* Phone + copy */}
+                        {lead.phone && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', fontFamily: 'monospace', letterSpacing: '0.02em' }}>{lead.phone}</span>
+                            <button
+                              onClick={(e) => copyLeadPhone(e, lead.phone!, lead.id)}
+                              style={{
+                                fontSize: 11, padding: '3px 10px', border: '1px solid var(--border-2)',
+                                borderRadius: 5, background: 'none', cursor: 'pointer',
+                                color: copiedPhone === lead.id ? 'var(--accent)' : 'var(--text-3)',
+                                transition: 'color 0.2s',
+                              }}
+                            >
+                              {copiedPhone === lead.id ? '✓ Copied' : 'Copy'}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Status stepper */}
+                        <div className="status-stepper">
+                          {(['new', 'contacted', 'booked'] as const).map(s => (
+                            <button
+                              key={s}
+                              className={`step-btn${(currentStatus ?? 'new') === s ? ' step-active' : ''}`}
+                              onClick={(e) => updateStatus(lead.id, s, e)}
+                            >
+                              {s.charAt(0).toUpperCase() + s.slice(1)}
+                            </button>
+                          ))}
+                        </div>
 
                         {/* Key details */}
                         {Object.keys(keyDetails).length > 0 && (
@@ -1097,27 +1137,6 @@ function DashboardPage() {
                             {nextStep}
                           </div>
                         )}
-
-                        {/* Status actions */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Mark as:</span>
-                          {(['contacted', 'booked'] as const).map(s => (
-                            <button
-                              key={s}
-                              onClick={(e) => updateStatus(lead.id, s, e)}
-                              style={{
-                                padding: '4px 12px',
-                                border: `1px solid ${currentStatus === s ? 'var(--accent)' : 'var(--border-2)'}`,
-                                borderRadius: 4, fontSize: 11, fontWeight: 500,
-                                background: currentStatus === s ? 'var(--accent-dim)' : 'transparent',
-                                color: currentStatus === s ? 'var(--accent)' : 'var(--text-2)',
-                                cursor: 'pointer', transition: 'all 0.2s',
-                              }}
-                            >
-                              {s.charAt(0).toUpperCase() + s.slice(1)}
-                            </button>
-                          ))}
-                        </div>
 
                         {/* Call history */}
                         {!detail ? (
