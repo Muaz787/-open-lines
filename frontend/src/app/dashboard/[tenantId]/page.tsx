@@ -696,7 +696,7 @@ function DashboardPage() {
                           key={plan.id}
                           onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
                           style={{
-                            flex: 1, minWidth: 110, padding: '11px 14px', textAlign: 'left',
+                            flex: 1, minWidth: 80, padding: '11px 14px', textAlign: 'left',
                             border: '1px solid var(--border-2)', borderRadius: 8,
                             background: 'var(--bg)', cursor: 'pointer',
                             transition: 'border-color 0.15s',

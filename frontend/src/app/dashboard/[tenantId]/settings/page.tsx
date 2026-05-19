@@ -149,7 +149,7 @@ function SettingsPage() {
         </Link>
       </div>
 
-      <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 20px 0' }}>
+      <div className="settings-wrap" style={{ maxWidth: 560, margin: '0 auto', padding: '40px 20px 0' }}>
 
         <div style={{
           fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase',

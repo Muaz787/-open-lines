@@ -845,14 +845,17 @@ footer {
   .db-stats > div > :last-child { font-size: 22px !important; }
 
   /* Leads mobile: name + status + chevron only */
-  .leads-header { grid-template-columns: 1fr 96px 28px; }
+  .leads-header { grid-template-columns: 1fr auto 28px; }
   .leads-header-cell:nth-child(3),
   .leads-header-cell:nth-child(4),
   .leads-header-cell:nth-child(5) { display: none; }
-  .lead-row-main { grid-template-columns: 1fr 96px 28px; gap: 8px; padding: 12px 14px; }
+  .lead-row-main { grid-template-columns: 1fr auto 28px; gap: 8px; padding: 12px 14px; }
   .lead-row-main > :nth-child(3),
   .lead-summary, .lead-time { display: none; }
   .lead-transcript { padding: 14px; }
+
+  /* Status stepper: smaller buttons */
+  .step-btn { padding: 5px 10px; }
 
   /* Empty state */
   .empty-state { padding: 48px 16px; }
@@ -991,4 +994,31 @@ footer {
 @media (max-width: 480px) {
   .pay-wrap { padding: 14px 14px 2px; }
   .pay-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* Dashboard: super-tight body */
+  .db-body { padding: 12px; }
+  .db-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .db-stats > div { padding: 12px 10px !important; }
+  .db-stats > div > :last-child { font-size: 20px !important; }
+
+  /* Lead queue */
+  .leads-header { padding: 6px 12px; }
+  .lead-row-main { padding: 10px 12px; }
+  .lead-transcript { padding: 12px; }
+  .step-btn { padding: 4px 10px; font-size: 10px; }
+
+  /* Invoice rows — stack date+status on one line, amount+link on second */
+  .invoice-row { grid-template-columns: 1fr auto !important; gap: 8px 12px !important; }
+  .invoice-row-amount { grid-column: 2; grid-row: 1; }
+  .invoice-row-status { grid-column: 1; grid-row: 2; }
+  .invoice-row-link   { grid-column: 2; grid-row: 2; justify-self: end; }
+
+  /* Settings page — reduce top gap */
+  .settings-wrap { padding-top: 24px !important; }
+
+  /* Subscription confirm modal — tighter padding */
+  .plan-confirm-modal { padding: 20px 18px 18px !important; }
+
+  /* Onboarding: reduce top/bottom page breathing room */
+  .ob-page { padding: 40px 16px; }
 }

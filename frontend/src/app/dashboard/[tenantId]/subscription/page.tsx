@@ -119,6 +119,7 @@ function ConfirmModal({
         exit={{ opacity: 0, scale: 0.96, y: 8 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
         onClick={e => e.stopPropagation()}
+        className="plan-confirm-modal"
         style={{
           background: 'var(--bg-2)',
           border: '1px solid var(--border-2)',
@@ -882,7 +883,7 @@ function SubscriptionPage() {
             <div className="db-section-title">Billing History</div>
             <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-2)' }}>
               {invoices.map((inv, i) => (
-                <div key={inv.id} style={{
+                <div key={inv.id} className="invoice-row" style={{
                   display: 'grid', gridTemplateColumns: '1fr auto auto auto',
                   alignItems: 'center', gap: 16,
                   padding: '12px 18px',
@@ -893,10 +894,10 @@ function SubscriptionPage() {
                       {fmtDate(inv.created)}
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                  <div className="invoice-row-amount" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
                     {fmtAmount(inv.amount_paid || inv.amount_due, inv.currency)}
                   </div>
-                  <span style={{
+                  <span className="invoice-row-status" style={{
                     fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
                     padding: '2px 8px', borderRadius: 4,
                     background: inv.status === 'paid' ? 'var(--accent-dim)' : 'rgba(255,149,0,.1)',
@@ -904,8 +905,9 @@ function SubscriptionPage() {
                   }}>
                     {inv.status}
                   </span>
-                  {(inv.invoice_pdf || inv.hosted_invoice_url) && (
+                  {(inv.invoice_pdf || inv.hosted_invoice_url) ? (
                     <a
+                      className="invoice-row-link"
                       href={inv.invoice_pdf ?? inv.hosted_invoice_url ?? '#'}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -916,7 +918,7 @@ function SubscriptionPage() {
                       </svg>
                       PDF
                     </a>
-                  )}
+                  ) : <div />}
                 </div>
               ))}
             </div>
