@@ -20,6 +20,7 @@ function SettingsPage() {
   const [emailState, setEmailState]   = useState<SaveState>('idle')
   const [emailMsg, setEmailMsg]       = useState('')
 
+  const [currentPw, setCurrentPw]     = useState('')
   const [newPw, setNewPw]             = useState('')
   const [confirmPw, setConfirmPw]     = useState('')
   const [pwState, setPwState]         = useState<SaveState>('idle')
@@ -67,20 +68,41 @@ function SettingsPage() {
   }
 
   const savePassword = async () => {
-    if (newPw !== confirmPw) {
+    if (!currentPw) {
       setPwState('error')
-      setPwMsg("Passwords don't match.")
+      setPwMsg('Enter your current password.')
       setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000)
       return
     }
     if (newPw.length < 8) {
       setPwState('error')
-      setPwMsg('Password must be at least 8 characters.')
+      setPwMsg('New password must be at least 8 characters.')
+      setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000)
+      return
+    }
+    if (newPw !== confirmPw) {
+      setPwState('error')
+      setPwMsg("New passwords don't match.")
       setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000)
       return
     }
     setPwState('saving')
     setPwMsg('')
+
+    // Verify current password by re-authenticating
+    const { data: userData } = await supabase.auth.getUser()
+    const userEmail = userData.user?.email ?? ''
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: currentPw,
+    })
+    if (signInError) {
+      setPwState('error')
+      setPwMsg('Current password is incorrect.')
+      setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000)
+      return
+    }
+
     const { error } = await supabase.auth.updateUser({ password: newPw })
     if (error) {
       setPwState('error')
@@ -88,6 +110,7 @@ function SettingsPage() {
     } else {
       setPwState('saved')
       setPwMsg('Password updated.')
+      setCurrentPw('')
       setNewPw('')
       setConfirmPw('')
     }
@@ -230,6 +253,24 @@ function SettingsPage() {
             <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
+                  Current password
+                </label>
+                <input
+                  type="password"
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  placeholder="Your current password"
+                  style={{
+                    width: '100%', padding: '9px 12px', fontSize: 13,
+                    border: '1px solid var(--border-2)', borderRadius: 7,
+                    background: 'var(--bg)', color: 'var(--text)',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
                   New password
                 </label>
                 <input
@@ -247,7 +288,7 @@ function SettingsPage() {
               </div>
               <div>
                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: 6 }}>
-                  Confirm password
+                  Confirm new password
                 </label>
                 <input
                   type="password"
@@ -266,13 +307,13 @@ function SettingsPage() {
             <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <button
                 onClick={savePassword}
-                disabled={pwState === 'saving' || !newPw}
+                disabled={pwState === 'saving' || !currentPw || !newPw}
                 style={{
                   fontSize: 12, fontWeight: 600, padding: '7px 18px',
                   borderRadius: 7, border: '1px solid var(--accent)',
                   background: 'var(--accent-dim)', color: 'var(--accent)',
-                  cursor: (pwState === 'saving' || !newPw) ? 'default' : 'pointer',
-                  opacity: (pwState === 'saving' || !newPw) ? 0.5 : 1,
+                  cursor: (pwState === 'saving' || !currentPw || !newPw) ? 'default' : 'pointer',
+                  opacity: (pwState === 'saving' || !currentPw || !newPw) ? 0.5 : 1,
                   transition: 'opacity 0.15s',
                 }}
               >
