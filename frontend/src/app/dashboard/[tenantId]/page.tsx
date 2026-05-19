@@ -731,7 +731,7 @@ function DashboardPage() {
             {!insights && !insightsLoading ? (
               <div style={{ padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
                 <div style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6, maxWidth: 320 }}>
-                  Get a GPT-4o analysis of your calls and leads — patterns, opportunities, and warnings.
+                  Get an AI analysis of your calls and leads — patterns, opportunities, and warnings.
                 </div>
                 <button
                   onClick={fetchInsights}
