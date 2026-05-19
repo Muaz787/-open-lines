@@ -181,6 +181,7 @@ function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [insights, setInsights]         = useState<InsightsData | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsCopied, setInsightsCopied]   = useState(false)
 
   // Calendar state
   const [kbOpen, setKbOpen]                 = useState(false)
@@ -214,6 +215,56 @@ function DashboardPage() {
     } catch {}
     finally { setInsightsLoading(false) }
   }, [tenantId])
+
+  const copyInsights = () => {
+    if (!insights) return
+    const text = insights.insights
+      .map(ins => `${ins.title} [${ins.type.toUpperCase()}]\n${ins.body}`)
+      .join('\n\n')
+    navigator.clipboard.writeText(text)
+    setInsightsCopied(true)
+    setTimeout(() => setInsightsCopied(false), 2000)
+  }
+
+  const downloadInsightsPDF = () => {
+    if (!insights) return
+    const typeColors: Record<string, string> = {
+      opportunity: '#16a34a', success: '#16a34a', warning: '#d97706', trend: '#3B7EF6',
+    }
+    const rows = insights.insights.map(ins => `
+      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #e5e7eb;">
+        <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:6px;">
+          ${ins.title}
+          <span style="margin-left:8px;font-size:10px;font-weight:700;text-transform:uppercase;
+            letter-spacing:0.06em;color:${typeColors[ins.type] ?? '#3B7EF6'};
+            background:${typeColors[ins.type] ?? '#3B7EF6'}1a;padding:2px 7px;border-radius:4px;">
+            ${ins.type}
+          </span>
+        </div>
+        <div style="font-size:13px;color:#555;line-height:1.65;">${ins.body}</div>
+      </div>`).join('')
+    const generatedStr = insights.generated_at
+      ? new Date(insights.generated_at).toLocaleString()
+      : 'recently'
+    const html = `<!DOCTYPE html><html><head><title>AI Insights — Open Lines</title>
+      <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+        padding:48px 52px;color:#111;max-width:720px;margin:0 auto;}
+        @media print{body{padding:32px;}}</style>
+      </head><body>
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+        color:#16a34a;margin-bottom:10px;">✦ AI Insights</div>
+      <h1 style="font-size:22px;font-weight:700;margin:0 0 28px;">Call & Lead Analysis</h1>
+      ${rows}
+      <div style="font-size:11px;color:#999;margin-top:8px;">
+        Generated ${generatedStr} · Open Lines AI
+      </div></body></html>`
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print() }, 250)
+  }
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -743,8 +794,29 @@ function DashboardPage() {
                   )
                 })}
                 {insights?.generated_at && (
-                  <div style={{ padding: '10px 20px', fontSize: 11, color: 'var(--text-3)', borderTop: '1px solid var(--border)' }}>
-                    Generated {timeAgo(insights.generated_at)}
+                  <div style={{
+                    padding: '10px 20px', fontSize: 11, color: 'var(--text-3)',
+                    borderTop: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                  }}>
+                    <span>Generated {timeAgo(insights.generated_at)}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={copyInsights} style={{
+                        fontSize: 11, color: insightsCopied ? 'var(--accent)' : 'var(--text-3)',
+                        background: 'none', border: '1px solid var(--border-2)',
+                        borderRadius: 5, padding: '3px 9px', cursor: 'pointer',
+                        transition: 'color 0.2s',
+                      }}>
+                        {insightsCopied ? '✓ Copied' : 'Copy'}
+                      </button>
+                      <button onClick={downloadInsightsPDF} style={{
+                        fontSize: 11, color: 'var(--text-3)',
+                        background: 'none', border: '1px solid var(--border-2)',
+                        borderRadius: 5, padding: '3px 9px', cursor: 'pointer',
+                      }}>
+                        Download PDF
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
