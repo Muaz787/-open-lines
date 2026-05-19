@@ -75,6 +75,23 @@ async def provision(body: ProvisionRequest):
         raise HTTPException(status_code=500, detail="Provisioning failed unexpectedly")
 
 
+class SettingsUpdateRequest(BaseModel):
+    whatsapp_number: str | None = None
+
+
+@router.patch("/settings/{tenant_id}")
+async def update_settings(tenant_id: str, body: SettingsUpdateRequest):
+    update_data = body.model_dump(exclude_none=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields provided")
+    try:
+        updated = await db.update_tenant(tenant_id, update_data)
+        return _sanitize_tenant(updated)
+    except Exception as e:
+        logger.error("Settings update failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Settings update failed")
+
+
 @router.get("/status/{tenant_id}")
 async def onboarding_status(tenant_id: str):
     try:
