@@ -47,25 +47,39 @@ async def list_leads(
 @router.get("/{tenant_id}/stats")
 async def get_stats(tenant_id: str):
     try:
-        leads = await db.get_leads(tenant_id, limit=500)
-        calls = await db.get_calls(tenant_id, limit=500)
-        appts = (
-            db.get_client()
-            .table("appointments")
-            .select("id")
+        client = db.get_client()
+
+        # Accurate counts — never capped by a row limit
+        calls_res = client.table("calls").select("id", count="exact").eq("tenant_id", tenant_id).execute()
+        leads_res = client.table("leads").select("id", count="exact").eq("tenant_id", tenant_id).execute()
+
+        # Appointments booked = confirmed + completed (excludes cancelled)
+        appts_res = (
+            client.table("appointments")
+            .select("id", count="exact")
             .eq("tenant_id", tenant_id)
+            .neq("status", "cancelled")
+            .execute()
+        )
+
+        # Total call time — fetch only duration_secs column, high limit
+        dur_res = (
+            client.table("calls")
+            .select("duration_secs")
+            .eq("tenant_id", tenant_id)
+            .limit(100_000)
             .execute()
         )
     except Exception as e:
         logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
-    total_secs = sum(c.get("duration_secs") or 0 for c in calls)
+    total_secs = sum(r.get("duration_secs") or 0 for r in (dur_res.data or []))
     return {
-        "total_calls":         len(calls),
-        "total_leads":         len(leads),
+        "total_calls":         calls_res.count or 0,
+        "total_leads":         leads_res.count or 0,
         "minutes_handled":     round(total_secs / 60),
-        "appointments_booked": len(appts.data or []),
+        "appointments_booked": appts_res.count or 0,
     }
 
 
