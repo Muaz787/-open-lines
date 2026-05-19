@@ -132,9 +132,21 @@ function SettingsPage() {
           </svg>
           <span className="logo-name" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Open Lines</span>
         </div>
-        <div className="db-nav-actions">
-          <Link href={`/dashboard/${tenantId}`} className="db-nav-btn">← Dashboard</Link>
-        </div>
+        <Link
+          href={`/dashboard/${tenantId}`}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 12, fontWeight: 600, color: 'var(--text-2)',
+            textDecoration: 'none', padding: '6px 12px',
+            border: '1px solid var(--border-2)', borderRadius: 7,
+            background: 'var(--bg-2)', transition: 'color 0.15s',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M9 11L5 7l4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Dashboard
+        </Link>
       </div>
 
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 20px 0' }}>
