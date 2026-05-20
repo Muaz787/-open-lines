@@ -688,7 +688,7 @@ export default function Home() {
                 <div className="demo-browser-dot" style={{ background: '#28CA41' }} />
               </div>
               <div className="demo-browser-url">openlines.ai/demo</div>
-              <a href="/demo" target="_blank" rel="noopener noreferrer" className="demo-browser-open">
+              <a href="/demo.html" target="_blank" rel="noopener noreferrer" className="demo-browser-open">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                   <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
@@ -696,7 +696,7 @@ export default function Home() {
               </a>
             </div>
             <iframe
-              src="/demo"
+              src="/demo.html"
               className="demo-iframe"
               title="Open Lines interactive demo"
               loading="lazy"
@@ -713,7 +713,7 @@ export default function Home() {
             <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 300 }}>
               Walk through setup, a live AI call, and the lead dashboard — best experienced on a larger screen.
             </p>
-            <a href="/demo" target="_blank" rel="noopener noreferrer">
+            <a href="/demo.html" target="_blank" rel="noopener noreferrer">
               <button className="btn-main" style={{ fontSize: 14, padding: '12px 28px' }}>
                 Open interactive demo ↗
               </button>
