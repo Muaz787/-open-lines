@@ -666,6 +666,63 @@ export default function Home() {
         </div>
       </div>
 
+      {/* INTERACTIVE DEMO */}
+      <div className="demo-section" id="interactive-demo">
+        <div className="demo-section-inner">
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <div className="sec-label" style={{ marginBottom: 12 }}>Interactive Demo</div>
+            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', maxWidth: 560, margin: '0 auto 14px', letterSpacing: '-0.02em' }}>
+              See the full experience
+            </h2>
+            <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, maxWidth: 420, margin: '0 auto', lineHeight: 1.7 }}>
+              Walk through setup, watch a live AI call, and explore the lead dashboard — all in under two minutes.
+            </p>
+          </div>
+
+          {/* Desktop: browser chrome + iframe */}
+          <div className="demo-browser">
+            <div className="demo-browser-bar">
+              <div className="demo-browser-dots">
+                <div className="demo-browser-dot" style={{ background: '#FF5F57' }} />
+                <div className="demo-browser-dot" style={{ background: '#FFBD2E' }} />
+                <div className="demo-browser-dot" style={{ background: '#28CA41' }} />
+              </div>
+              <div className="demo-browser-url">openlines.ai/demo</div>
+              <a href="/demo" target="_blank" rel="noopener noreferrer" className="demo-browser-open">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+              </a>
+            </div>
+            <iframe
+              src="/demo"
+              className="demo-iframe"
+              title="Open Lines interactive demo"
+              loading="lazy"
+            />
+          </div>
+
+          {/* Mobile: CTA card */}
+          <div className="demo-mobile-cta">
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: 'var(--accent-dim)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: 24,
+            }}>✦</div>
+            <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.65, maxWidth: 300 }}>
+              Walk through setup, a live AI call, and the lead dashboard — best experienced on a larger screen.
+            </p>
+            <a href="/demo" target="_blank" rel="noopener noreferrer">
+              <button className="btn-main" style={{ fontSize: 14, padding: '12px 28px' }}>
+                Open interactive demo ↗
+              </button>
+            </a>
+          </div>
+
+        </div>
+      </div>
+
       <div className="div-line" />
 
       {/* BOTTOM CTA */}
