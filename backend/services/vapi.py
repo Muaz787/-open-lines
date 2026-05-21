@@ -149,11 +149,14 @@ async def import_twilio_number(
             logger.info("Imported Twilio number %s into Vapi as %s", phone_number, vapi_phone_id)
             return vapi_phone_id
     except httpx.HTTPStatusError as e:
+        body_text = e.response.text
         logger.error(
             "Failed to import Twilio number %s into Vapi: %s %s",
-            phone_number, e.response.status_code, e.response.text,
+            phone_number, e.response.status_code, body_text,
         )
-        raise
+        raise RuntimeError(
+            f"Vapi /phone-number {e.response.status_code}: {body_text}"
+        ) from e
     except httpx.RequestError as e:
         logger.error("Network error importing Twilio number %s: %s", phone_number, e)
         raise
