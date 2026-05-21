@@ -369,17 +369,6 @@ export default function OnboardingPage() {
                       onChange={handleChange} placeholder="Your full name" />
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">
-                      Agent Name{' '}
-                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
-                        (optional, default "Alex")
-                      </span>
-                    </label>
-                    <input className="form-input" name="agent_name" value={form.agent_name}
-                      onChange={handleChange} placeholder="Alex" />
-                  </div>
-
                   <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0 20px', paddingTop: 20 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 14 }}>
                       Create your account
@@ -415,6 +404,17 @@ export default function OnboardingPage() {
               {/* ── Step 2 ── */}
               {step === 2 && (
                 <form onSubmit={handleSubmit}>
+
+                  <div className="form-group">
+                    <label className="form-label">
+                      Agent Name{' '}
+                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
+                        (optional, default "Alex")
+                      </span>
+                    </label>
+                    <input className="form-input" name="agent_name" value={form.agent_name}
+                      onChange={handleChange} placeholder="Alex" />
+                  </div>
 
                   <div className="form-group">
                     <label className="form-label">Website URL</label>
