@@ -1,6 +1,7 @@
 import logging
-from typing import Literal
-from fastapi import APIRouter, HTTPException
+import os
+from typing import Annotated, Literal
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
@@ -104,6 +105,47 @@ async def onboarding_status(tenant_id: str):
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     return _sanitize_tenant(tenant)
+
+
+@router.post("/admin-reprompt/{tenant_id}")
+async def admin_reprompt(
+    tenant_id: str,
+    x_admin_key: Annotated[str | None, Header()] = None,
+):
+    """Rebuild and push system prompt + patch Vapi assistant config for a tenant.
+    Secured with VAPI_API_KEY as admin key (backend-only operation).
+    """
+    if x_admin_key != os.getenv("VAPI_API_KEY", ""):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tenant lookup failed: {e}")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    assistant_id = tenant.get("vapi_assistant_id")
+    if not assistant_id:
+        raise HTTPException(status_code=400, detail="No Vapi assistant on this tenant")
+
+    # 1 — Patch top-level Vapi assistant config (endCallMessage, silence timeout)
+    try:
+        await vapi.update_assistant(assistant_id, {
+            "endCallMessage": "",
+            "silenceTimeoutSeconds": 10,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vapi assistant patch failed: {e}")
+
+    # 2 — Rebuild system prompt from template + KB and push to Vapi
+    if tenant.get("industry") == "custom":
+        return {"status": "config_patched_only", "note": "Custom industry — prompt not rebuilt"}
+    try:
+        result = await provisioning.rebuild_and_push_system_prompt(tenant)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prompt rebuild failed: {e}")
+
+    return {"status": "reprompted", **result}
 
 
 @router.post("/repair-phone-url/{tenant_id}")
