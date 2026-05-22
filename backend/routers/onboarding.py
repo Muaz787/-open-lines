@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
-from services import provisioning
+from services import provisioning, vapi
 
 logger = logging.getLogger(__name__)
 
@@ -104,3 +104,49 @@ async def onboarding_status(tenant_id: str):
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     return _sanitize_tenant(tenant)
+
+
+@router.post("/repair-phone-url/{tenant_id}")
+async def repair_phone_url(tenant_id: str):
+    """Patch the Vapi phone number for this tenant to include the correct serverUrl.
+
+    This enables smart routing (assistant-request webhook) so date injection,
+    caller recognition, and personalized greetings work on every call.
+    Falls back to searching Vapi's phone list by E.164 number if the Vapi
+    phone number ID isn't stored (covers tenants provisioned before this fix).
+    """
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tenant lookup failed: {e}")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    twilio_phone = tenant.get("twilio_phone_number", "")
+    vapi_phone_id = tenant.get("vapi_phone_number_id", "")
+    server_url = f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended"
+
+    # If we don't have the ID stored, search Vapi's list by E.164 number
+    if not vapi_phone_id:
+        try:
+            numbers = await vapi.list_phone_numbers()
+            for pn in numbers:
+                if pn.get("number") == twilio_phone:
+                    vapi_phone_id = pn.get("id", "")
+                    break
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Vapi phone list failed: {e}")
+
+    if not vapi_phone_id:
+        raise HTTPException(status_code=404, detail=f"Could not find Vapi phone number for {twilio_phone}")
+
+    try:
+        await vapi.update_phone_number(vapi_phone_id, {"serverUrl": server_url})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Vapi PATCH failed: {e}")
+
+    # Persist the ID so future repairs are instant
+    await db.update_tenant(tenant_id, {"vapi_phone_number_id": vapi_phone_id})
+
+    logger.info("Repaired serverUrl for tenant %s phone %s (%s)", tenant_id, twilio_phone, vapi_phone_id)
+    return {"status": "repaired", "vapi_phone_id": vapi_phone_id, "server_url": server_url}

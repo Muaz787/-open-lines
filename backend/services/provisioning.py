@@ -417,12 +417,13 @@ async def _provision_after_twilio(
     # Step 10 — Import Twilio number into Vapi and assign assistant
     step = 10
     try:
-        await vapi.import_twilio_number(
+        vapi_phone_id = await vapi.import_twilio_number(
             phone_number=purchased_number,
             twilio_account_sid=subaccount_sid,
             twilio_auth_token=subaccount_token,
             assistant_id=vapi_assistant_id,
             label=business_name,
+            server_url=f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended",
         )
         logger.info("[Step %d] Linked %s to Vapi assistant %s", step, purchased_number, vapi_assistant_id)
     except Exception as e:
@@ -445,6 +446,7 @@ async def _provision_after_twilio(
             "twilio_auth_token": subaccount_token,
             "twilio_phone_number": purchased_number,
             "vapi_assistant_id": vapi_assistant_id,
+            "vapi_phone_number_id": vapi_phone_id,
             "pinecone_namespace": pinecone_namespace,
             "is_active": True,
         }
