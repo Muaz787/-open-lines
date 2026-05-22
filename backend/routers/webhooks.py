@@ -113,8 +113,11 @@ async def _handle_assistant_request(msg: dict) -> dict:
     today = datetime.now(ZoneInfo(tz_str))
     date_note = (
         f"\n\nTODAY'S DATE: {today.strftime('%A, %B %d, %Y')} ({today.strftime('%Y-%m-%d')}). "
-        "Resolve all relative dates (today, tomorrow, next Monday, etc.) against this date "
-        "before passing to any tool."
+        f"The current year is {today.year}. "
+        "Resolve ALL date references to a full YYYY-MM-DD date before passing to any tool: "
+        "• 'today' / 'tomorrow' / 'next Monday' → count forward from today. "
+        f"• Month + day with NO year (e.g. 'May 29th', 'June 3rd') → ALWAYS use {today.year}. "
+        "NEVER use a past year. NEVER guess — derive the date from what the caller actually said."
     )
 
     # Caller context

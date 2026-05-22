@@ -278,11 +278,12 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                             "type": "string",
                             "description": (
                                 "The date to check in YYYY-MM-DD format. "
-                                "You MUST convert the caller's words to a real calendar date before calling. "
+                                "You MUST convert the caller's words to a full calendar date before calling. "
+                                "Month+day with no year (e.g. 'May 29th', 'June 3rd') → use the current year from TODAY'S DATE in your system prompt. NEVER use a past year. "
                                 "Month names: January=01, February=02, March=03, April=04, May=05, June=06, "
                                 "July=07, August=08, September=09, October=10, November=11, December=12. "
                                 "If the caller says a range like 'Monday or Tuesday', pick the earlier date. "
-                                "Never guess — derive the date from what the caller actually said."
+                                "Never guess — derive the full YYYY-MM-DD from what the caller actually said."
                             ),
                         },
                         "period": {
