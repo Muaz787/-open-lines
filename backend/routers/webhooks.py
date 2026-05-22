@@ -253,32 +253,7 @@ async def vapi_call_ended(payload: dict):
         logger.error("Lead lookup/create failed for tenant %s caller %s: %s", tenant_id, caller_number, e)
         raise HTTPException(status_code=500, detail="Lead lookup failed")
 
-    # Step 4 — Summarise with GPT-4o
-    try:
-        qualification_fields = tenant.get("qualification_fields") or {}
-        user_prompt = (
-            f"Transcript: {transcript}\n\n"
-            f"Qualification fields: {json.dumps(qualification_fields)}\n\n"
-            "Extract: caller_name, key_details (dict matching qualification_fields), "
-            "urgency (hot/warm/cold), summary (2 sentences max), suggested_next_step. "
-            "Return JSON only."
-        )
-        response = await _get_openai().chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You extract structured data from call transcripts."},
-                {"role": "user", "content": user_prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
-        analysis: dict = json.loads(response.choices[0].message.content)
-        logger.info("GPT-4o analysis complete for call %s", call_id)
-    except Exception as e:
-        logger.error("GPT-4o analysis failed for call %s: %s", call_id, e)
-        raise HTTPException(status_code=500, detail="Call analysis failed")
-
-    # Step 5 — Save call record
+    # Step 4 — Save call record immediately (transcript is preserved regardless of what follows)
     try:
         call_data: dict = {
             "vapi_call_id": call_id,
@@ -292,6 +267,34 @@ async def vapi_call_ended(payload: dict):
     except Exception as e:
         logger.error("Failed to save call record %s: %s", call_id, e)
         raise HTTPException(status_code=500, detail="Failed to save call record")
+
+    # Step 5 — Summarise with GPT-4o (non-fatal: lead is always updated, transcript already saved)
+    analysis: dict = {}
+    if transcript and len(transcript.strip()) > 20:
+        try:
+            qualification_fields = tenant.get("qualification_fields") or {}
+            user_prompt = (
+                f"Transcript: {transcript}\n\n"
+                f"Qualification fields: {json.dumps(qualification_fields)}\n\n"
+                "Extract: caller_name, key_details (dict matching qualification_fields), "
+                "urgency (hot/warm/cold), summary (2 sentences max), suggested_next_step. "
+                "Return JSON only."
+            )
+            response = await _get_openai().chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "You extract structured data from call transcripts."},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+            )
+            analysis = json.loads(response.choices[0].message.content)
+            logger.info("GPT-4o analysis complete for call %s", call_id)
+        except Exception as e:
+            logger.warning("GPT-4o analysis failed for call %s (continuing): %s", call_id, e)
+    else:
+        logger.info("Skipping GPT-4o analysis for call %s — transcript empty or too short", call_id)
 
     # Step 6 — Update lead with summary and metadata
     try:
