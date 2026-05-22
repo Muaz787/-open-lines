@@ -77,12 +77,12 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
     return {
         "name": tenant["agent_name"],
         "firstMessage": tenant["greeting_template"],
-        "endCallMessage": "Thank you for calling. Have a great day.",
+        "endCallMessage": "",
         "backgroundSound": "off",
         "backchannelingEnabled": True,
         "responseDelaySeconds": 0,
         "numWordsToInterruptAssistant": 2,
-        "silenceTimeoutSeconds": 30,
+        "silenceTimeoutSeconds": 10,
         "endCallFunctionEnabled": True,
         "endCallPhrases": [
             "goodbye",
@@ -229,10 +229,9 @@ async def get_assistant(assistant_id: str) -> dict:
 _CALLER_LOOKUP_NOTE = """
 
 CALLER RECOGNITION
-- If this prompt already contains a CALLER CONTEXT section: use it immediately in your first response — greet them by name, reference their history, mention any upcoming appointment. Do NOT call caller_lookup.
-- If there is no CALLER CONTEXT section: call caller_lookup as your very first action, silently (no "one moment", "just a second", or any filler). Use the result in your first response.
-- If the caller is unknown (no prior record), ask for their name naturally early in the conversation — before collecting other details.
-Never say "I'm looking up your records" or anything that reveals a lookup happened."""
+- If this prompt already contains a CALLER CONTEXT section: greet them by name immediately, reference their history, and mention any upcoming appointment. Do NOT call caller_lookup.
+- If there is no CALLER CONTEXT section: the caller is new — ask for their name naturally in your first follow-up. Do NOT call caller_lookup.
+Never say "I'm looking up your records" or anything that reveals a system lookup."""
 
 
 def build_caller_lookup_tool(tenant_id: str) -> dict:
