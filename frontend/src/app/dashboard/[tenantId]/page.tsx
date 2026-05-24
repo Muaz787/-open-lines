@@ -107,26 +107,18 @@ function formatDuration(secs: number): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`
 }
 
-function urgencyClass(u?: string): string {
-  switch (u?.toLowerCase()) {
-    case 'hot':  return 'hot'
-    case 'warm': return 'warm'
-    case 'cold': return 'cold'
-    default:     return 'new'
-  }
-}
-
-function statusClass(s?: string): string {
-  switch (s?.toLowerCase()) {
-    case 'booked':    return 'ok'
-    case 'contacted': return 'pend'
-    default:          return 'new'
-  }
-}
-
 function initials(name?: string, phone?: string): string {
   if (name) return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
   return (phone ?? '??').slice(-2)
+}
+
+function urgBadgeClass(u?: string): string {
+  switch (u?.toLowerCase()) {
+    case 'hot':  return 'db-urg-hot'
+    case 'warm': return 'db-urg-warm'
+    case 'cold': return 'db-urg-cold'
+    default:     return 'db-urg-none'
+  }
 }
 
 function TranscriptLines({ text }: { text: string }) {
@@ -141,12 +133,12 @@ function TranscriptLines({ text }: { text: string }) {
           <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <span style={{
               fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-              color: isAI ? 'var(--accent)' : 'var(--text-3)',
+              color: isAI ? '#3dba72' : '#888',
               minWidth: 28, paddingTop: 2, flexShrink: 0,
             }}>
               {speaker ?? ''}
             </span>
-            <span style={{ fontSize: 12, color: isAI ? 'var(--text-2)' : 'var(--text)', lineHeight: 1.6 }}>
+            <span style={{ fontSize: 12, color: isAI ? '#333' : '#555', lineHeight: 1.6 }}>
               {content}
             </span>
           </div>
@@ -161,6 +153,29 @@ function formatApptDate(iso: string): string {
   return d.toLocaleDateString('en-CA', {
     weekday: 'short', month: 'short', day: 'numeric',
   }) + ' · ' + d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+/* Inline sparkline SVG */
+function Sparkline({ value, color = '#e8e6e0' }: { value: number; color?: string }) {
+  const pts = value > 0
+    ? '0,22 20,22 40,20 60,15 80,10 100,7'
+    : '0,22 20,22 40,22 60,22 80,22 100,22'
+  return (
+    <svg className="db-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+/* Logo SVG (reused in sidebar and mobile topbar) */
+function LogoMark({ size = 14 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" width={size} height={size}>
+      <path d="M3 8c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="#fff" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M1 8c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".5"/>
+      <circle cx="7" cy="8" r="1.2" fill="#fff"/>
+    </svg>
+  )
 }
 
 function DashboardPage() {
@@ -183,9 +198,7 @@ function DashboardPage() {
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [insightsCopied, setInsightsCopied]   = useState(false)
 
-  // Calendar state
   const [kbOpen, setKbOpen]                 = useState(false)
-
   const [dbMenuOpen, setDbMenuOpen]         = useState(false)
   const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
@@ -194,11 +207,14 @@ function DashboardPage() {
   const [calToast, setCalToast]             = useState<string | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
+  const [userEmail, setUserEmail]           = useState('')
+  const [period, setPeriod]                 = useState<'today' | '7d' | '30d'>('7d')
 
   // Auth guard
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) router.replace('/login')
+      else setUserEmail(data.user.email ?? '')
     })
   }, [router])
 
@@ -308,7 +324,6 @@ function DashboardPage() {
     return () => clearInterval(interval)
   }, [tenantId, fetchLeads, fetchCalendar])
 
-  // Show toast if redirected back from OAuth
   useEffect(() => {
     const calParam     = searchParams.get('calendar')
     const billingParam = searchParams.get('billing')
@@ -323,7 +338,6 @@ function DashboardPage() {
     } else if (billingParam === 'success') {
       setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
       setTimeout(() => setCalToast(null), 6000)
-      // Webhook may arrive a few seconds after Stripe redirects back — poll until plan is set
       const pollTenant = (attemptsLeft: number) => {
         fetch(`${API}/onboarding/status/${tenantId}`)
           .then(r => r.ok ? r.json() : null)
@@ -335,12 +349,12 @@ function DashboardPage() {
             }
           })
       }
-      pollTenant(5) // retry up to 5× every 2s (10s total)
+      pollTenant(5)
     } else if (billingParam === 'canceled') {
       setCalToast('Checkout canceled — no charge was made.')
       setTimeout(() => setCalToast(null), 4000)
     }
-  }, [searchParams, fetchCalendar])
+  }, [searchParams, fetchCalendar, tenantId])
 
   const disconnectCalendar = async () => {
     if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
@@ -362,7 +376,6 @@ function DashboardPage() {
     setPayingPlan(null)
     setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
     setTimeout(() => setCalToast(null), 6000)
-    // Refresh tenant to show updated plan
     try {
       const res = await fetch(`${API}/onboarding/status/${tenantId}`)
       if (res.ok) setTenant(await res.json())
@@ -440,796 +453,742 @@ function DashboardPage() {
     setTimeout(() => setCopiedPhone(null), 2000)
   }
 
+  // ── Derived ──────────────────────────────────────────────
+  const isSubscribed = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling'
+
+  const onboardingSteps = tenant ? [
+    { label: 'Phone number claimed', done: !!tenant.twilio_phone_number, sub: '' },
+    { label: 'Subscribe', done: isSubscribed, sub: 'Unlock full access' },
+    ...(BOOKING_INDUSTRIES.has(tenant.industry) ? [{ label: 'Connect Google Calendar', done: !!(calStatus?.connected), sub: 'Book in real time' }] : []),
+    { label: 'Train the AI', done: !!tenant.last_crawl_at, sub: 'Add your website or FAQs' },
+    { label: 'Make a test call', done: (stats?.total_calls ?? 0) > 0, sub: tenant.twilio_phone_number ?? '' },
+  ] : []
+
+  const doneCount = onboardingSteps.filter(s => s.done).length
+  const allDone   = onboardingSteps.length > 0 && doneCount === onboardingSteps.length
+
+  // ── Loading ───────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Loading…</div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f3f0' }}>
+        <div style={{ fontSize: 13, color: '#888' }}>Loading…</div>
       </div>
     )
   }
 
+  // ── Sidebar nav icons ────────────────────────────────────
+  const IconDashboard = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <rect x="1.5" y="1.5" width="5" height="5" rx="1.2"/>
+      <rect x="8.5" y="1.5" width="5" height="5" rx="1.2"/>
+      <rect x="1.5" y="8.5" width="5" height="5" rx="1.2"/>
+      <rect x="8.5" y="8.5" width="5" height="5" rx="1.2"/>
+    </svg>
+  )
+  const IconKB = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <path d="M2 11.5V3.5A1 1 0 013 2.5H9.5L12.5 5.5V11.5A1 1 0 0111.5 12.5H3A1 1 0 012 11.5Z"/>
+      <path d="M9 2.5V6H12.5"/>
+    </svg>
+  )
+  const IconSettings = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <circle cx="7.5" cy="7.5" r="1.8"/>
+      <path d="M7.5 1.5v1.2M7.5 12.3v1.2M1.5 7.5h1.2M12.3 7.5h1.2M3.1 3.1l.85.85M11.05 11.05l.85.85M11.05 3.95l-.85.85M3.95 11.05l-.85.85"/>
+    </svg>
+  )
+  const IconSub = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <rect x="1.5" y="3.5" width="12" height="9" rx="1.5"/>
+      <path d="M1.5 6.5h12"/>
+      <path strokeLinecap="round" d="M5 10h2M8.5 10h1.5"/>
+    </svg>
+  )
+  const IconSignOut = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <path d="M6 2H3a1 1 0 00-1 1v9a1 1 0 001 1h3"/>
+      <path strokeLinecap="round" d="M10 10l3-3-3-3M13 7H6"/>
+    </svg>
+  )
+
+  const planBadge = () => {
+    if (tenant?.subscription_status === 'active' && tenant?.subscription_plan)
+      return <span className="db-nav-badge db-badge-green">{tenant.subscription_plan}</span>
+    if (!tenant?.subscription_status || tenant.subscription_status === 'none' || tenant.subscription_status === 'incomplete')
+      return <span className="db-nav-badge db-badge-amber">Free</span>
+    if (tenant.subscription_status === 'past_due')
+      return <span className="db-nav-badge db-badge-red">Past due</span>
+    return null
+  }
+
+  // ── Render ───────────────────────────────────────────────
   return (
-    <div className="db-page">
-      {/* ── Platform nav bar ── */}
-      <div className="db-nav">
-        <div className="nav-logo">
-          <svg width="26" height="26" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
-            <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            <path d="M 12.1,24.8 A 11,11 0 0,1 12.1,3.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
-          <span className="logo-name" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Open Lines</span>
+    <div className="db-root">
+
+      {/* ══ Sidebar ══ */}
+      <aside className="db-sidebar">
+        {/* Logo */}
+        <div className="db-sidebar-logo">
+          <div className="db-logo-icon"><LogoMark size={14} /></div>
+          <span className="db-logo-name">Open Lines</span>
         </div>
 
-        {/* Desktop nav actions */}
-        <div className="db-nav-actions">
-          <button
-            onClick={() => setKbOpen(true)}
-            className="db-nav-btn"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
-            Knowledge Base
-          </button>
-          <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-btn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            Settings
-          </Link>
-          <button onClick={handleLogout} className="db-nav-btn db-nav-btn-ghost">Sign out</button>
-        </div>
-
-        {/* Mobile hamburger */}
-        <button
-          className="db-hamburger"
-          onClick={() => setDbMenuOpen(o => !o)}
-          aria-label={dbMenuOpen ? 'Close menu' : 'Open menu'}
-        >
-          {dbMenuOpen ? (
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-              <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-              <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-          )}
-        </button>
-      </div>
-
-      {/* Mobile dropdown menu */}
-      <AnimatePresence>
-        {dbMenuOpen && (
-          <motion.div
-            className="db-mobile-menu"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-          >
-            <button className="db-mobile-item" style={{ opacity: 0.5, cursor: 'default' }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-              </svg>
-              Dashboard
-            </button>
-            <Link
-              href={`/dashboard/${tenantId}/subscription`}
-              className="db-mobile-item"
-              onClick={() => setDbMenuOpen(false)}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-              </svg>
-              Manage Subscription
-            </Link>
-            <Link
-              href={`/dashboard/${tenantId}/settings`}
-              className="db-mobile-item"
-              onClick={() => setDbMenuOpen(false)}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-              Settings
-            </Link>
-            <button
-              className="db-mobile-item"
-              onClick={() => { setKbOpen(true); setDbMenuOpen(false) }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-              </svg>
-              Knowledge Base
-            </button>
-            <div className="db-mobile-divider" />
-            <button className="db-mobile-item db-mobile-item-danger" onClick={handleLogout}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-              Sign out
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Business identity strip ── */}
-      <div className="db-header">
-        <div className="db-biz" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-          {tenant?.business_name ?? 'Dashboard'}
-        </div>
-        <div className="db-meta" style={{ marginTop: 6 }}>
-          {tenant?.industry && (
-            <span className="industry-badge">{tenant.industry}</span>
-          )}
-          {tenant?.twilio_phone_number && (
-            <div className="phone-chip">
-              {tenant.twilio_phone_number}
-              <button className="copy-btn" onClick={copyPhone}>
-                {copied ? '✓ Copied' : 'Copy'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Toast */}
-      <AnimatePresence>
-        {calToast && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
-            style={{
-              position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-              background: 'var(--text)', color: 'var(--bg)', padding: '10px 20px',
-              borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 100,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-            }}
-          >
-            {calToast}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="db-body">
-
-        {/* ── Stats strip ── */}
-        {stats && (
-          <div className="db-stats">
-            {[
-              { label: 'Calls Handled',       value: stats.total_calls,          unit: '',    raw: stats.total_calls },
-              { label: 'Leads Captured',      value: stats.total_leads,          unit: '',    raw: stats.total_leads },
-              { label: 'Minutes on the Phone', value: stats.minutes_handled,     unit: 'min', raw: stats.minutes_handled },
-              { label: 'Appointments Booked', value: stats.appointments_booked,  unit: '',    raw: stats.appointments_booked },
-            ].map(({ label, value, unit, raw }) => {
-              const noData = unit === 'min' && raw === 0 && stats.total_calls > 0
-              return (
-              <div key={label} style={{
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                padding: '16px 18px',
-                background: 'var(--bg-2)',
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 8 }}>
-                  {label}
-                </div>
-                <div style={{ fontSize: 26, fontWeight: 700, color: noData ? 'var(--text-3)' : 'var(--text)', lineHeight: 1, fontFamily: 'var(--font-syne), sans-serif' }}>
-                  {noData
-                    ? <span title="Duration data unavailable for historical calls">—</span>
-                    : <>{value.toLocaleString()}{unit && <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-3)', marginLeft: 4 }}>{unit}</span>}</>
-                  }
-                </div>
-              </div>
-            )})}
+        {/* Business switcher */}
+        {tenant && (
+          <div className="db-clinic-sw">
+            <div className="db-clinic-name">{tenant.business_name}</div>
+            <div className="db-clinic-tag">{tenant.industry} · Active</div>
           </div>
         )}
 
-        {/* ── Billing / Plan ── */}
-        <div id="db-subscription" style={{ marginBottom: 32 }}>
-          <div className="db-section-title">Subscription</div>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)', overflow: 'hidden' }}>
-            {tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due' ? (
-              /* Active plan — show status + link to manage page */
-              <div style={{ padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                    {tenant.subscription_plan
+        {/* Nav */}
+        <nav className="db-sidebar-nav">
+          <div className="db-nav-label">Main</div>
+
+          <div className="db-nav-item active">
+            <div className="db-nav-indicator" />
+            <IconDashboard />
+            Dashboard
+          </div>
+
+          <button className="db-nav-item" onClick={() => setKbOpen(true)}>
+            <IconKB />
+            Knowledge Base
+          </button>
+
+          <div className="db-nav-label">Account</div>
+
+          <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item">
+            <IconSettings />
+            Settings
+          </Link>
+
+          <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item">
+            <IconSub />
+            Subscription
+            {planBadge()}
+          </Link>
+        </nav>
+
+        {/* Upgrade pill */}
+        {!isSubscribed && (
+          <Link href={`/dashboard/${tenantId}/subscription`} className="db-upgrade-pill">
+            <div className="db-upgrade-label">↑ Choose a plan</div>
+            <div className="db-upgrade-sub">Start from $99/mo</div>
+          </Link>
+        )}
+
+        {/* User footer */}
+        <div className="db-sidebar-footer">
+          <button className="db-user-row" onClick={handleLogout} title="Sign out">
+            <div className="db-user-av">
+              {(userEmail || tenant?.business_name || '?')[0].toUpperCase()}
+            </div>
+            <div className="db-user-info">
+              <div className="db-user-name">{tenant?.business_name ?? 'Account'}</div>
+              <div className="db-user-email">{userEmail}</div>
+            </div>
+            <IconSignOut />
+          </button>
+        </div>
+      </aside>
+
+      {/* ══ Main ══ */}
+      <div className="db-main">
+
+        {/* Mobile topbar */}
+        <div className="db-mobile-topbar">
+          <div className="db-mobile-logo">
+            <div className="db-logo-icon" style={{ width: 24, height: 24, borderRadius: 5, background: '#3dba72', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <LogoMark size={12} />
+            </div>
+            <span className="db-mobile-logo-name">Open Lines</span>
+          </div>
+          <button
+            className="db-hamburger"
+            onClick={() => setDbMenuOpen(o => !o)}
+            aria-label={dbMenuOpen ? 'Close menu' : 'Open menu'}
+          >
+            {dbMenuOpen ? (
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
+        </div>
+
+        {/* Desktop topbar */}
+        <div className="db-topbar">
+          <span className="db-topbar-title">Dashboard</span>
+          <div className="db-topbar-right">
+            {tenant?.twilio_phone_number && (
+              <button className="db-phone-chip" onClick={copyPhone}>
+                <div className="db-live-dot" />
+                {copied ? '✓ Copied' : tenant.twilio_phone_number}
+              </button>
+            )}
+            <div className="db-period-tabs">
+              {(['today', '7d', '30d'] as const).map(p => (
+                <button
+                  key={p}
+                  className={`db-period-tab${period === p ? ' active' : ''}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {p === 'today' ? 'Today' : p}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Toast */}
+        <AnimatePresence>
+          {calToast && (
+            <motion.div
+              initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
+              style={{
+                position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+                background: '#16161a', color: '#fff', padding: '10px 20px',
+                borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 300,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              }}
+            >
+              {calToast}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Content ── */}
+        <div className="db-content">
+
+          {/* Onboarding checklist */}
+          {!allDone && tenant && (
+            <div className="db-onboarding">
+              <div className="db-ob-header">
+                <span className="db-ob-title">Get {tenant.business_name} live</span>
+                <span className="db-ob-prog">{doneCount} of {onboardingSteps.length} complete</span>
+              </div>
+              <div className="db-ob-bar">
+                <div className="db-ob-fill" style={{ width: `${(doneCount / onboardingSteps.length) * 100}%` }} />
+              </div>
+              <div className="db-ob-steps">
+                {onboardingSteps.map((step, i) => (
+                  <div key={i} className={`db-ob-step${step.done ? ' done' : ''}`}>
+                    <div className={`db-ob-step-icon${step.done ? ' done' : ''}`}>
+                      {step.done ? '✓' : i + 1}
+                    </div>
+                    <div className="db-ob-step-label">{step.label}</div>
+                    {step.sub && <div className="db-ob-step-sub">{step.sub}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Stats */}
+          {stats && (
+            <div className="db-stats-v2">
+              {[
+                { label: 'Calls handled',       value: stats.total_calls,         unit: '' },
+                { label: 'Leads captured',       value: stats.total_leads,         unit: '' },
+                { label: 'Minutes on phone',     value: stats.minutes_handled,     unit: 'min' },
+                { label: 'Appointments booked',  value: stats.appointments_booked, unit: '' },
+              ].map(({ label, value, unit }) => {
+                const noData = unit === 'min' && value === 0 && stats.total_calls > 0
+                return (
+                  <div key={label} className="db-stat-card">
+                    <div className="db-stat-meta">
+                      <span className="db-stat-label">{label}</span>
+                      <span className={`db-stat-delta ${value > 0 && !noData ? 'db-delta-up' : 'db-delta-neu'}`}>
+                        {noData ? '—' : value > 0 ? `+${value}` : '—'}
+                      </span>
+                    </div>
+                    <div className="db-stat-num">
+                      {noData ? <span style={{ color: '#bbb' }}>—</span> : value.toLocaleString()}
+                      {unit && !noData && <span className="db-stat-unit"> {unit}</span>}
+                    </div>
+                    <Sparkline value={noData ? 0 : value} color={value > 0 && !noData ? '#3dba72' : '#e8e6e0'} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Subscription (if no active plan) */}
+          {!isSubscribed && (
+            <div className="db-sub-compact">
+              {payingPlan ? (
+                <PaymentForm
+                  tenantId={tenantId}
+                  plan={payingPlan.id}
+                  planLabel={`${payingPlan.label} · ${payingPlan.price}`}
+                  onSuccess={handlePaymentSuccess}
+                  onCancel={() => setPayingPlan(null)}
+                />
+              ) : (
+                <>
+                  <div style={{ padding: '11px 14px', borderBottom: '1px solid #f0ede8', fontSize: 12, color: '#888' }}>
+                    No active plan — choose one to unlock full access.
+                  </div>
+                  <div style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {([
+                      { id: 'starter',  label: 'Starter',  price: '$99/mo',  minutes: '150 min' },
+                      { id: 'pro',      label: 'Pro',       price: '$199/mo', minutes: '400 min' },
+                      { id: 'business', label: 'Business',  price: '$379/mo', minutes: '900 min' },
+                    ] as const).map(plan => (
+                      <button
+                        key={plan.id}
+                        onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
+                        style={{
+                          flex: 1, minWidth: 80, padding: '10px 12px', textAlign: 'left',
+                          border: '1px solid #e8e6e0', borderRadius: 8,
+                          background: '#fff', cursor: 'pointer', transition: 'border-color 0.15s',
+                          fontFamily: 'var(--font-dm), sans-serif',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = '#3dba72')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e6e0')}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#16161a', marginBottom: 2 }}>{plan.label}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>{plan.price} · {plan.minutes}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Subscription — active plan management link */}
+          {(tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due') && (
+            <div className="db-sub-compact" style={{ marginBottom: 14 }}>
+              <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
+                    {tenant?.subscription_plan
                       ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
                       : 'Active Plan'}
                   </span>
-                  {tenant.subscription_status === 'active' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', letterSpacing: '0.06em' }}>ACTIVE</span>
+                  {tenant?.subscription_status === 'active' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#f0fdf4', color: '#16a34a', letterSpacing: '0.06em' }}>ACTIVE</span>
                   )}
-                  {tenant.subscription_status === 'canceling' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>CANCELING</span>
+                  {tenant?.subscription_status === 'canceling' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#d97706', letterSpacing: '0.06em' }}>CANCELING</span>
                   )}
-                  {tenant.subscription_status === 'past_due' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>PAST DUE</span>
+                  {tenant?.subscription_status === 'past_due' && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fef2f2', color: '#ef4444', letterSpacing: '0.06em' }}>PAST DUE</span>
                   )}
                 </div>
                 <Link
                   href={`/dashboard/${tenantId}/subscription`}
-                  style={{
-                    fontSize: 12, fontWeight: 600, color: 'var(--accent)',
-                    textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '7px 14px', border: '1px solid var(--accent)',
-                    borderRadius: 7, background: 'var(--accent-dim)',
-                  }}
+                  style={{ fontSize: 12, fontWeight: 600, color: '#3dba72', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #3dba72', borderRadius: 7, background: '#f0fdf4' }}
                 >
                   Manage →
                 </Link>
               </div>
-            ) : (
-              /* No active subscription — let them pick a plan and subscribe */
-              <>
-                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', fontSize: 13, color: 'var(--text-3)' }}>
-                  No active plan — choose one to get started.
-                </div>
-                {payingPlan ? (
-                  <PaymentForm
-                    tenantId={tenantId}
-                    plan={payingPlan.id}
-                    planLabel={`${payingPlan.label} · ${payingPlan.price}`}
-                    onSuccess={handlePaymentSuccess}
-                    onCancel={() => setPayingPlan(null)}
-                  />
-                ) : (
-                  <>
-                    <div style={{ padding: '14px 18px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                      {([
-                        { id: 'starter',  label: 'Starter',  price: '$99/mo',  minutes: '150 min' },
-                        { id: 'pro',      label: 'Pro',       price: '$199/mo', minutes: '400 min' },
-                        { id: 'business', label: 'Business',  price: '$379/mo', minutes: '900 min' },
-                      ] as const).map(plan => (
-                        <button
-                          key={plan.id}
-                          onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
-                          style={{
-                            flex: 1, minWidth: 80, padding: '11px 14px', textAlign: 'left',
-                            border: '1px solid var(--border-2)', borderRadius: 8,
-                            background: 'var(--bg)', cursor: 'pointer',
-                            transition: 'border-color 0.15s',
-                          }}
-                        >
-                          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{plan.label}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{plan.price} · {plan.minutes}</div>
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ padding: '0 18px 12px', fontSize: 11, color: 'var(--text-3)' }}>
-                      Select a plan to enter payment details — no redirect needed.
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ── AI Insights ── */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 15, lineHeight: 1 }}>✦</span>
-              <div className="db-section-title" style={{ margin: 0 }}>AI Insights</div>
             </div>
-            {insights && (
-              <button
-                onClick={fetchInsights}
-                disabled={insightsLoading}
-                style={{
-                  fontSize: 11, color: 'var(--text-3)', background: 'none',
-                  border: '1px solid var(--border-2)', borderRadius: 5,
-                  padding: '4px 10px', cursor: insightsLoading ? 'default' : 'pointer',
-                  opacity: insightsLoading ? 0.5 : 1,
-                }}
-              >
-                {insightsLoading ? 'Thinking…' : 'Refresh'}
-              </button>
-            )}
-          </div>
+          )}
 
-          <div style={{
-            border: '1px solid var(--border)',
-            borderRadius: 10,
-            overflow: 'hidden',
-            background: 'var(--bg-2)',
-          }}>
-            {!insights && !insightsLoading ? (
-              <div style={{ padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.6, maxWidth: 320 }}>
-                  Get an AI analysis of your calls and leads — patterns, opportunities, and warnings.
+          {/* ── Two-column: leads + right sidebar ── */}
+          <div className="db-two-col">
+
+            {/* Lead Queue */}
+            <div className="db-section-card">
+              <div className="db-section-hdr">
+                <div className="db-section-title-row">
+                  <div className="db-section-icon" style={{ background: '#fff5f0' }}>⚡</div>
+                  <span className="db-section-name">Lead Queue</span>
+                  <span className="db-section-hint">auto-refreshes 30s</span>
                 </div>
-                <button
-                  onClick={fetchInsights}
-                  style={{
-                    fontSize: 12, fontWeight: 600, color: 'var(--accent)',
-                    background: 'var(--accent-dim)', border: '1px solid var(--accent)',
-                    borderRadius: 6, padding: '7px 16px', cursor: 'pointer',
-                  }}
-                >
-                  ✦ Get AI Insights
-                </button>
               </div>
-            ) : insightsLoading && !insights?.insights.length ? (
-              <div style={{ padding: '24px 20px', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-3)', fontSize: 13 }}>
-                <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>◌</span>
-                Analyzing your calls and leads…
-              </div>
-            ) : insights?.insights.length === 0 ? (
-              <div style={{ padding: '18px 20px', fontSize: 13, color: 'var(--text-3)' }}>
-                Not enough data yet — insights appear after a few calls.
-              </div>
-            ) : (
-              <div>
-                {(insights?.insights ?? []).map((ins, i) => {
-                  const typeColors: Record<string, { bg: string; dot: string }> = {
-                    opportunity: { bg: 'var(--accent-dim)',          dot: 'var(--accent)' },
-                    success:     { bg: 'rgba(52,199,89,0.12)',        dot: '#34C759' },
-                    warning:     { bg: 'rgba(255,149,0,0.12)',        dot: '#FF9500' },
-                    trend:       { bg: 'rgba(59,126,246,0.12)',       dot: '#3B7EF6' },
-                  }
-                  const colors = typeColors[ins.type] ?? typeColors.trend
+
+              {leads.length === 0 ? (
+                <div className="db-empty-v2">
+                  <div className="db-empty-v2-title">No leads yet.</div>
+                  {tenant?.twilio_phone_number && (
+                    <div className="db-empty-v2-sub">Share {tenant.twilio_phone_number} to get your first call.</div>
+                  )}
+                </div>
+              ) : (
+                leads.map(lead => {
+                  const detail        = detailMap[lead.id]
+                  const currentStatus = statusMap[lead.id] ?? lead.status
+                  const keyDetails    = detail?.metadata?.key_details ?? {}
+                  const nextStep      = detail?.metadata?.suggested_next_step
+                  const validCalls    = detail ? getValidCalls(detail.calls) : []
+                  const isExpanded    = expandedId === lead.id
+
                   return (
-                    <div key={i} style={{
-                      display: 'grid', gridTemplateColumns: '8px 1fr', gap: 14,
-                      padding: '16px 20px',
-                      borderTop: i > 0 ? '1px solid var(--border)' : 'none',
-                      alignItems: 'start',
-                    }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: colors.dot, marginTop: 5, flexShrink: 0,
-                      }} />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
-                          {ins.title}
-                          <span style={{
-                            marginLeft: 8, fontSize: 10, fontWeight: 600,
-                            letterSpacing: '0.06em', textTransform: 'uppercase',
-                            background: colors.bg, color: colors.dot,
-                            padding: '2px 7px', borderRadius: 4,
-                          }}>
-                            {ins.type}
-                          </span>
+                    <div key={lead.id} className="db-lead-row" onClick={() => toggleExpand(lead.id)}>
+                      <div className="db-lead-main">
+                        <div className="db-lead-av">{initials(lead.name, lead.phone)}</div>
+                        <div className="db-lead-info">
+                          <div className="db-lead-name">
+                            {lead.name ?? 'Unknown'}
+                            {lead.phone && <span className="db-lead-phone-inline"> · {lead.phone}</span>}
+                          </div>
+                          <div className="db-lead-sum">{lead.summary ?? 'No summary yet'}</div>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.6 }}>
-                          {ins.body}
+                        <span className={urgBadgeClass(lead.urgency)}>
+                          {lead.urgency
+                            ? lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)
+                            : 'New'}
+                        </span>
+                        <span className="db-lead-time">{timeAgo(lead.created_at)}</span>
+                        <div className="db-lead-actions" onClick={e => e.stopPropagation()}>
+                          {lead.phone && (
+                            <button
+                              className="db-lead-btn"
+                              onClick={(e) => copyLeadPhone(e, lead.phone!, lead.id)}
+                            >
+                              {copiedPhone === lead.id ? '✓' : 'Copy #'}
+                            </button>
+                          )}
                         </div>
                       </div>
+
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            className="db-lead-expanded"
+                            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+                            style={{ overflow: 'hidden' }}
+                          >
+                            {/* Status stepper */}
+                            <div className="status-stepper" style={{ marginBottom: 14 }}>
+                              {(['new', 'contacted', 'booked'] as const).map(s => (
+                                <button
+                                  key={s}
+                                  className={`step-btn${(currentStatus ?? 'new') === s ? ' step-active' : ''}`}
+                                  onClick={(e) => updateStatus(lead.id, s, e)}
+                                >
+                                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Key details */}
+                            {Object.keys(keyDetails).length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                                {Object.entries(keyDetails).map(([k, v]) => (
+                                  <div key={k} className="kd-chip">
+                                    <div className="kd-label">{k.replace(/_/g, ' ')}</div>
+                                    <div className="kd-value">{String(v)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Next step */}
+                            {nextStep && (
+                              <div className="next-step-box" style={{ marginBottom: 14 }}>
+                                <span className="next-step-arrow">➡ </span>{nextStep}
+                              </div>
+                            )}
+
+                            {/* Call history */}
+                            {!detail ? (
+                              <div className="transcript-empty">Loading…</div>
+                            ) : validCalls.length === 0 ? (
+                              <div className="transcript-empty">No call transcripts yet.</div>
+                            ) : (
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#888', marginBottom: 10 }}>
+                                  Call History · {validCalls.length} {validCalls.length === 1 ? 'call' : 'calls'}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {validCalls.map(call => (
+                                    <div key={call.id} style={{ border: '1px solid #e8e6e0', borderRadius: 8, overflow: 'hidden' }}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setExpandedCallId(expandedCallId === call.id ? null : call.id)
+                                        }}
+                                        style={{
+                                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                          padding: '10px 14px',
+                                          background: expandedCallId === call.id ? '#f8f7f4' : '#fff',
+                                          border: 'none', cursor: 'pointer', textAlign: 'left',
+                                          fontFamily: 'var(--font-dm), sans-serif',
+                                          transition: 'background 0.15s',
+                                        }}
+                                      >
+                                        <span style={{ fontSize: 10, color: '#888', flexShrink: 0 }}>
+                                          {expandedCallId === call.id ? '▾' : '▸'}
+                                        </span>
+                                        <span style={{ fontSize: 12, fontWeight: 500, color: '#16161a', flex: 1 }}>
+                                          {formatCallDate(call.created_at)}
+                                        </span>
+                                        {call.duration_secs != null && (
+                                          <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
+                                            {formatDuration(call.duration_secs)}
+                                          </span>
+                                        )}
+                                      </button>
+                                      <AnimatePresence>
+                                        {expandedCallId === call.id && (
+                                          <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{ duration: 0.18 }}
+                                            style={{ overflow: 'hidden' }}
+                                          >
+                                            <div style={{ padding: '12px 14px', borderTop: '1px solid #e8e6e0', background: '#fafaf8', maxHeight: 320, overflowY: 'auto' }}>
+                                              <TranscriptLines text={call.transcript ?? ''} />
+                                            </div>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   )
-                })}
-                {insights?.generated_at && (
-                  <div style={{
-                    padding: '10px 20px', fontSize: 11, color: 'var(--text-3)',
-                    borderTop: '1px solid var(--border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                  }}>
-                    <span>Generated {timeAgo(insights.generated_at)}</span>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={copyInsights} style={{
-                        fontSize: 11, color: insightsCopied ? 'var(--accent)' : 'var(--text-3)',
-                        background: 'none', border: '1px solid var(--border-2)',
-                        borderRadius: 5, padding: '3px 9px', cursor: 'pointer',
-                        transition: 'color 0.2s',
-                      }}>
-                        {insightsCopied ? '✓ Copied' : 'Copy'}
-                      </button>
-                      <button onClick={downloadInsightsPDF} style={{
-                        fontSize: 11, color: 'var(--text-3)',
-                        background: 'none', border: '1px solid var(--border-2)',
-                        borderRadius: 5, padding: '3px 9px', cursor: 'pointer',
-                      }}>
-                        Download PDF
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Calendar section ── */}
-        {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div className="db-section-title">Calendar Booking</div>
-              {calStatus?.connected && (
-                <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
-                  ✓ Google Calendar connected
-                </span>
+                })
               )}
             </div>
 
-            {calStatus && !calStatus.connected && (
-              <div style={{
-                border: '1px solid var(--border-2)', borderRadius: 14, overflow: 'hidden',
-                background: 'var(--bg-2)', boxShadow: 'var(--shadow)',
-              }}>
-                {/* Accent top bar */}
-                <div style={{ height: 3, background: 'linear-gradient(90deg, #4285F4, #34A853, #FBBC05, #EA4335)' }} />
+            {/* ── Right column ── */}
+            <div className="db-right-col">
 
-                <div className="db-cal-connect" style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 20 }}>
-                  {/* Google Calendar icon */}
-                  <div style={{
-                    width: 56, height: 56, borderRadius: 14, background: 'var(--bg)',
-                    border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: 'var(--shadow)',
-                  }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="#4285F4" strokeWidth="1.8"/>
-                      <line x1="16" y1="2" x2="16" y2="6" stroke="#4285F4" strokeWidth="1.8" strokeLinecap="round"/>
-                      <line x1="8" y1="2" x2="8" y2="6" stroke="#4285F4" strokeWidth="1.8" strokeLinecap="round"/>
-                      <line x1="3" y1="10" x2="21" y2="10" stroke="#4285F4" strokeWidth="1.8"/>
-                      <circle cx="12" cy="16" r="2.5" fill="#34A853"/>
-                    </svg>
-                  </div>
-
-                  <div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 8, letterSpacing: '-0.01em', fontFamily: 'var(--font-syne), sans-serif' }}>
-                      Book appointments in real time
+              {/* Calendar */}
+              {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
+                <div className="db-section-card">
+                  <div className="db-section-hdr">
+                    <div className="db-section-title-row">
+                      <div className="db-section-icon" style={{ background: '#f0fdf4' }}>📅</div>
+                      <span className="db-section-name">Upcoming</span>
                     </div>
-                    <div style={{ fontSize: 13, color: 'var(--text-3)', lineHeight: 1.65, maxWidth: 380 }}>
-                      Connect Google Calendar so your AI can check availability and confirm bookings during the call — no follow-up needed.
-                    </div>
+                    {calStatus?.connected && (
+                      <span style={{ fontSize: 11, color: '#3dba72', fontWeight: 500 }}>✓ Connected</span>
+                    )}
                   </div>
 
-                  {/* Feature pills */}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {['Checks live availability', 'Books instantly', 'Handles reschedules'].map(f => (
-                      <span key={f} style={{
-                        fontSize: 11, fontWeight: 500, color: 'var(--accent)',
-                        background: 'var(--accent-dim)', borderRadius: 20, padding: '4px 12px',
-                      }}>
-                        ✓ {f}
-                      </span>
-                    ))}
-                  </div>
-
-                  <a
-                    href={`${API}/calendar/connect/${tenantId}`}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 10,
-                      background: 'var(--text)', color: 'var(--bg)',
-                      borderRadius: 10, padding: '14px 28px',
-                      fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                      textDecoration: 'none', letterSpacing: '-0.01em',
-                      boxShadow: '0 4px 16px rgba(0,31,63,0.14)',
-                      transition: 'opacity 0.2s, transform 0.2s',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.85'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-                    </svg>
-                    Connect Google Calendar
-                  </a>
-
-                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                    You can disconnect at any time from this dashboard
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {calStatus?.connected && (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                {/* Settings row */}
-                <div style={{
-                  padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 24,
-                  background: 'var(--bg-2)', borderBottom: appointments.length > 0 ? '1px solid var(--border)' : 'none',
-                  flexWrap: 'wrap',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Appointment duration:</span>
-                    <select
-                      value={calStatus.appointment_duration_minutes}
-                      onChange={e => saveDuration(Number(e.target.value))}
-                      disabled={durSaving}
-                      style={{
-                        fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border-2)',
-                        borderRadius: 5, padding: '4px 8px', color: 'var(--text)', cursor: 'pointer',
-                      }}
-                    >
-                      {DURATION_OPTIONS.map(d => (
-                        <option key={d} value={d}>{d} min</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={disconnectCalendar}
-                    disabled={calDisconnecting}
-                    style={{
-                      marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)',
-                      background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline',
-                    }}
-                  >
-                    {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
-                  </button>
-                </div>
-
-                {/* Appointments list */}
-                {appointments.length > 0 ? (
-                  <div>
-                    <div style={{ padding: '10px 18px 6px', fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-3)' }}>
-                      Upcoming · {appointments.length}
-                    </div>
-                    {appointments.map(appt => (
-                      <div key={appt.id} style={{
-                        display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
-                        padding: '11px 18px', borderTop: '1px solid var(--border)',
-                      }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
-                            {appt.service || 'Appointment'}
-                            {appt.caller_name ? ` — ${appt.caller_name}` : ''}
-                          </div>
-                          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
-                            {formatApptDate(appt.appointment_datetime)}
-                            {appt.caller_phone ? ` · ${appt.caller_phone}` : ''}
-                          </div>
-                        </div>
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
-                          color: 'var(--accent)', background: 'var(--accent-dim)',
-                          padding: '3px 8px', borderRadius: 4,
-                        }}>
-                          {appt.status || 'confirmed'}
-                        </span>
+                  {!calStatus?.connected ? (
+                    <div style={{ padding: '14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                        Connect Google Calendar to book appointments in real time.
                       </div>
-                    ))}
+                      <a
+                        href={`${API}/calendar/connect/${tenantId}`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 7,
+                          background: '#16161a', color: '#fff',
+                          borderRadius: 8, padding: '9px 16px',
+                          fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                          transition: 'opacity 0.2s',
+                        }}
+                      >
+                        Connect Calendar
+                      </a>
+                    </div>
+                  ) : appointments.length === 0 ? (
+                    <div style={{ padding: '14px', fontSize: 12, color: '#bbb', textAlign: 'center' }}>
+                      No upcoming appointments.
+                    </div>
+                  ) : (
+                    <>
+                      {appointments.slice(0, 3).map(appt => (
+                        <div key={appt.id} className="db-cal-event">
+                          <div className="db-cal-dot" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="db-cal-name">
+                              {appt.service || 'Appointment'}
+                              {appt.caller_name ? ` — ${appt.caller_name}` : ''}
+                            </div>
+                            <div className="db-cal-time">{formatApptDate(appt.appointment_datetime)}</div>
+                          </div>
+                          <span className="db-cal-badge">{appt.status || 'confirmed'}</span>
+                        </div>
+                      ))}
+                      {calStatus?.connected && (
+                        <div style={{ padding: '8px 14px', borderTop: '1px solid #f0ede8', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 11, color: '#888' }}>Duration:</span>
+                            <select
+                              value={calStatus.appointment_duration_minutes}
+                              onChange={e => saveDuration(Number(e.target.value))}
+                              disabled={durSaving}
+                              style={{ fontSize: 11, background: '#fff', border: '1px solid #e8e6e0', borderRadius: 5, padding: '3px 6px', color: '#16161a', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}
+                            >
+                              {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} min</option>)}
+                            </select>
+                          </div>
+                          <button
+                            onClick={disconnectCalendar}
+                            disabled={calDisconnecting}
+                            style={{ fontSize: 11, color: '#bbb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto', fontFamily: 'var(--font-dm), sans-serif' }}
+                          >
+                            {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* AI Insights */}
+              <div className="db-section-card">
+                <div className="db-section-hdr">
+                  <div className="db-section-title-row">
+                    <div className="db-section-icon" style={{ background: '#f5f0fe' }}>✦</div>
+                    <span className="db-section-name">AI Insights</span>
+                  </div>
+                  {insights && (
+                    <button
+                      onClick={fetchInsights}
+                      disabled={insightsLoading}
+                      style={{ fontSize: 11, color: '#888', background: 'none', border: '1px solid #e8e6e0', borderRadius: 5, padding: '3px 9px', cursor: insightsLoading ? 'default' : 'pointer', opacity: insightsLoading ? 0.5 : 1, fontFamily: 'var(--font-dm), sans-serif' }}
+                    >
+                      {insightsLoading ? 'Thinking…' : 'Refresh'}
+                    </button>
+                  )}
+                </div>
+
+                {!insights && !insightsLoading ? (
+                  <div className="db-insight-teaser">
+                    <div className="db-insight-blur">
+                      <div className="db-insight-line" style={{ width: '80%' }} />
+                      <div className="db-insight-line" style={{ width: '60%' }} />
+                      <div className="db-insight-line" style={{ width: '70%' }} />
+                    </div>
+                    <div className="db-insight-copy">After 5+ calls, your AI surfaces caller intent patterns, opportunities, and peak hours.</div>
+                    <button
+                      onClick={fetchInsights}
+                      style={{ background: '#16161a', color: '#fff', border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}
+                    >
+                      ✦ Generate insights
+                    </button>
+                  </div>
+                ) : insightsLoading && !insights?.insights.length ? (
+                  <div style={{ padding: '18px 14px', fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>◌</span>
+                    Analyzing calls and leads…
+                  </div>
+                ) : insights?.insights.length === 0 ? (
+                  <div style={{ padding: '14px', fontSize: 12, color: '#bbb' }}>
+                    Not enough data yet — insights appear after a few calls.
                   </div>
                 ) : (
-                  <div style={{ padding: '18px', fontSize: 12, color: 'var(--text-3)', textAlign: 'center' }}>
-                    No upcoming appointments yet. Share your number and let your AI start booking.
+                  <div>
+                    {(insights?.insights ?? []).map((ins, i) => {
+                      const typeColors: Record<string, { bg: string; dot: string }> = {
+                        opportunity: { bg: '#f0fdf4', dot: '#16a34a' },
+                        success:     { bg: '#f0fdf4', dot: '#16a34a' },
+                        warning:     { bg: '#fffbeb', dot: '#d97706' },
+                        trend:       { bg: '#f0f4ff', dot: '#4f6ef7' },
+                      }
+                      const colors = typeColors[ins.type] ?? typeColors.trend
+                      return (
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '8px 1fr', gap: 12, padding: '12px 14px', borderTop: i > 0 ? '1px solid #f0ede8' : 'none', alignItems: 'start' }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors.dot, marginTop: 4 }} />
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#16161a', marginBottom: 3 }}>
+                              {ins.title}
+                              <span style={{ marginLeft: 7, fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', background: colors.bg, color: colors.dot, padding: '1px 6px', borderRadius: 4 }}>
+                                {ins.type}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>{ins.body}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {insights?.generated_at && (
+                      <div style={{ padding: '8px 14px', fontSize: 11, color: '#bbb', borderTop: '1px solid #f0ede8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <span>Generated {timeAgo(insights.generated_at)}</span>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={copyInsights} style={{ fontSize: 10, color: insightsCopied ? '#3dba72' : '#bbb', background: 'none', border: '1px solid #e8e6e0', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif', transition: 'color 0.2s' }}>
+                            {insightsCopied ? '✓ Copied' : 'Copy'}
+                          </button>
+                          <button onClick={downloadInsightsPDF} style={{ fontSize: 10, color: '#bbb', background: 'none', border: '1px solid #e8e6e0', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}>
+                            PDF
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        )}
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div className="db-section-title">Lead Queue</div>
-          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Auto-refreshes every 30s</div>
+            </div>
+          </div>
         </div>
-
-        {leads.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">📞</div>
-            <div className="empty-state-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-              No calls yet — share your number to get started
-            </div>
-            {tenant?.twilio_phone_number && (
-              <div className="empty-state-sub" style={{ marginTop: 8 }}>
-                Your number: <strong style={{ fontFamily: 'monospace' }}>{tenant.twilio_phone_number}</strong>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="leads-table">
-            {/* Header row */}
-            <div className="leads-header">
-              <div className="leads-header-cell">Lead</div>
-              <div className="leads-header-cell">Status</div>
-              <div className="leads-header-cell">Urgency</div>
-              <div className="leads-header-cell">Summary</div>
-              <div className="leads-header-cell">Last call</div>
-              <div />
-            </div>
-
-            {leads.map(lead => {
-              const detail        = detailMap[lead.id]
-              const currentStatus = statusMap[lead.id] ?? lead.status
-              const keyDetails    = detail?.metadata?.key_details ?? {}
-              const nextStep      = detail?.metadata?.suggested_next_step
-              const validCalls    = detail ? getValidCalls(detail.calls) : []
-              const isExpanded    = expandedId === lead.id
-
-              return (
-                <div key={lead.id} className="lead-row" onClick={() => toggleExpand(lead.id)}>
-                  <div className="lead-row-main">
-                    {/* Col 1: Avatar + Name + Phone */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div className="av">{initials(lead.name, lead.phone)}</div>
-                      <div>
-                        <div className="lead-name">{lead.name ?? 'Unknown'}</div>
-                        <div className="lead-phone">{lead.phone ?? '—'}</div>
-                      </div>
-                    </div>
-
-                    {/* Col 2: Status */}
-                    <div>
-                      <span className={`pill ${statusClass(currentStatus)}`}>
-                        {currentStatus
-                          ? currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)
-                          : 'New'}
-                      </span>
-                    </div>
-
-                    {/* Col 3: Urgency */}
-                    <div>
-                      {lead.urgency
-                        ? <span className={`pill ${urgencyClass(lead.urgency)}`}>
-                            {lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)}
-                          </span>
-                        : <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>
-                      }
-                    </div>
-
-                    {/* Col 4: Summary */}
-                    <div className="lead-summary">{lead.summary ?? '—'}</div>
-
-                    {/* Col 5: Time */}
-                    <div className="lead-time">{timeAgo(lead.created_at)}</div>
-
-                    {/* Col 6: Chevron */}
-                    <div className={`lead-chevron${isExpanded ? ' open' : ''}`}>
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                  </div>
-
-                  <AnimatePresence>
-                    {expandedId === lead.id && (
-                      <motion.div className="lead-transcript"
-                        initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
-
-                        {/* Phone + copy */}
-                        {lead.phone && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
-                            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', fontFamily: 'monospace', letterSpacing: '0.02em' }}>{lead.phone}</span>
-                            <button
-                              onClick={(e) => copyLeadPhone(e, lead.phone!, lead.id)}
-                              style={{
-                                fontSize: 11, padding: '3px 10px', border: '1px solid var(--border-2)',
-                                borderRadius: 5, background: 'none', cursor: 'pointer',
-                                color: copiedPhone === lead.id ? 'var(--accent)' : 'var(--text-3)',
-                                transition: 'color 0.2s',
-                              }}
-                            >
-                              {copiedPhone === lead.id ? '✓ Copied' : 'Copy'}
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Status stepper */}
-                        <div className="status-stepper">
-                          {(['new', 'contacted', 'booked'] as const).map(s => (
-                            <button
-                              key={s}
-                              className={`step-btn${(currentStatus ?? 'new') === s ? ' step-active' : ''}`}
-                              onClick={(e) => updateStatus(lead.id, s, e)}
-                            >
-                              {s.charAt(0).toUpperCase() + s.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Key details */}
-                        {Object.keys(keyDetails).length > 0 && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-                            {Object.entries(keyDetails).map(([k, v]) => (
-                              <div key={k} style={{
-                                background: 'var(--bg-3)', border: '1px solid var(--border)',
-                                borderRadius: 8, padding: '7px 12px', minWidth: 80,
-                              }}>
-                                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 3 }}>
-                                  {k.replace(/_/g, ' ')}
-                                </div>
-                                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
-                                  {String(v)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Suggested next step */}
-                        {nextStep && (
-                          <div style={{
-                            fontSize: 12, color: 'var(--text-2)', background: 'var(--accent-dim)',
-                            borderLeft: '2px solid var(--accent)', padding: '8px 12px',
-                            borderRadius: '0 6px 6px 0', marginBottom: 14, lineHeight: 1.5,
-                          }}>
-                            <span style={{ color: 'var(--accent)', marginRight: 6 }}>➡</span>
-                            {nextStep}
-                          </div>
-                        )}
-
-                        {/* Call history */}
-                        {!detail ? (
-                          <div className="transcript-empty">Loading…</div>
-                        ) : validCalls.length === 0 ? (
-                          <div className="transcript-empty">No call transcripts yet.</div>
-                        ) : (
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 10 }}>
-                              Call History · {validCalls.length} {validCalls.length === 1 ? 'call' : 'calls'}
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              {validCalls.map(call => (
-                                <div key={call.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-                                  {/* Call header row */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setExpandedCallId(expandedCallId === call.id ? null : call.id)
-                                    }}
-                                    style={{
-                                      width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                      padding: '10px 14px', background: expandedCallId === call.id ? 'var(--bg-3)' : 'var(--bg)',
-                                      border: 'none', cursor: 'pointer', textAlign: 'left',
-                                      transition: 'background 0.15s',
-                                    }}
-                                  >
-                                    <span style={{ fontSize: 10, color: 'var(--text-3)', flexShrink: 0 }}>
-                                      {expandedCallId === call.id ? '▾' : '▸'}
-                                    </span>
-                                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text)', flex: 1 }}>
-                                      {formatCallDate(call.created_at)}
-                                    </span>
-                                    {call.duration_secs != null && (
-                                      <span style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>
-                                        {formatDuration(call.duration_secs)}
-                                      </span>
-                                    )}
-                                  </button>
-
-                                  {/* Transcript body */}
-                                  <AnimatePresence>
-                                    {expandedCallId === call.id && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.18 }}
-                                        style={{ overflow: 'hidden' }}
-                                      >
-                                        <div style={{
-                                          padding: '12px 14px', borderTop: '1px solid var(--border)',
-                                          background: 'var(--bg-2)', maxHeight: 320, overflowY: 'auto',
-                                        }}>
-                                          <TranscriptLines text={call.transcript ?? ''} />
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
 
-      {/* Knowledge Base drawer */}
+      {/* ── Mobile overlay menu ── */}
+      <AnimatePresence>
+        {dbMenuOpen && (
+          <motion.div
+            className="db-overlay-menu"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setDbMenuOpen(false)}
+          >
+            <motion.div
+              className="db-overlay-panel"
+              initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="db-sidebar-logo">
+                <div className="db-logo-icon"><LogoMark size={14} /></div>
+                <span className="db-logo-name">Open Lines</span>
+              </div>
+              {tenant && (
+                <div className="db-clinic-sw">
+                  <div className="db-clinic-name">{tenant.business_name}</div>
+                  <div className="db-clinic-tag">{tenant.industry} · Active</div>
+                </div>
+              )}
+              <nav className="db-sidebar-nav">
+                <div className="db-nav-label">Main</div>
+                <div className="db-nav-item active" onClick={() => setDbMenuOpen(false)}>
+                  <div className="db-nav-indicator" />
+                  <IconDashboard />
+                  Dashboard
+                </div>
+                <button className="db-nav-item" onClick={() => { setKbOpen(true); setDbMenuOpen(false) }}>
+                  <IconKB />
+                  Knowledge Base
+                </button>
+                <div className="db-nav-label">Account</div>
+                <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
+                  <IconSettings />
+                  Settings
+                </Link>
+                <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
+                  <IconSub />
+                  Subscription
+                  {planBadge()}
+                </Link>
+                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
+                  <button className="db-nav-item" onClick={handleLogout} style={{ color: '#f87171' }}>
+                    <IconSignOut />
+                    Sign out
+                  </button>
+                </div>
+              </nav>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Knowledge Drawer */}
       <AnimatePresence>
         {kbOpen && (
           <KnowledgeDrawer
@@ -1247,8 +1206,8 @@ function DashboardPage() {
 export default function DashboardPageWrapper() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Loading…</div>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f3f0' }}>
+        <div style={{ fontSize: 13, color: '#888' }}>Loading…</div>
       </div>
     }>
       <DashboardPage />
