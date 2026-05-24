@@ -542,7 +542,7 @@ function DashboardPage() {
         )}
 
         {/* Nav */}
-        <nav className="db-sidebar-nav">
+        <div className="db-sidebar-nav">
           <div className="db-nav-label">Main</div>
 
           <div className="db-nav-item active">
@@ -568,7 +568,7 @@ function DashboardPage() {
             Subscription
             {planBadge()}
           </Link>
-        </nav>
+        </div>
 
         {/* Upgrade pill */}
         {!isSubscribed && (
@@ -1155,7 +1155,7 @@ function DashboardPage() {
                   <div className="db-clinic-tag">{tenant.industry} · Active</div>
                 </div>
               )}
-              <nav className="db-sidebar-nav">
+              <div className="db-sidebar-nav">
                 <div className="db-nav-label">Main</div>
                 <div className="db-nav-item active" onClick={() => setDbMenuOpen(false)}>
                   <div className="db-nav-indicator" />
@@ -1182,7 +1182,7 @@ function DashboardPage() {
                     Sign out
                   </button>
                 </div>
-              </nav>
+              </div>
             </motion.div>
           </motion.div>
         )}
