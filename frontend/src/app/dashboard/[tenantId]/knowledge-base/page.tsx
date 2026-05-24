@@ -248,11 +248,13 @@ function KnowledgeBasePage() {
   const isSubscribed = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling'
 
   // ── Icons ────────────────────────────────────────────────
-  const LogoMark = ({ size = 14 }: { size?: number }) => (
-    <svg viewBox="0 0 14 14" fill="none" width={size} height={size}>
-      <path d="M3 8c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="#fff" strokeWidth="1.3" strokeLinecap="round"/>
-      <path d="M1 8c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".5"/>
-      <circle cx="7" cy="8" r="1.2" fill="#fff"/>
+  const LogoMark = ({ size = 16 }: { size?: number }) => (
+    <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
+      <path d="M15.9 3.2A11 11 0 0 1 15.9 24.8" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
+      <path d="M12.1 24.8A11 11 0 0 1 12.1 3.2" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
+      <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
+      <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
+      <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
     </svg>
   )
   const IconDashboard = () => (
@@ -270,9 +272,8 @@ function KnowledgeBasePage() {
     </svg>
   )
   const IconLeads = () => (
-    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
-      <circle cx="7.5" cy="5" r="2.5"/>
-      <path d="M2 13c0-3.03 2.46-5.5 5.5-5.5S13 9.97 13 13"/>
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" width="14" height="14">
+      <path d="M7.5 1.5l1.47 3.29 3.63.52-2.63 2.47.62 3.61L7.5 9.72 4.41 11.4l.62-3.61L2.4 5.31l3.63-.52z" strokeLinejoin="round"/>
     </svg>
   )
   const IconCalendar = () => (
@@ -283,8 +284,14 @@ function KnowledgeBasePage() {
   )
   const IconSettings = () => (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
-      <circle cx="7.5" cy="7.5" r="1.8"/>
-      <path d="M7.5 1.5v1.2M7.5 12.3v1.2M1.5 7.5h1.2M12.3 7.5h1.2M3.1 3.1l.85.85M11.05 11.05l.85.85M11.05 3.95l-.85.85M3.95 11.05l-.85.85"/>
+      <circle cx="7.5" cy="4.8" r="2.3"/>
+      <path d="M2 13.5c0-3.04 2.46-5.5 5.5-5.5s5.5 2.46 5.5 5.5" strokeLinecap="round"/>
+    </svg>
+  )
+  const IconBilling = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <path d="M1.5 7.5L7.5 2l6 5.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M3 7v5.5a.5.5 0 00.5.5H6V9.5h3v3.5h2.5a.5.5 0 00.5-.5V7" strokeLinejoin="round"/>
     </svg>
   )
   const IconSub = () => (
@@ -376,6 +383,10 @@ function KnowledgeBasePage() {
           <IconSub />
           Subscription
           {planBadge()}
+        </Link>
+        <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
+          <IconBilling />
+          Billing &amp; Payments
         </Link>
         {mobile && (
           <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
