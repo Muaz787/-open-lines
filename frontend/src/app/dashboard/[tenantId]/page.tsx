@@ -5,7 +5,6 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { KnowledgeDrawer } from './KnowledgeDrawer'
 import { PaymentForm } from './PaymentForm'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -198,7 +197,6 @@ function DashboardPage() {
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [insightsCopied, setInsightsCopied]   = useState(false)
 
-  const [kbOpen, setKbOpen]                 = useState(false)
   const [dbMenuOpen, setDbMenuOpen]         = useState(false)
   const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
@@ -567,10 +565,10 @@ function DashboardPage() {
             Dashboard
           </div>
 
-          <button className="db-nav-item" onClick={() => setKbOpen(true)}>
+          <Link href={`/dashboard/${tenantId}/knowledge-base`} className="db-nav-item">
             <IconKB />
             Knowledge Base
-          </button>
+          </Link>
 
           <div className="db-nav-item" style={{ cursor: 'default' }}>
             <IconLeads />
@@ -1194,10 +1192,10 @@ function DashboardPage() {
                   <IconDashboard />
                   Dashboard
                 </div>
-                <button className="db-nav-item" onClick={() => { setKbOpen(true); setDbMenuOpen(false) }}>
+                <Link href={`/dashboard/${tenantId}/knowledge-base`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                   <IconKB />
                   Knowledge Base
-                </button>
+                </Link>
                 <div className="db-nav-item" style={{ cursor: 'default' }}>
                   <IconLeads />
                   Leads
@@ -1232,17 +1230,6 @@ function DashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* Knowledge Drawer */}
-      <AnimatePresence>
-        {kbOpen && (
-          <KnowledgeDrawer
-            tenantId={tenantId}
-            websiteUrl={tenant?.website_url}
-            lastCrawlAt={tenant?.last_crawl_at}
-            onClose={() => setKbOpen(false)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   )
 }
