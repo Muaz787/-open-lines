@@ -166,15 +166,14 @@ function Sparkline({ value, color = '#e8e6e0' }: { value: number; color?: string
   )
 }
 
-/* Logo SVG — matches landing page brand mark */
-function LogoMark({ size = 16 }: { size?: number }) {
+/* Logo SVG — matches landing page brand mark: circular ring + 3 audio bars */
+function LogoMark({ size = 22 }: { size?: number }) {
   return (
     <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
-      <path d="M15.9 3.2A11 11 0 0 1 15.9 24.8" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
-      <path d="M12.1 24.8A11 11 0 0 1 12.1 3.2" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
-      <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
-      <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
-      <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="#fff" strokeWidth="2.4" strokeLinecap="round"/>
+      <circle cx="14" cy="14" r="10.5" stroke="#fff" strokeWidth="2"/>
+      <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   )
 }
@@ -641,8 +640,8 @@ function DashboardPage() {
         {/* Mobile topbar */}
         <div className="db-mobile-topbar">
           <div className="db-mobile-logo">
-            <div className="db-logo-icon" style={{ width: 24, height: 24, borderRadius: 5, background: '#3dba72', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LogoMark size={14} />
+            <div className="db-logo-icon" style={{ width: 30, height: 30, borderRadius: 8, background: '#3dba72', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <LogoMark size={20} />
             </div>
             <span className="db-mobile-logo-name">Open Lines</span>
           </div>

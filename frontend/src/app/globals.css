@@ -1106,13 +1106,13 @@ footer {
   flex-shrink: 0;
 }
 .db-logo-icon {
-  width: 26px; height: 26px;
-  border-radius: 6px;
+  width: 34px; height: 34px;
+  border-radius: 9px;
   background: var(--db-accent);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.db-logo-name { font-size: 13px; font-weight: 600; color: #fff; letter-spacing: -0.2px; }
+.db-logo-name { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
 
 .db-clinic-sw {
   margin: 10px 8px 0;
