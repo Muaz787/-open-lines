@@ -208,13 +208,17 @@ function DashboardPage() {
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
   const [userEmail, setUserEmail]           = useState('')
+  const [userName, setUserName]             = useState('')
   const [period, setPeriod]                 = useState<'today' | '7d' | '30d'>('7d')
 
   // Auth guard
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) router.replace('/login')
-      else setUserEmail(data.user.email ?? '')
+      else {
+        setUserEmail(data.user.email ?? '')
+        setUserName(data.user.user_metadata?.full_name ?? '')
+      }
     })
   }, [router])
 
@@ -510,6 +514,18 @@ function DashboardPage() {
       <path strokeLinecap="round" d="M10 10l3-3-3-3M13 7H6"/>
     </svg>
   )
+  const IconLeads = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <circle cx="7.5" cy="5" r="2.5"/>
+      <path d="M2 13c0-3.03 2.46-5.5 5.5-5.5S13 9.97 13 13"/>
+    </svg>
+  )
+  const IconCalendar = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <rect x="1.5" y="2.5" width="12" height="11" rx="1.5"/>
+      <path d="M1.5 6.5h12M5 1.5v2M10 1.5v2"/>
+    </svg>
+  )
 
   const planBadge = () => {
     if (tenant?.subscription_status === 'active' && tenant?.subscription_plan)
@@ -556,6 +572,20 @@ function DashboardPage() {
             Knowledge Base
           </button>
 
+          <div className="db-nav-item" style={{ cursor: 'default' }}>
+            <IconLeads />
+            Leads
+            {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
+          </div>
+
+          {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
+            <div className="db-nav-item" style={{ cursor: 'default' }}>
+              <IconCalendar />
+              Calendar
+              {appointments.length > 0 && <span className="db-nav-badge db-badge-green">{appointments.length}</span>}
+            </div>
+          )}
+
           <div className="db-nav-label">Account</div>
 
           <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item">
@@ -582,10 +612,12 @@ function DashboardPage() {
         <div className="db-sidebar-footer">
           <button className="db-user-row" onClick={handleLogout} title="Sign out">
             <div className="db-user-av">
-              {(userEmail || tenant?.business_name || '?')[0].toUpperCase()}
+              {userName
+                ? userName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+                : (userEmail || '?')[0].toUpperCase()}
             </div>
             <div className="db-user-info">
-              <div className="db-user-name">{tenant?.business_name ?? 'Account'}</div>
+              <div className="db-user-name">{userName || tenant?.business_name || 'Account'}</div>
               <div className="db-user-email">{userEmail}</div>
             </div>
             <IconSignOut />
@@ -1166,6 +1198,18 @@ function DashboardPage() {
                   <IconKB />
                   Knowledge Base
                 </button>
+                <div className="db-nav-item" style={{ cursor: 'default' }}>
+                  <IconLeads />
+                  Leads
+                  {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
+                </div>
+                {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
+                  <div className="db-nav-item" style={{ cursor: 'default' }}>
+                    <IconCalendar />
+                    Calendar
+                    {appointments.length > 0 && <span className="db-nav-badge db-badge-green">{appointments.length}</span>}
+                  </div>
+                )}
                 <div className="db-nav-label">Account</div>
                 <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                   <IconSettings />
