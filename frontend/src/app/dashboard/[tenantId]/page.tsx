@@ -166,11 +166,12 @@ function Sparkline({ value, color = '#e8e6e0' }: { value: number; color?: string
   )
 }
 
-/* Logo SVG — matches landing page brand mark: circular ring + 3 audio bars */
+/* Logo SVG — exact copy of landing page brand mark, white on green */
 function LogoMark({ size = 22 }: { size?: number }) {
   return (
     <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
-      <circle cx="14" cy="14" r="10.5" stroke="#fff" strokeWidth="2"/>
+      <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M 12.1,24.8 A 11,11 0 0,1 12.1,3.2" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
       <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
       <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
       <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
