@@ -18,14 +18,14 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 const CARD_STYLE = {
   style: {
     base: {
-      color: '#DDE8F2',
+      color: '#16161a',
       fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
       fontSize: '14px',
       fontWeight: '400',
       letterSpacing: '0.01em',
-      '::placeholder': { color: '#445566' },
+      '::placeholder': { color: '#aaa' },
     },
-    invalid: { color: '#FF453A' },
+    invalid: { color: '#e53e3e' },
   },
 }
 

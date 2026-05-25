@@ -550,7 +550,7 @@ function DashboardPage() {
       <aside className="db-sidebar">
         {/* Logo */}
         <div className="db-sidebar-logo">
-          <div className="db-logo-icon"><LogoMark size={14} /></div>
+          <div className="db-logo-icon"><LogoMark size={22} /></div>
           <span className="db-logo-name">Open Lines</span>
         </div>
 
@@ -641,8 +641,8 @@ function DashboardPage() {
         {/* Mobile topbar */}
         <div className="db-mobile-topbar">
           <div className="db-mobile-logo">
-            <div className="db-logo-icon" style={{ width: 30, height: 30, borderRadius: 8, background: '#3dba72', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LogoMark size={20} />
+            <div className="db-logo-icon">
+              <LogoMark size={22} />
             </div>
             <span className="db-mobile-logo-name">Open Lines</span>
           </div>
@@ -710,138 +710,158 @@ function DashboardPage() {
         {/* ── Content ── */}
         <div className="db-content">
 
-          {/* Onboarding checklist */}
-          {!allDone && tenant && (
-            <div className="db-onboarding">
-              <div className="db-ob-header">
-                <span className="db-ob-title">Get {tenant.business_name} live</span>
-                <span className="db-ob-prog">{doneCount} of {onboardingSteps.length} complete</span>
-              </div>
-              <div className="db-ob-bar">
-                <div className="db-ob-fill" style={{ width: `${(doneCount / onboardingSteps.length) * 100}%` }} />
-              </div>
-              <div className="db-ob-steps">
-                {onboardingSteps.map((step, i) => (
-                  <div key={i} className={`db-ob-step${step.done ? ' done' : ''}`}>
-                    <div className={`db-ob-step-icon${step.done ? ' done' : ''}`}>
-                      {step.done ? '✓' : i + 1}
-                    </div>
-                    <div className="db-ob-step-label">{step.label}</div>
-                    {step.sub && <div className="db-ob-step-sub">{step.sub}</div>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Stats */}
+          {/* Stats row — full width */}
           {stats && (
-            <div className="db-stats-v2">
-              {[
-                { label: 'Calls handled',       value: stats.total_calls,         unit: '' },
-                { label: 'Leads captured',       value: stats.total_leads,         unit: '' },
-                { label: 'Minutes on phone',     value: stats.minutes_handled,     unit: 'min' },
-                { label: 'Appointments booked',  value: stats.appointments_booked, unit: '' },
-              ].map(({ label, value, unit }) => {
-                const noData = unit === 'min' && value === 0 && stats.total_calls > 0
-                return (
-                  <div key={label} className="db-stat-card">
-                    <div className="db-stat-meta">
-                      <span className="db-stat-label">{label}</span>
-                      <span className={`db-stat-delta ${value > 0 && !noData ? 'db-delta-up' : 'db-delta-neu'}`}>
-                        {noData ? '—' : value > 0 ? `+${value}` : '—'}
-                      </span>
-                    </div>
-                    <div className="db-stat-num">
-                      {noData ? <span style={{ color: '#bbb' }}>—</span> : value.toLocaleString()}
-                      {unit && !noData && <span className="db-stat-unit"> {unit}</span>}
-                    </div>
-                    <Sparkline value={noData ? 0 : value} color={value > 0 && !noData ? '#3dba72' : '#e8e6e0'} />
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Subscription (if no active plan) */}
-          {!isSubscribed && (
-            <div className="db-sub-compact">
-              {payingPlan ? (
-                <PaymentForm
-                  tenantId={tenantId}
-                  plan={payingPlan.id}
-                  planLabel={`${payingPlan.label} · ${payingPlan.price}`}
-                  onSuccess={handlePaymentSuccess}
-                  onCancel={() => setPayingPlan(null)}
-                />
-              ) : (
-                <>
-                  <div style={{ padding: '11px 14px', borderBottom: '1px solid #f0ede8', fontSize: 12, color: '#888' }}>
-                    No active plan — choose one to unlock full access.
-                  </div>
-                  <div style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {([
-                      { id: 'starter',  label: 'Starter',  price: '$99/mo',  minutes: '150 min' },
-                      { id: 'pro',      label: 'Pro',       price: '$199/mo', minutes: '400 min' },
-                      { id: 'business', label: 'Business',  price: '$379/mo', minutes: '900 min' },
-                    ] as const).map(plan => (
-                      <button
-                        key={plan.id}
-                        onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
-                        style={{
-                          flex: 1, minWidth: 80, padding: '10px 12px', textAlign: 'left',
-                          border: '1px solid #e8e6e0', borderRadius: 8,
-                          background: '#fff', cursor: 'pointer', transition: 'border-color 0.15s',
-                          fontFamily: 'var(--font-dm), sans-serif',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.borderColor = '#3dba72')}
-                        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e6e0')}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#16161a', marginBottom: 2 }}>{plan.label}</div>
-                        <div style={{ fontSize: 11, color: '#888' }}>{plan.price} · {plan.minutes}</div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Subscription — active plan management link */}
-          {(tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due') && (
-            <div className="db-sub-compact" style={{ marginBottom: 14 }}>
-              <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
-                    {tenant?.subscription_plan
-                      ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
-                      : 'Active Plan'}
-                  </span>
-                  {tenant?.subscription_status === 'active' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#f0fdf4', color: '#16a34a', letterSpacing: '0.06em' }}>ACTIVE</span>
-                  )}
-                  {tenant?.subscription_status === 'canceling' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#d97706', letterSpacing: '0.06em' }}>CANCELING</span>
-                  )}
-                  {tenant?.subscription_status === 'past_due' && (
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fef2f2', color: '#ef4444', letterSpacing: '0.06em' }}>PAST DUE</span>
-                  )}
+            <div className="db-stats-wrap">
+              <div className="db-stats-topbar">
+                <span className="db-stats-title">Performance</span>
+                <div className="db-period-toggle">
+                  {(['today', '7d', '30d'] as const).map(p => (
+                    <button
+                      key={p}
+                      className={`db-period-btn${period === p ? ' active' : ''}`}
+                      onClick={() => setPeriod(p)}
+                    >
+                      {p === 'today' ? 'Today' : p === '7d' ? '7 days' : '30 days'}
+                    </button>
+                  ))}
                 </div>
-                <Link
-                  href={`/dashboard/${tenantId}/subscription`}
-                  style={{ fontSize: 12, fontWeight: 600, color: '#3dba72', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #3dba72', borderRadius: 7, background: '#f0fdf4' }}
-                >
-                  Manage →
-                </Link>
+              </div>
+              <div className="db-stats-v2">
+                {[
+                  { label: 'Calls handled',       value: stats.total_calls,         unit: '' },
+                  { label: 'Leads captured',       value: stats.total_leads,         unit: '' },
+                  { label: 'Minutes on phone',     value: stats.minutes_handled,     unit: 'min' },
+                  { label: 'Appointments booked',  value: stats.appointments_booked, unit: '' },
+                ].map(({ label, value, unit }) => {
+                  const noData = unit === 'min' && value === 0 && stats.total_calls > 0
+                  const periodLabel = period === 'today' ? 'Today' : period === '7d' ? '7d' : '30d'
+                  return (
+                    <div key={label} className="db-stat-card">
+                      <div className="db-stat-meta">
+                        <span className="db-stat-label">{label}</span>
+                        <span className={`db-stat-delta ${value > 0 && !noData ? 'db-delta-up' : 'db-delta-neu'}`}>
+                          {noData ? '—' : value > 0 ? `↑ ${periodLabel}` : '—'}
+                        </span>
+                      </div>
+                      <div className="db-stat-num">
+                        {noData ? <span style={{ color: '#bbb' }}>—</span> : value.toLocaleString()}
+                        {unit && !noData && <span className="db-stat-unit"> {unit}</span>}
+                      </div>
+                      <Sparkline value={noData ? 0 : value} color={value > 0 && !noData ? '#3dba72' : '#e8e6e0'} />
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
 
-          {/* ── Two-column: leads + right sidebar ── */}
+          {/* ── Two-column layout ── */}
           <div className="db-two-col">
 
-            {/* Lead Queue */}
-            <div className="db-section-card">
+            {/* Left column: onboarding + subscription + leads */}
+            <div className="db-left-col">
+
+              {/* Onboarding checklist */}
+              {!allDone && tenant && (
+                <div className="db-onboarding">
+                  <div className="db-ob-header">
+                    <span className="db-ob-title">Get {tenant.business_name} live</span>
+                    <span className="db-ob-prog">{doneCount} of {onboardingSteps.length} complete</span>
+                  </div>
+                  <div className="db-ob-bar">
+                    <div className="db-ob-fill" style={{ width: `${(doneCount / onboardingSteps.length) * 100}%` }} />
+                  </div>
+                  <div className="db-ob-steps">
+                    {onboardingSteps.map((step, i) => (
+                      <div key={i} className={`db-ob-step${step.done ? ' done' : ''}`}>
+                        <div className={`db-ob-step-icon${step.done ? ' done' : ''}`}>
+                          {step.done ? '✓' : i + 1}
+                        </div>
+                        <div className="db-ob-step-label">{step.label}</div>
+                        {step.sub && <div className="db-ob-step-sub">{step.sub}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Subscription (if no active plan) */}
+              {!isSubscribed && (
+                <div className="db-sub-compact">
+                  {payingPlan ? (
+                    <PaymentForm
+                      tenantId={tenantId}
+                      plan={payingPlan.id}
+                      planLabel={`${payingPlan.label} · ${payingPlan.price}`}
+                      onSuccess={handlePaymentSuccess}
+                      onCancel={() => setPayingPlan(null)}
+                    />
+                  ) : (
+                    <>
+                      <div style={{ padding: '11px 14px', borderBottom: '1px solid #f0ede8', fontSize: 12, color: '#888' }}>
+                        No active plan — choose one to unlock full access.
+                      </div>
+                      <div style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {([
+                          { id: 'starter',  label: 'Starter',  price: '$99/mo',  minutes: '150 min' },
+                          { id: 'pro',      label: 'Pro',       price: '$199/mo', minutes: '400 min' },
+                          { id: 'business', label: 'Business',  price: '$379/mo', minutes: '900 min' },
+                        ] as const).map(plan => (
+                          <button
+                            key={plan.id}
+                            onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
+                            style={{
+                              flex: 1, minWidth: 80, padding: '10px 12px', textAlign: 'left',
+                              border: '1px solid #e8e6e0', borderRadius: 8,
+                              background: '#fff', cursor: 'pointer', transition: 'border-color 0.15s',
+                              fontFamily: 'var(--font-dm), sans-serif',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#3dba72')}
+                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e6e0')}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#16161a', marginBottom: 2 }}>{plan.label}</div>
+                            <div style={{ fontSize: 11, color: '#888' }}>{plan.price} · {plan.minutes}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Subscription — active plan management link */}
+              {(tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due') && (
+                <div className="db-sub-compact">
+                  <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
+                        {tenant?.subscription_plan
+                          ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
+                          : 'Active Plan'}
+                      </span>
+                      {tenant?.subscription_status === 'active' && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#f0fdf4', color: '#16a34a', letterSpacing: '0.06em' }}>ACTIVE</span>
+                      )}
+                      {tenant?.subscription_status === 'canceling' && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#d97706', letterSpacing: '0.06em' }}>CANCELING</span>
+                      )}
+                      {tenant?.subscription_status === 'past_due' && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fef2f2', color: '#ef4444', letterSpacing: '0.06em' }}>PAST DUE</span>
+                      )}
+                    </div>
+                    <Link
+                      href={`/dashboard/${tenantId}/subscription`}
+                      style={{ fontSize: 12, fontWeight: 600, color: '#3dba72', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #3dba72', borderRadius: 7, background: '#f0fdf4' }}
+                    >
+                      Manage →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Lead Queue */}
+              <div className="db-section-card">
               <div className="db-section-hdr">
                 <div className="db-section-title-row">
                   <div className="db-section-icon" style={{ background: '#fff5f0' }}>⚡</div>
@@ -1002,6 +1022,8 @@ function DashboardPage() {
                 })
               )}
             </div>
+
+            </div>{/* /db-left-col */}
 
             {/* ── Right column ── */}
             <div className="db-right-col">
@@ -1188,7 +1210,7 @@ function DashboardPage() {
               onClick={e => e.stopPropagation()}
             >
               <div className="db-sidebar-logo">
-                <div className="db-logo-icon"><LogoMark size={14} /></div>
+                <div className="db-logo-icon"><LogoMark size={22} /></div>
                 <span className="db-logo-name">Open Lines</span>
               </div>
               {tenant && (

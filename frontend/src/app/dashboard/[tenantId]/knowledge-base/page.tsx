@@ -342,7 +342,7 @@ function KnowledgeBasePage() {
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <>
       <div className="db-sidebar-logo">
-        <div className="db-logo-icon"><LogoMark size={14} /></div>
+        <div className="db-logo-icon"><LogoMark size={22} /></div>
         <span className="db-logo-name">Open Lines</span>
       </div>
       {tenant && (
@@ -451,8 +451,8 @@ function KnowledgeBasePage() {
         {/* Mobile topbar */}
         <div className="db-mobile-topbar">
           <div className="db-mobile-logo">
-            <div className="db-logo-icon" style={{ width: 30, height: 30, borderRadius: 8, background: '#3dba72', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <LogoMark size={20} />
+            <div className="db-logo-icon">
+              <LogoMark size={22} />
             </div>
             <span className="db-mobile-logo-name">Knowledge Base</span>
           </div>
