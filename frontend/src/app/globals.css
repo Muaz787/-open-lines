@@ -1109,11 +1109,8 @@ footer {
 .db-logo-icon {
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  background: #16161a;
-  border-radius: 8px;
-  width: 30px; height: 30px;
 }
-.db-logo-name { font-size: 15px; font-weight: 700; color: #16161a; letter-spacing: -0.3px; }
+.db-logo-name { font-size: 14px; font-weight: 500; color: #16161a; letter-spacing: 0.04em; }
 
 .db-clinic-sw {
   margin: 10px 8px 0;
@@ -1190,7 +1187,7 @@ footer {
 }
 .db-user-row:hover { background: var(--db-subtle); }
 .db-user-av {
-  width: 24px; height: 24px; border-radius: 50%;
+  width: 26px; height: 26px; border-radius: 50%;
   background: #16161a;
   display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 600; color: #fff; flex-shrink: 0;

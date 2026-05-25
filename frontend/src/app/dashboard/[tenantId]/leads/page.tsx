@@ -143,11 +143,11 @@ function LeadsPage() {
   // ── Icons ────────────────────────────────────────────────
   const LogoMark = ({ size = 22 }: { size?: number }) => (
     <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
-      <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M 12.1,24.8 A 11,11 0 0,1 12.1,3.2" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M 12.1,24.8 A 11,11 0 0,1 12.1,3.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   )
   const IconDashboard = () => (
@@ -221,7 +221,7 @@ function LeadsPage() {
     <>
       <div className="db-sidebar-logo">
         <div className="db-logo-icon"><LogoMark size={22} /></div>
-        <span className="db-logo-name">Open Lines</span>
+        <span className="db-logo-name">open lines</span>
       </div>
       {tenant && (
         <div className="db-clinic-sw">
