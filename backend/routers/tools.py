@@ -125,9 +125,15 @@ async def check_availability(tenant_id: str, body: dict):
     if not date_str:
         return _result(tc_id, "I need a date to check availability. What date were you thinking?")
 
-    # Extract caller phone so we can detect a reschedule mid-call
-    msg_body     = body.get("message", body)
-    caller_phone = (msg_body.get("call") or {}).get("customer", {}).get("number", "")
+    # Extract caller phone — try multiple payload paths (Vapi structure varies by event type)
+    msg_body   = body.get("message", body)
+    _call_obj  = msg_body.get("call") or {}
+    _customer  = _call_obj.get("customer") or {}
+    caller_phone = (
+        _customer.get("number", "")
+        or _customer.get("phoneNumber", "")
+        or (msg_body.get("customer") or {}).get("number", "")
+    )
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -142,21 +148,24 @@ async def check_availability(tenant_id: str, body: dict):
     duration_minutes = tenant.get("appointment_duration_minutes") or 60
     timezone         = tenant.get("calendar_timezone") or "America/Toronto"
 
-    # If the caller already has an appointment, exclude its time block from the
-    # busy check so the agent doesn't falsely report that slot as unavailable.
-    exclude_range = None
+    # If the caller already has an appointment, exclude it from the busy list so the
+    # agent doesn't falsely report the rescheduled slot as unavailable.
+    # Primary: match by Google event ID (exact). Fallback: match by time range.
+    exclude_event_id = None
+    exclude_range    = None
     if caller_phone:
         try:
             existing = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
             if existing:
+                exclude_event_id = existing.get("google_event_id") or None
                 ex_start = datetime.fromisoformat(existing["appointment_datetime"])
                 if ex_start.tzinfo is None:
                     ex_start = ex_start.replace(tzinfo=ZoneInfo(timezone))
                 ex_end = ex_start + timedelta(minutes=duration_minutes)
                 exclude_range = (ex_start, ex_end)
                 logger.info(
-                    "tools/availability: reschedule detected for %s — excluding %s to %s",
-                    caller_phone, ex_start.isoformat(), ex_end.isoformat(),
+                    "tools/availability: reschedule detected for %s — excluding event_id=%s (%s to %s)",
+                    caller_phone, exclude_event_id, ex_start.isoformat(), ex_end.isoformat(),
                 )
         except Exception as e:
             logger.warning("tools/availability: existing-appt check failed: %s", e)
@@ -168,6 +177,7 @@ async def check_availability(tenant_id: str, body: dict):
             duration_minutes=duration_minutes,
             timezone=timezone,
             period=period,
+            exclude_event_id=exclude_event_id,
             exclude_range=exclude_range,
         )
     except CalendarTokenExpiredError:

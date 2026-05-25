@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from db import supabase as db
 from services import knowledge, telephony, vapi as vapi_svc
+from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools
 from routers.calendar import _CALENDAR_NOTE
 
 load_dotenv()
@@ -120,6 +121,17 @@ async def _handle_assistant_request(msg: dict) -> dict:
         "NEVER use a past year. NEVER guess — derive the date from what the caller actually said."
     )
 
+    # Try multiple payload paths for caller phone — Vapi may vary the structure
+    # between assistant-request and other event types
+    _call_obj = msg.get("call") or {}
+    _customer  = _call_obj.get("customer") or {}
+    caller_phone = (
+        _customer.get("number", "")
+        or _customer.get("phoneNumber", "")
+        or (msg.get("customer") or {}).get("number", "")
+        or (msg.get("customer") or {}).get("phoneNumber", "")
+    )
+
     # Caller context
     caller_context = ""
     personalized_greeting = tenant.get("greeting_template", "")
@@ -148,6 +160,11 @@ async def _handle_assistant_request(msg: dict) -> dict:
                         lines.append(f"Upcoming appointment: {service} on {friendly}")
                 except Exception:
                     pass
+                # Explicit override: tell the AI to skip onboarding immediately
+                lines.append(
+                    "‼ SKIP ALL onboarding questions — do NOT ask for name, spelling, "
+                    "new-or-existing status, or any info you already have above."
+                )
                 caller_context = (
                     "\n\nCALLER CONTEXT (this caller has called before — use this immediately in your greeting):\n"
                     + "\n".join(lines)
@@ -157,14 +174,21 @@ async def _handle_assistant_request(msg: dict) -> dict:
         except Exception as e:
             logger.warning("assistant-request: caller lookup failed for tenant %s: %s", tenant_id, e)
 
-    # Assemble system prompt
+    # Assemble system prompt — always include _CALLER_LOOKUP_NOTE so returning-caller
+    # and rescheduling instructions are present even when the static Vapi config is stale.
     system_prompt = base_prompt + date_note + caller_context
     if tenant.get("google_refresh_token"):
         system_prompt += _CALENDAR_NOTE
+    system_prompt += _CALLER_LOOKUP_NOTE
+
+    # Include tools in the override so they are never lost if Vapi replaces model wholesale
+    has_calendar = bool(tenant.get("google_refresh_token"))
+    tools = build_calendar_tools(tenant_id) if has_calendar else [build_caller_lookup_tool(tenant_id)]
 
     logger.info(
-        "assistant-request: tenant %s caller %s → %s",
+        "assistant-request: tenant %s caller %s → %s (phone_found=%s)",
         tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
+        bool(caller_phone),
     )
 
     overrides: dict = {
@@ -173,6 +197,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
             "model": "gpt-4o",
             "temperature": 0.7,
             "messages": [{"role": "system", "content": system_prompt}],
+            "tools": tools,
         },
     }
     if personalized_greeting:

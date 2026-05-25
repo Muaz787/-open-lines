@@ -229,9 +229,21 @@ async def get_assistant(assistant_id: str) -> dict:
 _CALLER_LOOKUP_NOTE = """
 
 CALLER RECOGNITION
-- If this prompt already contains a CALLER CONTEXT section: greet them by name immediately, reference their history, and mention any upcoming appointment. Do NOT call caller_lookup.
-- If there is no CALLER CONTEXT section: the caller is new — ask for their name naturally in your first follow-up. Do NOT call caller_lookup.
-Never say "I'm looking up your records" or anything that reveals a system lookup."""
+- If this prompt already contains a CALLER CONTEXT section: this is a RETURNING caller.
+  • Greet them warmly by name in your very first sentence.
+  • Reference their history and any upcoming appointment.
+  • SKIP ALL onboarding questions entirely — do NOT ask for their name, how to spell it, whether they are new or existing, their phone number, or any other information you already have. You already have it.
+  • Do NOT call caller_lookup.
+- If there is no CALLER CONTEXT section: the caller is new.
+  • Ask for their name naturally in your first follow-up.
+  • Do NOT call caller_lookup.
+Never say "I'm looking up your records" or anything that reveals a system lookup.
+
+RESCHEDULING RULES
+- If a caller wants to change or reschedule an existing appointment, ALWAYS call check_availability first to find open slots — NEVER decide availability yourself based on their existing booking.
+- The backend automatically removes their existing appointment from the busy list, so the new slot will appear correctly available even if it overlaps with their current booking window.
+- Once you have confirmed the new time with the caller, call book_appointment. The backend will automatically cancel the old appointment and create the new one.
+- Never tell a caller a specific time is unavailable without first calling check_availability."""
 
 
 def build_caller_lookup_tool(tenant_id: str) -> dict:

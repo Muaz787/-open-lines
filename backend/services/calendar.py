@@ -128,13 +128,17 @@ async def list_free_slots(
     duration_minutes: int,
     timezone: str,
     period: str = "any",
+    exclude_event_id: str | None = None,
     exclude_range: tuple[datetime, datetime] | None = None,
 ) -> list[str]:
     """Return available slot strings (e.g. '2:00 PM') for the given date.
 
-    exclude_range: if provided, any Google Calendar busy period that aligns with
-    this (start, end) pair is ignored — used during reschedules so the caller's
-    existing appointment doesn't block the new slot search.
+    exclude_event_id: Google Calendar event ID to ignore — used during reschedules
+    so the caller's existing appointment doesn't block the new slot search.
+    This is the primary exclusion method (exact match, always reliable).
+
+    exclude_range: fallback — any busy period whose start/end aligns within ±5 min
+    of this (start, end) pair is also ignored.
     """
     tz = ZoneInfo(timezone)
     appt_date = date_type.fromisoformat(date_str)
@@ -187,12 +191,16 @@ async def list_free_slots(
                 b_end   = datetime.fromisoformat(end_str.replace(  "Z", "+00:00")).astimezone(tz)
         except Exception:
             continue
-        # Drop this busy period if it matches the caller's existing appointment
-        # (±5 min tolerance handles DST edge cases and calendar rounding)
+        # Primary exclusion: match by Google event ID (exact, never fails on tz rounding)
+        event_id = event.get("id", "")
+        if exclude_event_id and event_id and event_id == exclude_event_id:
+            logger.debug("Excluding reschedule event by ID %s: %s–%s", event_id, b_start, b_end)
+            continue
+        # Fallback exclusion: time-range match (±5 min tolerance for DST edge cases)
         if ex_start_tz is not None:
             if (abs((b_start - ex_start_tz).total_seconds()) < 300
                     and abs((b_end - ex_end_tz).total_seconds()) < 300):
-                logger.debug("Excluding reschedule conflict: %s–%s", b_start, b_end)
+                logger.debug("Excluding reschedule conflict by time range: %s–%s", b_start, b_end)
                 continue
         busy.append((b_start, b_end))
 
