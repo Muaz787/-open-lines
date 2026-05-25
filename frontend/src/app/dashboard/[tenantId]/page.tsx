@@ -567,18 +567,18 @@ function DashboardPage() {
             Knowledge Base
           </Link>
 
-          <div className="db-nav-item" style={{ cursor: 'default' }}>
+          <Link href={`/dashboard/${tenantId}/leads`} className="db-nav-item">
             <IconLeads />
             Leads
             {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
-          </div>
+          </Link>
 
           {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
-            <div className="db-nav-item" style={{ cursor: 'default' }}>
+            <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item">
               <IconCalendar />
               Calendar
               {appointments.length > 0 && <span className="db-nav-badge db-badge-green">{appointments.length}</span>}
-            </div>
+            </Link>
           )}
 
           <div className="db-nav-label">Account</div>
@@ -705,17 +705,6 @@ function DashboardPage() {
             <div className="db-stats-wrap">
               <div className="db-stats-topbar">
                 <span className="db-stats-title">Performance</span>
-                <div className="db-period-toggle">
-                  {(['today', '7d', '30d'] as const).map(p => (
-                    <button
-                      key={p}
-                      className={`db-period-btn${period === p ? ' active' : ''}`}
-                      onClick={() => setPeriod(p)}
-                    >
-                      {p === 'today' ? 'Today' : p === '7d' ? '7 days' : '30 days'}
-                    </button>
-                  ))}
-                </div>
               </div>
               <div className="db-stats-v2">
                 {[
@@ -1197,17 +1186,17 @@ function DashboardPage() {
                   <IconKB />
                   Knowledge Base
                 </Link>
-                <div className="db-nav-item" style={{ cursor: 'default' }}>
+                <Link href={`/dashboard/${tenantId}/leads`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                   <IconLeads />
                   Leads
                   {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
-                </div>
+                </Link>
                 {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
-                  <div className="db-nav-item" style={{ cursor: 'default' }}>
+                  <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                     <IconCalendar />
                     Calendar
                     {appointments.length > 0 && <span className="db-nav-badge db-badge-green">{appointments.length}</span>}
-                  </div>
+                  </Link>
                 )}
                 <div className="db-nav-label">Account</div>
                 <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>

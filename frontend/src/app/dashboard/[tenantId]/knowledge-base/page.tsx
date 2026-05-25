@@ -362,17 +362,17 @@ function KnowledgeBasePage() {
           <IconKB />
           Knowledge Base
         </Link>
-        <div className="db-nav-item" style={{ cursor: 'default' }}>
+        <Link href={`/dashboard/${tenantId}/leads`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
           <IconLeads />
           Leads
           {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
-        </div>
+        </Link>
         {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
-          <div className="db-nav-item" style={{ cursor: 'default' }}>
+          <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
             <IconCalendar />
             Calendar
             {appointments.length > 0 && <span className="db-nav-badge db-badge-green">{appointments.length}</span>}
-          </div>
+          </Link>
         )}
         <div className="db-nav-label">Account</div>
         <Link href={`/dashboard/${tenantId}/settings`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
