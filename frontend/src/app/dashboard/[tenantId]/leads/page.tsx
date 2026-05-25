@@ -407,7 +407,7 @@ function LeadsPage() {
         <div className="db-content">
 
           {/* Filter tabs */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          <div className="leads-filter-bar">
             {(['all', 'new', 'contacted', 'converted'] as const).map(f => (
               <button
                 key={f}
@@ -483,12 +483,9 @@ function LeadsPage() {
                         )}
                       </div>
 
-                      {/* Summary */}
+                      {/* Summary — hidden on small screens */}
                       {lead.summary && (
-                        <div style={{
-                          fontSize: 12, color: '#666', flex: 2,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
+                        <div className="leads-row-summary">
                           {lead.summary}
                         </div>
                       )}

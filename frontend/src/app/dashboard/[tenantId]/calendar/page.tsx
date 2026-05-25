@@ -368,7 +368,7 @@ function CalendarPage() {
         <div className="db-content">
 
           {/* Toggle upcoming / past */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          <div className="cal-toggle-bar">
             <button
               onClick={() => setShowPast(false)}
               style={{
@@ -420,20 +420,17 @@ function CalendarPage() {
                   return (
                     <div
                       key={appt.id}
+                      className="cal-appt-card"
                       style={{
-                        background: '#fff', border: '1px solid',
                         borderColor: cancelled ? '#fee2e2' : upcoming ? '#d1fae5' : '#e8e6e0',
-                        borderRadius: 10, padding: '14px 16px',
-                        display: 'flex', alignItems: 'flex-start', gap: 16,
                         opacity: cancelled ? 0.7 : 1,
                       }}
                     >
                       {/* Date block */}
-                      <div style={{
-                        flexShrink: 0, textAlign: 'center', width: 48,
-                        background: cancelled ? '#fef2f2' : upcoming ? '#eafaf2' : '#f4f3f0',
-                        borderRadius: 8, padding: '8px 4px',
-                      }}>
+                      <div
+                        className="cal-appt-date-block"
+                        style={{ background: cancelled ? '#fef2f2' : upcoming ? '#eafaf2' : '#f4f3f0' }}
+                      >
                         <div style={{ fontSize: 18, fontWeight: 700, color: '#16161a', lineHeight: 1 }}>
                           {new Date(appt.appointment_datetime).getDate()}
                         </div>
@@ -443,7 +440,7 @@ function CalendarPage() {
                       </div>
 
                       {/* Info */}
-                      <div style={{ flex: 1 }}>
+                      <div className="cal-appt-info">
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: '#16161a' }}>
                             {appt.caller_name || 'Unknown caller'}

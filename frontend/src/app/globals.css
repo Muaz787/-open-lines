@@ -550,11 +550,11 @@ footer {
   display: flex;
   align-items: center; justify-content: center;
   width: 34px; height: 34px;
-  background: transparent; border: 1px solid var(--border-2);
-  border-radius: 7px; cursor: pointer; color: var(--text);
+  background: transparent; border: 1px solid var(--db-border);
+  border-radius: 7px; cursor: pointer; color: var(--db-text);
   transition: border-color 0.2s; flex-shrink: 0;
 }
-.db-hamburger:hover { border-color: var(--text-3); }
+.db-hamburger:hover { border-color: var(--db-muted); }
 
 /* Dropdown menu — right-aligned popover on desktop, full-width on mobile */
 .db-mobile-menu {
@@ -1399,18 +1399,41 @@ footer {
   border-radius: 10px; margin-bottom: 14px; overflow: hidden;
 }
 
-/* Mobile overlay menu */
-.db-overlay-menu {
+/* Mobile overlay menu — shared across all dashboard pages */
+.db-overlay-menu,
+.db-mobile-overlay {
   position: fixed; inset: 0; z-index: 190;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0,0,0,0.45);
 }
-.db-overlay-panel {
+.db-overlay-panel,
+.db-mobile-sidebar {
   position: absolute; top: 0; left: 0;
   width: 260px; height: 100%;
   background: var(--db-side);
+  border-right: 1px solid var(--db-border);
   display: flex; flex-direction: column;
-  padding: 0;
+  padding: 0; overflow-y: auto;
 }
+
+/* ── Leads page ── */
+.leads-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.leads-row-summary {
+  flex: 2; font-size: 12px; color: #666;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Calendar page ── */
+.cal-toggle-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.cal-appt-card {
+  display: flex; align-items: flex-start; gap: 16px;
+  background: #fff; border-radius: 10px; padding: 14px 16px;
+  border: 1px solid #e8e6e0;
+}
+.cal-appt-date-block {
+  flex-shrink: 0; text-align: center; width: 48px;
+  border-radius: 8px; padding: 8px 4px;
+}
+.cal-appt-info { flex: 1; min-width: 0; }
 
 /* ── Responsive (sidebar) ── */
 @media (max-width: 900px) {
@@ -1427,10 +1450,19 @@ footer {
   .db-stats-v2 { grid-template-columns: repeat(2,1fr); }
 }
 
+@media (max-width: 540px) {
+  .db-stat-card { padding: 12px 12px 10px; }
+  .db-stat-num { font-size: 20px; }
+  .leads-row-summary { display: none; }
+  .cal-appt-card { flex-wrap: wrap; }
+  .cal-appt-info .cal-appt-status { margin-left: 0; }
+}
+
 @media (max-width: 480px) {
   .db-right-col { flex-direction: column; }
   .db-two-col { margin-top: 10px; }
   .db-stats-v2 { grid-template-columns: repeat(2,1fr); gap: 8px; }
+  .db-period-tabs { display: none; }
 }
 
 /* ══════════════════════════════════════════════
