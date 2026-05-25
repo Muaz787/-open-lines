@@ -460,16 +460,6 @@ function DashboardPage() {
   // ── Derived ──────────────────────────────────────────────
   const isSubscribed = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling'
 
-  const onboardingSteps = tenant ? [
-    { label: 'Phone number claimed', done: !!tenant.twilio_phone_number, sub: '' },
-    { label: 'Subscribe', done: isSubscribed, sub: 'Unlock full access' },
-    ...(BOOKING_INDUSTRIES.has(tenant.industry) ? [{ label: 'Connect Google Calendar', done: !!(calStatus?.connected), sub: 'Book in real time' }] : []),
-    { label: 'Train the AI', done: !!tenant.last_crawl_at, sub: 'Add your website or FAQs' },
-    { label: 'Make a test call', done: (stats?.total_calls ?? 0) > 0, sub: tenant.twilio_phone_number ?? '' },
-  ] : []
-
-  const doneCount = onboardingSteps.filter(s => s.done).length
-  const allDone   = onboardingSteps.length > 0 && doneCount === onboardingSteps.length
 
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
@@ -762,29 +752,6 @@ function DashboardPage() {
             {/* Left column: onboarding + subscription + leads */}
             <div className="db-left-col">
 
-              {/* Onboarding checklist */}
-              {!allDone && tenant && (
-                <div className="db-onboarding">
-                  <div className="db-ob-header">
-                    <span className="db-ob-title">Get {tenant.business_name} live</span>
-                    <span className="db-ob-prog">{doneCount} of {onboardingSteps.length} complete</span>
-                  </div>
-                  <div className="db-ob-bar">
-                    <div className="db-ob-fill" style={{ width: `${(doneCount / onboardingSteps.length) * 100}%` }} />
-                  </div>
-                  <div className="db-ob-steps">
-                    {onboardingSteps.map((step, i) => (
-                      <div key={i} className={`db-ob-step${step.done ? ' done' : ''}`}>
-                        <div className={`db-ob-step-icon${step.done ? ' done' : ''}`}>
-                          {step.done ? '✓' : i + 1}
-                        </div>
-                        <div className="db-ob-step-label">{step.label}</div>
-                        {step.sub && <div className="db-ob-step-sub">{step.sub}</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Subscription (if no active plan) */}
               {!isSubscribed && (
