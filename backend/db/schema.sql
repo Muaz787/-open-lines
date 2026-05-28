@@ -68,6 +68,11 @@ alter table tenants add column if not exists subscription_status    text default
 alter table tenants add column if not exists kb_files jsonb default '[]'::jsonb;
 alter table tenants add column if not exists extra_instructions text;
 
+-- Metered overage billing: track minutes consumed per billing period
+alter table tenants add column if not exists minutes_used_this_period int     default 0;
+alter table tenants add column if not exists overage_minutes_reported  int     default 0;
+alter table tenants add column if not exists billing_period_anchor     date;
+
 -- Vapi sub-organization per tenant (isolated 10-call concurrent limit)
 alter table tenants add column if not exists vapi_suborg_id      text;
 alter table tenants add column if not exists vapi_suborg_api_key text;  -- AES-256-GCM encrypted

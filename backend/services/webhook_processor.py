@@ -172,6 +172,14 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
+    # Record minutes for metered overage billing
+    if duration is not None and duration > 0:
+        try:
+            from services.usage import record_call_minutes
+            await record_call_minutes(tenant_id, duration)
+        except Exception as e:
+            logger.error("usage.record_call_minutes failed for tenant %s call %s: %s", tenant_id, call_id, e)
+
     logger.info("Processed end-of-call-report for call %s tenant %s", call_id, tenant_id)
 
 

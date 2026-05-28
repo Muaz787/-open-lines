@@ -22,8 +22,24 @@ PRICE_IDS: dict[str, str] = {
     "pro":      os.getenv("STRIPE_PRICE_PRO", ""),
     "business": os.getenv("STRIPE_PRICE_BUSINESS", ""),
 }
+# Metered overage price linked to a Stripe Billing Meter (event_name: call_minutes)
+STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
+
+
+def _base_item(sub):
+    """Return the subscription item for the base plan price (not the overage meter item)."""
+    for item in (sub.items.data if sub.items else []):
+        price_id = getattr(getattr(item, "price", None), "id", "") or ""
+        if price_id != STRIPE_OVERAGE_PRICE_ID and price_id in PRICE_IDS.values():
+            return item
+    # Fallback: first item that is not the overage price
+    for item in (sub.items.data if sub.items else []):
+        price_id = getattr(getattr(item, "price", None), "id", "") or ""
+        if price_id != STRIPE_OVERAGE_PRICE_ID:
+            return item
+    return sub.items.data[0]
 
 
 def _extract_pi_secret(invoice) -> str | None:
@@ -156,6 +172,23 @@ async def stripe_webhook(request: Request):
             logger.error("DB update failed for tenant %s: %s", tenant_id, e)
             raise HTTPException(status_code=500, detail=f"DB update failed: {e}")
 
+        # Add the overage meter item if checkout created the subscription without it
+        if sub_id and STRIPE_OVERAGE_PRICE_ID:
+            try:
+                sub = stripe.Subscription.retrieve(sub_id)
+                has_overage = any(
+                    (getattr(getattr(it, "price", None), "id", "") == STRIPE_OVERAGE_PRICE_ID)
+                    for it in (sub.items.data if sub.items else [])
+                )
+                if not has_overage:
+                    stripe.SubscriptionItem.create(
+                        subscription=sub_id,
+                        price=STRIPE_OVERAGE_PRICE_ID,
+                    )
+                    logger.info("Added overage item to sub %s for tenant %s", sub_id, tenant_id)
+            except Exception as e:
+                logger.error("Failed to add overage item to sub %s: %s", sub_id, e)
+
     elif event_type == "customer.subscription.updated":
         sub: dict       = event.get("data", {}).get("object", {})
         sub_id          = sub.get("id", "")
@@ -171,7 +204,24 @@ async def stripe_webhook(request: Request):
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
             if tenant and tenant.get("stripe_subscription_id") == sub_id:
-                await db.update_tenant(tenant["id"], {"subscription_status": our_status})
+                updates: dict = {"subscription_status": our_status}
+
+                # Reset usage counters when billing period rolls over
+                new_period_start = sub.get("current_period_start")
+                if new_period_start:
+                    from datetime import datetime, timezone as _tz
+                    new_anchor = datetime.fromtimestamp(int(new_period_start), tz=_tz.utc).strftime("%Y-%m-%d")
+                    stored_anchor = str(tenant.get("billing_period_anchor") or "")
+                    if stored_anchor and stored_anchor != new_anchor:
+                        updates.update({
+                            "minutes_used_this_period": 0,
+                            "overage_minutes_reported": 0,
+                            "billing_period_anchor":    new_anchor,
+                        })
+                        logger.info("Usage counters reset for new billing period %s → %s (tenant %s)",
+                                    stored_anchor, new_anchor, tenant["id"])
+
+                await db.update_tenant(tenant["id"], updates)
                 logger.info("Subscription status updated to %s for customer %s sub %s", our_status, customer_id, sub_id)
             elif tenant:
                 logger.info("Ignoring subscription.updated for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
@@ -257,15 +307,16 @@ async def create_subscription(body: dict):
 
         if existing is not None:
             if existing.status in ("active", "trialing", "past_due"):
-                # Upgrade/downgrade — modify the existing subscription
+                # Upgrade/downgrade — modify only the base plan item, leave overage item untouched
                 sub_items = (existing.items.data if existing.items else []) or []
                 if not sub_items:
                     logger.error("No items on sub %s for tenant %s", existing_sub_id, tenant_id)
                     raise HTTPException(status_code=500, detail="Could not modify subscription — no items found")
                 try:
+                    base = _base_item(existing)
                     stripe.Subscription.modify(
                         existing_sub_id,
-                        items=[{"id": sub_items[0].id, "price": price_id}],
+                        items=[{"id": base.id, "price": price_id}],
                         proration_behavior="always_invoice",
                     )
                 except stripe.StripeError as se:
@@ -294,9 +345,12 @@ async def create_subscription(body: dict):
 
     # Create a new incomplete subscription so we can collect payment via Payment Element
     try:
+        items_payload: list = [{"price": price_id}]
+        if STRIPE_OVERAGE_PRICE_ID:
+            items_payload.append({"price": STRIPE_OVERAGE_PRICE_ID})
         sub = stripe.Subscription.create(
             customer=customer_id,
-            items=[{"price": price_id}],
+            items=items_payload,
             payment_behavior="default_incomplete",
             payment_settings={"save_default_payment_method": "on_subscription"},
             expand=["latest_invoice.payment_intent"],
@@ -702,7 +756,7 @@ async def upgrade_plan(body: dict):
 
     try:
         sub  = stripe.Subscription.retrieve(sub_id)
-        item = sub.items.data[0]
+        item = _base_item(sub)
 
         updated = stripe.Subscription.modify(
             sub_id,
@@ -771,7 +825,7 @@ async def downgrade_plan(body: dict):
 
     try:
         sub  = stripe.Subscription.retrieve(sub_id)
-        item = sub.items.data[0]
+        item = _base_item(sub)
         period_end = sub.current_period_end
 
         stripe.Subscription.modify(
@@ -813,6 +867,19 @@ async def create_setup_intent(tenant_id: str):
         raise HTTPException(status_code=500, detail="Could not initialise payment form")
 
     return {"client_secret": si.client_secret}
+
+
+@router.get("/usage/{tenant_id}")
+async def get_usage(tenant_id: str):
+    """Return current billing-period minute usage and overage for a tenant."""
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tenant lookup failed: {e}")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    from services.usage import get_usage_summary
+    return get_usage_summary(tenant)
 
 
 @router.post("/update-payment-method")
