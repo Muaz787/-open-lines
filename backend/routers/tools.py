@@ -11,10 +11,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import telephony
+from services.ratelimit import limiter, tenant_key
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,8 @@ def _result(tc_id: str, text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @router.post("/{tenant_id}/caller-lookup")
-async def caller_lookup(tenant_id: str, body: dict):
+@limiter.limit("60/minute", key_func=tenant_key)
+async def caller_lookup(request: Request, tenant_id: str, body: dict):
     try:
         tc_id, _, _ = _parse_tool_call(body)
     except Exception as e:
@@ -111,7 +113,8 @@ async def caller_lookup(tenant_id: str, body: dict):
 # ---------------------------------------------------------------------------
 
 @router.post("/{tenant_id}/availability")
-async def check_availability(tenant_id: str, body: dict):
+@limiter.limit("30/minute", key_func=tenant_key)
+async def check_availability(request: Request, tenant_id: str, body: dict):
     logger.info("tools/availability raw payload for tenant %s: %s", tenant_id, body)
     try:
         tc_id, _, args = _parse_tool_call(body)
@@ -212,7 +215,8 @@ async def check_availability(tenant_id: str, body: dict):
 # ---------------------------------------------------------------------------
 
 @router.post("/{tenant_id}/book")
-async def book_appointment(tenant_id: str, body: dict):
+@limiter.limit("10/minute", key_func=tenant_key)
+async def book_appointment(request: Request, tenant_id: str, body: dict):
     try:
         tc_id, call_id, args = _parse_tool_call(body)
     except Exception as e:
@@ -368,7 +372,8 @@ async def book_appointment(tenant_id: str, body: dict):
 # ---------------------------------------------------------------------------
 
 @router.post("/{tenant_id}/cancel")
-async def cancel_appointment(tenant_id: str, body: dict):
+@limiter.limit("10/minute", key_func=tenant_key)
+async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     try:
         tc_id, _, _ = _parse_tool_call(body)
     except Exception as e:

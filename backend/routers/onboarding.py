@@ -1,11 +1,12 @@
 import logging
 import os
 from typing import Annotated, Literal
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
 from services import provisioning, vapi
+from services.ratelimit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,8 @@ class ProvisionRequest(BaseModel):
 
 
 @router.post("/provision")
-async def provision(body: ProvisionRequest):
+@limiter.limit("3/hour")
+async def provision(request: Request, body: ProvisionRequest):
     try:
         provision_data = body.model_dump(exclude={"email", "password"})
         result = await provisioning.provision_tenant(provision_data)
