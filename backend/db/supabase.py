@@ -286,6 +286,64 @@ async def delete_kb_entry(tenant_id: str, entry_id: str) -> None:
     get_client().table("kb_entries").delete().eq("id", entry_id).eq("tenant_id", tenant_id).execute()
 
 
+# ---------------------------------------------------------------------------
+# Webhook event queue
+# ---------------------------------------------------------------------------
+
+async def enqueue_webhook_event(event_type: str, call_id: str | None, payload: dict) -> bool:
+    """Insert a webhook event. Returns False if already enqueued (idempotent)."""
+    try:
+        get_client().table("webhook_events").insert({
+            "event_type": event_type,
+            "call_id": call_id,
+            "payload": payload,
+        }).execute()
+        return True
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "23505" in str(e):
+            return False
+        raise
+
+
+async def claim_pending_webhook_events(limit: int = 10) -> list:
+    """Return pending events that are ready to process (past their retry delay)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    res = (
+        get_client()
+        .table("webhook_events")
+        .select("*")
+        .eq("status", "pending")
+        .or_(f"next_retry_at.is.null,next_retry_at.lte.{now_iso}")
+        .order("created_at", desc=False)
+        .limit(limit)
+        .execute()
+    )
+    return res.data or []
+
+
+async def mark_webhook_done(event_id: str) -> None:
+    get_client().table("webhook_events").update({
+        "status": "done",
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", event_id).execute()
+
+
+async def mark_webhook_retry(event_id: str, attempts: int, error: str, retry_at: str) -> None:
+    get_client().table("webhook_events").update({
+        "attempts": attempts,
+        "last_error": error[:500],
+        "next_retry_at": retry_at,
+    }).eq("id", event_id).execute()
+
+
+async def mark_webhook_failed(event_id: str, attempts: int, error: str) -> None:
+    get_client().table("webhook_events").update({
+        "status": "failed",
+        "attempts": attempts,
+        "last_error": error[:500],
+    }).eq("id", event_id).execute()
+
+
 async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
     get_client().table("kb_entries").delete().eq("tenant_id", tenant_id).eq("type", "website").execute()
     res = get_client().table("kb_entries").insert({

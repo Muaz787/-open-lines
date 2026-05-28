@@ -143,3 +143,5 @@ async def _sync_ngrok_url() -> None:
 async def startup_event():
     print("Open Lines API running on port 8000")
     await _sync_ngrok_url()
+    from services.webhook_processor import start_background_processor
+    start_background_processor()

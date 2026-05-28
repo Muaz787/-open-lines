@@ -1,14 +1,11 @@
-import os
-import json
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
-from openai import AsyncOpenAI
 
 from db import supabase as db
-from services import knowledge, telephony, vapi as vapi_svc
+from services import knowledge, vapi as vapi_svc
 from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools
 from routers.calendar import _CALENDAR_NOTE
 
@@ -17,55 +14,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-_openai: AsyncOpenAI | None = None
-
-
-def _get_openai() -> AsyncOpenAI:
-    global _openai
-    if _openai is None:
-        if not OPENAI_API_KEY:
-            raise RuntimeError("OPENAI_API_KEY must be set")
-        _openai = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    return _openai
-
-
-def _parse_duration(started_at: str | None, ended_at: str | None) -> int | None:
-    if not started_at or not ended_at:
-        return None
-    try:
-        start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-        end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-        return max(0, int((end - start).total_seconds()))
-    except Exception:
-        return None
-
-
-def _format_whatsapp_message(business_name: str, analysis: dict, caller_number: str = "") -> str:
-    caller_name = analysis.get("caller_name", "Unknown")
-    key_details: dict = analysis.get("key_details") or {}
-    urgency = analysis.get("urgency", "unknown")
-    summary = analysis.get("summary", "")
-    next_step = analysis.get("suggested_next_step", "")
-
-    detail_lines = "\n".join(
-        f"• *{k.replace('_', ' ').title()}:* {v}"
-        for k, v in key_details.items()
-    )
-
-    phone_line = f"📱 *Phone:* {caller_number}\n" if caller_number else ""
-
-    return (
-        f"📞 *New Call — {business_name}*\n\n"
-        f"👤 *{caller_name}*\n"
-        f"{phone_line}"
-        f"{detail_lines}\n\n"
-        f"⚡ Urgency: *{urgency}*\n"
-        f"📝 {summary}\n\n"
-        f"➡️ {next_step}"
-    )
 
 
 async def _handle_assistant_request(msg: dict) -> dict:
@@ -215,6 +163,8 @@ async def vapi_call_ended(payload: dict):
     event_type = msg.get("type", "")
     logger.info("VAPI EVENT: type=%s keys=%s", event_type, list(msg.keys()))
 
+    # assistant-request must be handled synchronously — Vapi is waiting for the response
+    # to know which assistant to connect to this call.
     if event_type == "assistant-request":
         return await _handle_assistant_request(msg)
 
@@ -222,146 +172,20 @@ async def vapi_call_ended(payload: dict):
         logger.debug("Ignoring Vapi event type: %s", event_type)
         return {"status": "ignored", "type": event_type}
 
-    logger.info("Processing end-of-call-report")
+    # end-of-call-report: store durably and ack immediately.
+    # The background processor handles the slow work (GPT-4o, lead update, WhatsApp).
+    call_id: str = (msg.get("call") or {}).get("id") or msg.get("call_id") or ""
     try:
-        call = msg.get("call", {})
-        call_id: str = call.get("id") or msg.get("call_id", "")
-        transcript: str = call.get("transcript") or msg.get("transcript", "")
-        caller_number: str = (call.get("customer") or {}).get("number", "")
-        # phoneNumber.number holds the actual E.164 number; phoneNumberId is the Vapi ID
-        phone_obj: dict = msg.get("phoneNumber") or call.get("phoneNumber") or {}
-        called_number: str = (
-            phone_obj.get("number")
-            or phone_obj.get("twilioPhoneNumber")
-            or call.get("phoneNumberId", "")
-        )
-        started_at: str | None = call.get("startedAt") or msg.get("startedAt")
-        ended_at: str | None = call.get("endedAt") or msg.get("endedAt")
-        vapi_duration: int | None = (
-            call.get("durationSeconds")
-            or call.get("duration")
-            or msg.get("durationSeconds")
-            or msg.get("duration")
-        )
-    except Exception as e:
-        logger.error("Failed to extract call fields from payload: %s", e)
-        raise HTTPException(status_code=400, detail="Malformed Vapi payload")
-
-    if not called_number:
-        raise HTTPException(status_code=400, detail="Missing phoneNumberId in payload")
-
-    # Step 2 — Look up tenant by called number
-    try:
-        tenant = await db.get_tenant_by_phone(called_number)
-    except Exception as e:
-        logger.error("Tenant lookup failed for %s: %s", called_number, e)
-        raise HTTPException(status_code=500, detail="Tenant lookup failed")
-
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Tenant not found for this number")
-
-    tenant_id: str = tenant["id"]
-    business_name: str = tenant["business_name"]
-
-    # Step 3 — Find or create lead
-    try:
-        existing_lead = await db.get_lead_by_phone(tenant_id, caller_number)
-        if existing_lead:
-            lead_id: str = existing_lead["id"]
-            logger.info("Found existing lead %s for caller %s", lead_id, caller_number)
+        enqueued = await db.enqueue_webhook_event("end-of-call-report", call_id or None, payload)
+        if enqueued:
+            logger.info("Enqueued end-of-call-report for call %s", call_id)
         else:
-            new_lead = await db.insert_lead(tenant_id, {"phone": caller_number, "status": "new"})
-            lead_id = new_lead["id"]
-            existing_lead = None
-            logger.info("Created new lead %s for caller %s", lead_id, caller_number)
+            logger.info("Duplicate end-of-call-report ignored for call %s", call_id)
     except Exception as e:
-        logger.error("Lead lookup/create failed for tenant %s caller %s: %s", tenant_id, caller_number, e)
-        raise HTTPException(status_code=500, detail="Lead lookup failed")
+        logger.error("Failed to enqueue webhook event for call %s: %s", call_id, e)
+        raise HTTPException(status_code=500, detail="Failed to store webhook event")
 
-    # Step 4 — Save call record immediately (transcript is preserved regardless of what follows)
-    try:
-        call_data: dict = {
-            "vapi_call_id": call_id,
-            "transcript": transcript,
-        }
-        duration = vapi_duration or _parse_duration(started_at, ended_at)
-        if duration is not None:
-            call_data["duration_secs"] = duration
-        await db.insert_call(tenant_id, lead_id, call_data)
-        logger.info("Saved call record for call %s (duration=%s s)", call_id, duration)
-    except Exception as e:
-        logger.error("Failed to save call record %s: %s", call_id, e)
-        raise HTTPException(status_code=500, detail="Failed to save call record")
-
-    # Step 5 — Summarise with GPT-4o (non-fatal: lead is always updated, transcript already saved)
-    analysis: dict = {}
-    if transcript and len(transcript.strip()) > 20:
-        try:
-            qualification_fields = tenant.get("qualification_fields") or {}
-            user_prompt = (
-                f"Transcript: {transcript}\n\n"
-                f"Qualification fields: {json.dumps(qualification_fields)}\n\n"
-                "Extract: caller_name, key_details (dict matching qualification_fields), "
-                "urgency (hot/warm/cold), summary (2 sentences max), suggested_next_step. "
-                "Return JSON only."
-            )
-            response = await _get_openai().chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You extract structured data from call transcripts."},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            analysis = json.loads(response.choices[0].message.content)
-            logger.info("GPT-4o analysis complete for call %s", call_id)
-        except Exception as e:
-            logger.warning("GPT-4o analysis failed for call %s (continuing): %s", call_id, e)
-    else:
-        logger.info("Skipping GPT-4o analysis for call %s — transcript empty or too short", call_id)
-
-    # Step 6 — Update lead with summary and metadata
-    try:
-        caller_name = analysis.get("caller_name")
-        lead_update: dict = {
-            "summary": analysis.get("summary", ""),
-            "urgency": analysis.get("urgency", ""),
-            "status": "contacted",
-            "metadata": {
-                "key_details": analysis.get("key_details") or {},
-                "suggested_next_step": analysis.get("suggested_next_step", ""),
-                "last_call_id": call_id,
-            },
-        }
-        if caller_name:
-            lead_update["name"] = caller_name
-        await db.update_lead(tenant_id, lead_id, lead_update)
-        logger.info("Updated lead %s after call %s", lead_id, call_id)
-    except Exception as e:
-        logger.error("Failed to update lead %s: %s", lead_id, e)
-        raise HTTPException(status_code=500, detail="Failed to update lead")
-
-    # Step 7 — Format WhatsApp message
-    try:
-        message = _format_whatsapp_message(business_name, analysis, caller_number)
-    except Exception as e:
-        logger.error("Failed to format WhatsApp message for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to format notification")
-
-    # Step 8 — WhatsApp notification to business (non-fatal on failure)
-    whatsapp_number = tenant.get("whatsapp_number", "")
-    if whatsapp_number:
-        try:
-            await telephony.send_whatsapp(to_number=whatsapp_number, body=message)
-            logger.info("WhatsApp notification sent for tenant %s call %s", tenant_id, call_id)
-        except Exception as e:
-            logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
-    else:
-        logger.info("Skipping WhatsApp notification (no whatsapp_number for tenant %s)", tenant_id)
-
-    # Step 9 — Return
-    return {"status": "processed"}
+    return {"status": "queued"}
 
 
 @router.post("/sync-knowledge")

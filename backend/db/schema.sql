@@ -82,6 +82,25 @@ create table if not exists kb_entries (
     added_at    timestamptz default now()
 );
 
+-- Durable webhook event queue (retry-safe end-of-call processing)
+create table if not exists webhook_events (
+    id            uuid primary key default gen_random_uuid(),
+    event_type    text        not null,
+    call_id       text,
+    payload       jsonb       not null,
+    status        text        not null default 'pending',  -- pending | done | failed
+    attempts      int         not null default 0,
+    last_error    text,
+    next_retry_at timestamptz,
+    created_at    timestamptz default now(),
+    processed_at  timestamptz
+);
+-- Deduplicate: one event per (call_id, event_type) so Vapi retries are no-ops
+create unique index if not exists webhook_events_call_dedup_idx
+    on webhook_events (call_id, event_type) where call_id is not null;
+create index if not exists webhook_events_pending_idx
+    on webhook_events (status, next_retry_at);
+
 -- Appointments booked by the AI receptionist
 create table if not exists appointments (
     id                   uuid primary key default gen_random_uuid(),
