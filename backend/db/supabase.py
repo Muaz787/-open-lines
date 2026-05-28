@@ -287,6 +287,42 @@ async def delete_kb_entry(tenant_id: str, entry_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Calls (with lead join)
+# ---------------------------------------------------------------------------
+
+async def get_calls_with_leads(tenant_id: str, days: int = 30, limit: int = 100) -> list:
+    """Return calls with basic lead metadata joined. Excludes transcript for list performance."""
+    query = (
+        get_client()
+        .table("calls")
+        .select("id, vapi_call_id, duration_secs, created_at, lead_id, leads(name, phone, urgency, summary, metadata)")
+        .eq("tenant_id", tenant_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if days > 0:
+        from datetime import timedelta
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        query = query.gte("created_at", since)
+    res = query.execute()
+    return res.data or []
+
+
+async def get_call_detail(tenant_id: str, call_id: str) -> dict | None:
+    """Return a single call with full transcript and lead data."""
+    res = (
+        get_client()
+        .table("calls")
+        .select("*, leads(name, phone, urgency, summary, metadata)")
+        .eq("tenant_id", tenant_id)
+        .eq("id", call_id)
+        .single()
+        .execute()
+    )
+    return res.data
+
+
+# ---------------------------------------------------------------------------
 # Webhook event queue
 # ---------------------------------------------------------------------------
 
