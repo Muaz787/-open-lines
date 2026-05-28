@@ -13,21 +13,81 @@ APP_BACKEND_URL = _raw_backend if _raw_backend.startswith("http") else f"https:/
 VAPI_BASE_URL = "https://api.vapi.ai"
 
 
-def _headers() -> dict:
-    if not VAPI_API_KEY:
+def _headers(api_key: str | None = None) -> dict:
+    """Return Authorization headers. Uses tenant sub-org key when provided,
+    otherwise falls back to the parent org VAPI_API_KEY."""
+    key = api_key or VAPI_API_KEY
+    if not key:
         raise RuntimeError("VAPI_API_KEY must be set")
     return {
-        "Authorization": f"Bearer {VAPI_API_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
 
 
-async def create_assistant(config: dict) -> str:
+def get_tenant_vapi_key(tenant: dict) -> str | None:
+    """Return the decrypted sub-org API key for a tenant, or None to use the
+    parent VAPI_API_KEY. Call sites should pass the result into api_key=."""
+    encrypted = (tenant or {}).get("vapi_suborg_api_key")
+    if not encrypted:
+        return None  # caller falls back to parent key
+    try:
+        from services.security import decrypt
+        return decrypt(encrypted)
+    except Exception as e:
+        logger.error("Failed to decrypt sub-org API key for tenant %s: %s",
+                     (tenant or {}).get("id", "?"), e)
+        return None  # safe fallback — still works, just uses parent pool
+
+
+async def create_suborg(business_name: str) -> dict:
+    """Create a Vapi sub-organization under the parent org.
+
+    Returns {"id": str, "api_key": str} on success.
+    Requires VAPI_API_KEY to be the parent org admin key.
+
+    Vapi API: POST /org
+    Note: if the exact field name for the returned key differs in your Vapi
+    plan, adjust the key extraction below (apiKey / privateKey / key).
+    """
+    if not VAPI_API_KEY:
+        raise RuntimeError("VAPI_API_KEY must be set")
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                f"{VAPI_BASE_URL}/org",
+                headers=_headers(),
+                json={"name": f"{business_name} — OpenLines"},
+                timeout=30.0,
+            )
+            res.raise_for_status()
+            data = res.json()
+            suborg_id = data.get("id", "")
+            # Vapi may return the key as "apiKey", "privateKey", or "key"
+            suborg_key = data.get("apiKey") or data.get("privateKey") or data.get("key") or ""
+            if not suborg_id or not suborg_key:
+                raise RuntimeError(
+                    f"Unexpected sub-org response shape (missing id or key): {data}"
+                )
+            logger.info("Created Vapi sub-org %s for '%s'", suborg_id, business_name)
+            return {"id": suborg_id, "api_key": suborg_key}
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Failed to create Vapi sub-org for '%s': %s %s",
+            business_name, e.response.status_code, e.response.text,
+        )
+        raise
+    except httpx.RequestError as e:
+        logger.error("Network error creating Vapi sub-org for '%s': %s", business_name, e)
+        raise
+
+
+async def create_assistant(config: dict, api_key: str | None = None) -> str:
     try:
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{VAPI_BASE_URL}/assistant",
-                headers=_headers(),
+                headers=_headers(api_key),
                 json=config,
                 timeout=30.0,
             )
@@ -46,12 +106,12 @@ async def create_assistant(config: dict) -> str:
         raise
 
 
-async def update_assistant(assistant_id: str, config: dict) -> bool:
+async def update_assistant(assistant_id: str, config: dict, api_key: str | None = None) -> bool:
     try:
         async with httpx.AsyncClient() as client:
             res = await client.patch(
                 f"{VAPI_BASE_URL}/assistant/{assistant_id}",
-                headers=_headers(),
+                headers=_headers(api_key),
                 json=config,
                 timeout=30.0,
             )
@@ -122,6 +182,7 @@ async def import_twilio_number(
     assistant_id: str | None = None,
     label: str = "",
     server_url: str | None = None,
+    api_key: str | None = None,
 ) -> str:
     """Import a Twilio number into Vapi. Use server_url for smart routing (assistant-request).
     Returns the Vapi phone number ID."""
@@ -140,7 +201,7 @@ async def import_twilio_number(
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 f"{VAPI_BASE_URL}/phone-number",
-                headers=_headers(),
+                headers=_headers(api_key),
                 json=body,
                 timeout=30.0,
             )
@@ -162,13 +223,13 @@ async def import_twilio_number(
         raise
 
 
-async def list_phone_numbers() -> list:
+async def list_phone_numbers(api_key: str | None = None) -> list:
     """Fetch all phone numbers registered in Vapi."""
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(
                 f"{VAPI_BASE_URL}/phone-number",
-                headers=_headers(),
+                headers=_headers(api_key),
                 timeout=30.0,
             )
             res.raise_for_status()
@@ -181,13 +242,13 @@ async def list_phone_numbers() -> list:
         raise
 
 
-async def update_phone_number(phone_id: str, data: dict) -> bool:
+async def update_phone_number(phone_id: str, data: dict, api_key: str | None = None) -> bool:
     """PATCH a Vapi phone number configuration."""
     try:
         async with httpx.AsyncClient() as client:
             res = await client.patch(
                 f"{VAPI_BASE_URL}/phone-number/{phone_id}",
-                headers=_headers(),
+                headers=_headers(api_key),
                 json=data,
                 timeout=30.0,
             )
@@ -205,12 +266,12 @@ async def update_phone_number(phone_id: str, data: dict) -> bool:
         raise
 
 
-async def get_assistant(assistant_id: str) -> dict:
+async def get_assistant(assistant_id: str, api_key: str | None = None) -> dict:
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(
                 f"{VAPI_BASE_URL}/assistant/{assistant_id}",
-                headers=_headers(),
+                headers=_headers(api_key),
                 timeout=30.0,
             )
             res.raise_for_status()

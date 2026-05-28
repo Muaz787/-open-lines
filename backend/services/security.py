@@ -1,18 +1,57 @@
 """
-Security guards for the knowledge base pipeline.
-
-Three layers of protection:
+Security helpers for Open Lines:
   1. Tenant ownership — caller must own the tenant (JWT check)
-  2. Prompt injection — block content that tries to hijack the AI's instructions
+  2. Prompt injection — block content that tries to hijack the AI instructions
   3. SSRF protection — block URLs that resolve to private/internal networks
+  4. AES-256-GCM encryption — for sub-org API keys stored in Supabase
 """
 
+import os
 import re
+import base64
 import ipaddress
 import logging
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
+
+# ---------------------------------------------------------------------------
+# 4. AES-256-GCM symmetric encryption
+# ---------------------------------------------------------------------------
+# Set ENCRYPTION_KEY_HEX in your environment to a 64-char hex string (32 bytes).
+# Generate one with: python -c "import os,binascii; print(binascii.hexlify(os.urandom(32)).decode())"
+#
+# Keys stored with this scheme: nonce (12 bytes) | ciphertext+tag (variable)
+# Base64url-encoded, safe to store in any text column.
+
+def _get_enc_key() -> bytes:
+    hex_key = os.getenv("ENCRYPTION_KEY_HEX", "")
+    if len(hex_key) != 64:
+        raise RuntimeError(
+            "ENCRYPTION_KEY_HEX must be set to a 64-character hex string (32 bytes). "
+            "Generate one with: python -c \"import os,binascii; print(binascii.hexlify(os.urandom(32)).decode())\""
+        )
+    return bytes.fromhex(hex_key)
+
+
+def encrypt(plaintext: str) -> str:
+    """AES-256-GCM encrypt. Returns a base64url token safe to store in a text column."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    key = _get_enc_key()
+    nonce = os.urandom(12)  # 96-bit nonce — unique per encryption
+    ct = AESGCM(key).encrypt(nonce, plaintext.encode("utf-8"), None)
+    return base64.urlsafe_b64encode(nonce + ct).decode("ascii")
+
+
+def decrypt(token: str) -> str:
+    """AES-256-GCM decrypt. Raises ValueError on tampered or wrong-key data."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii"))
+        nonce, ct = raw[:12], raw[12:]
+        return AESGCM(_get_enc_key()).decrypt(nonce, ct, None).decode("utf-8")
+    except Exception as exc:
+        raise ValueError(f"Decryption failed: {exc}") from exc
 
 logger = logging.getLogger(__name__)
 

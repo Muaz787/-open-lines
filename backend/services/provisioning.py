@@ -148,8 +148,9 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
         "tools": tools,
     }
 
+    tenant_key = vapi.get_tenant_vapi_key(tenant)
     try:
-        await update_assistant(assistant_id, {"model": model_payload})
+        await update_assistant(assistant_id, {"model": model_payload}, api_key=tenant_key)
         logger.info("Reprompted assistant %s for tenant %s", assistant_id, tenant_id)
     except Exception as e:
         raise RuntimeError(f"Vapi assistant update failed: {e}") from e
@@ -400,22 +401,37 @@ async def _provision_after_twilio(
         logger.error("[Step %d] System prompt build failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
-    # Step 9 — Create Vapi assistant
+    # Step 9 — Create Vapi sub-organization (isolated 10-call concurrent limit per tenant)
     step = 9
+    suborg_id = suborg_key_encrypted = suborg_key = None
+    try:
+        suborg = await vapi.create_suborg(business_name)
+        suborg_id = suborg["id"]
+        raw_key = suborg["api_key"]
+        from services.security import encrypt
+        suborg_key_encrypted = encrypt(raw_key)
+        suborg_key = raw_key
+        logger.info("[Step %d] Created Vapi sub-org %s for '%s'", step, suborg_id, business_name)
+    except Exception as e:
+        logger.warning("[Step %d] Vapi sub-org creation failed (continuing with parent org pool): %s", step, e)
+        # Non-fatal: tenant will share parent org pool instead of having an isolated limit
+
+    # Step 10 — Create Vapi assistant
+    step = 10
     try:
         tenant_stub = {
             "agent_name": agent_name,
             "greeting_template": greeting_template,
         }
         assistant_config = vapi.build_assistant_config(tenant_stub, system_prompt)
-        vapi_assistant_id = await vapi.create_assistant(assistant_config)
+        vapi_assistant_id = await vapi.create_assistant(assistant_config, api_key=suborg_key)
         logger.info("[Step %d] Created Vapi assistant %s", step, vapi_assistant_id)
     except Exception as e:
         logger.error("[Step %d] Vapi assistant creation failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
-    # Step 10 — Import Twilio number into Vapi and assign assistant
-    step = 10
+    # Step 11 — Import Twilio number into Vapi and assign assistant
+    step = 11
     try:
         vapi_phone_id = await vapi.import_twilio_number(
             phone_number=purchased_number,
@@ -424,14 +440,15 @@ async def _provision_after_twilio(
             assistant_id=vapi_assistant_id,
             label=business_name,
             server_url=f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended",
+            api_key=suborg_key,
         )
         logger.info("[Step %d] Linked %s to Vapi assistant %s", step, purchased_number, vapi_assistant_id)
     except Exception as e:
         logger.error("[Step %d] Vapi phone import failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
-    # Step 11 — Insert tenant row in Supabase
-    step = 11
+    # Step 12 — Insert tenant row in Supabase
+    step = 12
     try:
         tenant_data = {
             "business_name": business_name,
@@ -450,6 +467,10 @@ async def _provision_after_twilio(
             "pinecone_namespace": pinecone_namespace,
             "is_active": True,
         }
+        if suborg_id:
+            tenant_data["vapi_suborg_id"] = suborg_id
+        if suborg_key_encrypted:
+            tenant_data["vapi_suborg_api_key"] = suborg_key_encrypted
         tenant = await db.insert_tenant(tenant_data)
         tenant_id = tenant["id"]
         logger.info("[Step %d] Inserted tenant %s", step, tenant_id)

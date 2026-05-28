@@ -111,9 +111,10 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
     assistant_id = tenant.get("vapi_assistant_id")
     if assistant_id:
         try:
+            tenant_key = vapi.get_tenant_vapi_key(tenant)
             tools = vapi.build_calendar_tools(tenant_id)
             # Fetch current assistant to get existing system prompt
-            current = await vapi.get_assistant(assistant_id)
+            current = await vapi.get_assistant(assistant_id, api_key=tenant_key)
             raw_messages = (current.get("model") or {}).get("messages") or []
             # Strip to role+content only — Vapi GET may return extra metadata fields
             messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
@@ -127,7 +128,7 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
                     "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
                     "tools": tools, "messages": messages,
                 },
-            })
+            }, api_key=tenant_key)
         except Exception as e:
             logger.error("Failed to update Vapi assistant %s with calendar tools: %s", assistant_id, e)
             # Non-fatal: calendar is connected, tools just aren't live yet
@@ -176,7 +177,8 @@ async def calendar_disconnect(tenant_id: str):
     assistant_id = tenant.get("vapi_assistant_id")
     if assistant_id:
         try:
-            current = await vapi.get_assistant(assistant_id)
+            tenant_key = vapi.get_tenant_vapi_key(tenant)
+            current = await vapi.get_assistant(assistant_id, api_key=tenant_key)
             raw_messages = (current.get("model") or {}).get("messages") or []
             messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
             if messages and messages[0].get("role") == "system":
@@ -189,7 +191,7 @@ async def calendar_disconnect(tenant_id: str):
                     "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
                     "tools": [vapi.build_caller_lookup_tool(tenant_id)], "messages": messages,
                 },
-            })
+            }, api_key=tenant_key)
         except Exception as e:
             logger.error("Failed to remove calendar tools from assistant %s: %s", assistant_id, e)
 
@@ -250,11 +252,12 @@ async def calendar_repair(tenant_id: str):
         else [vapi.build_caller_lookup_tool(tenant_id)]
 
     # Try tools-only patch first (avoids any issues with messages format)
+    tenant_key = vapi.get_tenant_vapi_key(tenant)
     import httpx as _httpx
     async with _httpx.AsyncClient() as client:
         res = await client.patch(
             f"https://api.vapi.ai/assistant/{assistant_id}",
-            headers=vapi._headers(),
+            headers=vapi._headers(tenant_key),
             json={"model": {"provider": "openai", "model": "gpt-4o", "tools": tools}},
             timeout=30.0,
         )
