@@ -77,6 +77,9 @@ alter table tenants add column if not exists billing_period_anchor     date;
 alter table tenants add column if not exists vapi_suborg_id      text;
 alter table tenants add column if not exists vapi_suborg_api_key text;  -- AES-256-GCM encrypted
 
+-- Calls table: ensure transcript column exists (may be absent in older deployments)
+alter table calls add column if not exists transcript text;
+
 -- Knowledge base source tracking
 create table if not exists kb_entries (
     id          uuid primary key default gen_random_uuid(),

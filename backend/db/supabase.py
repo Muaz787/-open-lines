@@ -42,16 +42,18 @@ async def get_tenant_by_id(tenant_id: str) -> dict:
     return res.data
 
 
-async def get_tenant_by_phone(phone_number: str) -> dict:
+async def get_tenant_by_phone(phone_number: str) -> dict | None:
+    # Match on twilio_phone_number OR vapi_phone_number_id — Vapi end-of-call-report
+    # payloads sometimes provide the Vapi phone number UUID instead of the Twilio number.
     res = (
         get_client()
         .table("tenants")
         .select("*")
-        .eq("twilio_phone_number", phone_number)
-        .single()
+        .or_(f"twilio_phone_number.eq.{phone_number},vapi_phone_number_id.eq.{phone_number}")
+        .limit(1)
         .execute()
     )
-    return res.data
+    return res.data[0] if res.data else None
 
 
 async def insert_tenant(data: dict) -> dict:
@@ -133,7 +135,7 @@ async def insert_call(tenant_id: str, lead_id: str, data: dict) -> dict:
         .insert({"tenant_id": tenant_id, "lead_id": lead_id, **data})
         .execute()
     )
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def get_calls(tenant_id: str, limit: int = 50) -> list:

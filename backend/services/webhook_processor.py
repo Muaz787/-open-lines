@@ -77,7 +77,13 @@ async def process_end_of_call(payload: dict) -> None:
 
     call = msg.get("call", {})
     call_id: str = call.get("id") or msg.get("call_id", "")
-    transcript: str = call.get("transcript") or msg.get("transcript", "")
+    # Transcript may be at call.transcript, msg.transcript, or msg.artifact.transcript (newer Vapi)
+    transcript: str = (
+        call.get("transcript")
+        or msg.get("transcript")
+        or (msg.get("artifact") or {}).get("transcript")
+        or ""
+    )
     caller_number: str = (call.get("customer") or {}).get("number", "")
     phone_obj: dict = msg.get("phoneNumber") or call.get("phoneNumber") or {}
     called_number: str = (
@@ -113,12 +119,18 @@ async def process_end_of_call(payload: dict) -> None:
         lead_id = new_lead["id"]
         existing_lead = None
 
-    # Save call record (durable even if analysis fails)
+    # Save call record — wrapped so a schema/DB error here never blocks the lead update.
     call_data: dict = {"vapi_call_id": call_id, "transcript": transcript}
     duration = vapi_duration or _parse_duration(started_at, ended_at)
     if duration is not None:
         call_data["duration_secs"] = duration
-    await db.insert_call(tenant_id, lead_id, call_data)
+    try:
+        await db.insert_call(tenant_id, lead_id, call_data)
+    except Exception as e:
+        logger.error(
+            "Failed to save call record for call %s tenant %s (lead update will still run): %s",
+            call_id, tenant_id, e,
+        )
 
     # GPT-4o analysis
     analysis: dict = {}
