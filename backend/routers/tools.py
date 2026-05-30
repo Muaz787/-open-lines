@@ -8,7 +8,7 @@ response that the AI uses to continue the conversation.
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_type, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
@@ -128,6 +128,27 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     if not date_str:
         return _result(tc_id, "I need a date to check availability. What date were you thinking?")
 
+    # Correct past-year dates — guards against LLM training-data year confusion.
+    # Silently advances the year to the current year and includes it in the response
+    # so the AI knows to use the corrected year when speaking to the caller.
+    _year_correction_prefix = ""
+    _today_d = date_type.today()
+    try:
+        _pd = date_type.fromisoformat(date_str)
+        if _pd.year < _today_d.year:
+            corrected = f"{_today_d.year}-{_pd.month:02d}-{_pd.day:02d}"
+            logger.warning(
+                "tools/availability: corrected past year %d→%d for tenant %s (original: %s)",
+                _pd.year, _today_d.year, tenant_id, date_str,
+            )
+            _year_correction_prefix = (
+                f"[Date corrected: {date_str} is in the past — using {corrected} instead. "
+                f"Today is {_today_d.strftime('%B %d, %Y')}.] "
+            )
+            date_str = corrected
+    except ValueError:
+        pass
+
     # Extract caller phone — try multiple payload paths (Vapi structure varies by event type)
     msg_body   = body.get("message", body)
     _call_obj  = msg_body.get("call") or {}
@@ -197,6 +218,7 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     if not slots:
         return _result(
             tc_id,
+            _year_correction_prefix +
             f"Unfortunately there are no available slots on {date_str}. "
             "Would you like to try a different day?"
         )
@@ -204,7 +226,12 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     offer = slots[:2]
     has_more = len(slots) > 2
     offer_text = " or ".join(offer)
-    msg = f"I have {offer_text} available on {date_str} — does either of those work for you?"
+    # Format date as "Month DD, YYYY" so the AI says the correct year to the caller
+    try:
+        _fmt_date = date_type.fromisoformat(date_str).strftime("%B %d, %Y")
+    except ValueError:
+        _fmt_date = date_str
+    msg = _year_correction_prefix + f"I have {offer_text} available on {_fmt_date} — does either of those work for you?"
     if has_more:
         msg += " I have more times if neither works."
     return _result(tc_id, msg)
@@ -235,6 +262,19 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
     if not date_str or not time_str:
         return _result(tc_id, "I need both a date and a time to complete the booking. Could you confirm those?")
+
+    # Correct past-year dates — same guard as check_availability
+    _today_d = date_type.today()
+    try:
+        _pd = date_type.fromisoformat(date_str)
+        if _pd.year < _today_d.year:
+            date_str = f"{_today_d.year}-{_pd.month:02d}-{_pd.day:02d}"
+            logger.warning(
+                "tools/book: corrected past year %d→%d for tenant %s",
+                _pd.year, _today_d.year, tenant_id,
+            )
+    except ValueError:
+        pass
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)

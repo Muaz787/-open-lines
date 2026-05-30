@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -52,10 +53,26 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
     if not base_prompt:
         logger.warning(
-            "assistant-request: tenant %s missing last_system_prompt — returning assistantId only",
+            "assistant-request: tenant %s missing last_system_prompt — fetching from Vapi",
             tenant_id,
         )
-        return {"assistantId": assistant_id}
+        try:
+            tenant_key = vapi_svc.get_tenant_vapi_key(tenant)
+            current = await vapi_svc.get_assistant(assistant_id, api_key=tenant_key)
+            raw_msgs = (current.get("model") or {}).get("messages") or []
+            base_prompt = next(
+                (m["content"] for m in raw_msgs if m.get("role") == "system" and m.get("content")),
+                "",
+            )
+            if base_prompt:
+                # Cache it so future calls skip this round-trip
+                asyncio.create_task(db.update_tenant(tenant_id, {"last_system_prompt": base_prompt}))
+        except Exception as e:
+            logger.error(
+                "assistant-request: could not fetch Vapi prompt for tenant %s: %s — falling back to assistantId only",
+                tenant_id, e,
+            )
+            return {"assistantId": assistant_id}
 
     # Today's date in tenant timezone
     tz_str: str = tenant.get("calendar_timezone") or "America/Toronto"
