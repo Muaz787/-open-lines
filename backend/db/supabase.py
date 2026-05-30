@@ -43,13 +43,24 @@ async def get_tenant_by_id(tenant_id: str) -> dict:
 
 
 async def get_tenant_by_phone(phone_number: str) -> dict | None:
-    # Match on twilio_phone_number OR vapi_phone_number_id — Vapi end-of-call-report
-    # payloads sometimes provide the Vapi phone number UUID instead of the Twilio number.
+    # Primary: match on twilio_phone_number (E.164, e.g. +16475581427)
     res = (
         get_client()
         .table("tenants")
         .select("*")
-        .or_(f"twilio_phone_number.eq.{phone_number},vapi_phone_number_id.eq.{phone_number}")
+        .eq("twilio_phone_number", phone_number)
+        .limit(1)
+        .execute()
+    )
+    if res.data:
+        return res.data[0]
+    # Fallback: Vapi end-of-call-report payloads sometimes provide the Vapi phone number
+    # UUID instead of the Twilio number — match on vapi_phone_number_id.
+    res = (
+        get_client()
+        .table("tenants")
+        .select("*")
+        .eq("vapi_phone_number_id", phone_number)
         .limit(1)
         .execute()
     )
