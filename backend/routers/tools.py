@@ -149,14 +149,17 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     except ValueError:
         pass
 
-    # Extract caller phone — try multiple payload paths (Vapi structure varies by event type)
+    # Prefer AI-provided caller_phone from tool args (explicit, most reliable for reschedules).
+    # Fall back to Vapi payload extraction for new bookings where the AI didn't pass it.
     msg_body   = body.get("message", body)
     _call_obj  = msg_body.get("call") or {}
     _customer  = _call_obj.get("customer") or {}
     caller_phone = (
-        _customer.get("number", "")
+        args.get("caller_phone", "")
+        or _customer.get("number", "")
         or _customer.get("phoneNumber", "")
         or (msg_body.get("customer") or {}).get("number", "")
+        or (msg_body.get("customer") or {}).get("phoneNumber", "")
     )
 
     try:

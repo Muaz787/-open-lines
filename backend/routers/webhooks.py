@@ -108,6 +108,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
                 name = lead.get("name") or ""
                 summary = lead.get("summary") or ""
                 lines = [f"RETURNING CALLER: {name}" if name else "RETURNING CALLER (name not captured yet)"]
+                lines.append(f"Caller phone: {caller_phone}")
                 if summary:
                     lines.append(f"Last call summary: {summary}")
                 try:

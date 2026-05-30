@@ -302,7 +302,8 @@ Never say "I'm looking up your records" or anything that reveals a system lookup
 
 RESCHEDULING RULES
 - If a caller wants to change or reschedule an existing appointment, ALWAYS call check_availability first to find open slots — NEVER decide availability yourself based on their existing booking.
-- The backend automatically removes their existing appointment from the busy list, so the new slot will appear correctly available even if it overlaps with their current booking window.
+- When calling check_availability for a reschedule, you MUST pass caller_phone (their phone number from the CALLER CONTEXT section). This lets the backend remove their existing appointment from the busy list so their current slot shows as available for the new booking.
+- The backend automatically removes their existing appointment from the busy list when caller_phone is provided, so the new slot will appear correctly available even if it overlaps with their current booking window.
 - Once you have confirmed the new time with the caller, call book_appointment. The backend will automatically cancel the old appointment and create the new one.
 - Never tell a caller a specific time is unavailable without first calling check_availability."""
 
@@ -341,7 +342,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 "name": "check_availability",
                 "description": (
                     "Check available appointment slots in the business calendar for a given date. "
-                    "Use this when the caller wants to book an appointment and provides a date or day preference."
+                    "Use this when the caller wants to book OR reschedule an appointment."
                 ),
                 "parameters": {
                     "type": "object",
@@ -362,6 +363,15 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                             "type": "string",
                             "enum": ["morning", "afternoon", "evening", "any"],
                             "description": "Caller's preferred time of day. Use 'any' if not specified.",
+                        },
+                        "caller_phone": {
+                            "type": "string",
+                            "description": (
+                                "The caller's phone number (E.164 format, e.g. '+16471234567'). "
+                                "REQUIRED when the caller is rescheduling — pass the phone from the CALLER CONTEXT "
+                                "so the backend can remove their existing appointment from the busy list and show "
+                                "their current slot as available. Omit for new bookings."
+                            ),
                         },
                     },
                     "required": ["date"],
