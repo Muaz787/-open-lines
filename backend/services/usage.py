@@ -31,7 +31,7 @@ PLAN_ALLOCATIONS: dict[str, int] = {
 OVERAGE_RATE_CENTS = 35  # $0.35 per minute
 
 _stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
-_overage_price_id = os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
+_overage_price_id = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
 
 
 def _ceil_minutes(duration_secs: int) -> int:

@@ -23,7 +23,7 @@ PRICE_IDS: dict[str, str] = {
     "business": os.getenv("STRIPE_PRICE_BUSINESS", ""),
 }
 # Metered overage price linked to a Stripe Billing Meter (event_name: call_minutes)
-STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
+STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
