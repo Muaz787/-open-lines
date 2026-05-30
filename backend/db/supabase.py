@@ -69,7 +69,7 @@ async def get_tenant_by_phone(phone_number: str) -> dict | None:
 
 async def insert_tenant(data: dict) -> dict:
     res = get_client().table("tenants").insert(data).execute()
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def update_tenant(tenant_id: str, data: dict) -> dict:
@@ -80,7 +80,7 @@ async def update_tenant(tenant_id: str, data: dict) -> dict:
         .eq("id", tenant_id)
         .execute()
     )
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ async def insert_lead(tenant_id: str, data: dict) -> dict:
         .insert({"tenant_id": tenant_id, **data})
         .execute()
     )
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def get_leads(tenant_id: str, limit: int = 50) -> list:
@@ -132,7 +132,7 @@ async def update_lead(tenant_id: str, lead_id: str, data: dict) -> dict:
         .eq("tenant_id", tenant_id)
         .execute()
     )
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ async def get_calls(tenant_id: str, limit: int = 50) -> list:
 
 async def insert_appointment(data: dict) -> dict:
     res = get_client().table("appointments").insert(data).execute()
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def get_appointments(tenant_id: str, limit: int = 50) -> list:
@@ -254,7 +254,7 @@ async def update_appointment(appointment_id: str, data: dict) -> dict:
         .eq("id", appointment_id)
         .execute()
     )
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def get_appointment_by_call_id(call_id: str) -> dict | None:
@@ -280,7 +280,7 @@ async def insert_kb_entry(tenant_id: str, type_: str, label: str, preview: str |
         "label": label,
         **({"preview": preview} if preview else {}),
     }).execute()
-    return res.data[0]
+    return res.data[0] if res.data else {}
 
 
 async def get_kb_entries(tenant_id: str) -> list:
@@ -398,4 +398,4 @@ async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
     res = get_client().table("kb_entries").insert({
         "tenant_id": tenant_id, "type": "website", "label": label,
     }).execute()
-    return res.data[0]
+    return res.data[0] if res.data else {}
