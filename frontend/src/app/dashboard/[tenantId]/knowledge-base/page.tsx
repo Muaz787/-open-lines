@@ -294,6 +294,18 @@ function KnowledgeBasePage() {
       <path d="M3 7v5.5a.5.5 0 00.5.5H6V9.5h3v3.5h2.5a.5.5 0 00.5-.5V7" strokeLinejoin="round"/>
     </svg>
   )
+  const IconCalls = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <path d="M2 2.5h4l1.5 3.5-2 1.5a9 9 0 003 3l1.5-2 3.5 1.5V13a1 1 0 01-1 1C5.5 14 1 9.5 1 3.5a1 1 0 011-1z" strokeLinejoin="round"/>
+    </svg>
+  )
+  const IconUsage = () => (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+      <rect x="1.5" y="9.5" width="2.5" height="4" rx="0.5"/>
+      <rect x="6.25" y="6" width="2.5" height="7.5" rx="0.5"/>
+      <rect x="11" y="2.5" width="2.5" height="11" rx="0.5"/>
+    </svg>
+  )
   const IconSub = () => (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
       <rect x="1.5" y="3.5" width="12" height="9" rx="1.5"/>
@@ -367,6 +379,10 @@ function KnowledgeBasePage() {
           Leads
           {leads.length > 0 && <span className="db-nav-badge db-badge-red">{leads.length}</span>}
         </Link>
+        <Link href={`/dashboard/${tenantId}/calls`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
+          <IconCalls />
+          Calls
+        </Link>
         {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
           <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
             <IconCalendar />
@@ -383,6 +399,10 @@ function KnowledgeBasePage() {
           <IconBilling />
           Billing &amp; Payments
           {planBadge()}
+        </Link>
+        <Link href={`/dashboard/${tenantId}/usage`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
+          <IconUsage />
+          Usage
         </Link>
         {mobile && (
           <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>
