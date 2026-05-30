@@ -254,13 +254,9 @@ function CalendarPage() {
           Settings
         </Link>
         <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
-          <IconSub />
-          Subscription
-          {planBadge()}
-        </Link>
-        <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={mobile ? () => setMobileMenuOpen(false) : undefined}>
           <IconBilling />
           Billing &amp; Payments
+          {planBadge()}
         </Link>
         {mobile && (
           <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 8 }}>

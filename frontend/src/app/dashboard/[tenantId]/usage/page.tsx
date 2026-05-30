@@ -245,13 +245,9 @@ export default function UsagePage() {
           Settings
         </Link>
         <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={onClose}>
-          <IconSub />
-          Subscription
-          {planBadge()}
-        </Link>
-        <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={onClose}>
           <IconBilling />
           Billing &amp; Payments
+          {planBadge()}
         </Link>
         <div className="db-nav-item active">
           <div className="db-nav-indicator" />

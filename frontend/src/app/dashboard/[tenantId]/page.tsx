@@ -606,14 +606,9 @@ function DashboardPage() {
           </Link>
 
           <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item">
-            <IconSub />
-            Subscription
-            {planBadge()}
-          </Link>
-
-          <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item">
             <IconBilling />
             Billing &amp; Payments
+            {planBadge()}
           </Link>
 
           <Link href={`/dashboard/${tenantId}/usage`} className="db-nav-item">
@@ -1230,13 +1225,9 @@ function DashboardPage() {
                   Settings
                 </Link>
                 <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
-                  <IconSub />
-                  Subscription
-                  {planBadge()}
-                </Link>
-                <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                   <IconBilling />
                   Billing &amp; Payments
+                  {planBadge()}
                 </Link>
                 <Link href={`/dashboard/${tenantId}/usage`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                   <IconUsage />

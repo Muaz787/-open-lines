@@ -318,13 +318,9 @@ export default function CallsPage() {
           Settings
         </Link>
         <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={onClose}>
-          <IconSub />
-          Subscription
-          {planBadge()}
-        </Link>
-        <Link href={`/dashboard/${tenantId}/subscription`} className="db-nav-item" onClick={onClose}>
           <IconBilling />
           Billing &amp; Payments
+          {planBadge()}
         </Link>
         <Link href={`/dashboard/${tenantId}/usage`} className="db-nav-item" onClick={onClose}>
           <IconUsage />
