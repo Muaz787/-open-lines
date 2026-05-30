@@ -13,6 +13,12 @@ const BOOKING_INDUSTRIES = new Set([
   'builder', 'restaurant', 'beauty', 'custom',
 ])
 
+interface CalendarStatus {
+  connected: boolean
+  appointment_duration_minutes: number
+  calendar_timezone: string
+}
+
 interface Appointment {
   id: string
   caller_name?: string
@@ -56,6 +62,8 @@ function CalendarPage() {
   const [userEmail, setUserEmail]         = useState('')
   const [userName, setUserName]           = useState('')
   const [loading, setLoading]             = useState(true)
+  const [calStatus, setCalStatus]         = useState<CalendarStatus | null>(null)
+  const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [toast, setToast]                 = useState<string | null>(null)
   const [showPast, setShowPast]           = useState(false)
@@ -73,10 +81,11 @@ function CalendarPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const [tRes, lRes, aRes] = await Promise.all([
+        const [tRes, lRes, aRes, cRes] = await Promise.all([
           fetch(`${API}/onboarding/status/${tenantId}`),
           fetch(`${API}/leads/${tenantId}`),
           fetch(`${API}/calendar/appointments/${tenantId}`),
+          fetch(`${API}/calendar/status/${tenantId}`),
         ])
         if (tRes.ok) setTenant(await tRes.json())
         if (lRes.ok) setLeads(await lRes.json())
@@ -84,12 +93,37 @@ function CalendarPage() {
           const data = await aRes.json()
           setAppointments(Array.isArray(data) ? data : [])
         }
+        if (cRes.ok) setCalStatus(await cRes.json())
       } finally {
         setLoading(false)
       }
     }
     init()
+
+    // pick up ?calendar=connected redirect from OAuth flow
+    const params = new URLSearchParams(window.location.search)
+    const calParam = params.get('calendar')
+    if (calParam === 'connected') {
+      showToast('Google Calendar connected!')
+      fetch(`${API}/calendar/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setCalStatus(d))
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (calParam === 'error') {
+      showToast('Calendar connection failed. Please try again.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [tenantId])
+
+  const disconnectCalendar = async () => {
+    if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
+    setCalDisconnecting(true)
+    try {
+      await fetch(`${API}/calendar/disconnect/${tenantId}`, { method: 'POST' })
+      const r = await fetch(`${API}/calendar/status/${tenantId}`)
+      if (r.ok) setCalStatus(await r.json())
+    } finally {
+      setCalDisconnecting(false)
+    }
+  }
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -366,6 +400,62 @@ function CalendarPage() {
 
         {/* Content */}
         <div className="db-content">
+
+          {/* Google Calendar connection banner */}
+          {calStatus && !calStatus.connected && (
+            <div style={{
+              background: '#fff', border: '1px solid #e8e6e0', borderRadius: 10,
+              padding: '18px 20px', marginBottom: 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#16161a', marginBottom: 3 }}>
+                  Connect Google Calendar
+                </div>
+                <div style={{ fontSize: 12, color: '#888', lineHeight: 1.5 }}>
+                  Allow the AI to check availability and book appointments in real time.
+                </div>
+              </div>
+              <a
+                href={`${API}/calendar/connect/${tenantId}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  background: '#16161a', color: '#fff',
+                  borderRadius: 8, padding: '9px 18px',
+                  fontSize: 12, fontWeight: 500, textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Connect Google Calendar
+              </a>
+            </div>
+          )}
+
+          {calStatus?.connected && (
+            <div style={{
+              background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10,
+              padding: '12px 16px', marginBottom: 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              flexWrap: 'wrap', gap: 10,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 14 }}>✓</span>
+                <span style={{ fontSize: 12, fontWeight: 500, color: '#16a34a' }}>Google Calendar connected</span>
+              </div>
+              <button
+                onClick={disconnectCalendar}
+                disabled={calDisconnecting}
+                style={{
+                  fontSize: 11, color: '#888', background: 'none', border: '1px solid #e8e6e0',
+                  borderRadius: 6, padding: '5px 12px', cursor: 'pointer',
+                  fontFamily: 'var(--font-dm), sans-serif',
+                }}
+              >
+                {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+          )}
 
           {/* Toggle upcoming / past */}
           <div className="cal-toggle-bar">

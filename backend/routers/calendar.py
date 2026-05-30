@@ -68,44 +68,46 @@ async def calendar_connect(tenant_id: str):
 async def calendar_callback(code: str, state: str, error: str | None = None):
     tenant_id = state
 
+    cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
+
     if error:
         logger.warning("Google OAuth error for tenant %s: %s", tenant_id, error)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     # Exchange code for tokens
     try:
         tokens = await cal_svc.exchange_code(code)
     except Exception as e:
         logger.error("Token exchange failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         logger.error("No refresh_token in Google response for tenant %s", tenant_id)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     # Validate the token works before storing — catches bad tokens from Testing-mode
     # expiry edge cases or misconfigured OAuth apps before they silently break calls.
     token_ok = await cal_svc.verify_token(refresh_token)
     if not token_ok:
         logger.error("Token verification failed immediately after exchange for tenant %s — rejecting", tenant_id)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
         logger.error("Tenant lookup failed for %s: %s", tenant_id, e)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     if not tenant:
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     # Store refresh token
     try:
         await db.update_tenant(tenant_id, {"google_refresh_token": refresh_token})
     except Exception as e:
         logger.error("Failed to store Google refresh token for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=error")
+        return RedirectResponse(f"{cal_page}?calendar=error")
 
     # Patch Vapi assistant with calendar tools + updated system prompt
     assistant_id = tenant.get("vapi_assistant_id")
@@ -134,7 +136,7 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
             # Non-fatal: calendar is connected, tools just aren't live yet
 
     logger.info("Google Calendar connected for tenant %s", tenant_id)
-    return RedirectResponse(f"{FRONTEND_URL}/dashboard/{tenant_id}?calendar=connected")
+    return RedirectResponse(f"{cal_page}?calendar=connected")
 
 
 # ---------------------------------------------------------------------------
