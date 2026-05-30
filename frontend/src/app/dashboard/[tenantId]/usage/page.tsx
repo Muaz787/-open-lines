@@ -111,10 +111,10 @@ export default function UsagePage() {
     setLoading(true)
     try {
       const [tenantRes, usageRes] = await Promise.all([
-        supabase.from('tenants').select('*').eq('id', tenantId).single(),
+        fetch(`${API}/onboarding/status/${tenantId}`),
         fetch(`${API}/billing/usage/${tenantId}`),
       ])
-      if (tenantRes.data) setTenant(tenantRes.data)
+      if (tenantRes.ok) setTenant(await tenantRes.json())
       if (usageRes.ok) setUsage(await usageRes.json())
     } catch {}
     finally { setLoading(false) }

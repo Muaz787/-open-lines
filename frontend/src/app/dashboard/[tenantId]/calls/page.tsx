@@ -148,8 +148,8 @@ export default function CallsPage() {
 
   const fetchTenant = useCallback(async () => {
     try {
-      const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single()
-      if (data) setTenant(data)
+      const res = await fetch(`${API}/onboarding/status/${tenantId}`)
+      if (res.ok) setTenant(await res.json())
     } catch {}
   }, [tenantId])
 
