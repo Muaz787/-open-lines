@@ -376,13 +376,13 @@ async def claim_pending_webhook_events(limit: int = 10) -> list:
         .execute()
     )
 
-    # Retry-eligible events — retry delay has elapsed
+    # Retry-eligible events — retry delay has elapsed.
+    # No NOT NULL filter needed: SQL NULL semantics mean lte() already excludes NULL rows.
     res2 = (
         get_client()
         .table("webhook_events")
         .select("*")
         .eq("status", "pending")
-        .not_.is_("next_retry_at", "null")
         .lte("next_retry_at", now_iso)
         .order("created_at", desc=False)
         .limit(limit)
