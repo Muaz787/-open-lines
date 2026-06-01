@@ -355,19 +355,43 @@ async def enqueue_webhook_event(event_type: str, call_id: str | None, payload: d
 
 
 async def claim_pending_webhook_events(limit: int = 10) -> list:
-    """Return pending events that are ready to process (past their retry delay)."""
-    now_iso = datetime.now(timezone.utc).isoformat()
-    res = (
+    """Return pending events that are ready to process (past their retry delay).
+
+    Uses two separate queries instead of .or_() to avoid PostgREST's filter
+    parser mishandling the '+' in UTC timezone offsets (e.g. +00:00), which
+    caused .or_() to return zero rows and silently starve the processor.
+    """
+    # Use Z suffix (no '+' sign) so PostgREST's filter parser handles it cleanly
+    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+
+    # Fresh events — never been retried (next_retry_at IS NULL)
+    res1 = (
         get_client()
         .table("webhook_events")
         .select("*")
         .eq("status", "pending")
-        .or_(f"next_retry_at.is.null,next_retry_at.lte.{now_iso}")
+        .is_("next_retry_at", "null")
         .order("created_at", desc=False)
         .limit(limit)
         .execute()
     )
-    return res.data or []
+
+    # Retry-eligible events — retry delay has elapsed
+    res2 = (
+        get_client()
+        .table("webhook_events")
+        .select("*")
+        .eq("status", "pending")
+        .not_.is_("next_retry_at", "null")
+        .lte("next_retry_at", now_iso)
+        .order("created_at", desc=False)
+        .limit(limit)
+        .execute()
+    )
+
+    combined = (res1.data or []) + (res2.data or [])
+    combined.sort(key=lambda e: e.get("created_at", ""))
+    return combined[:limit]
 
 
 async def mark_webhook_done(event_id: str) -> None:
