@@ -84,7 +84,11 @@ async def process_end_of_call(payload: dict) -> None:
         or (msg.get("artifact") or {}).get("transcript")
         or ""
     )
-    caller_number: str = (call.get("customer") or {}).get("number", "")
+    caller_number: str = (
+        (call.get("customer") or {}).get("number", "")
+        or (msg.get("customer") or {}).get("number", "")
+        or (msg.get("customer") or {}).get("phoneNumber", "")
+    )
     phone_obj: dict = msg.get("phoneNumber") or call.get("phoneNumber") or {}
     called_number: str = (
         phone_obj.get("number")
