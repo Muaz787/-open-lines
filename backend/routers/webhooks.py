@@ -206,6 +206,23 @@ async def vapi_call_ended(payload: dict):
     return {"status": "queued"}
 
 
+@router.get("/queue-status")
+async def queue_status():
+    """Diagnostic: show recent webhook_events rows to debug processing issues."""
+    try:
+        res = (
+            db.get_client()
+            .table("webhook_events")
+            .select("id, event_type, call_id, status, attempts, last_error, created_at, next_retry_at")
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        return {"events": res.data or [], "count": len(res.data or [])}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.post("/sync-knowledge")
 async def sync_knowledge(body: dict):
     tenant_id: str = body.get("tenant_id", "")
