@@ -168,6 +168,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
             "messages": [{"role": "system", "content": system_prompt}],
             "tools": tools,
         },
+        # Always inject the correct serverUrl so end-of-call-report and
+        # all post-call events reach our backend regardless of what stale
+        # URL (old ngrok, localhost) may be stored on the Vapi assistant.
+        "serverUrl": f"{vapi_svc.APP_BACKEND_URL}/webhooks/vapi-call-ended",
     }
     if personalized_greeting:
         overrides["firstMessage"] = personalized_greeting
