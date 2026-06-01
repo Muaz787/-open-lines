@@ -218,25 +218,29 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         logger.error("tools/availability: calendar query failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
-    if not slots:
-        return _result(
-            tc_id,
-            _year_correction_prefix +
-            f"Unfortunately there are no available slots on {date_str}. "
-            "Would you like to try a different day?"
-        )
-
-    offer = slots[:2]
-    has_more = len(slots) > 2
-    offer_text = " or ".join(offer)
     # Format date as "Month DD, YYYY" so the AI says the correct year to the caller
     try:
         _fmt_date = date_type.fromisoformat(date_str).strftime("%B %d, %Y")
     except ValueError:
         _fmt_date = date_str
-    msg = _year_correction_prefix + f"I have {offer_text} available on {_fmt_date} — does either of those work for you?"
-    if has_more:
-        msg += " I have more times if neither works."
+
+    if not slots:
+        return _result(
+            tc_id,
+            _year_correction_prefix +
+            f"Unfortunately there are no available slots on {_fmt_date}. "
+            "Would you like to try a different day?"
+        )
+
+    # Return ALL available slots so the AI can directly confirm any specific time
+    # the caller requests — previously only 2 were returned, causing the AI to say
+    # "only 9:00 and 9:30 available" even when 10:00 AM was free.
+    times_text = ", ".join(slots)
+    msg = (
+        _year_correction_prefix +
+        f"Available times on {_fmt_date}: {times_text}. "
+        "Offer these options to the caller, or directly confirm their requested time if they specified one."
+    )
     return _result(tc_id, msg)
 
 
