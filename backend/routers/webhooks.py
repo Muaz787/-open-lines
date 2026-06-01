@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
+# In-memory log of the last 30 raw Vapi events (any type) — cleared on redeploy
+_recent_events: list[dict] = []
+
 
 async def _handle_assistant_request(msg: dict) -> dict:
     """
@@ -177,9 +180,20 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
 @router.post("/vapi-call-ended")
 async def vapi_call_ended(payload: dict):
+    from datetime import timezone
     msg = payload.get("message", payload)
     event_type = msg.get("type", "")
     logger.info("VAPI EVENT: type=%s keys=%s", event_type, list(msg.keys()))
+
+    # Keep a rolling in-memory log for diagnostics
+    _recent_events.append({
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "type": event_type,
+        "call_id": (msg.get("call") or {}).get("id", ""),
+        "keys": list(msg.keys()),
+    })
+    if len(_recent_events) > 30:
+        _recent_events.pop(0)
 
     # assistant-request must be handled synchronously — Vapi is waiting for the response
     # to know which assistant to connect to this call.
@@ -208,19 +222,23 @@ async def vapi_call_ended(payload: dict):
 
 @router.get("/queue-status")
 async def queue_status():
-    """Diagnostic: show recent webhook_events rows to debug processing issues."""
+    """Diagnostic: show queued webhook events + recent raw Vapi hits."""
     try:
         res = (
             db.get_client()
             .table("webhook_events")
             .select("id, event_type, call_id, status, attempts, last_error, created_at, next_retry_at")
             .order("created_at", desc=True)
-            .limit(10)
+            .limit(20)
             .execute()
         )
-        return {"events": res.data or [], "count": len(res.data or [])}
+        return {
+            "queue": res.data or [],
+            "queue_count": len(res.data or []),
+            "recent_vapi_hits": list(reversed(_recent_events)),
+        }
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "recent_vapi_hits": list(reversed(_recent_events))}
 
 
 @router.post("/sync-knowledge")
