@@ -35,8 +35,11 @@ _overage_price_id = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRI
 
 
 def _ceil_minutes(duration_secs: int) -> int:
-    """Round up seconds to whole minutes (standard telecom billing)."""
-    return max(1, -(-duration_secs // 60))
+    """Round up seconds to whole minutes (standard telecom billing).
+    Casts to int first — Vapi sends float durations (e.g. 217.6) which would
+    otherwise make this return a float and break the int DB column on persist."""
+    secs = int(duration_secs)
+    return max(1, -(-secs // 60))
 
 
 def get_usage_summary(tenant: dict) -> dict:
@@ -173,11 +176,11 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
         except Exception as e:
             logger.error("Stripe meter event failed for tenant %s: %s", tenant_id, e)
 
-    # Persist usage counters
+    # Persist usage counters — cast to int (int column; never persist a float)
     try:
         updates: dict = {
-            "minutes_used_this_period": new_total,
-            "overage_minutes_reported": overage_reported,
+            "minutes_used_this_period": int(new_total),
+            "overage_minutes_reported": int(overage_reported),
         }
         # Initialise anchor on first call if not yet set
         if not anchor and customer_id and _stripe_key:

@@ -237,13 +237,15 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         )
 
     # Return ALL available slots so the AI can directly confirm any specific time
-    # the caller requests — previously only 2 were returned, causing the AI to say
-    # "only 9:00 and 9:30 available" even when 10:00 AM was free.
+    # the caller requests — previously only the first 2 (then first 6) were returned,
+    # causing the AI to wrongly say times later in the day were unavailable.
     times_text = ", ".join(slots)
     msg = (
         _year_correction_prefix +
-        f"Available times on {_fmt_date}: {times_text}. "
-        "Offer these options to the caller, or directly confirm their requested time if they specified one."
+        f"Available times on {_fmt_date} (full list — {slots[0]} through {slots[-1]}): {times_text}. "
+        "If the caller asked for a specific time, check this exact list: confirm it if present, "
+        "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
+        "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
     )
     return _result(tc_id, msg)
 

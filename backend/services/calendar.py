@@ -228,7 +228,11 @@ async def list_free_slots(
         slots.append(_fmt_slot(cursor))
         cursor += timedelta(minutes=_SLOT_STEP)
 
-    return slots[:6]
+    # Return the full day's availability (cap at 32 to cover even long business
+    # days). Previously capped at 6, which made a free 9-5 day stop at 11:30 AM.
+    # The availability tool tells the AI to confirm the caller's specific
+    # requested time, so a longer list is fine — the AI won't read all aloud.
+    return slots[:32]
 
 
 async def cancel_event(refresh_token: str, event_id: str) -> None:
