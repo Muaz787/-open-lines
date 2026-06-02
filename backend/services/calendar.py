@@ -24,8 +24,8 @@ class CalendarTokenExpiredError(Exception):
 _PERIOD_HOURS: dict[str, tuple[int, int]] = {
     "morning":   (9, 12),
     "afternoon": (12, 17),
-    "evening":   (17, 19),
-    "any":       (9, 17),
+    "evening":   (17, 21),
+    "any":       (9, 17),   # overridden per-tenant via business_hours_start/end
 }
 
 
@@ -130,20 +130,24 @@ async def list_free_slots(
     period: str = "any",
     exclude_event_id: str | None = None,
     exclude_range: tuple[datetime, datetime] | None = None,
+    business_hours_start: int = 9,
+    business_hours_end: int = 17,
 ) -> list[str]:
     """Return available slot strings (e.g. '2:00 PM') for the given date.
 
-    exclude_event_id: Google Calendar event ID to ignore — used during reschedules
-    so the caller's existing appointment doesn't block the new slot search.
-    This is the primary exclusion method (exact match, always reliable).
+    business_hours_start / business_hours_end override the 'any' window so
+    each tenant's full working day is shown (e.g. 8-20 for a 24h business).
 
-    exclude_range: fallback — any busy period whose start/end aligns within ±5 min
-    of this (start, end) pair is also ignored.
+    exclude_event_id: Google Calendar event ID to ignore — used during reschedules.
+    exclude_range: fallback time-range exclusion (±5 min tolerance).
     """
     tz = ZoneInfo(timezone)
     appt_date = date_type.fromisoformat(date_str)
 
-    hour_start, hour_end = _PERIOD_HOURS.get(period, (9, 17))
+    if period == "any":
+        hour_start, hour_end = business_hours_start, business_hours_end
+    else:
+        hour_start, hour_end = _PERIOD_HOURS.get(period, (business_hours_start, business_hours_end))
     window_start = datetime(appt_date.year, appt_date.month, appt_date.day, hour_start, 0, tzinfo=tz)
     window_end   = datetime(appt_date.year, appt_date.month, appt_date.day, hour_end,   0, tzinfo=tz)
 

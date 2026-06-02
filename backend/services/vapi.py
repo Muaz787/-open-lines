@@ -362,7 +362,12 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                         "period": {
                             "type": "string",
                             "enum": ["morning", "afternoon", "evening", "any"],
-                            "description": "Caller's preferred time of day. Use 'any' if not specified.",
+                            "description": (
+                                "Caller's time-of-day preference. "
+                                "ONLY use 'morning', 'afternoon', or 'evening' if the caller explicitly "
+                                "says they prefer that part of the day. "
+                                "Default to 'any' in ALL other cases — this shows the full business day."
+                            ),
                         },
                         "caller_phone": {
                             "type": "string",

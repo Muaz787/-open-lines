@@ -172,8 +172,10 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     if not refresh_token:
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
-    duration_minutes = tenant.get("appointment_duration_minutes") or 60
-    timezone         = tenant.get("calendar_timezone") or "America/Toronto"
+    duration_minutes     = tenant.get("appointment_duration_minutes") or 60
+    timezone             = tenant.get("calendar_timezone") or "America/Toronto"
+    business_hours_start = int(tenant.get("business_hours_start") or 9)
+    business_hours_end   = int(tenant.get("business_hours_end") or 17)
 
     # If the caller already has an appointment, exclude it from the busy list so the
     # agent doesn't falsely report the rescheduled slot as unavailable.
@@ -206,6 +208,8 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
             period=period,
             exclude_event_id=exclude_event_id,
             exclude_range=exclude_range,
+            business_hours_start=business_hours_start,
+            business_hours_end=business_hours_end,
         )
     except CalendarTokenExpiredError:
         logger.error("tools/availability: calendar token expired for tenant %s — auto-disconnecting", tenant_id)

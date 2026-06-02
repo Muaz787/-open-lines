@@ -127,7 +127,8 @@ async def process_end_of_call(payload: dict) -> None:
     call_data: dict = {"vapi_call_id": call_id, "transcript": transcript}
     duration = vapi_duration or _parse_duration(started_at, ended_at)
     if duration is not None:
-        call_data["duration_secs"] = duration
+        # Cast to int — Vapi may return float (e.g. 60.5) which would fail the int column
+        call_data["duration_secs"] = int(duration)
     try:
         await db.insert_call(tenant_id, lead_id, call_data)
     except Exception as e:

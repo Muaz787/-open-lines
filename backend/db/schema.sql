@@ -80,6 +80,10 @@ alter table tenants add column if not exists vapi_suborg_api_key text;  -- AES-2
 -- Calls table: ensure transcript column exists (may be absent in older deployments)
 alter table calls add column if not exists transcript text;
 
+-- Per-tenant business hours for calendar availability (0-23, defaults to 9-17)
+alter table tenants add column if not exists business_hours_start int default 9;
+alter table tenants add column if not exists business_hours_end   int default 17;
+
 -- Knowledge base source tracking
 create table if not exists kb_entries (
     id          uuid primary key default gen_random_uuid(),
