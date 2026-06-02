@@ -79,7 +79,9 @@ async def provision(request: Request, body: ProvisionRequest):
 
 
 class SettingsUpdateRequest(BaseModel):
-    whatsapp_number: str | None = None
+    whatsapp_number:      str | None = None
+    business_hours_start: int | None = None
+    business_hours_end:   int | None = None
 
 
 @router.patch("/settings/{tenant_id}")

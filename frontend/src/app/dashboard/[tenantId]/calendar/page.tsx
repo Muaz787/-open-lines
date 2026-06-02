@@ -68,6 +68,11 @@ function CalendarPage() {
   const [toast, setToast]                 = useState<string | null>(null)
   const [showPast, setShowPast]           = useState(false)
 
+  // Business hours
+  const [bhStart, setBhStart]   = useState<number>(9)
+  const [bhEnd, setBhEnd]       = useState<number>(17)
+  const [bhSaving, setBhSaving] = useState(false)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) router.replace('/login')
@@ -87,7 +92,12 @@ function CalendarPage() {
           fetch(`${API}/calendar/appointments/${tenantId}`),
           fetch(`${API}/calendar/status/${tenantId}`),
         ])
-        if (tRes.ok) setTenant(await tRes.json())
+        if (tRes.ok) {
+          const t = await tRes.json()
+          setTenant(t)
+          if (t.business_hours_start != null) setBhStart(t.business_hours_start)
+          if (t.business_hours_end   != null) setBhEnd(t.business_hours_end)
+        }
         if (lRes.ok) setLeads(await lRes.json())
         if (aRes.ok) {
           const data = await aRes.json()
@@ -122,6 +132,24 @@ function CalendarPage() {
       if (r.ok) setCalStatus(await r.json())
     } finally {
       setCalDisconnecting(false)
+    }
+  }
+
+  const saveBusinessHours = async () => {
+    if (bhStart >= bhEnd) { showToast('Opening time must be before closing time'); return }
+    setBhSaving(true)
+    try {
+      const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_hours_start: bhStart, business_hours_end: bhEnd }),
+      })
+      if (res.ok) showToast('Business hours saved')
+      else showToast('Failed to save — try again')
+    } catch {
+      showToast('Failed to save — try again')
+    } finally {
+      setBhSaving(false)
     }
   }
 
@@ -472,6 +500,57 @@ function CalendarPage() {
               </button>
             </div>
           )}
+
+          {/* Business Hours */}
+          <div style={{
+            background: '#fff', border: '1px solid #e8e6e0', borderRadius: 10,
+            padding: '16px 20px', marginBottom: 16,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#16161a', marginBottom: 12 }}>
+              Business Hours
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>Opens at</label>
+                <select
+                  value={bhStart}
+                  onChange={e => setBhStart(Number(e.target.value))}
+                  style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>Closes at</label>
+                <select
+                  value={bhEnd}
+                  onChange={e => setBhEnd(Number(e.target.value))}
+                  style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}
+                >
+                  {Array.from({ length: 24 }, (_, h) => (
+                    <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={saveBusinessHours}
+                disabled={bhSaving}
+                style={{
+                  fontSize: 12, fontWeight: 600, padding: '6px 16px',
+                  background: '#16161a', color: '#fff', border: 'none',
+                  borderRadius: 7, cursor: bhSaving ? 'default' : 'pointer',
+                  opacity: bhSaving ? 0.6 : 1, fontFamily: 'var(--font-dm), sans-serif',
+                }}
+              >
+                {bhSaving ? 'Saving…' : 'Save'}
+              </button>
+              <span style={{ fontSize: 11, color: '#aaa' }}>
+                AI will only offer slots within these hours
+              </span>
+            </div>
+          </div>
 
           {/* Toggle upcoming / past */}
           <div className="cal-toggle-bar">
