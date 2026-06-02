@@ -124,6 +124,9 @@ async def get_lead_by_phone(tenant_id: str, phone: str) -> dict | None:
 
 
 async def update_lead(tenant_id: str, lead_id: str, data: dict) -> dict:
+    # Stamp last-activity time so the dashboard can show when a lead was last
+    # touched (e.g. by a new call), not just when it was created.
+    data = {**data, "updated_at": datetime.now(timezone.utc).isoformat()}
     res = (
         get_client()
         .table("leads")

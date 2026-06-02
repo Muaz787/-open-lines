@@ -17,6 +17,7 @@ interface Lead {
   urgency?: string
   status?: string
   created_at: string
+  updated_at?: string
   metadata?: {
     key_details?: Record<string, string>
     suggested_next_step?: string
@@ -875,7 +876,7 @@ function DashboardPage() {
                             ? lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)
                             : 'New'}
                         </span>
-                        <span className="db-lead-time">{timeAgo(lead.created_at)}</span>
+                        <span className="db-lead-time">{timeAgo(lead.updated_at || lead.created_at)}</span>
                         <div className="db-lead-actions" onClick={e => e.stopPropagation()}>
                           {lead.phone && (
                             <button

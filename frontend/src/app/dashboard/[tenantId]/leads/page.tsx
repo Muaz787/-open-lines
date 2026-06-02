@@ -21,6 +21,7 @@ interface Lead {
   urgency?: string
   status?: string
   created_at: string
+  updated_at?: string
   metadata?: {
     key_details?: Record<string, string>
     suggested_next_step?: string
@@ -516,9 +517,9 @@ function LeadsPage() {
                         {status}
                       </span>
 
-                      {/* Time */}
+                      {/* Time — last activity (falls back to creation) */}
                       <div style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        {timeAgo(lead.created_at)}
+                        {timeAgo(lead.updated_at || lead.created_at)}
                       </div>
 
                       <IconChevron open={isOpen} />

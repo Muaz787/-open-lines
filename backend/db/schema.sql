@@ -84,6 +84,9 @@ alter table calls add column if not exists transcript text;
 alter table tenants add column if not exists business_hours_start int default 9;
 alter table tenants add column if not exists business_hours_end   int default 17;
 
+-- Lead last-activity timestamp (updated whenever a lead is touched by a new call)
+alter table leads add column if not exists updated_at timestamptz default now();
+
 -- Knowledge base source tracking
 create table if not exists kb_entries (
     id          uuid primary key default gen_random_uuid(),
