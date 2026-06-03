@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import MicButton from '@/app/components/MicButton'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -619,11 +620,14 @@ function CalendarPage() {
 
             {/* Booking instructions */}
             <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 4 }}>
-                Special instructions for the booking agent
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>
+                  Special instructions for the booking agent
+                </div>
+                <MicButton onResult={t => setBookingInstructions(prev => (prev.trim() ? prev.trim() + ' ' : '') + t)} />
               </div>
               <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>
-                Plain English rules the AI should follow (you can use your keyboard&apos;s mic to dictate).
+                Plain English rules the AI should follow — type, or tap the mic to dictate.
                 e.g. &quot;Always ask if they&apos;re a new or returning client&quot; or &quot;Mention parking is free out back.&quot;
               </div>
               <textarea

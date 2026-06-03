@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
+import MicButton from '@/app/components/MicButton'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -646,12 +647,15 @@ function KnowledgeBasePage() {
 
             {/* Add text manually */}
             <div className="kb-card kb-card-pad">
-              <div className="kb-card-title">✏️ Add text manually</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <div className="kb-card-title">✏️ Add text manually</div>
+                <MicButton onResult={t => setText(prev => (prev.trim() ? prev.trim() + ' ' : '') + t)} />
+              </div>
               <textarea
                 className="kb-textarea"
                 value={text}
                 onChange={e => setText(e.target.value)}
-                placeholder="Paste FAQs, hours, service descriptions, pricing, or anything your AI should know…"
+                placeholder="Paste FAQs, hours, service descriptions, pricing, or anything your AI should know… (or tap the mic to dictate)"
                 rows={5}
               />
               <button
