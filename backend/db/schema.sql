@@ -87,6 +87,14 @@ alter table tenants add column if not exists business_hours_end   int default 17
 -- Lead last-activity timestamp (updated whenever a lead is touched by a new call)
 alter table leads add column if not exists updated_at timestamptz default now();
 
+-- Operating days (Python weekday convention: Mon=0..Sun=6), default Mon-Fri
+alter table tenants add column if not exists business_days jsonb default '[0,1,2,3,4]'::jsonb;
+-- Optional daily break window (e.g. lunch); null = no break. Backend-enforced.
+alter table tenants add column if not exists break_start int;
+alter table tenants add column if not exists break_end   int;
+-- Free-text booking guidance woven into the AI's system prompt (soft rules)
+alter table tenants add column if not exists booking_instructions text;
+
 -- Knowledge base source tracking
 create table if not exists kb_entries (
     id          uuid primary key default gen_random_uuid(),

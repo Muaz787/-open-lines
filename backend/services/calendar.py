@@ -132,11 +132,20 @@ async def list_free_slots(
     exclude_range: tuple[datetime, datetime] | None = None,
     business_hours_start: int = 9,
     business_hours_end: int = 17,
+    business_days: list[int] | None = None,
+    break_start: int | None = None,
+    break_end: int | None = None,
 ) -> list[str]:
     """Return available slot strings (e.g. '2:00 PM') for the given date.
 
     business_hours_start / business_hours_end override the 'any' window so
     each tenant's full working day is shown (e.g. 8-20 for a 24h business).
+
+    business_days: list of weekday ints (Mon=0..Sun=6) the business operates.
+    Returns [] if the requested date falls on a non-operating day.
+
+    break_start / break_end: optional daily break window (e.g. 12-13 lunch).
+    Slots overlapping this window are excluded.
 
     exclude_event_id: Google Calendar event ID to ignore — used during reschedules.
     exclude_range: fallback time-range exclusion (±5 min tolerance).
@@ -144,12 +153,23 @@ async def list_free_slots(
     tz = ZoneInfo(timezone)
     appt_date = date_type.fromisoformat(date_str)
 
+    # Operating-days guard — closed on this weekday → no availability
+    if business_days is not None and appt_date.weekday() not in business_days:
+        logger.info("list_free_slots: %s is a non-operating day (weekday=%d)", date_str, appt_date.weekday())
+        return []
+
     if period == "any":
         hour_start, hour_end = business_hours_start, business_hours_end
     else:
         hour_start, hour_end = _PERIOD_HOURS.get(period, (business_hours_start, business_hours_end))
     window_start = datetime(appt_date.year, appt_date.month, appt_date.day, hour_start, 0, tzinfo=tz)
     window_end   = datetime(appt_date.year, appt_date.month, appt_date.day, hour_end,   0, tzinfo=tz)
+
+    # Daily break window (e.g. lunch) — treated as a busy block below
+    break_start_dt = break_end_dt = None
+    if break_start is not None and break_end is not None and break_end > break_start:
+        break_start_dt = datetime(appt_date.year, appt_date.month, appt_date.day, break_start, 0, tzinfo=tz)
+        break_end_dt   = datetime(appt_date.year, appt_date.month, appt_date.day, break_end,   0, tzinfo=tz)
 
     access = await _access_token(refresh_token)
     headers = {"Authorization": f"Bearer {access}"}
@@ -207,6 +227,10 @@ async def list_free_slots(
                 logger.debug("Excluding reschedule conflict by time range: %s–%s", b_start, b_end)
                 continue
         busy.append((b_start, b_end))
+
+    # Add the daily break (e.g. lunch) as a busy block so no slot lands in it
+    if break_start_dt is not None and break_end_dt is not None:
+        busy.append((break_start_dt, break_end_dt))
 
     now = datetime.now(tz)
     slots: list[str] = []

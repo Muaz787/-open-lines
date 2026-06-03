@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -18,6 +19,61 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 # In-memory log of the last 30 raw Vapi events (any type) — cleared on redeploy
 _recent_events: list[dict] = []
+
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _fmt_hour(h: int) -> str:
+    """24h int → '9 AM' / '5 PM' / '12 PM'."""
+    h = int(h) % 24
+    suffix = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12} {suffix}"
+
+
+def _fmt_days(days: list[int]) -> str:
+    s = sorted(set(d for d in days if 0 <= d <= 6))
+    if not s:
+        return "by appointment"
+    if len(s) > 1 and s == list(range(s[0], s[-1] + 1)):
+        return f"{_DAY_NAMES[s[0]]} through {_DAY_NAMES[s[-1]]}"
+    names = [_DAY_NAMES[d] for d in s]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _build_schedule_note(tenant: dict) -> str:
+    """Build the operating-schedule + booking-rules note injected into the prompt."""
+    raw_days = tenant.get("business_days")
+    if isinstance(raw_days, str):
+        try:
+            raw_days = json.loads(raw_days)
+        except Exception:
+            raw_days = None
+    days = raw_days if isinstance(raw_days, list) and raw_days else [0, 1, 2, 3, 4]
+    days = [int(d) for d in days if isinstance(d, (int, float, str)) and str(d).strip().lstrip("-").isdigit()]
+
+    start = int(tenant.get("business_hours_start") or 9)
+    end   = int(tenant.get("business_hours_end") or 17)
+
+    lines = [
+        "\n\nBUSINESS OPERATING SCHEDULE (enforce strictly)",
+        f"- Open days: {_fmt_days(days)}.",
+        f"- Hours: {_fmt_hour(start)} to {_fmt_hour(end)}.",
+        "- NEVER offer or book appointments outside these days or hours. If a caller asks for a "
+        "closed day or time, say you're closed then and offer the nearest open option.",
+    ]
+
+    bs, be = tenant.get("break_start"), tenant.get("break_end")
+    if bs is not None and be is not None and int(be) > int(bs):
+        lines.append(f"- Daily break (no appointments): {_fmt_hour(int(bs))} to {_fmt_hour(int(be))}.")
+
+    instructions = (tenant.get("booking_instructions") or "").strip()
+    if instructions:
+        lines.append(f"\nADDITIONAL BOOKING INSTRUCTIONS FROM THE BUSINESS OWNER (follow these):\n{instructions}")
+
+    return "\n".join(lines)
 
 
 async def _handle_assistant_request(msg: dict) -> dict:
@@ -89,6 +145,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
         "NEVER use a past year. NEVER guess — derive the date from what the caller actually said."
     )
 
+    # Operating schedule note — gives the AI the business's days, hours, break,
+    # and any free-text booking rules so it guides callers correctly.
+    schedule_note = _build_schedule_note(tenant)
+
     # Try multiple payload paths for caller phone — Vapi may vary the structure
     # between assistant-request and other event types
     _call_obj = msg.get("call") or {}
@@ -147,7 +207,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # and rescheduling instructions are present even when the static Vapi config is stale.
     system_prompt = base_prompt + date_note + caller_context
     if tenant.get("google_refresh_token"):
-        system_prompt += _CALENDAR_NOTE
+        system_prompt += _CALENDAR_NOTE + schedule_note
     system_prompt += _CALLER_LOOKUP_NOTE
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale

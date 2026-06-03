@@ -82,11 +82,17 @@ class SettingsUpdateRequest(BaseModel):
     whatsapp_number:      str | None = None
     business_hours_start: int | None = None
     business_hours_end:   int | None = None
+    business_days:        list[int] | None = None
+    break_start:          int | None = None
+    break_end:            int | None = None
+    booking_instructions: str | None = None
 
 
 @router.patch("/settings/{tenant_id}")
 async def update_settings(tenant_id: str, body: SettingsUpdateRequest):
-    update_data = body.model_dump(exclude_none=True)
+    # exclude_unset (not exclude_none) so callers can explicitly clear a field by
+    # sending null — needed to remove the daily break (break_start/break_end = null).
+    update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided")
     try:

@@ -68,9 +68,14 @@ function CalendarPage() {
   const [toast, setToast]                 = useState<string | null>(null)
   const [showPast, setShowPast]           = useState(false)
 
-  // Business hours
+  // Availability settings
   const [bhStart, setBhStart]   = useState<number>(9)
   const [bhEnd, setBhEnd]       = useState<number>(17)
+  const [bizDays, setBizDays]   = useState<number[]>([0, 1, 2, 3, 4])
+  const [breakOn, setBreakOn]   = useState<boolean>(false)
+  const [breakStart, setBreakStart] = useState<number>(12)
+  const [breakEnd, setBreakEnd]     = useState<number>(13)
+  const [bookingInstructions, setBookingInstructions] = useState<string>('')
   const [bhSaving, setBhSaving] = useState(false)
 
   useEffect(() => {
@@ -97,6 +102,11 @@ function CalendarPage() {
           setTenant(t)
           if (t.business_hours_start != null) setBhStart(t.business_hours_start)
           if (t.business_hours_end   != null) setBhEnd(t.business_hours_end)
+          if (Array.isArray(t.business_days)) setBizDays(t.business_days)
+          if (t.break_start != null && t.break_end != null) {
+            setBreakOn(true); setBreakStart(t.break_start); setBreakEnd(t.break_end)
+          }
+          if (t.booking_instructions) setBookingInstructions(t.booking_instructions)
         }
         if (lRes.ok) setLeads(await lRes.json())
         if (aRes.ok) {
@@ -137,20 +147,33 @@ function CalendarPage() {
 
   const saveBusinessHours = async () => {
     if (bhStart >= bhEnd) { showToast('Opening time must be before closing time'); return }
+    if (bizDays.length === 0) { showToast('Select at least one operating day'); return }
+    if (breakOn && breakStart >= breakEnd) { showToast('Break start must be before break end'); return }
     setBhSaving(true)
     try {
       const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business_hours_start: bhStart, business_hours_end: bhEnd }),
+        body: JSON.stringify({
+          business_hours_start: bhStart,
+          business_hours_end:   bhEnd,
+          business_days:        [...bizDays].sort((a, b) => a - b),
+          break_start:          breakOn ? breakStart : null,
+          break_end:            breakOn ? breakEnd : null,
+          booking_instructions: bookingInstructions.trim(),
+        }),
       })
-      if (res.ok) showToast('Business hours saved')
+      if (res.ok) showToast('Availability settings saved')
       else showToast('Failed to save — try again')
     } catch {
       showToast('Failed to save — try again')
     } finally {
       setBhSaving(false)
     }
+  }
+
+  const toggleDay = (d: number) => {
+    setBizDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
   }
 
   const showToast = (msg: string) => {
@@ -501,55 +524,134 @@ function CalendarPage() {
             </div>
           )}
 
-          {/* Business Hours */}
+          {/* Availability settings */}
           <div style={{
             background: '#fff', border: '1px solid #e8e6e0', borderRadius: 10,
-            padding: '16px 20px', marginBottom: 16,
+            padding: '18px 20px', marginBottom: 16,
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#16161a', marginBottom: 12 }}>
-              Business Hours
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#16161a', marginBottom: 4 }}>
+              Availability
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>Opens at</label>
-                <select
-                  value={bhStart}
-                  onChange={e => setBhStart(Number(e.target.value))}
-                  style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}
-                >
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
-                  ))}
-                </select>
+            <div style={{ fontSize: 11, color: '#aaa', marginBottom: 16 }}>
+              The AI will only offer and book appointments within these days, hours, and rules.
+            </div>
+
+            {/* Operating days */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 8 }}>Operating days</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => {
+                  const on = bizDays.includes(i)
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => toggleDay(i)}
+                      style={{
+                        fontSize: 12, fontWeight: 500, padding: '6px 12px', borderRadius: 7,
+                        border: '1px solid', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif',
+                        borderColor: on ? '#3dba72' : '#e8e6e0',
+                        background: on ? '#eafaf2' : '#fff',
+                        color: on ? '#1a7a45' : '#888',
+                      }}
+                    >
+                      {d}
+                    </button>
+                  )
+                })}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ fontSize: 12, color: '#888', whiteSpace: 'nowrap' }}>Closes at</label>
-                <select
-                  value={bhEnd}
-                  onChange={e => setBhEnd(Number(e.target.value))}
-                  style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}
-                >
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
-                  ))}
-                </select>
+            </div>
+
+            {/* Hours */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 8 }}>Hours</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 12, color: '#888' }}>Opens at</label>
+                  <select value={bhStart} onChange={e => setBhStart(Number(e.target.value))}
+                    style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 12, color: '#888' }}>Closes at</label>
+                  <select value={bhEnd} onChange={e => setBhEnd(Number(e.target.value))}
+                    style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              <button
-                onClick={saveBusinessHours}
-                disabled={bhSaving}
+            </div>
+
+            {/* Daily break */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: breakOn ? 10 : 0 }}>
+                <input type="checkbox" checked={breakOn} onChange={e => setBreakOn(e.target.checked)} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#555' }}>Daily break (e.g. lunch)</span>
+              </label>
+              {breakOn && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', paddingLeft: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ fontSize: 12, color: '#888' }}>From</label>
+                    <select value={breakStart} onChange={e => setBreakStart(Number(e.target.value))}
+                      style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ fontSize: 12, color: '#888' }}>To</label>
+                    <select value={breakEnd} onChange={e => setBreakEnd(Number(e.target.value))}
+                      style={{ fontSize: 12, background: '#f4f3f0', border: '1px solid #e8e6e0', borderRadius: 6, padding: '5px 8px', color: '#16161a', fontFamily: 'var(--font-dm), sans-serif', cursor: 'pointer' }}>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>{h === 0 ? '12:00 AM' : h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#aaa' }}>No appointments during this window</span>
+                </div>
+              )}
+            </div>
+
+            {/* Booking instructions */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#555', marginBottom: 4 }}>
+                Special instructions for the booking agent
+              </div>
+              <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>
+                Plain English rules the AI should follow (you can use your keyboard&apos;s mic to dictate).
+                e.g. &quot;Always ask if they&apos;re a new or returning client&quot; or &quot;Mention parking is free out back.&quot;
+              </div>
+              <textarea
+                value={bookingInstructions}
+                onChange={e => setBookingInstructions(e.target.value)}
+                placeholder="Add any booking rules or notes for the AI…"
+                rows={3}
                 style={{
-                  fontSize: 12, fontWeight: 600, padding: '6px 16px',
-                  background: '#16161a', color: '#fff', border: 'none',
-                  borderRadius: 7, cursor: bhSaving ? 'default' : 'pointer',
-                  opacity: bhSaving ? 0.6 : 1, fontFamily: 'var(--font-dm), sans-serif',
+                  width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '10px 12px',
+                  border: '1px solid #e8e6e0', borderRadius: 8, background: '#fafafa',
+                  color: '#16161a', resize: 'vertical', fontFamily: 'var(--font-dm), sans-serif',
+                  lineHeight: 1.5, outline: 'none',
                 }}
-              >
-                {bhSaving ? 'Saving…' : 'Save'}
-              </button>
-              <span style={{ fontSize: 11, color: '#aaa' }}>
-                AI will only offer slots within these hours
-              </span>
+              />
             </div>
+
+            <button
+              onClick={saveBusinessHours}
+              disabled={bhSaving}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '8px 20px',
+                background: '#16161a', color: '#fff', border: 'none',
+                borderRadius: 7, cursor: bhSaving ? 'default' : 'pointer',
+                opacity: bhSaving ? 0.6 : 1, fontFamily: 'var(--font-dm), sans-serif',
+              }}
+            >
+              {bhSaving ? 'Saving…' : 'Save availability'}
+            </button>
           </div>
 
           {/* Toggle upcoming / past */}

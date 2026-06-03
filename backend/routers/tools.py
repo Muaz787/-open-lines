@@ -27,6 +27,40 @@ _CALENDAR_ERROR_MSG = (
     "I'll make sure the team follows up with you shortly to confirm a time."
 )
 
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _parse_business_days(raw) -> list[int]:
+    """Normalize a tenant's business_days value to a list of ints (Mon=0..Sun=6).
+    Defaults to Mon-Fri when missing/invalid."""
+    default = [0, 1, 2, 3, 4]
+    if raw is None:
+        return default
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return default
+    if isinstance(raw, list):
+        days = [int(d) for d in raw if isinstance(d, (int, float, str)) and str(d).strip().lstrip("-").isdigit()]
+        days = [d for d in days if 0 <= d <= 6]
+        return days or default
+    return default
+
+
+def _format_open_days(days: list[int]) -> str:
+    """Human-readable open-days phrase, e.g. 'Monday through Friday' or 'Saturday and Sunday'."""
+    if not days:
+        return "by appointment"
+    s = sorted(set(days))
+    # Contiguous run → "X through Y"
+    if s == list(range(s[0], s[-1] + 1)) and len(s) > 1:
+        return f"{_DAY_NAMES[s[0]]} through {_DAY_NAMES[s[-1]]}"
+    names = [_DAY_NAMES[d] for d in s]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
 
 def _parse_tool_call(body: dict) -> tuple[str, str, dict]:
     """Return (tool_call_id, call_id, arguments_dict)."""
@@ -176,6 +210,24 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     timezone             = tenant.get("calendar_timezone") or "America/Toronto"
     business_hours_start = int(tenant.get("business_hours_start") or 9)
     business_hours_end   = int(tenant.get("business_hours_end") or 17)
+    business_days        = _parse_business_days(tenant.get("business_days"))
+    break_start          = tenant.get("break_start")
+    break_end            = tenant.get("break_end")
+    break_start          = int(break_start) if break_start is not None else None
+    break_end            = int(break_end) if break_end is not None else None
+
+    # Closed-day early response — clearer than a generic "no slots" message
+    try:
+        _req_weekday = date_type.fromisoformat(date_str).weekday()
+        if _req_weekday not in business_days:
+            return _result(
+                tc_id,
+                _year_correction_prefix +
+                f"We're closed on {_DAY_NAMES[_req_weekday]}s. "
+                f"We're open {_format_open_days(business_days)}. Would one of those days work?"
+            )
+    except ValueError:
+        pass
 
     # If the caller already has an appointment, exclude it from the busy list so the
     # agent doesn't falsely report the rescheduled slot as unavailable.
@@ -210,6 +262,9 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
             exclude_range=exclude_range,
             business_hours_start=business_hours_start,
             business_hours_end=business_hours_end,
+            business_days=business_days,
+            break_start=break_start,
+            break_end=break_end,
         )
     except CalendarTokenExpiredError:
         logger.error("tools/availability: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
@@ -310,6 +365,30 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     except Exception as e:
         logger.error("tools/book: datetime parse failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, "I couldn't parse that date and time. Could you say it again?")
+
+    # Defense-in-depth guards — never book on a closed day or inside the daily break,
+    # even if the AI tried to (the availability tool should already prevent this).
+    business_days = _parse_business_days(tenant.get("business_days"))
+    if start_dt.weekday() not in business_days:
+        return _result(
+            tc_id,
+            f"I'm sorry, we're closed on {_DAY_NAMES[start_dt.weekday()]}s. "
+            f"We're open {_format_open_days(business_days)}. Would you like to pick one of those days?"
+        )
+    _bs = tenant.get("break_start")
+    _be = tenant.get("break_end")
+    if _bs is not None and _be is not None and int(_be) > int(_bs):
+        slot_end = start_dt + timedelta(minutes=duration_minutes)
+        brk_start = start_dt.replace(hour=int(_bs), minute=0, second=0, microsecond=0)
+        brk_end   = start_dt.replace(hour=int(_be), minute=0, second=0, microsecond=0)
+        if start_dt < brk_end and slot_end > brk_start:
+            h1 = int(_bs) % 12 or 12; ap1 = "AM" if int(_bs) < 12 else "PM"
+            h2 = int(_be) % 12 or 12; ap2 = "AM" if int(_be) < 12 else "PM"
+            return _result(
+                tc_id,
+                f"That time overlaps our daily break ({h1} {ap1}–{h2} {ap2}). "
+                "Could we pick a time outside of that?"
+            )
 
     # Cancel existing appointment for this caller (reschedule flow).
     # Look back 24h so same-day reschedules are caught even if the slot has passed.
