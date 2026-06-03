@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import MicButton from '@/app/components/MicButton'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -139,6 +140,14 @@ export default function OnboardingPage() {
     } else {
       setForm(f => ({ ...f, [name]: value }))
     }
+  }
+
+  // Append dictated text to a form field (used by the mic buttons)
+  const appendField = (name: 'business_description' | 'extra_instructions', t: string) => {
+    setForm(f => {
+      const prev = (f[name] || '').trim()
+      return { ...f, [name]: (prev ? prev + ' ' : '') + t }
+    })
   }
 
   const addFiles = useCallback((incoming: FileList | null) => {
@@ -334,7 +343,10 @@ export default function OnboardingPage() {
 
                   {form.industry === 'custom' && (
                     <div className="form-group">
-                      <label className="form-label">Describe Your Business *</label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <label className="form-label">Describe Your Business *</label>
+                        <MicButton size={30} onResult={t => appendField('business_description', t)} />
+                      </div>
                       <textarea
                         className="form-input"
                         name="business_description"
@@ -471,12 +483,15 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">
-                      Extra Instructions{' '}
-                      <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
-                        (optional)
-                      </span>
-                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <label className="form-label">
+                        Extra Instructions{' '}
+                        <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
+                          (optional)
+                        </span>
+                      </label>
+                      <MicButton size={30} onResult={t => appendField('extra_instructions', t)} />
+                    </div>
                     <textarea
                       className="form-input"
                       name="extra_instructions"
