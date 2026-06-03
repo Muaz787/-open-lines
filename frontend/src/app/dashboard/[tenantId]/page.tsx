@@ -547,9 +547,9 @@ function DashboardPage() {
 
   // ── Render ───────────────────────────────────────────────
   return (
-    <div className="db-root">
-
-      {/* ══ Sidebar ══ */}
+    <>
+      {/* sidebar + mobile chrome now provided by layout.tsx; inline copy disabled */}
+      {false && (
       <aside className="db-sidebar">
         {/* Logo */}
         <div className="db-sidebar-logo">
@@ -560,8 +560,8 @@ function DashboardPage() {
         {/* Business switcher */}
         {tenant && (
           <div className="db-clinic-sw">
-            <div className="db-clinic-name">{tenant.business_name}</div>
-            <div className="db-clinic-tag">{tenant.industry} · Active</div>
+            <div className="db-clinic-name">{tenant?.business_name}</div>
+            <div className="db-clinic-tag">{tenant?.industry} · Active</div>
           </div>
         )}
 
@@ -591,7 +591,7 @@ function DashboardPage() {
             Calls
           </Link>
 
-          {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
+          {tenant && BOOKING_INDUSTRIES.has(tenant!.industry) && (
             <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item">
               <IconCalendar />
               Calendar
@@ -642,37 +642,7 @@ function DashboardPage() {
           </button>
         </div>
       </aside>
-
-      {/* ══ Main ══ */}
-      <div className="db-main">
-
-        {/* Mobile topbar */}
-        <div className="db-mobile-topbar">
-          <div className="db-mobile-logo">
-            <div className="db-logo-icon">
-              <LogoMark size={22} />
-            </div>
-            <span className="db-mobile-logo-name">Open Lines</span>
-          </div>
-          <button
-            className="db-hamburger"
-            onClick={() => setDbMenuOpen(o => !o)}
-            aria-label={dbMenuOpen ? 'Close menu' : 'Open menu'}
-          >
-            {dbMenuOpen ? (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            )}
-          </button>
-        </div>
+      )}
 
         {/* Desktop topbar */}
         <div className="db-topbar">
@@ -1166,9 +1136,7 @@ function DashboardPage() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Mobile overlay menu ── */}
+      {false && (
       <AnimatePresence>
         {dbMenuOpen && (
           <motion.div
@@ -1189,8 +1157,8 @@ function DashboardPage() {
               </div>
               {tenant && (
                 <div className="db-clinic-sw">
-                  <div className="db-clinic-name">{tenant.business_name}</div>
-                  <div className="db-clinic-tag">{tenant.industry} · Active</div>
+                  <div className="db-clinic-name">{tenant?.business_name}</div>
+                  <div className="db-clinic-tag">{tenant?.industry} · Active</div>
                 </div>
               )}
               <div className="db-sidebar-nav">
@@ -1213,7 +1181,7 @@ function DashboardPage() {
                   <IconCalls />
                   Calls
                 </Link>
-                {tenant && BOOKING_INDUSTRIES.has(tenant.industry) && (
+                {tenant && BOOKING_INDUSTRIES.has(tenant!.industry) && (
                   <Link href={`/dashboard/${tenantId}/calendar`} className="db-nav-item" onClick={() => setDbMenuOpen(false)}>
                     <IconCalendar />
                     Calendar
@@ -1245,8 +1213,8 @@ function DashboardPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-    </div>
+      )}
+    </>
   )
 }
 

@@ -348,37 +348,7 @@ function LeadsPage() {
   }
 
   return (
-    <div className="db-root">
-
-      {/* ══ Sidebar ══ */}
-      <aside className="db-sidebar">
-        <Sidebar />
-      </aside>
-
-      {/* ══ Main ══ */}
-      <div className="db-main">
-
-        {/* Mobile topbar */}
-        <div className="db-mobile-topbar">
-          <div className="db-mobile-logo">
-            <div className="db-logo-icon"><LogoMark size={22} /></div>
-            <span className="db-mobile-logo-name">Leads</span>
-          </div>
-          <button className="db-hamburger" onClick={() => setMobileMenuOpen(o => !o)} aria-label="Menu">
-            {mobileMenuOpen ? (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            )}
-          </button>
-        </div>
+    <>
 
         {/* Toast */}
         <AnimatePresence>
@@ -393,24 +363,6 @@ function LeadsPage() {
               }}
             >
               {toast}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Mobile menu overlay */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="db-mobile-overlay" onClick={() => setMobileMenuOpen(false)}
-            >
-              <motion.div
-                initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
-                transition={{ type: 'tween', duration: 0.22 }}
-                className="db-mobile-sidebar" onClick={e => e.stopPropagation()}
-              >
-                <Sidebar mobile />
-              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -596,8 +548,7 @@ function LeadsPage() {
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </>
   )
 }
 

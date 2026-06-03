@@ -355,41 +355,7 @@ export default function CallsPage() {
   )
 
   return (
-    <div className="db-root">
-
-      {/* ══ Sidebar ══ */}
-      <aside className="db-sidebar">
-        <Sidebar />
-      </aside>
-
-      {/* ══ Main ══ */}
-      <div className="db-main">
-
-        {/* Mobile topbar */}
-        <div className="db-mobile-topbar">
-          <div className="db-mobile-logo">
-            <div className="db-logo-icon"><LogoMark size={22} /></div>
-            <span className="db-mobile-logo-name">Open Lines</span>
-          </div>
-          <button
-            className="db-hamburger"
-            onClick={() => setMenuOpen(o => !o)}
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-          >
-            {menuOpen ? (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="4" y1="4" x2="16" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="16" y1="4" x2="4" y2="16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                <line x1="2" y1="5"  x2="18" y2="5"  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-                <line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-              </svg>
-            )}
-          </button>
-        </div>
+    <>
 
         {/* Desktop topbar */}
         <div className="db-topbar">
@@ -567,29 +533,6 @@ export default function CallsPage() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* ── Mobile overlay menu ── */}
-      <AnimatePresence>
-        {menuOpen && (
-          <motion.div
-            className="db-overlay-menu"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={() => setMenuOpen(false)}
-          >
-            <motion.div
-              className="db-overlay-panel"
-              initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              onClick={e => e.stopPropagation()}
-            >
-              <Sidebar mobile onClose={() => setMenuOpen(false)} />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-    </div>
+    </>
   )
 }
