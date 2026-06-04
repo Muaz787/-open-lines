@@ -28,7 +28,8 @@ PLAN_ALLOCATIONS: dict[str, int] = {
     "pro":      400,
     "business": 900,
 }
-OVERAGE_RATE_CENTS = 35  # $0.35 per minute
+OVERAGE_RATE_CENTS = 69  # $0.69 per minute (priced above the most expensive plan's
+                          # per-minute rate so overage is never cheaper than a plan)
 
 _stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
 _overage_price_id = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRIPE_OVERAGE_PRICE_ID", "")

@@ -28,7 +28,7 @@ const PLANS = [
     name: 'Starter',
     price: 99,
     minutes: 150,
-    overage: '0.35',
+    overage: '0.69',
     popular: false,
     accent: 'var(--border-2)',
     features: [
@@ -43,13 +43,13 @@ const PLANS = [
     ],
     cta: 'Get started',
     ctaHref: '/onboarding',
-    note: '$0.35 / min overage',
+    note: '$0.69 / min overage',
   },
   {
     name: 'Pro',
     price: 199,
     minutes: 400,
-    overage: '0.35',
+    overage: '0.69',
     popular: true,
     accent: 'var(--accent)',
     features: [
@@ -64,13 +64,13 @@ const PLANS = [
     ],
     cta: 'Get started',
     ctaHref: '/onboarding',
-    note: '$0.35 / min overage',
+    note: '$0.69 / min overage',
   },
   {
     name: 'Business',
     price: 379,
     minutes: 900,
-    overage: '0.35',
+    overage: '0.69',
     popular: false,
     accent: '#3B7EF6',
     features: [
@@ -83,7 +83,7 @@ const PLANS = [
     ],
     cta: 'Get started',
     ctaHref: '/onboarding',
-    note: '$0.35 / min overage',
+    note: '$0.69 / min overage',
   },
 ]
 

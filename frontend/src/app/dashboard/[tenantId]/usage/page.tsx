@@ -196,7 +196,7 @@ export default function UsagePage() {
                       Overage Charges
                     </div>
                     <div style={{ fontSize: 13, color: '#555' }}>
-                      {usage.overage_minutes} overage min × $0.35 =&nbsp;
+                      {usage.overage_minutes} overage min × $0.69 =&nbsp;
                       <span style={{ fontWeight: 700, color: '#ef4444' }}>
                         ${(usage.overage_cost_cents / 100).toFixed(2)}
                       </span>
@@ -247,9 +247,9 @@ export default function UsagePage() {
               </div>
               <div>
                 {([
-                  { id: 'starter',  label: 'Starter',  price: '$99/mo',  note: '+$0.35/min overage' },
-                  { id: 'pro',      label: 'Pro',       price: '$199/mo', note: '+$0.35/min overage' },
-                  { id: 'business', label: 'Business',  price: '$379/mo', note: '+$0.35/min overage' },
+                  { id: 'starter',  label: 'Starter',  price: '$99/mo',  note: '+$0.69/min overage' },
+                  { id: 'pro',      label: 'Pro',       price: '$199/mo', note: '+$0.69/min overage' },
+                  { id: 'business', label: 'Business',  price: '$379/mo', note: '+$0.69/min overage' },
                 ] as const).map(({ id, label, price, note }, i, arr) => {
                   const mins = PLAN_ALLOCATIONS[id] ?? 0
                   const isCurrent = usage.plan === id
