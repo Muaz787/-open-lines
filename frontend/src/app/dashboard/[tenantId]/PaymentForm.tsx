@@ -429,11 +429,12 @@ export interface PaymentFormProps {
   tenantId: string
   plan: string
   planLabel: string
+  interval?: 'month' | 'year'
   onSuccess: () => void
   onCancel: () => void
 }
 
-export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: PaymentFormProps) {
+export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onSuccess, onCancel }: PaymentFormProps) {
   const [clientSecret, setClientSecret]     = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string>('')
   const [loadError, setLoadError]           = useState<string | null>(null)
@@ -443,7 +444,7 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
     fetch(`${API}/billing/create-subscription`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenant_id: tenantId, plan }),
+      body: JSON.stringify({ tenant_id: tenantId, plan, interval }),
     })
       .then(r => r.json())
       .then(data => {
@@ -458,7 +459,7 @@ export function PaymentForm({ tenantId, plan, planLabel, onSuccess, onCancel }: 
       })
       .catch(() => { if (!cancelled) setLoadError('Network error — please try again.') })
     return () => { cancelled = true }
-  }, [tenantId, plan, onSuccess])
+  }, [tenantId, plan, interval, onSuccess])
 
   if (loadError) {
     return (

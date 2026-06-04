@@ -17,22 +17,55 @@ STRIPE_SECRET_KEY    = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 FRONTEND_URL         = os.getenv("FRONTEND_URL", "https://openlines.ai")
 
-PRICE_IDS: dict[str, str] = {
-    "starter":  os.getenv("STRIPE_PRICE_STARTER", ""),
-    "pro":      os.getenv("STRIPE_PRICE_PRO", ""),
-    "business": os.getenv("STRIPE_PRICE_BUSINESS", ""),
+# Per-plan, per-interval Stripe price IDs. Annual prices are optional — if the
+# *_ANNUAL env vars aren't set, annual signups for that plan will 500 with a
+# clear message until the price is created in Stripe.
+PRICE_IDS: dict[str, dict[str, str]] = {
+    "starter":  {"month": os.getenv("STRIPE_PRICE_STARTER", ""),  "year": os.getenv("STRIPE_PRICE_STARTER_ANNUAL", "")},
+    "pro":      {"month": os.getenv("STRIPE_PRICE_PRO", ""),       "year": os.getenv("STRIPE_PRICE_PRO_ANNUAL", "")},
+    "business": {"month": os.getenv("STRIPE_PRICE_BUSINESS", ""),  "year": os.getenv("STRIPE_PRICE_BUSINESS_ANNUAL", "")},
 }
 # Metered overage price linked to a Stripe Billing Meter (event_name: call_minutes)
 STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
 
+# Flat set of every plan price ID across intervals (for membership checks)
+_ALL_PLAN_PRICE_IDS = {pid for p in PRICE_IDS.values() for pid in p.values() if pid}
+
 stripe.api_key = STRIPE_SECRET_KEY
+
+
+def _norm_interval(interval: str | None) -> str:
+    """Normalize any annual alias to 'year', everything else to 'month'."""
+    return "year" if (interval or "").strip().lower() in ("year", "annual", "yearly", "yr") else "month"
+
+
+def _resolve_price(plan: str, interval: str | None = "month") -> str:
+    """Resolve the Stripe price ID for a plan + billing interval."""
+    return PRICE_IDS.get(plan, {}).get(_norm_interval(interval), "")
+
+
+def _plan_from_price(price_id: str) -> str | None:
+    """Reverse-lookup the plan name from any of its price IDs."""
+    for plan, intervals in PRICE_IDS.items():
+        if price_id in intervals.values():
+            return plan
+    return None
+
+
+def _interval_from_price(price_id: str) -> str:
+    """Reverse-lookup the billing interval ('month'/'year') from a price ID."""
+    for intervals in PRICE_IDS.values():
+        for iv, pid in intervals.items():
+            if pid and pid == price_id:
+                return iv
+    return "month"
 
 
 def _base_item(sub):
     """Return the subscription item for the base plan price (not the overage meter item)."""
     for item in (sub.items.data if sub.items else []):
         price_id = getattr(getattr(item, "price", None), "id", "") or ""
-        if price_id != STRIPE_OVERAGE_PRICE_ID and price_id in PRICE_IDS.values():
+        if price_id != STRIPE_OVERAGE_PRICE_ID and price_id in _ALL_PLAN_PRICE_IDS:
             return item
     # Fallback: first item that is not the overage price
     for item in (sub.items.data if sub.items else []):
@@ -40,6 +73,13 @@ def _base_item(sub):
         if price_id != STRIPE_OVERAGE_PRICE_ID:
             return item
     return sub.items.data[0]
+
+
+def _sub_interval(sub) -> str:
+    """Detect the billing interval of an existing subscription from its base item."""
+    base = _base_item(sub)
+    pid = getattr(getattr(base, "price", None), "id", "") or ""
+    return _interval_from_price(pid)
 
 
 def _extract_pi_secret(invoice) -> str | None:
@@ -66,15 +106,17 @@ def _extract_pi_secret(invoice) -> str | None:
 async def create_checkout(body: dict):
     tenant_id: str = body.get("tenant_id", "")
     plan: str      = body.get("plan", "").lower()
+    interval: str  = _norm_interval(body.get("interval"))
 
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="plan must be starter, pro, or business")
 
-    price_id = PRICE_IDS[plan]
+    price_id = _resolve_price(plan, interval)
     if not price_id:
-        raise HTTPException(status_code=500, detail=f"STRIPE_PRICE_{plan.upper()} not configured on server")
+        suffix = "_ANNUAL" if interval == "year" else ""
+        raise HTTPException(status_code=500, detail=f"STRIPE_PRICE_{plan.upper()}{suffix} not configured on server")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -253,15 +295,17 @@ async def stripe_webhook(request: Request):
 async def create_subscription(body: dict):
     tenant_id: str = body.get("tenant_id", "")
     plan: str      = body.get("plan", "").lower()
+    interval: str  = _norm_interval(body.get("interval"))
 
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="plan must be starter, pro, or business")
 
-    price_id = PRICE_IDS[plan]
+    price_id = _resolve_price(plan, interval)
     if not price_id:
-        raise HTTPException(status_code=500, detail=f"STRIPE_PRICE_{plan.upper()} not configured on server")
+        suffix = "_ANNUAL" if interval == "year" else ""
+        raise HTTPException(status_code=500, detail=f"STRIPE_PRICE_{plan.upper()}{suffix} not configured on server")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -432,8 +476,12 @@ async def confirm_payment(body: dict):
     }.get(stripe_status, stripe_status)
 
     items = (sub.get("items") or {}).get("data", [])
-    price_id = items[0].get("price", {}).get("id", "") if items else ""
-    plan = next((k for k, v in PRICE_IDS.items() if v == price_id), "starter")
+    plan = "starter"
+    for _it in items:
+        _p = _plan_from_price((_it.get("price") or {}).get("id", ""))
+        if _p:
+            plan = _p
+            break
 
     await db.update_tenant(tenant_id, {
         "stripe_subscription_id": subscription_id,
@@ -491,11 +539,12 @@ async def sync_subscription(tenant_id: str):
 
         # Extract plan from subscription items (use attribute access — SDK objects aren't dicts)
         items = list(getattr(sub.items, "data", []) if getattr(sub, "items", None) else [])
-        price_id = str(getattr(getattr(items[0], "price", None), "id", "") or "") if items else ""
-        plan = next(
-            (k for k, v in PRICE_IDS.items() if v == price_id),
-            tenant.get("subscription_plan", "starter"),
-        )
+        plan = tenant.get("subscription_plan", "starter")
+        for _it in items:
+            _p = _plan_from_price(str(getattr(getattr(_it, "price", None), "id", "") or ""))
+            if _p:
+                plan = _p
+                break
 
         await db.update_tenant(tenant_id, {
             "stripe_subscription_id": sub.id,
@@ -538,6 +587,7 @@ async def subscription_details(tenant_id: str):
         cancel_at_period_end = bool(sub.cancel_at_period_end)
         period_start         = int(sub.current_period_start or 0) or None
         period_end           = int(sub.current_period_end   or 0) or None
+        interval             = _sub_interval(sub)  # 'month' or 'year'
 
         # Payment method: subscription default → customer default
         pm = sub.default_payment_method
@@ -593,6 +643,7 @@ async def subscription_details(tenant_id: str):
         "has_subscription":      True,
         "plan":                  db_plan,
         "status":                sub_status,
+        "interval":              interval,
         "cancel_at_period_end":  cancel_at_period_end,
         "current_period_start":  period_start,
         "current_period_end":    period_end,
@@ -702,8 +753,7 @@ async def proration_preview(body: dict):
     """Return the prorated amount the customer would pay to upgrade now."""
     tenant_id = body.get("tenant_id", "")
     plan      = body.get("plan", "").lower()
-    price_id  = PRICE_IDS.get(plan)
-    if not price_id:
+    if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
     tenant = await db.get_tenant_by_id(tenant_id)
@@ -717,7 +767,11 @@ async def proration_preview(body: dict):
 
     try:
         sub  = stripe.Subscription.retrieve(sub_id)
-        item = sub.items.data[0]
+        item = _base_item(sub)
+        # Preserve the customer's current billing interval when changing plans
+        price_id = _resolve_price(plan, _sub_interval(sub))
+        if not price_id:
+            raise HTTPException(status_code=500, detail="Target plan price not configured")
         upcoming = stripe.Invoice.upcoming(
             customer=customer_id,
             subscription=sub_id,
@@ -742,8 +796,7 @@ async def upgrade_plan(body: dict):
     """
     tenant_id = body.get("tenant_id", "")
     plan      = body.get("plan", "").lower()
-    price_id  = PRICE_IDS.get(plan)
-    if not price_id:
+    if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
     tenant = await db.get_tenant_by_id(tenant_id)
@@ -757,6 +810,10 @@ async def upgrade_plan(body: dict):
     try:
         sub  = stripe.Subscription.retrieve(sub_id)
         item = _base_item(sub)
+        # Preserve the customer's current billing interval when changing plans
+        price_id = _resolve_price(plan, _sub_interval(sub))
+        if not price_id:
+            raise HTTPException(status_code=500, detail="Target plan price not configured")
 
         updated = stripe.Subscription.modify(
             sub_id,
@@ -811,8 +868,7 @@ async def downgrade_plan(body: dict):
     """
     tenant_id = body.get("tenant_id", "")
     plan      = body.get("plan", "").lower()
-    price_id  = PRICE_IDS.get(plan)
-    if not price_id:
+    if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
     tenant = await db.get_tenant_by_id(tenant_id)
@@ -827,6 +883,10 @@ async def downgrade_plan(body: dict):
         sub  = stripe.Subscription.retrieve(sub_id)
         item = _base_item(sub)
         period_end = sub.current_period_end
+        # Preserve the customer's current billing interval when changing plans
+        price_id = _resolve_price(plan, _sub_interval(sub))
+        if not price_id:
+            raise HTTPException(status_code=500, detail="Target plan price not configured")
 
         stripe.Subscription.modify(
             sub_id,

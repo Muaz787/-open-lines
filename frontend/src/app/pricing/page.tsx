@@ -27,6 +27,8 @@ const PLANS = [
   {
     name: 'Starter',
     price: 99,
+    priceYear: 990,
+    saveYear: 198,
     minutes: 150,
     overage: '0.69',
     popular: false,
@@ -48,6 +50,8 @@ const PLANS = [
   {
     name: 'Pro',
     price: 199,
+    priceYear: 1990,
+    saveYear: 398,
     minutes: 400,
     overage: '0.69',
     popular: true,
@@ -69,6 +73,8 @@ const PLANS = [
   {
     name: 'Business',
     price: 379,
+    priceYear: 3790,
+    saveYear: 758,
     minutes: 900,
     overage: '0.69',
     popular: false,
@@ -213,6 +219,9 @@ export default function PricingPage() {
                     ${plan.price}
                   </span>
                   <span style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 8 }}>/mo</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, marginBottom: 6 }}>
+                  or ${plan.priceYear.toLocaleString()}/yr — save ${plan.saveYear} (2 months free)
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 28 }}>
                   {plan.minutes} minutes included · {plan.note}

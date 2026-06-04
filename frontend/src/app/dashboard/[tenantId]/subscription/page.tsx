@@ -8,9 +8,9 @@ import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm } from '../PaymentFo
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
-  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
-  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'WhatsApp alerts'] },
-  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
+  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  priceYear: '$990',   saveYear: '$198', minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
+  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'WhatsApp alerts'] },
+  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, priceYear: '$3,790', saveYear: '$758', minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
 ] as const
 
 type PlanId = 'starter' | 'pro' | 'business'
@@ -27,6 +27,7 @@ interface SubDetails {
   has_subscription: boolean
   plan?: PlanId
   status?: string
+  interval?: 'month' | 'year'
   cancel_at_period_end?: boolean
   current_period_start?: number
   current_period_end?: number
@@ -319,6 +320,7 @@ function SubscriptionPage() {
   const [canceling, setCanceling]         = useState(false)
   const [reactivating, setReactivating]  = useState(false)
   const [payingPlan, setPayingPlan]       = useState<Plan | null>(null)
+  const [billingInterval, setBillingInterval] = useState<'month' | 'year'>('month')
   const [updatingCard, setUpdatingCard]   = useState(false)
   const [prorationAmount, setProrationAmount]   = useState<number | null>(null)
   const [prorationLoading, setProrationLoading] = useState(false)
@@ -482,6 +484,7 @@ function SubscriptionPage() {
   const currentPlan = PLANS.find(p => p.id === subDetails?.plan)
   const periodEnd   = subDetails?.current_period_end ? fmtDate(subDetails.current_period_end) : null
   const isCanceling = subDetails?.cancel_at_period_end
+  const isActiveSub = !!subDetails?.has_subscription && subDetails?.status === 'active' && !subDetails?.cancel_at_period_end
 
   return (
     <>
@@ -561,6 +564,9 @@ function SubscriptionPage() {
               {subDetails.status === 'past_due' && (
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>PAST DUE</span>
               )}
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+                Billed {subDetails.interval === 'year' ? 'annually' : 'monthly'}
+              </span>
             </div>
 
             <div style={{ padding: '16px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px 24px' }}>
@@ -723,13 +729,15 @@ function SubscriptionPage() {
                     {payingPlan.label} Plan
                   </span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
-                    {payingPlan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                    {billingInterval === 'year' ? payingPlan.priceYear : payingPlan.price}
+                    <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>{billingInterval === 'year' ? '/yr' : '/mo'}</span>
                   </span>
                 </div>
                 <PaymentForm
                   tenantId={tenantId}
                   plan={payingPlan.id}
-                  planLabel={`${payingPlan.label} · ${payingPlan.price}/mo`}
+                  interval={billingInterval}
+                  planLabel={`${payingPlan.label} · ${billingInterval === 'year' ? payingPlan.priceYear + '/yr' : payingPlan.price + '/mo'}`}
                   onSuccess={async () => {
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
@@ -745,10 +753,32 @@ function SubscriptionPage() {
         {/* ── Change plan ── */}
         {!payingPlan && (
           <div style={{ marginBottom: 32 }}>
-            <div className="db-section-title">Change Plan</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div className="db-section-title">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
+              {/* Monthly / Annual toggle — only for new subscribers (plan changes keep current interval) */}
+              {!isActiveSub && (
+                <div style={{ display: 'inline-flex', border: '1px solid var(--border-2)', borderRadius: 8, overflow: 'hidden' }}>
+                  {(['month', 'year'] as const).map(iv => (
+                    <button
+                      key={iv}
+                      onClick={() => setBillingInterval(iv)}
+                      style={{
+                        fontSize: 12, fontWeight: 600, padding: '6px 14px', border: 'none', cursor: 'pointer',
+                        background: billingInterval === iv ? 'var(--accent-dim)' : 'transparent',
+                        color: billingInterval === iv ? 'var(--accent)' : 'var(--text-3)',
+                      }}
+                    >
+                      {iv === 'month' ? 'Monthly' : 'Annual'}
+                      {iv === 'year' && <span style={{ marginLeft: 5, fontSize: 10, color: '#16a34a' }}>2 months free</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 12 }}>
               {PLANS.map(plan => {
                 const isCurrent = subDetails?.plan === plan.id && subDetails?.status === 'active' && !isCanceling
+                const annual = !isActiveSub && billingInterval === 'year'
                 return (
                   <button
                     key={plan.id}
@@ -767,8 +797,12 @@ function SubscriptionPage() {
                       {isCurrent && <span style={{ fontSize: 10 }}>✓</span>}
                     </div>
                     <div style={{ fontSize: 19, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', fontFamily: 'var(--font-syne), sans-serif', marginBottom: 2 }}>
-                      {plan.price}<span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                      {annual ? plan.priceYear : plan.price}
+                      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>{annual ? '/yr' : '/mo'}</span>
                     </div>
+                    {annual && (
+                      <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginBottom: 4 }}>Save {plan.saveYear}/yr</div>
+                    )}
                     <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>{plan.minutes}</div>
                     {plan.features.map(f => (
                       <div key={f} style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
