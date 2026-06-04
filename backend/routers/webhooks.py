@@ -223,7 +223,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     overrides: dict = {
         "model": {
             "provider": "openai",
-            "model": "gpt-4o",
+            "model": "gpt-4.1-mini",
             "temperature": 0.7,
             "messages": [{"role": "system", "content": system_prompt}],
             "tools": tools,

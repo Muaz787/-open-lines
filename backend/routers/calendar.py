@@ -127,7 +127,7 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
                 messages[0]["content"] = existing_prompt + _CALENDAR_NOTE
             await vapi.update_assistant(assistant_id, {
                 "model": {
-                    "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
+                    "provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.7,
                     "tools": tools, "messages": messages,
                 },
             }, api_key=tenant_key)
@@ -190,7 +190,7 @@ async def calendar_disconnect(tenant_id: str):
                 messages[0]["content"] = existing_prompt
             await vapi.update_assistant(assistant_id, {
                 "model": {
-                    "provider": "openai", "model": "gpt-4o", "temperature": 0.7,
+                    "provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.7,
                     "tools": [vapi.build_caller_lookup_tool(tenant_id)], "messages": messages,
                 },
             }, api_key=tenant_key)
@@ -260,7 +260,7 @@ async def calendar_repair(tenant_id: str):
         res = await client.patch(
             f"https://api.vapi.ai/assistant/{assistant_id}",
             headers=vapi._headers(tenant_key),
-            json={"model": {"provider": "openai", "model": "gpt-4o", "tools": tools}},
+            json={"model": {"provider": "openai", "model": "gpt-4.1-mini", "tools": tools}},
             timeout=30.0,
         )
         if res.status_code != 200:

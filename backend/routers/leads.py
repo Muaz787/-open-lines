@@ -121,7 +121,7 @@ async def get_insights(tenant_id: str):
 
     try:
         resp = await _get_openai().chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": "You are a concise business intelligence analyst for an AI voice receptionist. Be specific and actionable."},
                 {"role": "user", "content": prompt},

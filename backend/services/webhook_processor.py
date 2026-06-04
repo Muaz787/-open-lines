@@ -150,7 +150,7 @@ async def process_end_of_call(payload: dict) -> None:
                 "Return JSON only."
             )
             response = await _get_openai().chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4.1-mini",
                 messages=[
                     {"role": "system", "content": "You extract structured data from call transcripts."},
                     {"role": "user", "content": user_prompt},

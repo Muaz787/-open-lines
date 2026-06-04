@@ -142,7 +142,7 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
     )
     model_payload: dict = {
         "provider": "openai",
-        "model": "gpt-4o",
+        "model": "gpt-4.1-mini",
         "temperature": 0.7,
         "messages": [{"role": "system", "content": system_prompt}],
         "tools": tools,
@@ -216,7 +216,7 @@ Return valid JSON only:
 }}"""
 
     response = await client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1-mini",
         messages=[
             {
                 "role": "system",

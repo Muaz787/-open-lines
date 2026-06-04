@@ -251,7 +251,7 @@ async def repair_prompt(
                 else [build_caller_lookup_tool(tenant_id)]
             )
             await update_assistant(assistant_id, {
-                "model": {"provider": "openai", "model": "gpt-4o", "temperature": 0.7, "messages": messages, "tools": tools}
+                "model": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.7, "messages": messages, "tools": tools}
             })
             return {"status": "updated", "assistant_id": assistant_id}
         except Exception as e:

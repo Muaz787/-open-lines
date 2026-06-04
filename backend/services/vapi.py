@@ -158,7 +158,7 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
         },
         "model": {
             "provider": "openai",
-            "model": "gpt-4o",
+            "model": "gpt-4.1-mini",
             "temperature": 0.7,
             "tools": tools,
             "messages": [
