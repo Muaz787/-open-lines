@@ -390,7 +390,11 @@ async def create_subscription(body: dict):
     # Create a new incomplete subscription so we can collect payment via Payment Element
     try:
         items_payload: list = [{"price": price_id}]
-        if STRIPE_OVERAGE_PRICE_ID:
+        # Stripe requires all items in a subscription to share the same billing
+        # interval, so the monthly overage meter can only attach to monthly plans.
+        # Annual plans pre-pay for the year and skip metered overage (upgrade tiers
+        # for more minutes).
+        if STRIPE_OVERAGE_PRICE_ID and interval == "month":
             items_payload.append({"price": STRIPE_OVERAGE_PRICE_ID})
         sub = stripe.Subscription.create(
             customer=customer_id,
