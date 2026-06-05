@@ -1,7 +1,8 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
@@ -21,6 +22,55 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 _recent_events: list[dict] = []
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+# Subscription gate: tenants can take live calls if they have an active subscription,
+# OR are still within this many days of provisioning (so new tenants can test the AI
+# before subscribing). Past the grace window without an active sub → calls are gated.
+GRACE_PERIOD_DAYS = int(os.getenv("SUBSCRIPTION_GRACE_DAYS", "7"))
+_ACTIVE_SUB_STATUSES = {"active", "trialing", "past_due", "canceling"}
+
+
+def _calls_allowed(tenant: dict) -> bool:
+    """True if the tenant may take live AI calls (active sub or within grace period)."""
+    status = (tenant.get("subscription_status") or "").strip().lower()
+    if status in _ACTIVE_SUB_STATUSES:
+        return True
+    created = tenant.get("created_at")
+    if created:
+        try:
+            created_dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+            if created_dt.tzinfo is None:
+                created_dt = created_dt.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) < created_dt + timedelta(days=GRACE_PERIOD_DAYS)
+        except Exception:
+            pass
+    return False
+
+
+def _gated_assistant_response(assistant_id: str) -> dict:
+    """Vapi config that plays a short 'line not active' message and hangs up, instead
+    of engaging the full receptionist. Capped at 30s so it never costs real call time."""
+    msg = ("Thanks for calling. This phone line isn't active at the moment. "
+           "Please contact the business directly. Goodbye.")
+    return {
+        "assistantId": assistant_id,
+        "assistantOverrides": {
+            "firstMessage": msg,
+            "firstMessageMode": "assistant-speaks-first",
+            "maxDurationSeconds": 30,
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "temperature": 0,
+                "messages": [{"role": "system", "content": (
+                    "This phone line is inactive. You have already told the caller to contact "
+                    "the business directly. If they say anything, briefly repeat that the line "
+                    "isn't active and to contact the business directly, then end the call. "
+                    "Never collect information, answer questions, or book anything."
+                )}],
+            },
+        },
+    }
 
 
 def _fmt_hour(h: int) -> str:
@@ -109,6 +159,15 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
     if not assistant_id:
         return {"error": {"message": "No assistant configured"}}
+
+    # Subscription gate: past the grace window without an active subscription, play a
+    # short "line not active" message and hang up instead of engaging the receptionist.
+    if not _calls_allowed(tenant):
+        logger.info(
+            "assistant-request: tenant %s GATED (status=%s, created=%s) — playing inactive message",
+            tenant_id, tenant.get("subscription_status"), tenant.get("created_at"),
+        )
+        return _gated_assistant_response(assistant_id)
 
     if not base_prompt:
         logger.warning(
