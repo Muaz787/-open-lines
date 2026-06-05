@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import MicButton from '@/app/components/MicButton'
@@ -220,10 +219,40 @@ function KnowledgeBasePage() {
   }
 
   const SourceIcon = ({ type }: { type: KbEntry['type'] }) => {
-    if (type === 'website') return <span style={{ fontSize: 15 }}>🌐</span>
-    if (type === 'file')    return <span style={{ fontSize: 15 }}>📄</span>
-    return <span style={{ fontSize: 15 }}>✏️</span>
+    const c = type === 'website' ? '#3B7EF6' : type === 'file' ? '#d97706' : '#16a34a'
+    if (type === 'website') return (
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={c} strokeWidth="1.7">
+        <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" />
+      </svg>
+    )
+    if (type === 'file') return (
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={c} strokeWidth="1.7" strokeLinejoin="round">
+        <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" />
+      </svg>
+    )
+    return (
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+      </svg>
+    )
   }
+
+  // ── Section-header icons ────────────────────────────────────
+  const IconGlobe = () => (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" />
+    </svg>
+  )
+  const IconUpload = () => (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><path d="M7 9l5-5 5 5M12 4v12" />
+    </svg>
+  )
+  const IconPencil = () => (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+    </svg>
+  )
 
   if (loading) {
     return (
@@ -253,40 +282,50 @@ function KnowledgeBasePage() {
           )}
         </AnimatePresence>
 
+        {/* Desktop topbar */}
+        <div className="db-topbar">
+          <span className="db-topbar-title">Knowledge Base</span>
+          <div className="db-topbar-right">
+            <button className="kb-update-btn" onClick={repairPrompt} disabled={repairLoading}>
+              <span style={{ fontSize: 13 }}>✦</span>
+              {repairLoading ? 'Updating…' : 'Update AI Prompt'}
+            </button>
+          </div>
+        </div>
+
         {/* Content */}
         <div className="db-content">
           <div className="kb-content-wrap">
 
-            {/* Breadcrumb row */}
-            <div className="kb-topbar-row">
-              <div className="kb-breadcrumb">
-                <Link href={`/dashboard/${tenantId}`} className="kb-breadcrumb-link">Dashboard</Link>
-                <span className="kb-breadcrumb-sep">/</span>
-                <span className="kb-breadcrumb-cur">Knowledge Base</span>
-              </div>
-              <button className="kb-update-btn" onClick={repairPrompt} disabled={repairLoading}>
-                {repairLoading ? 'Updating…' : '✦ Update AI Prompt'}
-              </button>
+            {/* Intro */}
+            <div className="kb-intro">
+              <h2 className="kb-intro-title">What your AI knows</h2>
+              <p className="kb-intro-sub">
+                Everything here trains your AI receptionist for {tenant?.business_name ?? 'your business'}.
+                The more accurate it is, the better your calls.
+              </p>
             </div>
 
             {/* Sources */}
             <div className="kb-card">
               <div className="kb-sources-hdr">
-                <div className="kb-sources-title">
-                  <span className="kb-sources-badge">SOURCES · {entries.length}</span>
-                  <span className="kb-sources-name">
-                    What your AI knows about {tenant?.business_name ?? 'your business'}
-                  </span>
-                </div>
+                <span className="kb-sources-name">Active sources</span>
+                <span className="kb-count-pill">{entries.length} {entries.length === 1 ? 'source' : 'sources'}</span>
               </div>
               {entries.length === 0 ? (
-                <div style={{ padding: '24px 16px', fontSize: 12, color: '#888', textAlign: 'center' }}>
-                  No sources yet — add your website, upload files, or paste text below.
+                <div className="kb-empty">
+                  <div className="kb-empty-icon">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#bbb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                    </svg>
+                  </div>
+                  <div className="kb-empty-title">No sources yet</div>
+                  <div className="kb-empty-sub">Add your website, upload files, or paste text below to get started.</div>
                 </div>
               ) : (
                 entries.map(entry => (
                   <div key={entry.id} className="kb-source-row">
-                    <div className="kb-source-icon">
+                    <div className={`kb-source-icon kb-icon-${entry.type}`}>
                       <SourceIcon type={entry.type} />
                     </div>
                     <div className="kb-source-info">
@@ -294,7 +333,7 @@ function KnowledgeBasePage() {
                       <div className="kb-source-meta">{sourceSubtitle(entry)}</div>
                     </div>
                     <div className="kb-source-actions">
-                      <span className="kb-synced">Synced</span>
+                      <span className="kb-synced"><span className="kb-synced-dot" />Synced</span>
                       {entry.type === 'website' && (
                         <button className="kb-btn-resync" onClick={syncWebsite} disabled={syncLoading}>
                           {syncLoading ? 'Syncing…' : 'Re-sync'}
@@ -304,6 +343,7 @@ function KnowledgeBasePage() {
                         className="kb-btn-remove"
                         onClick={() => deleteEntry(entry.id)}
                         disabled={deletingId === entry.id}
+                        aria-label="Remove source"
                       >
                         {deletingId === entry.id ? '…' : 'Remove'}
                       </button>
@@ -313,12 +353,15 @@ function KnowledgeBasePage() {
               )}
             </div>
 
+            {/* Add knowledge */}
+            <div className="kb-section-label">Add to your knowledge base</div>
+
             {/* Two-column: Sync website + Upload files */}
             <div className="kb-two-col">
 
               {/* Sync website */}
               <div className="kb-card kb-card-pad">
-                <div className="kb-card-title">🌐 Sync website</div>
+                <div className="kb-card-title"><span className="kb-title-icon"><IconGlobe /></span> Sync website</div>
                 <div className="kb-url-row">
                   <input
                     type="url"
@@ -343,7 +386,7 @@ function KnowledgeBasePage() {
 
               {/* Upload files */}
               <div className="kb-card kb-card-pad">
-                <div className="kb-card-title">📎 Upload files</div>
+                <div className="kb-card-title"><span className="kb-title-icon"><IconUpload /></span> Upload files</div>
                 <div
                   className={`kb-dropzone${dragging ? ' drag-over' : ''}`}
                   onDragOver={e => { e.preventDefault(); setDragging(true) }}
@@ -391,7 +434,7 @@ function KnowledgeBasePage() {
             {/* Add text manually */}
             <div className="kb-card kb-card-pad">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                <div className="kb-card-title">✏️ Add text manually</div>
+                <div className="kb-card-title"><span className="kb-title-icon"><IconPencil /></span> Add text manually</div>
                 <MicButton onResult={t => setText(prev => (prev.trim() ? prev.trim() + ' ' : '') + t)} />
               </div>
               <textarea
