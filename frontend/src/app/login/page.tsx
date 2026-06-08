@@ -89,7 +89,7 @@ export default function LoginPage() {
 
         <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-3)' }}>
           Don&apos;t have an account?{' '}
-          <Link href="/onboarding" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+          <Link href="/onboarding" style={{ color: 'var(--accent-text)', textDecoration: 'none' }}>
             Get started
           </Link>
         </div>

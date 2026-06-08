@@ -556,7 +556,7 @@ function SubscriptionPage() {
                 {currentPlan?.label ?? subDetails.plan} Plan
               </span>
               {!isCanceling && subDetails.status === 'active' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent)', letterSpacing: '0.06em' }}>ACTIVE</span>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent-text)', letterSpacing: '0.06em' }}>ACTIVE</span>
               )}
               {isCanceling && (
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>CANCELING</span>
@@ -623,7 +623,7 @@ function SubscriptionPage() {
                   style={{
                     padding: '8px 16px', fontSize: 12, fontWeight: 600,
                     border: '1px solid var(--accent)', borderRadius: 7,
-                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    background: 'var(--accent-dim)', color: 'var(--accent-text)',
                     cursor: reactivating ? 'default' : 'pointer',
                     opacity: reactivating ? 0.65 : 1,
                   }}
@@ -668,7 +668,7 @@ function SubscriptionPage() {
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Upgrade to {upgradePayment.plan.label}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-text)' }}>
                     {upgradePayment.plan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
                   </span>
                 </div>
@@ -728,7 +728,7 @@ function SubscriptionPage() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
                     {payingPlan.label} Plan
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-text)' }}>
                     {billingInterval === 'year' ? payingPlan.priceYear : payingPlan.price}
                     <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>{billingInterval === 'year' ? '/yr' : '/mo'}</span>
                   </span>
@@ -806,7 +806,7 @@ function SubscriptionPage() {
                     <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>{plan.minutes}</div>
                     {plan.features.map(f => (
                       <div key={f} style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: 'var(--accent)', fontSize: 10 }}>✓</span> {f}
+                        <span style={{ color: 'var(--accent-text)', fontSize: 10 }}>✓</span> {f}
                       </div>
                     ))}
                   </button>

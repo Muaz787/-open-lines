@@ -374,7 +374,7 @@ export default function Home() {
                   'Sends you a WhatsApp summary after every call',
                 ].map(f => (
                   <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--text-2)' }}>
-                    <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 15 }}>✓</span>
+                    <span style={{ color: 'var(--accent-text)', fontWeight: 700, fontSize: 15 }}>✓</span>
                     {f}
                   </div>
                 ))}
@@ -409,7 +409,7 @@ export default function Home() {
 
               <button className="call-btn" onClick={runDemo} disabled={callRunning}>
                 {callStatus === 'ended' ? (
-                  <span style={{ color: 'var(--accent)' }}>✓ Appointment booked · Summary sent to WhatsApp</span>
+                  <span style={{ color: 'var(--accent-text)' }}>✓ Appointment booked · Summary sent to WhatsApp</span>
                 ) : (
                   <>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -538,7 +538,7 @@ export default function Home() {
                 <div className="stat"><div className="stat-n">24/7</div><div className="stat-l">Always available</div></div>
                 <div className="stat"><div className="stat-n">&lt;1s</div><div className="stat-l">Answer latency</div></div>
                 <div className="stat"><div className="stat-n">0</div><div className="stat-l">Missed calls</div></div>
-                <div className="stat"><div className="stat-n" style={{ color: 'var(--accent)', fontSize: 18 }}>●</div><div className="stat-l">Live right now</div></div>
+                <div className="stat"><div className="stat-n" style={{ color: 'var(--accent-text)', fontSize: 18 }}>●</div><div className="stat-l">Live right now</div></div>
               </div>
             </div>
           </div>

@@ -53,7 +53,7 @@ export default function TermsOfService() {
 
         <Section title="1. Agreement to these terms">
           <P>By accessing or using Open Lines (the &quot;Service&quot;), you agree to be bound by these Terms of Service (&quot;Terms&quot;). If you are using the Service on behalf of a business, you represent that you have the authority to bind that business to these Terms. If you do not agree, do not use the Service.</P>
-          <P>Open Lines is operated by Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;). Contact: <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P>Open Lines is operated by Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;). Contact: <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
         <Section title="2. Description of the service">
@@ -69,7 +69,7 @@ export default function TermsOfService() {
         </Section>
 
         <Section title="3. Account registration and onboarding">
-          <P>To use the Service, you must complete the onboarding process and provide accurate business information. You are responsible for maintaining the confidentiality of any credentials associated with your account and for all activity that occurs under it. Notify us immediately at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a> if you suspect unauthorised access.</P>
+          <P>To use the Service, you must complete the onboarding process and provide accurate business information. You are responsible for maintaining the confidentiality of any credentials associated with your account and for all activity that occurs under it. Notify us immediately at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a> if you suspect unauthorised access.</P>
           <P>We reserve the right to suspend or terminate accounts that provide false information or violate these Terms.</P>
         </Section>
 
@@ -106,7 +106,7 @@ export default function TermsOfService() {
         </Section>
 
         <Section title="9. Payment and cancellation">
-          <P>Pricing and billing terms are agreed at the time of subscription. You may cancel your account at any time by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>. Upon cancellation, your AI agent and phone number will be deprovisioned. We do not offer prorated refunds for partial billing periods unless required by law.</P>
+          <P>Pricing and billing terms are agreed at the time of subscription. You may cancel your account at any time by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. Upon cancellation, your AI agent and phone number will be deprovisioned. We do not offer prorated refunds for partial billing periods unless required by law.</P>
         </Section>
 
         <Section title="10. Disclaimer of warranties">
@@ -129,7 +129,7 @@ export default function TermsOfService() {
           <P>For questions about these Terms:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
             <strong>Open Lines Technologies Inc.</strong><br />
-            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>
+            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>
 

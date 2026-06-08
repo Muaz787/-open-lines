@@ -393,7 +393,7 @@ export function UpgradePaymentForm({
   return (
     <div className="pay-wrap">
       <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--accent-dim)', borderRadius: 8, border: '1px solid var(--accent)', fontSize: 13 }}>
-        <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{fmtAmount}</span>
+        <span style={{ fontWeight: 700, color: 'var(--accent-text)' }}>{fmtAmount}</span>
         <span style={{ color: 'var(--text-2)', marginLeft: 6 }}>charged today — prorated upgrade to {planLabel}</span>
       </div>
       <Elements

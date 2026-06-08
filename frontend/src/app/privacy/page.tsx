@@ -53,7 +53,7 @@ export default function PrivacyPolicy() {
 
         <Section title="1. Who we are">
           <P>Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides an AI-powered voice receptionist platform that answers phone calls, captures lead information, and books appointments on behalf of businesses (&quot;tenants&quot;). This policy explains how we collect, use, and protect personal data when you interact with our platform — whether as a business that signs up to use Open Lines, or as a caller who speaks with an Open Lines AI agent.</P>
-          <P>Questions or requests regarding this policy can be sent to <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P>Questions or requests regarding this policy can be sent to <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
         <Section title="2. Data we collect">
@@ -87,7 +87,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="4. Google Calendar API">
-          <P>Open Lines integrates with the Google Calendar API to check a tenant&apos;s availability and create, modify, or delete calendar events on their behalf. Our use of Google Calendar data complies with the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>Google API Services User Data Policy</a>, including the Limited Use requirements.</P>
+          <P>Open Lines integrates with the Google Calendar API to check a tenant&apos;s availability and create, modify, or delete calendar events on their behalf. Our use of Google Calendar data complies with the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Google API Services User Data Policy</a>, including the Limited Use requirements.</P>
           <P>Specifically:</P>
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Li>We access Google Calendar data only to perform booking operations requested by the tenant.</Li>
@@ -111,7 +111,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="6. Data retention">
-          <P>Call transcripts and lead records are retained for as long as the business account is active. Tenants can request deletion of their data and associated caller records at any time by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P>Call transcripts and lead records are retained for as long as the business account is active. Tenants can request deletion of their data and associated caller records at any time by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
           <P>When a tenant disconnects Google Calendar, the OAuth refresh token is deleted from our database immediately.</P>
         </Section>
 
@@ -120,7 +120,7 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="8. Your rights">
-          <P>Depending on where you are located, you may have the right to access, correct, or delete personal data we hold about you. To exercise any of these rights, contact us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a> and we will respond within 30 days.</P>
+          <P>Depending on where you are located, you may have the right to access, correct, or delete personal data we hold about you. To exercise any of these rights, contact us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a> and we will respond within 30 days.</P>
         </Section>
 
         <Section title="9. Changes to this policy">
@@ -131,7 +131,7 @@ export default function PrivacyPolicy() {
           <P>For any privacy-related questions or requests:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
             <strong>Open Lines Technologies Inc.</strong><br />
-            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent)' }}>{CONTACT_EMAIL}</a>
+            <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>
 
