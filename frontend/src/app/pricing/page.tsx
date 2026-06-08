@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import PricingCards from './PricingCards'
 
 export const metadata: Metadata = {
   title: 'Pricing — Open Lines AI',
@@ -16,82 +17,6 @@ const LogoMark = () => (
   </svg>
 )
 
-const Check = () => (
-  <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-    <circle cx="7.5" cy="7.5" r="7.5" fill="var(--accent-dim)"/>
-    <path d="M4.5 7.5L6.5 9.5L10.5 5.5" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-)
-
-const PLANS = [
-  {
-    name: 'Starter',
-    price: 99,
-    priceYear: 990,
-    saveYear: 198,
-    minutes: 150,
-    overage: '0.69',
-    popular: false,
-    accent: 'var(--border-2)',
-    features: [
-      '150 minutes / month',
-      '1 dedicated AI phone line',
-      '24/7 call answering',
-      'Lead capture & qualification',
-      'Call transcripts & summaries',
-      'WhatsApp & SMS notifications',
-      'Caller recognition',
-      'Dashboard & analytics',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-  {
-    name: 'Pro',
-    price: 199,
-    priceYear: 1990,
-    saveYear: 398,
-    minutes: 400,
-    overage: '0.69',
-    popular: true,
-    accent: 'var(--accent)',
-    features: [
-      '400 minutes / month',
-      '1 dedicated AI phone line',
-      'Everything in Starter',
-      'Live calendar booking',
-      'Google Calendar integration',
-      'AI call insights',
-      'Knowledge base management',
-      'Appointment SMS confirmations',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-  {
-    name: 'Business',
-    price: 379,
-    priceYear: 3790,
-    saveYear: 758,
-    minutes: 900,
-    overage: '0.69',
-    popular: false,
-    accent: '#3B7EF6',
-    features: [
-      '900 minutes / month',
-      '1 dedicated AI phone line',
-      'Everything in Pro',
-      'Custom AI personality & name',
-      'Priority support',
-      'Early access to new features',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-]
 
 const ALL_INCLUDED = [
   { icon: '📞', label: 'Answers every call, 24/7', sub: 'No voicemail, no missed leads' },
@@ -165,105 +90,7 @@ export default function PricingPage() {
       </div>
 
       {/* ── Pricing cards ── */}
-      <div className="pricing-cards-wrap">
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 20,
-          alignItems: 'start',
-        }}>
-          {PLANS.map(plan => (
-            <div
-              key={plan.name}
-              className={plan.popular ? 'plan-popular-card' : undefined}
-              style={{
-                background: 'var(--bg-2)',
-                border: plan.popular ? `2px solid var(--accent)` : '1px solid var(--border-2)',
-                borderRadius: 16,
-                overflow: 'hidden',
-                position: 'relative',
-                transform: plan.popular ? 'translateY(-8px)' : 'none',
-                boxShadow: plan.popular ? '0 20px 60px rgba(52,199,89,0.12)' : 'var(--shadow)',
-              }}
-            >
-              {/* Top accent bar */}
-              <div style={{ height: 3, background: plan.accent }} />
-
-              {/* Popular badge */}
-              {plan.popular && (
-                <div style={{
-                  position: 'absolute', top: 18, right: 18,
-                  background: 'var(--accent)', color: 'var(--bg)',
-                  fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', padding: '3px 10px', borderRadius: 20,
-                }}>
-                  Most Popular
-                </div>
-              )}
-
-              <div style={{ padding: '28px 28px 32px' }}>
-                {/* Plan name */}
-                <div style={{
-                  fontSize: 13, fontWeight: 700, letterSpacing: '0.06em',
-                  textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 16,
-                }}>
-                  {plan.name}
-                </div>
-
-                {/* Price */}
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, marginBottom: 4 }}>
-                  <span style={{
-                    fontSize: 40, fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1,
-                    color: 'var(--text)', fontFamily: 'var(--font-syne), sans-serif',
-                  }}>
-                    ${plan.price}
-                  </span>
-                  <span style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 8 }}>/mo</span>
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600, marginBottom: 6 }}>
-                  or ${plan.priceYear.toLocaleString()}/yr — save ${plan.saveYear} (2 months free)
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 28 }}>
-                  {plan.minutes} minutes included · {plan.note}
-                </div>
-
-                {/* CTA */}
-                <Link href={plan.ctaHref} style={{ display: 'block', textDecoration: 'none' }}>
-                  <button style={{
-                    width: '100%', padding: '13px',
-                    background: plan.popular ? 'var(--accent)' : 'var(--text)',
-                    color: 'var(--bg)',
-                    border: 'none', borderRadius: 9,
-                    fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                    letterSpacing: '-0.01em',
-                    transition: 'opacity 0.2s, transform 0.2s',
-                  }}>
-                    {plan.cta} →
-                  </button>
-                </Link>
-
-                {/* Divider */}
-                <div style={{ height: 1, background: 'var(--border)', margin: '28px 0' }} />
-
-                {/* Features */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {plan.features.map(f => (
-                    <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <Check />
-                      <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.4 }}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Overage note */}
-        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-3)', marginTop: 28 }}>
-          Overage minutes are billed at your plan rate. Calls are never cut off mid-conversation.
-        </p>
-      </div>
+      <PricingCards />
 
       {/* ── What's always included ── */}
       <div style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>

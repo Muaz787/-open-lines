@@ -655,6 +655,93 @@ footer {
 /* ── Pricing page ── */
 .pricing-hero { padding: 120px 40px 72px; text-align: center; }
 .pricing-cards-wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px 80px; }
+
+/* ── Pricing plan cards with per-card monthly/annual toggle ── */
+.pp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.pp-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+.pp-card.pp-popular {
+  border: 2px solid var(--accent);
+  transform: translateY(-8px);
+  box-shadow: 0 20px 60px rgba(52, 199, 89, 0.12);
+}
+.pp-accent { height: 3px; }
+.pp-badge {
+  position: absolute; top: 16px; right: 16px;
+  background: var(--accent); color: var(--bg);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 3px 10px; border-radius: 20px;
+}
+.pp-body { padding: 26px 26px 30px; }
+
+.pp-name-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.pp-name {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-3);
+}
+
+/* The per-card toggle */
+.pp-toggle {
+  display: inline-flex; padding: 2px;
+  background: var(--bg); border: 1px solid var(--border-2);
+  border-radius: 999px;
+}
+.pp-toggle button {
+  border: none; background: transparent; cursor: pointer;
+  font-family: var(--font-dm), sans-serif;
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  padding: 5px 12px; border-radius: 999px;
+  transition: background 0.18s, color 0.18s;
+}
+.pp-toggle button.on {
+  background: var(--accent); color: var(--bg);
+}
+
+.pp-price { display: flex; align-items: flex-end; gap: 4px; margin-bottom: 5px; }
+.pp-price-num {
+  font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+  color: var(--text); font-family: var(--font-syne), sans-serif;
+}
+.pp-price-unit { font-size: 14px; color: var(--text-3); margin-bottom: 7px; }
+.pp-price-sub { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.pp-save { color: var(--accent); font-weight: 600; }
+.pp-minutes { font-size: 12px; color: var(--text-3); margin-bottom: 26px; }
+
+.pp-cta {
+  width: 100%; padding: 13px;
+  background: var(--text); color: var(--bg);
+  border: none; border-radius: 9px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  letter-spacing: -0.01em; font-family: var(--font-dm), sans-serif;
+  transition: opacity 0.2s;
+}
+.pp-cta:hover { opacity: 0.88; }
+.pp-cta-popular { background: var(--accent); }
+
+.pp-divider { height: 1px; background: var(--border); margin: 26px 0; }
+.pp-features { display: flex; flex-direction: column; gap: 12px; }
+.pp-feat { display: flex; align-items: flex-start; gap: 10px; }
+.pp-feat span { font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.pp-overage-note { text-align: center; font-size: 12px; color: var(--text-3); margin-top: 28px; }
+
+@media (max-width: 900px) {
+  .pp-grid { grid-template-columns: 1fr; max-width: 440px; margin: 0 auto; }
+  .pp-card.pp-popular { transform: none; }
+}
 .pricing-inner { max-width: 1080px; margin: 0 auto; padding: 80px 40px; }
 .pricing-faq-inner { max-width: 720px; margin: 0 auto; padding: 80px 40px; }
 .pricing-cta-inner { max-width: 640px; margin: 0 auto; padding: 80px 40px; text-align: center; }
