@@ -123,13 +123,11 @@ export default function PricingCards() {
                   <span className="pp-price-unit">/mo</span>
                 </div>
 
-                <div className="pp-price-sub">
-                  {annual ? (
-                    <>${plan.priceYear.toLocaleString()} billed yearly · <span className="pp-save">2 months free</span></>
-                  ) : (
-                    <>or ${plan.priceYear.toLocaleString()}/yr · <span className="pp-save">save ${plan.saveYear}</span></>
-                  )}
-                </div>
+                {annual && (
+                  <div className="pp-price-sub">
+                    ${plan.priceYear.toLocaleString()} billed yearly · <span className="pp-save">2 months free</span>
+                  </div>
+                )}
 
                 <div className="pp-minutes">{plan.minutes} minutes included · {plan.note}</div>
 
