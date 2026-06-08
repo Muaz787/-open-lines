@@ -667,7 +667,6 @@ footer {
   background: var(--bg-2);
   border: 1px solid var(--border-2);
   border-radius: 16px;
-  overflow: hidden;
   position: relative;
   box-shadow: var(--shadow);
 }
@@ -676,12 +675,14 @@ footer {
   transform: translateY(-8px);
   box-shadow: 0 20px 60px rgba(52, 199, 89, 0.12);
 }
-.pp-accent { height: 3px; }
+.pp-accent { height: 3px; border-radius: 16px 16px 0 0; }
+/* Floating ribbon centered on the card's top edge — clear of the toggle */
 .pp-badge {
-  position: absolute; top: 16px; right: 16px;
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
   background: var(--accent); color: var(--bg);
-  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; padding: 3px 10px; border-radius: 20px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; white-space: nowrap;
+  text-transform: uppercase; padding: 4px 12px; border-radius: 20px;
+  box-shadow: 0 4px 12px rgba(52, 199, 89, 0.28);
 }
 .pp-body { padding: 26px 26px 30px; }
 
