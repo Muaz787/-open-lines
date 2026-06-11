@@ -189,6 +189,20 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
+    # Email notification (non-fatal)
+    notification_email = tenant.get("notification_email", "")
+    if notification_email and tenant.get("email_notifications", False):
+        try:
+            from services.email import send_call_summary_email
+            await send_call_summary_email(
+                to=notification_email,
+                business_name=business_name,
+                analysis=analysis,
+                caller_number=caller_number,
+            )
+        except Exception as e:
+            logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
+
     # Record minutes for metered overage billing — cast to int (Vapi sends floats)
     if duration is not None and duration > 0:
         try:

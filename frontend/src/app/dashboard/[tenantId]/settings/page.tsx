@@ -23,11 +23,14 @@ function SettingsPage() {
 
   const [tenant, setTenant]               = useState<Tenant | null>(null)
 
-  const [whatsapp, setWhatsapp]           = useState('')
-  const [whatsappState, setWhatsappState] = useState<SaveState>('idle')
-  const [email, setEmail]                 = useState('')
-  const [emailState, setEmailState]       = useState<SaveState>('idle')
-  const [emailMsg, setEmailMsg]           = useState('')
+  const [whatsapp, setWhatsapp]                   = useState('')
+  const [whatsappState, setWhatsappState]         = useState<SaveState>('idle')
+  const [notifEmail, setNotifEmail]               = useState('')
+  const [emailNotifs, setEmailNotifs]             = useState(false)
+  const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
+  const [email, setEmail]                         = useState('')
+  const [emailState, setEmailState]               = useState<SaveState>('idle')
+  const [emailMsg, setEmailMsg]                   = useState('')
   const [currentPw, setCurrentPw]         = useState('')
   const [newPw, setNewPw]                 = useState('')
   const [confirmPw, setConfirmPw]         = useState('')
@@ -43,7 +46,9 @@ function SettingsPage() {
       if (tRes.ok) {
         const d = await tRes.json()
         setTenant(d)
-        if (d?.whatsapp_number) setWhatsapp(d.whatsapp_number)
+        if (d?.whatsapp_number)    setWhatsapp(d.whatsapp_number)
+        if (d?.notification_email) setNotifEmail(d.notification_email)
+        if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
       }
     })
   }, [tenantId, router])
@@ -61,6 +66,22 @@ function SettingsPage() {
     } catch {
       setWhatsappState('error')
       setTimeout(() => setWhatsappState('idle'), 3000)
+    }
+  }
+
+  const saveNotifEmail = async () => {
+    setNotifEmailState('saving')
+    try {
+      const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs }),
+      })
+      setNotifEmailState(res.ok ? 'saved' : 'error')
+      setTimeout(() => setNotifEmailState('idle'), 3000)
+    } catch {
+      setNotifEmailState('error')
+      setTimeout(() => setNotifEmailState('idle'), 3000)
     }
   }
 
@@ -146,6 +167,50 @@ function SettingsPage() {
                 </button>
                 {whatsappState === 'saved' && <span style={{ fontSize: 12, color: '#34C759' }}>✓ Saved</span>}
                 {whatsappState === 'error' && <span style={{ fontSize: 12, color: '#FF3B30' }}>Save failed — try again</span>}
+              </div>
+            </div>
+
+            {/* ── Email notifications ── */}
+            <div style={{ border: '1px solid #e8e6e0', borderRadius: 10, background: '#fff', overflow: 'hidden', marginBottom: 24 }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid #f0ede8' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
+                    Email call summaries
+                  </label>
+                  {/* Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setEmailNotifs(v => !v)}
+                    style={{
+                      width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                      background: emailNotifs ? '#3dba72' : '#d1d5db',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                    aria-pressed={emailNotifs}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 3, left: emailNotifs ? 21 : 3,
+                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s', display: 'block',
+                    }} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12, lineHeight: 1.5 }}>
+                  Receive a call summary by email after every call. Can be a different address from your login email.
+                </div>
+                <input
+                  type="email" value={notifEmail} onChange={e => setNotifEmail(e.target.value)}
+                  placeholder="you@example.com" style={{ ...inputStyle, opacity: emailNotifs ? 1 : 0.5 }}
+                  disabled={!emailNotifs}
+                />
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={saveNotifEmail} disabled={notifEmailState === 'saving' || (emailNotifs && !notifEmail.trim())}
+                  style={btnStyle(notifEmailState === 'saving' || (emailNotifs && !notifEmail.trim()))}>
+                  {notifEmailState === 'saving' ? 'Saving…' : 'Save'}
+                </button>
+                {notifEmailState === 'saved' && <span style={{ fontSize: 12, color: '#3dba72' }}>✓ Saved</span>}
+                {notifEmailState === 'error'  && <span style={{ fontSize: 12, color: '#FF3B30' }}>Save failed — try again</span>}
               </div>
             </div>
 
