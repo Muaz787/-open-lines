@@ -14,7 +14,7 @@ _AUTH_URL    = "https://accounts.google.com/o/oauth2/v2/auth"
 _TOKEN_URL   = "https://oauth2.googleapis.com/token"
 _CAL_BASE    = "https://www.googleapis.com/calendar/v3"
 _SCOPES      = "https://www.googleapis.com/auth/calendar.events"
-_SLOT_STEP   = 30  # minutes between candidate slots
+_SLOT_STEP   = 15  # minutes between candidate slots
 
 
 class CalendarTokenExpiredError(Exception):

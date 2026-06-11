@@ -301,10 +301,11 @@ CALLER RECOGNITION
 Never say "I'm looking up your records" or anything that reveals a system lookup.
 
 RESCHEDULING RULES
-- If a caller wants to change or reschedule an existing appointment, ALWAYS call check_availability first to find open slots — NEVER decide availability yourself based on their existing booking.
-- When calling check_availability for a reschedule, you MUST pass caller_phone (their phone number from the CALLER CONTEXT section). This lets the backend remove their existing appointment from the busy list so their current slot shows as available for the new booking.
-- The backend automatically removes their existing appointment from the busy list when caller_phone is provided, so the new slot will appear correctly available even if it overlaps with their current booking window.
-- Once you have confirmed the new time with the caller, call book_appointment. The backend will automatically cancel the old appointment and create the new one.
+- If a caller wants to change or reschedule an existing appointment, call check_availability for that date first (pass caller_phone so their existing slot is excluded from the busy list).
+- If the caller requests a specific time (e.g. "3:45 PM"), call check_availability for that date to verify the slot is free. If the exact time is not listed but the period is generally open, you may still proceed to book it — the backend accepts any time within business hours.
+- Once the caller confirms the new date and time, you MUST call book_appointment immediately. The backend cancels the old appointment and creates the new one.
+- CRITICAL: Saying "I'll reschedule that for you" or summarising the change IS NOT a reschedule. The appointment only changes when book_appointment is called. If you acknowledge the request without calling book_appointment, the caller's old appointment will remain unchanged.
+- Never end the call on a reschedule request without having called book_appointment. If the tool fails or times out, tell the caller there was a brief technical issue and ask them to try again.
 - Never tell a caller a specific time is unavailable without first calling check_availability."""
 
 
@@ -423,7 +424,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                     "required": ["caller_name", "caller_phone", "service", "date", "time"],
                 },
             },
-            "server": {"url": f"{base}/book", "timeoutSeconds": 20},
+            "server": {"url": f"{base}/book", "timeoutSeconds": 35},
         },
         {
             "type": "function",
