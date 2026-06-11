@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { trackEvent, getUtmParams } from '@/lib/analytics'
 
 const PLANS = [
   {
@@ -80,6 +81,14 @@ const Check = () => (
 type Interval = 'month' | 'year'
 
 export default function PricingCards() {
+  useEffect(() => {
+    trackEvent('pricing_page_viewed', {
+      page_path: window.location.pathname,
+      referrer: document.referrer || '$direct',
+      ...getUtmParams(),
+    })
+  }, [])
+
   // Each card tracks its own monthly/annual choice
   const [intervals, setIntervals] = useState<Record<string, Interval>>({})
   const iv = (name: string): Interval => intervals[name] ?? 'month'
@@ -131,7 +140,15 @@ export default function PricingCards() {
 
                 <div className="pp-minutes">{plan.minutes} minutes included · {plan.note}</div>
 
-                <Link href={plan.ctaHref} style={{ display: 'block', textDecoration: 'none' }}>
+                <Link
+                  href={plan.ctaHref}
+                  style={{ display: 'block', textDecoration: 'none' }}
+                  onClick={() => trackEvent('get_started_clicked', {
+                    location: 'pricing',
+                    plan: plan.name.toLowerCase(),
+                    interval: iv(plan.name),
+                  })}
+                >
                   <button className={`pp-cta${plan.popular ? ' pp-cta-popular' : ''}`}>
                     {plan.cta} →
                   </button>

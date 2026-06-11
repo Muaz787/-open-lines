@@ -5,6 +5,7 @@ import { useParams, useRouter, usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
+import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -42,8 +43,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (!data.user) { router.replace('/login'); return }
       setUserEmail(data.user.email ?? '')
       setUserName(data.user.user_metadata?.full_name ?? '')
+      // Idempotent re-identify keeps returning sessions tied to the person
+      identifyUser(data.user.id, {
+        email: data.user.email,
+        tenant_id: data.user.user_metadata?.tenant_id,
+      })
     })
   }, [router])
+
+  useEffect(() => {
+    trackEvent('dashboard_viewed', { tenant_id: tenantId })
+  }, [tenantId])
 
   useEffect(() => {
     Promise.all([
@@ -62,6 +72,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    // Reset so the next user on this device gets a fresh analytics identity
+    resetAnalytics()
     router.replace('/login')
   }
 

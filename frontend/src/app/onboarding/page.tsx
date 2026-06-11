@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import MicButton from '@/app/components/MicButton'
+import { trackEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -125,6 +126,12 @@ export default function OnboardingPage() {
   }, [])
 
   useEffect(() => {
+    const ft = getFirstTouch()
+    trackEvent('signup_started', ft)
+    trackEvent('onboarding_started', ft)
+  }, [])
+
+  useEffect(() => {
     if (!submitting) return
     const totalSteps = files.length > 0 ? STEPS.length : STEPS.length - 1
     const interval = setInterval(() => {
@@ -179,6 +186,12 @@ export default function OnboardingPage() {
     setSubmitting(true)
     setStepIndex(0)
 
+    trackEvent('onboarding_step_completed', { step_number: 2, step_name: 'knowledge_contact' })
+    // PRIVACY: only the *presence* of instructions is tracked — never the text
+    if (form.extra_instructions.trim()) {
+      trackEvent('instructions_added', { length: form.extra_instructions.trim().length })
+    }
+
     const dialCode = COUNTRIES.find(c => c.code === form.wa_country)?.dial ?? '+1'
     const localNum = form.wa_local.replace(/\D/g, '')
     const whatsapp = localNum ? `${dialCode}${localNum}` : ''
@@ -211,7 +224,16 @@ export default function OnboardingPage() {
 
       // Sign in immediately so the dashboard session is established
       if (form.email && form.password) {
-        await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
+        const { data: signInData } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
+        if (signInData?.user) {
+          identifyUser(signInData.user.id, {
+            email: form.email,
+            tenant_id: provisioned.tenant_id,
+            business_name: form.business_name,
+            industry: form.industry,
+            ...getFirstTouch(),
+          })
+        }
       }
 
       // Upload documents if any (non-fatal)
@@ -224,9 +246,12 @@ export default function OnboardingPage() {
             method: 'POST',
             body: fd,
           })
+          // PRIVACY: only the file count is tracked — never names or contents
+          trackEvent('knowledge_base_uploaded', { file_count: files.length, source: 'onboarding' })
         } catch {}
       }
 
+      trackEvent('onboarding_completed', { tenant_id: provisioned.tenant_id, ...getFirstTouch() })
       setResult(provisioned)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
@@ -406,7 +431,11 @@ export default function OnboardingPage() {
                       form.password.length < 8 ||
                       (form.industry === 'custom' && !form.business_description.trim())
                     }
-                    onClick={() => setStep(2)}
+                    onClick={() => {
+                      trackEvent('onboarding_step_completed', { step_number: 1, step_name: 'basics', industry: form.industry })
+                      trackEvent('business_profile_completed', { industry: form.industry })
+                      setStep(2)
+                    }}
                   >
                     Next →
                   </button>

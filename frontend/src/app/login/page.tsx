@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { trackEvent, identifyUser } from '@/lib/analytics'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -31,6 +32,10 @@ export default function LoginPage() {
       if (authError) throw authError
       const tenantId = data.user?.user_metadata?.tenant_id
       if (!tenantId) throw new Error('No dashboard found for this account.')
+      if (data.user) {
+        identifyUser(data.user.id, { email: data.user.email, tenant_id: tenantId })
+        trackEvent('login_completed')
+      }
       router.replace(`/dashboard/${tenantId}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.')

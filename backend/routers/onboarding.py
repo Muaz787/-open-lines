@@ -5,7 +5,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
-from services import provisioning, vapi
+from services import analytics, provisioning, vapi
 from services.ratelimit import limiter
 
 logger = logging.getLogger(__name__)
@@ -62,13 +62,27 @@ async def provision(request: Request, body: ProvisionRequest):
         result = await provisioning.provision_tenant(provision_data)
         logger.info("Provisioned tenant %s (%s)", result.get("tenant_id"), body.business_name)
 
+        distinct_id = result.get("tenant_id", "")
         if body.email and body.password:
             try:
                 user_id = await db.create_auth_user(body.email, body.password, result["tenant_id"])
                 await db.update_tenant(result["tenant_id"], {"user_id": user_id, "email": body.email})
                 logger.info("Created auth user for tenant %s", result["tenant_id"])
+                distinct_id = user_id
             except Exception as e:
                 logger.error("Auth user creation failed for tenant %s: %s", result.get("tenant_id"), e)
+
+        # PRIVACY: business metadata only — no phone numbers, no credentials
+        common = {
+            "tenant_id": result.get("tenant_id"),
+            "business_name": body.business_name,
+            "industry": body.industry,
+            "country": body.country,
+        }
+        analytics.capture(distinct_id, "tenant_created", common)
+        analytics.capture(distinct_id, "phone_number_provisioned", {"tenant_id": result.get("tenant_id")})
+        if body.email:
+            analytics.capture(distinct_id, "signup_completed", common)
 
         return result
     except HTTPException:

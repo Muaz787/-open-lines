@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 import httpx
-from services import vapi
+from services import analytics, vapi
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -136,6 +136,12 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
             # Non-fatal: calendar is connected, tools just aren't live yet
 
     logger.info("Google Calendar connected for tenant %s", tenant_id)
+    # Source of truth for calendar_connected — frontend does NOT fire this
+    analytics.capture(
+        analytics.distinct_id_for(tenant, tenant_id),
+        "calendar_connected",
+        {"tenant_id": tenant_id},
+    )
     return RedirectResponse(f"{cal_page}?calendar=connected")
 
 

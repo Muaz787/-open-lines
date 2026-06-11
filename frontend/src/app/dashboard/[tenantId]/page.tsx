@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { PaymentForm } from './PaymentForm'
+import { trackEvent } from '@/lib/analytics'
 import { timeAgo, formatCallDate, formatApptDate, formatDuration, initials, capitalize } from './lib/format'
 import { urgBadgeClass } from './lib/badges'
 import { TranscriptLines } from './components/TranscriptLines'
@@ -694,6 +695,7 @@ function DashboardPage() {
                       <a
                         href={`${API}/calendar/connect/${tenantId}`}
                         className="db-btn db-btn--dark"
+                        onClick={() => trackEvent('calendar_connect_started', { location: 'dashboard', tenant_id: tenantId })}
                       >
                         Connect Calendar
                       </a>

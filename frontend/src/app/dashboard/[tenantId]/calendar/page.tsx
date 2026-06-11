@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import MicButton from '@/app/components/MicButton'
+import { trackEvent } from '@/lib/analytics'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
@@ -206,6 +207,7 @@ function CalendarPage() {
               <a
                 href={`${API}/calendar/connect/${tenantId}`}
                 className="db-btn db-btn--dark"
+                onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', tenant_id: tenantId })}
               >
                 Connect Google Calendar
               </a>

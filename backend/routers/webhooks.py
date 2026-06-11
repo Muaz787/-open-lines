@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 
 from db import supabase as db
-from services import knowledge, vapi as vapi_svc
+from services import analytics, knowledge, vapi as vapi_svc
 from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools
 from routers.calendar import _CALENDAR_NOTE
 
@@ -277,6 +277,17 @@ async def _handle_assistant_request(msg: dict) -> dict:
         "assistant-request: tenant %s caller %s → %s (phone_found=%s)",
         tenant_id, caller_phone or "unknown", "returning" if caller_context else "new",
         bool(caller_phone),
+    )
+
+    # PRIVACY: caller phone number intentionally excluded — only caller type
+    analytics.capture(
+        analytics.distinct_id_for(tenant, tenant_id),
+        "call_received",
+        {
+            "tenant_id": tenant_id,
+            "caller_type": "returning" if caller_context else "new",
+            "has_calendar": has_calendar,
+        },
     )
 
     overrides: dict = {

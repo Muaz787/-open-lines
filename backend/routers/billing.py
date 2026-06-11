@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from dotenv import load_dotenv
 
 from db import supabase as db
+from services import analytics
 
 load_dotenv()
 
@@ -214,6 +215,16 @@ async def stripe_webhook(request: Request):
             logger.error("DB update failed for tenant %s: %s", tenant_id, e)
             raise HTTPException(status_code=500, detail=f"DB update failed: {e}")
 
+        try:
+            _t = await db.get_tenant_by_id(tenant_id)
+        except Exception:
+            _t = None
+        analytics.capture(
+            analytics.distinct_id_for(_t, tenant_id),
+            "subscription_started",
+            {"tenant_id": tenant_id, "plan": plan},
+        )
+
         # Add the overage meter item if checkout created the subscription without it
         if sub_id and STRIPE_OVERAGE_PRICE_ID:
             try:
@@ -265,6 +276,12 @@ async def stripe_webhook(request: Request):
 
                 await db.update_tenant(tenant["id"], updates)
                 logger.info("Subscription status updated to %s for customer %s sub %s", our_status, customer_id, sub_id)
+                if our_status == "past_due":
+                    analytics.capture(
+                        analytics.distinct_id_for(tenant),
+                        "payment_failed",
+                        {"tenant_id": tenant["id"], "status": our_status},
+                    )
             elif tenant:
                 logger.info("Ignoring subscription.updated for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
         except Exception as e:
@@ -283,6 +300,11 @@ async def stripe_webhook(request: Request):
                     "subscription_plan":   None,
                 })
                 logger.info("Subscription canceled for customer %s sub %s", customer_id, sub_id)
+                analytics.capture(
+                    analytics.distinct_id_for(tenant),
+                    "subscription_canceled",
+                    {"tenant_id": tenant["id"]},
+                )
             elif tenant:
                 logger.info("Ignoring subscription.deleted for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
         except Exception as e:

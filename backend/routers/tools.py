@@ -12,6 +12,7 @@ from datetime import date as date_type, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
+from services import analytics
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import telephony
@@ -205,6 +206,12 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     refresh_token = tenant.get("google_refresh_token")
     if not refresh_token:
         return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    analytics.capture(
+        analytics.distinct_id_for(tenant, tenant_id),
+        "appointment_booking_started",
+        {"tenant_id": tenant_id},
+    )
 
     duration_minutes     = tenant.get("appointment_duration_minutes") or 60
     timezone             = tenant.get("calendar_timezone") or "America/Toronto"
@@ -434,6 +441,11 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             "Booked appointment for tenant %s: %s on %s at %s (event %s)",
             tenant_id, service, date_str, time_str, event.get("id"),
         )
+        analytics.capture(
+            analytics.distinct_id_for(tenant, tenant_id),
+            "calendar_event_created",
+            {"tenant_id": tenant_id},
+        )
     except CalendarTokenExpiredError:
         logger.error("tools/book: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
         try:
@@ -461,6 +473,17 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             await db.update_appointment(existing_appt["id"], appt_data)
         else:
             await db.insert_appointment(appt_data)
+        # PRIVACY: no caller name/phone/datetime — service type + duration only
+        analytics.capture(
+            analytics.distinct_id_for(tenant, tenant_id),
+            "appointment_booked",
+            {
+                "tenant_id": tenant_id,
+                "service": service,
+                "duration_minutes": duration_minutes,
+                "is_reschedule": bool(existing_appt),
+            },
+        )
     except Exception as e:
         logger.error("tools/book: failed to save appointment for tenant %s: %s", tenant_id, e)
         # Don't fail the whole response — event was created in Google, just log the DB miss
@@ -489,6 +512,11 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 body=sms_body,
             )
             logger.info("Appointment SMS sent to %s for tenant %s", caller_phone, tenant_id)
+            analytics.capture(
+                analytics.distinct_id_for(tenant, tenant_id),
+                "sms_confirmation_sent",
+                {"tenant_id": tenant_id},
+            )
     except Exception as e:
         logger.error("tools/book: SMS failed for tenant %s: %s", tenant_id, e)
 
@@ -571,4 +599,9 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         pass
 
     logger.info("Cancelled appointment %s for tenant %s caller %s", appt["id"], tenant_id, caller_phone)
+    analytics.capture(
+        analytics.distinct_id_for(tenant, tenant_id),
+        "appointment_cancelled",
+        {"tenant_id": tenant_id},
+    )
     return _result(tc_id, f"Done — your {service} on {friendly} has been cancelled. Is there anything else I can help you with?")

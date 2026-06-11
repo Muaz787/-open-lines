@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
+import { trackEvent, getUtmParams } from '@/lib/analytics'
 
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
@@ -263,6 +264,14 @@ export default function Home() {
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
   }, [isDark])
 
+  useEffect(() => {
+    trackEvent('landing_page_viewed', {
+      page_path: window.location.pathname,
+      referrer: document.referrer || '$direct',
+      ...getUtmParams(),
+    })
+  }, [])
+
   // Auto-play demo when section scrolls into view (fires once)
   useEffect(() => {
     const el = demoSectionRef.current
@@ -352,12 +361,12 @@ export default function Home() {
           <div className="toggle" onClick={() => setIsDark(d => !d)}>
             <div className="toggle-knob" />
           </div>
-          <Link href="/login">
+          <Link href="/login" onClick={() => trackEvent('login_clicked', { location: 'nav' })}>
             <button className="btn-nav" style={{ background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-2)' }}>
               Sign in
             </button>
           </Link>
-          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent('demo_cta_clicked', { location: 'nav' })}>
             <button className="btn-nav">Book a Demo</button>
           </a>
           {/* Hamburger — mobile only */}
@@ -434,10 +443,10 @@ export default function Home() {
           Answers calls, captures leads, books appointments. 24/7. No staff required.
         </motion.p>
         <motion.div className="hero-cta" {...up(0.7)}>
-          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+          <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent('demo_cta_clicked', { location: 'hero' })}>
             <button className="btn-main">Book a Demo</button>
           </a>
-          <Link href="/onboarding">
+          <Link href="/onboarding" onClick={() => trackEvent('get_started_clicked', { location: 'hero' })}>
             <button className="btn-ghost">Build your own agent →</button>
           </Link>
         </motion.div>
@@ -746,7 +755,7 @@ export default function Home() {
             <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.75, marginBottom: 28 }}>
               Getting started takes under 10 minutes. From there, your AI handles every call — and improves with every interaction.
             </p>
-            <Link href="/onboarding">
+            <Link href="/onboarding" onClick={() => trackEvent('get_started_clicked', { location: 'how_it_works' })}>
               <button className="btn-main" style={{ fontSize: 14 }}>Get started →</button>
             </Link>
           </div>
@@ -827,10 +836,10 @@ export default function Home() {
             Not sure which plan fits? We'll walk you through it live — or you can set up your agent right now in under 10 minutes.
           </p>
           <div className="cta-row" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer">
+            <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent('demo_cta_clicked', { location: 'bottom_cta' })}>
               <button className="btn-main" style={{ padding: '14px 32px', fontSize: 15 }}>Book a Demo</button>
             </a>
-            <Link href="/onboarding">
+            <Link href="/onboarding" onClick={() => trackEvent('get_started_clicked', { location: 'bottom_cta' })}>
               <button className="btn-ghost" style={{ padding: '14px 32px', fontSize: 15 }}>Build your own agent →</button>
             </Link>
           </div>

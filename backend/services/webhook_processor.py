@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from openai import AsyncOpenAI
 from db import supabase as db
-from services import telephony
+from services import analytics, telephony
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,14 @@ async def process_end_of_call(payload: dict) -> None:
             call_id, tenant_id, e,
         )
 
+    # PRIVACY: no transcript, no caller phone number — ids and duration only
+    _distinct = analytics.distinct_id_for(tenant, tenant_id)
+    analytics.capture(_distinct, "call_completed", {
+        "tenant_id": tenant_id,
+        "call_id": call_id,
+        "duration_seconds": int(duration) if duration else None,
+    })
+
     # GPT-4o analysis
     analysis: dict = {}
     if transcript and len(transcript.strip()) > 20:
@@ -179,6 +187,14 @@ async def process_end_of_call(payload: dict) -> None:
         lead_update["name"] = caller_name
     await db.update_lead(tenant_id, lead_id, lead_update)
 
+    if analysis:
+        # PRIVACY: urgency level only — no summary text, name, or details
+        analytics.capture(_distinct, "call_summary_generated", {
+            "tenant_id": tenant_id,
+            "call_id": call_id,
+            "urgency": analysis.get("urgency", ""),
+        })
+
     # WhatsApp notification (non-fatal)
     whatsapp_number = tenant.get("whatsapp_number", "")
     if whatsapp_number:
@@ -186,6 +202,9 @@ async def process_end_of_call(payload: dict) -> None:
             message = _format_whatsapp_message(business_name, analysis, caller_number)
             await telephony.send_whatsapp(to_number=whatsapp_number, body=message)
             logger.info("WhatsApp notification sent for tenant %s call %s", tenant_id, call_id)
+            analytics.capture(_distinct, "owner_notification_sent", {
+                "tenant_id": tenant_id, "channel": "whatsapp",
+            })
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
@@ -200,6 +219,9 @@ async def process_end_of_call(payload: dict) -> None:
                 analysis=analysis,
                 caller_number=caller_number,
             )
+            analytics.capture(_distinct, "owner_notification_sent", {
+                "tenant_id": tenant_id, "channel": "email",
+            })
         except Exception as e:
             logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
 
