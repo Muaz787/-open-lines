@@ -5,6 +5,11 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { PaymentForm } from './PaymentForm'
+import { timeAgo, formatCallDate, formatApptDate, formatDuration, initials, capitalize } from './lib/format'
+import { urgBadgeClass } from './lib/badges'
+import { TranscriptLines } from './components/TranscriptLines'
+import { Toast } from './components/Toast'
+import { LoadingState, EmptyState } from './components/PageStates'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -86,82 +91,14 @@ const BOOKING_INDUSTRIES = new Set([
   'builder', 'restaurant', 'beauty', 'custom',
 ])
 
-function timeAgo(iso: string): string {
-  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (secs < 60) return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
-  return `${Math.floor(secs / 86400)}d ago`
-}
-
-function formatCallDate(iso: string): string {
-  const d = new Date(iso)
-  const date = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
-  return `${date} · ${time}`
-}
-
-function formatDuration(secs: number): string {
-  if (secs < 60) return `${secs}s`
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`
-}
-
-function initials(name?: string, phone?: string): string {
-  if (name) return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  return (phone ?? '??').slice(-2)
-}
-
-function urgBadgeClass(u?: string): string {
-  switch (u?.toLowerCase()) {
-    case 'hot':  return 'db-urg-hot'
-    case 'warm': return 'db-urg-warm'
-    case 'cold': return 'db-urg-cold'
-    default:     return 'db-urg-none'
-  }
-}
-
-function TranscriptLines({ text }: { text: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {text.split('\n').filter(l => l.trim()).map((line, i) => {
-        const isAI   = line.startsWith('AI:')
-        const isUser = line.startsWith('User:')
-        const speaker = isAI ? 'AI' : isUser ? 'You' : null
-        const content = isAI ? line.slice(3).trim() : isUser ? line.slice(5).trim() : line
-        return (
-          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-              color: isAI ? '#3dba72' : '#888',
-              minWidth: 28, paddingTop: 2, flexShrink: 0,
-            }}>
-              {speaker ?? ''}
-            </span>
-            <span style={{ fontSize: 12, color: isAI ? '#333' : '#555', lineHeight: 1.6 }}>
-              {content}
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function formatApptDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-CA', {
-    weekday: 'short', month: 'short', day: 'numeric',
-  }) + ' · ' + d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
-}
-
 /* Inline sparkline SVG */
-function Sparkline({ value, color = '#e8e6e0' }: { value: number; color?: string }) {
+function Sparkline({ value, active }: { value: number; active: boolean }) {
   const pts = value > 0
     ? '0,22 20,22 40,20 60,15 80,10 100,7'
     : '0,22 20,22 40,22 60,22 80,22 100,22'
   return (
     <svg className="db-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
+      <polyline points={pts} fill="none" stroke={active ? 'var(--db-accent)' : 'var(--db-border)'} strokeWidth="1.5" strokeLinejoin="round"/>
     </svg>
   )
 }
@@ -429,11 +366,7 @@ function DashboardPage() {
 
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f3f0' }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Loading…</div>
-      </div>
-    )
+    return <LoadingState />
   }
 
   // ── Render ───────────────────────────────────────────────
@@ -464,21 +397,7 @@ function DashboardPage() {
         </div>
 
         {/* Toast */}
-        <AnimatePresence>
-          {calToast && (
-            <motion.div
-              initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
-              style={{
-                position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-                background: '#16161a', color: '#fff', padding: '10px 20px',
-                borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 300,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-              }}
-            >
-              {calToast}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <Toast message={calToast} />
 
         {/* ── Content ── */}
         <div className="db-content">
@@ -507,10 +426,10 @@ function DashboardPage() {
                         </span>
                       </div>
                       <div className="db-stat-num">
-                        {noData ? <span style={{ color: '#bbb' }}>—</span> : value.toLocaleString()}
+                        {noData ? <span style={{ color: 'var(--db-faint)' }}>—</span> : value.toLocaleString()}
                         {unit && !noData && <span className="db-stat-unit"> {unit}</span>}
                       </div>
-                      <Sparkline value={noData ? 0 : value} color={value > 0 && !noData ? '#3dba72' : '#e8e6e0'} />
+                      <Sparkline value={noData ? 0 : value} active={value > 0 && !noData} />
                     </div>
                   )
                 })}
@@ -538,7 +457,7 @@ function DashboardPage() {
                     />
                   ) : (
                     <>
-                      <div style={{ padding: '11px 14px', borderBottom: '1px solid #f0ede8', fontSize: 12, color: '#888' }}>
+                      <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--db-border-lt)', fontSize: 12, color: 'var(--db-muted)' }}>
                         No active plan — choose one to unlock full access.
                       </div>
                       <div style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -549,18 +468,11 @@ function DashboardPage() {
                         ] as const).map(plan => (
                           <button
                             key={plan.id}
+                            className="db-plan-mini"
                             onClick={() => handlePlanClick({ id: plan.id, label: plan.label, price: plan.price })}
-                            style={{
-                              flex: 1, minWidth: 80, padding: '10px 12px', textAlign: 'left',
-                              border: '1px solid #e8e6e0', borderRadius: 8,
-                              background: '#fff', cursor: 'pointer', transition: 'border-color 0.15s',
-                              fontFamily: 'var(--font-dm), sans-serif',
-                            }}
-                            onMouseEnter={e => (e.currentTarget.style.borderColor = '#3dba72')}
-                            onMouseLeave={e => (e.currentTarget.style.borderColor = '#e8e6e0')}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#16161a', marginBottom: 2 }}>{plan.label}</div>
-                            <div style={{ fontSize: 11, color: '#888' }}>{plan.price} · {plan.minutes}</div>
+                            <div className="db-plan-mini-name">{plan.label}</div>
+                            <div className="db-plan-mini-sub">{plan.price} · {plan.minutes}</div>
                           </button>
                         ))}
                       </div>
@@ -574,24 +486,24 @@ function DashboardPage() {
                 <div className="db-sub-compact">
                   <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
                         {tenant?.subscription_plan
-                          ? `${tenant.subscription_plan.charAt(0).toUpperCase() + tenant.subscription_plan.slice(1)} Plan`
+                          ? `${capitalize(tenant.subscription_plan)} Plan`
                           : 'Active Plan'}
                       </span>
                       {tenant?.subscription_status === 'active' && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#f0fdf4', color: '#16a34a', letterSpacing: '0.06em' }}>ACTIVE</span>
+                        <span className="db-badge db-badge--success">Active</span>
                       )}
                       {tenant?.subscription_status === 'canceling' && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fffbeb', color: '#d97706', letterSpacing: '0.06em' }}>CANCELING</span>
+                        <span className="db-badge db-badge--warn">Canceling</span>
                       )}
                       {tenant?.subscription_status === 'past_due' && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: '#fef2f2', color: '#ef4444', letterSpacing: '0.06em' }}>PAST DUE</span>
+                        <span className="db-badge db-badge--danger">Past due</span>
                       )}
                     </div>
                     <Link
                       href={`/dashboard/${tenantId}/subscription`}
-                      style={{ fontSize: 12, fontWeight: 600, color: '#3dba72', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', border: '1px solid #3dba72', borderRadius: 7, background: '#f0fdf4' }}
+                      className="db-btn db-btn--accent-ghost db-btn--sm"
                     >
                       Manage →
                     </Link>
@@ -610,12 +522,15 @@ function DashboardPage() {
               </div>
 
               {leads.length === 0 ? (
-                <div className="db-empty-v2">
-                  <div className="db-empty-v2-title">No leads yet.</div>
-                  {tenant?.twilio_phone_number && (
-                    <div className="db-empty-v2-sub">Share {tenant.twilio_phone_number} to get your first call.</div>
-                  )}
-                </div>
+                <EmptyState
+                  icon={
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                    </svg>
+                  }
+                  title="No leads yet."
+                  sub={tenant?.twilio_phone_number ? `Share ${tenant.twilio_phone_number} to get your first call.` : undefined}
+                />
               ) : (
                 leads.map(lead => {
                   const detail        = detailMap[lead.id]
@@ -637,9 +552,7 @@ function DashboardPage() {
                           <div className="db-lead-sum">{lead.summary ?? 'No summary yet'}</div>
                         </div>
                         <span className={urgBadgeClass(lead.urgency)}>
-                          {lead.urgency
-                            ? lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)
-                            : 'New'}
+                          {lead.urgency ? capitalize(lead.urgency) : 'New'}
                         </span>
                         <span className="db-lead-time">{timeAgo(lead.updated_at || lead.created_at)}</span>
                         <div className="db-lead-actions" onClick={e => e.stopPropagation()}>
@@ -670,7 +583,7 @@ function DashboardPage() {
                                   className={`step-btn${(currentStatus ?? 'new') === s ? ' step-active' : ''}`}
                                   onClick={(e) => updateStatus(lead.id, s, e)}
                                 >
-                                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                                  {capitalize(s)}
                                 </button>
                               ))}
                             </div>
@@ -701,34 +614,27 @@ function DashboardPage() {
                               <div className="transcript-empty">No call transcripts yet.</div>
                             ) : (
                               <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#888', marginBottom: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 10 }}>
                                   Call History · {validCalls.length} {validCalls.length === 1 ? 'call' : 'calls'}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                   {validCalls.map(call => (
-                                    <div key={call.id} style={{ border: '1px solid #e8e6e0', borderRadius: 8, overflow: 'hidden' }}>
+                                    <div key={call.id} className="db-call-acc">
                                       <button
+                                        className={`db-call-acc-btn${expandedCallId === call.id ? ' open' : ''}`}
                                         onClick={(e) => {
                                           e.stopPropagation()
                                           setExpandedCallId(expandedCallId === call.id ? null : call.id)
                                         }}
-                                        style={{
-                                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                          padding: '10px 14px',
-                                          background: expandedCallId === call.id ? '#f8f7f4' : '#fff',
-                                          border: 'none', cursor: 'pointer', textAlign: 'left',
-                                          fontFamily: 'var(--font-dm), sans-serif',
-                                          transition: 'background 0.15s',
-                                        }}
                                       >
-                                        <span style={{ fontSize: 10, color: '#888', flexShrink: 0 }}>
+                                        <span className="db-call-acc-caret">
                                           {expandedCallId === call.id ? '▾' : '▸'}
                                         </span>
-                                        <span style={{ fontSize: 12, fontWeight: 500, color: '#16161a', flex: 1 }}>
+                                        <span className="db-call-acc-date">
                                           {formatCallDate(call.created_at)}
                                         </span>
                                         {call.duration_secs != null && (
-                                          <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
+                                          <span className="db-call-acc-dur">
                                             {formatDuration(call.duration_secs)}
                                           </span>
                                         )}
@@ -742,7 +648,7 @@ function DashboardPage() {
                                             transition={{ duration: 0.18 }}
                                             style={{ overflow: 'hidden' }}
                                           >
-                                            <div style={{ padding: '12px 14px', borderTop: '1px solid #e8e6e0', background: '#fafaf8', maxHeight: 320, overflowY: 'auto' }}>
+                                            <div className="db-call-acc-body">
                                               <TranscriptLines text={call.transcript ?? ''} />
                                             </div>
                                           </motion.div>
@@ -776,30 +682,24 @@ function DashboardPage() {
                       <span className="db-section-name">Upcoming</span>
                     </div>
                     {calStatus?.connected && (
-                      <span style={{ fontSize: 11, color: '#3dba72', fontWeight: 500 }}>✓ Connected</span>
+                      <span style={{ fontSize: 11, color: 'var(--db-accent-text)', fontWeight: 500 }}>✓ Connected</span>
                     )}
                   </div>
 
                   {!calStatus?.connected ? (
                     <div style={{ padding: '14px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 12, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 12, color: 'var(--db-muted)', marginBottom: 10, lineHeight: 1.5 }}>
                         Connect Google Calendar to book appointments in real time.
                       </div>
                       <a
                         href={`${API}/calendar/connect/${tenantId}`}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 7,
-                          background: '#16161a', color: '#fff',
-                          borderRadius: 8, padding: '9px 16px',
-                          fontSize: 12, fontWeight: 500, textDecoration: 'none',
-                          transition: 'opacity 0.2s',
-                        }}
+                        className="db-btn db-btn--dark"
                       >
                         Connect Calendar
                       </a>
                     </div>
                   ) : appointments.length === 0 ? (
-                    <div style={{ padding: '14px', fontSize: 12, color: '#bbb', textAlign: 'center' }}>
+                    <div style={{ padding: '14px', fontSize: 12, color: 'var(--db-faint)', textAlign: 'center' }}>
                       No upcoming appointments.
                     </div>
                   ) : (
@@ -818,14 +718,15 @@ function DashboardPage() {
                         </div>
                       ))}
                       {calStatus?.connected && (
-                        <div style={{ padding: '8px 14px', borderTop: '1px solid #f0ede8', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                        <div style={{ padding: '8px 14px', borderTop: '1px solid var(--db-border-lt)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 11, color: '#888' }}>Duration:</span>
+                            <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>Duration:</span>
                             <select
+                              className="db-select"
                               value={calStatus.appointment_duration_minutes}
                               onChange={e => saveDuration(Number(e.target.value))}
                               disabled={durSaving}
-                              style={{ fontSize: 11, background: '#fff', border: '1px solid #e8e6e0', borderRadius: 5, padding: '3px 6px', color: '#16161a', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}
+                              style={{ fontSize: 11, padding: '3px 6px' }}
                             >
                               {DURATION_OPTIONS.map(d => <option key={d} value={d}>{d} min</option>)}
                             </select>
@@ -833,7 +734,7 @@ function DashboardPage() {
                           <button
                             onClick={disconnectCalendar}
                             disabled={calDisconnecting}
-                            style={{ fontSize: 11, color: '#bbb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto', fontFamily: 'var(--font-dm), sans-serif' }}
+                            style={{ fontSize: 11, color: 'var(--db-faint)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', marginLeft: 'auto', fontFamily: 'var(--font-dm), sans-serif' }}
                           >
                             {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                           </button>
@@ -853,9 +754,9 @@ function DashboardPage() {
                   </div>
                   {insights && (
                     <button
+                      className="db-btn db-btn--ghost db-btn--sm"
                       onClick={fetchInsights}
                       disabled={insightsLoading}
-                      style={{ fontSize: 11, color: '#888', background: 'none', border: '1px solid #e8e6e0', borderRadius: 5, padding: '3px 9px', cursor: insightsLoading ? 'default' : 'pointer', opacity: insightsLoading ? 0.5 : 1, fontFamily: 'var(--font-dm), sans-serif' }}
                     >
                       {insightsLoading ? 'Thinking…' : 'Refresh'}
                     </button>
@@ -871,54 +772,54 @@ function DashboardPage() {
                     </div>
                     <div className="db-insight-copy">After 5+ calls, your AI surfaces caller intent patterns, opportunities, and peak hours.</div>
                     <button
+                      className="db-btn db-btn--dark"
                       onClick={fetchInsights}
-                      style={{ background: '#16161a', color: '#fff', border: 'none', borderRadius: 7, padding: '8px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}
                     >
                       ✦ Generate insights
                     </button>
                   </div>
                 ) : insightsLoading && !insights?.insights.length ? (
-                  <div style={{ padding: '18px 14px', fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ padding: '18px 14px', fontSize: 12, color: 'var(--db-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>◌</span>
                     Analyzing calls and leads…
                   </div>
                 ) : insights?.insights.length === 0 ? (
-                  <div style={{ padding: '14px', fontSize: 12, color: '#bbb' }}>
+                  <div style={{ padding: '14px', fontSize: 12, color: 'var(--db-faint)' }}>
                     Not enough data yet — insights appear after a few calls.
                   </div>
                 ) : (
                   <div>
                     {(insights?.insights ?? []).map((ins, i) => {
                       const typeColors: Record<string, { bg: string; dot: string }> = {
-                        opportunity: { bg: '#f0fdf4', dot: '#16a34a' },
-                        success:     { bg: '#f0fdf4', dot: '#16a34a' },
-                        warning:     { bg: '#fffbeb', dot: '#d97706' },
-                        trend:       { bg: '#f0f4ff', dot: '#4f6ef7' },
+                        opportunity: { bg: 'var(--db-accent-bg)', dot: 'var(--db-accent-text)' },
+                        success:     { bg: 'var(--db-accent-bg)', dot: 'var(--db-accent-text)' },
+                        warning:     { bg: 'var(--db-warn-bg)', dot: 'var(--db-warn-text)' },
+                        trend:       { bg: 'var(--db-info-bg)', dot: 'var(--db-info)' },
                       }
                       const colors = typeColors[ins.type] ?? typeColors.trend
                       return (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '8px 1fr', gap: 12, padding: '12px 14px', borderTop: i > 0 ? '1px solid #f0ede8' : 'none', alignItems: 'start' }}>
+                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '8px 1fr', gap: 12, padding: '12px 14px', borderTop: i > 0 ? '1px solid var(--db-border-lt)' : 'none', alignItems: 'start' }}>
                           <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors.dot, marginTop: 4 }} />
                           <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#16161a', marginBottom: 3 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text)', marginBottom: 3 }}>
                               {ins.title}
                               <span style={{ marginLeft: 7, fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', background: colors.bg, color: colors.dot, padding: '1px 6px', borderRadius: 4 }}>
                                 {ins.type}
                               </span>
                             </div>
-                            <div style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>{ins.body}</div>
+                            <div style={{ fontSize: 11, color: 'var(--db-text-2)', lineHeight: 1.6 }}>{ins.body}</div>
                           </div>
                         </div>
                       )
                     })}
                     {insights?.generated_at && (
-                      <div style={{ padding: '8px 14px', fontSize: 11, color: '#bbb', borderTop: '1px solid #f0ede8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--db-faint)', borderTop: '1px solid var(--db-border-lt)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                         <span>Generated {timeAgo(insights.generated_at)}</span>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={copyInsights} style={{ fontSize: 10, color: insightsCopied ? '#3dba72' : '#bbb', background: 'none', border: '1px solid #e8e6e0', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif', transition: 'color 0.2s' }}>
+                          <button onClick={copyInsights} style={{ fontSize: 10, color: insightsCopied ? 'var(--db-accent-text)' : 'var(--db-faint)', background: 'none', border: '1px solid var(--db-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif', transition: 'color 0.2s' }}>
                             {insightsCopied ? '✓ Copied' : 'Copy'}
                           </button>
-                          <button onClick={downloadInsightsPDF} style={{ fontSize: 10, color: '#bbb', background: 'none', border: '1px solid #e8e6e0', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}>
+                          <button onClick={downloadInsightsPDF} style={{ fontSize: 10, color: 'var(--db-faint)', background: 'none', border: '1px solid var(--db-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}>
                             PDF
                           </button>
                         </div>
@@ -937,11 +838,7 @@ function DashboardPage() {
 
 export default function DashboardPageWrapper() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f3f0' }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Loading…</div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingState />}>
       <DashboardPage />
     </Suspense>
   )

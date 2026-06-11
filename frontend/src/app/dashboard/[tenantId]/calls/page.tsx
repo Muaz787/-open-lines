@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { formatCallDate, formatDuration, initials, capitalize } from '../lib/format'
+import { urgBadgeClass } from '../lib/badges'
+import { TranscriptLines } from '../components/TranscriptLines'
+import { LoadingState, EmptyState } from '../components/PageStates'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -36,60 +40,6 @@ interface Analytics {
 
 type UrgencyFilter = 'all' | 'hot' | 'warm' | 'cold'
 type Period = '7' | '30' | '0'
-
-function formatDuration(secs?: number): string {
-  if (!secs) return '—'
-  if (secs < 60) return `${secs}s`
-  return `${Math.floor(secs / 60)}m ${secs % 60}s`
-}
-
-function formatCallDate(iso: string): string {
-  const d = new Date(iso)
-  const date = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true })
-  return `${date} · ${time}`
-}
-
-function initials(name?: string, phone?: string): string {
-  if (name) return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  return (phone ?? '??').slice(-2)
-}
-
-function urgBadgeClass(u?: string): string {
-  switch (u?.toLowerCase()) {
-    case 'hot':  return 'db-urg-hot'
-    case 'warm': return 'db-urg-warm'
-    case 'cold': return 'db-urg-cold'
-    default:     return 'db-urg-none'
-  }
-}
-
-function TranscriptLines({ text }: { text: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {text.split('\n').filter(l => l.trim()).map((line, i) => {
-        const isAI   = line.startsWith('AI:')
-        const isUser = line.startsWith('User:')
-        const speaker = isAI ? 'AI' : isUser ? 'You' : null
-        const content = isAI ? line.slice(3).trim() : isUser ? line.slice(5).trim() : line
-        return (
-          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-              color: isAI ? '#3dba72' : '#888',
-              minWidth: 28, paddingTop: 2, flexShrink: 0,
-            }}>
-              {speaker ?? ''}
-            </span>
-            <span style={{ fontSize: 12, color: isAI ? '#333' : '#555', lineHeight: 1.6 }}>
-              {content}
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 export default function CallsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
@@ -196,24 +146,16 @@ export default function CallsPage() {
           )}
 
           {/* Urgency filter tabs */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <div className="leads-filter-bar">
             {(['all', 'hot', 'warm', 'cold'] as const).map(u => (
               <button
                 key={u}
+                className={`db-pill db-pill--mono${urgFilter === u ? ' active' : ''}`}
                 onClick={() => setUrgFilter(u)}
-                style={{
-                  padding: '4px 12px', borderRadius: 6, border: '1px solid',
-                  fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.12s',
-                  borderColor: urgFilter === u ? '#3dba72' : '#e8e6e0',
-                  background: urgFilter === u ? '#f0fdf4' : '#fff',
-                  color: urgFilter === u ? '#16a34a' : '#888',
-                  fontFamily: 'var(--font-mono), monospace',
-                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                }}
               >
-                {u === 'all' ? 'All' : u.charAt(0).toUpperCase() + u.slice(1)}
+                {u === 'all' ? 'All' : capitalize(u)}
                 {u !== 'all' && analytics && (
-                  <span style={{ marginLeft: 5, opacity: 0.7 }}>
+                  <span style={{ opacity: 0.7 }}>
                     {analytics.urgency_breakdown[u]}
                   </span>
                 )}
@@ -232,14 +174,17 @@ export default function CallsPage() {
             </div>
 
             {loading ? (
-              <div className="db-empty-v2">
-                <div className="db-empty-v2-title">Loading…</div>
-              </div>
+              <LoadingState />
             ) : filtered.length === 0 ? (
-              <div className="db-empty-v2">
-                <div className="db-empty-v2-title">No calls yet.</div>
-                <div className="db-empty-v2-sub">Calls will appear here after your first inbound call.</div>
-              </div>
+              <EmptyState
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                  </svg>
+                }
+                title="No calls yet."
+                sub="Calls will appear here after your first inbound call."
+              />
             ) : (
               filtered.map(call => {
                 const lead = call.leads
@@ -259,9 +204,7 @@ export default function CallsPage() {
                         <div className="db-lead-sum">{lead?.summary ?? 'No summary'}</div>
                       </div>
                       <span className={urgBadgeClass(lead?.urgency)}>
-                        {lead?.urgency
-                          ? lead.urgency.charAt(0).toUpperCase() + lead.urgency.slice(1)
-                          : 'New'}
+                        {lead?.urgency ? capitalize(lead.urgency) : 'New'}
                       </span>
                       <span className="db-lead-time" style={{ minWidth: 64, textAlign: 'right' }}>
                         {formatDuration(call.duration_secs)}
@@ -280,37 +223,31 @@ export default function CallsPage() {
                         >
                           <div className="db-lead-expanded">
                             {isLoadingDetail ? (
-                              <div style={{ fontSize: 12, color: '#888', padding: '8px 0' }}>Loading transcript…</div>
+                              <div style={{ fontSize: 12, color: 'var(--db-muted)', padding: '8px 0' }}>Loading transcript…</div>
                             ) : detail?.transcript ? (
                               <>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--db-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
                                   Transcript
                                 </div>
                                 <TranscriptLines text={detail.transcript} />
                               </>
                             ) : (
-                              <div style={{ fontSize: 12, color: '#888' }}>No transcript available.</div>
+                              <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>No transcript available.</div>
                             )}
 
                             {lead?.metadata?.key_details && Object.keys(lead.metadata.key_details).length > 0 && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
                                 {Object.entries(lead.metadata.key_details).map(([k, v]) => (
-                                  <div key={k} style={{
-                                    fontSize: 11, padding: '3px 9px', borderRadius: 5,
-                                    background: '#f4f3f0', color: '#555', border: '1px solid #e8e6e0',
-                                  }}>
-                                    <span style={{ fontWeight: 600, color: '#16161a' }}>
-                                      {k.replace(/_/g, ' ')}:
-                                    </span>{' '}
-                                    {String(v)}
+                                  <div key={k} className="db-chip">
+                                    <b>{k.replace(/_/g, ' ')}:</b> {String(v)}
                                   </div>
                                 ))}
                               </div>
                             )}
 
                             {lead?.metadata?.suggested_next_step && (
-                              <div style={{ marginTop: 12, fontSize: 12, color: '#555' }}>
-                                <span style={{ fontWeight: 600, color: '#16161a' }}>Next step: </span>
+                              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--db-text-2)' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--db-text)' }}>Next step: </span>
                                 {lead.metadata.suggested_next_step}
                               </div>
                             )}

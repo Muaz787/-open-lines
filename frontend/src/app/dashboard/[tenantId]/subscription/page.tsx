@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm } from '../PaymentForm'
+import { Toast } from '../components/Toast'
+import { LoadingState } from '../components/PageStates'
+import { statusBadgeClass } from '../lib/badges'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -120,24 +123,24 @@ function ConfirmModal({
         onClick={e => e.stopPropagation()}
         className="plan-confirm-modal"
         style={{
-          background: 'var(--bg-2)',
-          border: '1px solid var(--border-2)',
-          borderRadius: 16,
+          background: 'var(--db-card)',
+          border: '1px solid var(--db-border)',
+          borderRadius: 'var(--db-r-lg)',
           padding: '28px 28px 24px',
           width: '100%',
           maxWidth: 420,
-          boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+          boxShadow: 'var(--db-shadow-pop)',
         }}
       >
         {/* Header */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 6 }}>
             {actionLabel} plan
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-syne), sans-serif', letterSpacing: '-0.02em' }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--db-text)', fontFamily: 'var(--font-syne), sans-serif', letterSpacing: '-0.02em' }}>
             {newPlan.label} · {newPlan.price}/mo
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 4 }}>
             {newPlan.minutes}
           </div>
         </div>
@@ -145,20 +148,20 @@ function ConfirmModal({
         {/* From → To */}
         {hasActiveSub && currentPlan && (
           <div style={{
-            background: 'var(--bg-3)', border: '1px solid var(--border)',
+            background: 'var(--db-subtle)', border: '1px solid var(--db-border)',
             borderRadius: 10, padding: '12px 16px', marginBottom: 18,
             display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10,
           }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4 }}>Current</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{currentPlan.label}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{currentPlan.price}/mo</div>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 4 }}>Current</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--db-text)' }}>{currentPlan.label}</div>
+              <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>{currentPlan.price}/mo</div>
             </div>
-            <div style={{ fontSize: 16, color: 'var(--text-3)' }}>→</div>
+            <div style={{ fontSize: 16, color: 'var(--db-muted)' }}>→</div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: upgrade ? 'var(--accent)' : 'var(--text-3)', marginBottom: 4 }}>New</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: upgrade ? 'var(--accent)' : 'var(--text)' }}>{newPlan.label}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{newPlan.price}/mo</div>
+              <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: upgrade ? 'var(--db-accent-text)' : 'var(--db-muted)', marginBottom: 4 }}>New</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: upgrade ? 'var(--db-accent-text)' : 'var(--db-text)' }}>{newPlan.label}</div>
+              <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>{newPlan.price}/mo</div>
             </div>
           </div>
         )}
@@ -166,9 +169,9 @@ function ConfirmModal({
         {/* Charge note */}
         {(!hasActiveSub || upgrade || downgrade) && (
           <div style={{
-            fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65,
-            padding: '12px 14px', background: 'var(--bg)',
-            border: '1px solid var(--border)', borderRadius: 8, marginBottom: 18,
+            fontSize: 12, color: 'var(--db-text-2)', lineHeight: 1.65,
+            padding: '12px 14px', background: 'var(--db-subtle)',
+            border: '1px solid var(--db-border)', borderRadius: 8, marginBottom: 18,
           }}>
             {!hasActiveSub && (
               <>You&apos;ll enter your payment details next. You won&apos;t be charged until you confirm payment.</>
@@ -180,7 +183,7 @@ function ConfirmModal({
               <>Your plan will switch to {newPlan.label} at the end of your current period{periodEnd ? <> on {periodEnd}</> : null}. No charge today.</>
             )}
             {upgrade && (
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-2)' }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--db-text-2)' }}>
                 {prorationLoading ? 'Calculating charge…' :
                   prorationAmount != null
                     ? `Charged today: ${new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', minimumFractionDigits: 2 }).format(prorationAmount / 100)} (prorated)`
@@ -189,7 +192,7 @@ function ConfirmModal({
               </div>
             )}
             {downgrade && periodEnd && (
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-3)' }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--db-muted)' }}>
                 Takes effect {periodEnd}. No charge today — your saved card will be billed at the new rate on {periodEnd}.
               </div>
             )}
@@ -200,11 +203,11 @@ function ConfirmModal({
         {hasActiveSub && pm && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
-            fontSize: 12, color: 'var(--text-3)', marginBottom: 20,
+            fontSize: 12, color: 'var(--db-muted)', marginBottom: 20,
           }}>
             <svg width="22" height="15" viewBox="0 0 22 15" fill="none">
-              <rect x="0.5" y="0.5" width="21" height="14" rx="2.5" stroke="var(--border-2)"/>
-              <rect x="0" y="3.5" width="22" height="3" fill="var(--border)"/>
+              <rect x="0.5" y="0.5" width="21" height="14" rx="2.5" stroke="var(--db-border)"/>
+              <rect x="0" y="3.5" width="22" height="3" fill="var(--db-border)"/>
             </svg>
             <span>
               {cardBrand(pm.brand)} ••••{pm.last4}
@@ -216,28 +219,18 @@ function ConfirmModal({
         {/* Actions */}
         <div style={{ display: 'flex', gap: 10 }}>
           <button
+            className="db-btn db-btn--ghost"
             onClick={onCancel}
             disabled={processing}
-            style={{
-              flex: 1, padding: '11px 0',
-              background: 'transparent',
-              border: '1px solid var(--border-2)',
-              borderRadius: 8, fontSize: 13, color: 'var(--text-3)',
-              cursor: processing ? 'default' : 'pointer',
-            }}
+            style={{ flex: 1, padding: '11px 0', fontSize: 13, fontWeight: 500 }}
           >
             Cancel
           </button>
           <button
+            className="db-btn db-btn--dark"
             onClick={onConfirm}
             disabled={processing}
-            style={{
-              flex: 2, padding: '11px 0',
-              background: 'var(--text)', color: 'var(--bg)',
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              cursor: processing ? 'default' : 'pointer',
-              opacity: processing ? 0.65 : 1,
-            }}
+            style={{ flex: 2, padding: '11px 0', fontSize: 13 }}
           >
             {processing ? 'Processing…' : !hasActiveSub ? 'Continue to payment →' : `Confirm ${actionLabel} →`}
           </button>
@@ -272,24 +265,24 @@ function CancelModal({
         transition={{ duration: 0.18, ease: 'easeOut' }}
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'var(--bg-2)', border: '1px solid var(--border-2)',
-          borderRadius: 16, padding: '28px 28px 24px', width: '100%', maxWidth: 380,
-          boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+          background: 'var(--db-card)', border: '1px solid var(--db-border)',
+          borderRadius: 'var(--db-r-lg)', padding: '28px 28px 24px', width: '100%', maxWidth: 380,
+          boxShadow: 'var(--db-shadow-pop)',
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 10, fontFamily: 'var(--font-syne), sans-serif' }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--db-text)', marginBottom: 10, fontFamily: 'var(--font-syne), sans-serif' }}>
           Cancel subscription?
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65, marginBottom: 24 }}>
+        <div style={{ fontSize: 13, color: 'var(--db-text-2)', lineHeight: 1.65, marginBottom: 24 }}>
           Your AI receptionist will stay active until the end of your billing period
           {periodEnd ? ` on ${periodEnd}` : ''}.
           After that, calls will no longer be handled.
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onCancel} disabled={processing} style={{ flex: 1, padding: '10px 0', background: 'transparent', border: '1px solid var(--border-2)', borderRadius: 8, fontSize: 13, color: 'var(--text-3)', cursor: 'pointer' }}>
+          <button className="db-btn db-btn--ghost" onClick={onCancel} disabled={processing} style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 500 }}>
             Keep subscription
           </button>
-          <button onClick={onConfirm} disabled={processing} style={{ flex: 1, padding: '10px 0', background: 'rgba(255,59,48,.12)', border: '1px solid rgba(255,59,48,.25)', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#FF3B30', cursor: processing ? 'default' : 'pointer', opacity: processing ? 0.65 : 1 }}>
+          <button className="db-btn db-btn--danger-ghost" onClick={onConfirm} disabled={processing} style={{ flex: 1, padding: '10px 0', fontSize: 13 }}>
             {processing ? 'Canceling…' : 'Yes, cancel'}
           </button>
         </div>
@@ -493,30 +486,15 @@ function SubscriptionPage() {
         <div className="db-topbar">
           <span className="db-topbar-title">Billing &amp; Payments</span>
           {sidebarTenant?.twilio_phone_number && (
-            <div style={{ fontSize: 12, color: '#888' }}>
-              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#3dba72', marginRight: 5 }} />
+            <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>
+              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--db-accent)', marginRight: 5 }} />
               {sidebarTenant.twilio_phone_number}
             </div>
           )}
         </div>
 
       {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
-            style={{
-              position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)',
-              background: 'var(--text)', color: 'var(--bg)', padding: '10px 20px',
-              borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 400,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Toast message={toast} />
 
       {/* Modals */}
       <AnimatePresence>
@@ -546,25 +524,25 @@ function SubscriptionPage() {
 
       {/* ── Body ── */}
       <div className="db-content">
-        <div className="db-body">
+        <div style={{ maxWidth: 920 }}>
 
         {/* ── Current plan card ── */}
         {subDetails?.has_subscription && subDetails.status !== 'canceled' ? (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden', marginBottom: 32 }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+          <div className="db-card" style={{ overflow: 'hidden', marginBottom: 32 }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--db-text)' }}>
                 {currentPlan?.label ?? subDetails.plan} Plan
               </span>
               {!isCanceling && subDetails.status === 'active' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--accent-dim)', color: 'var(--accent-text)', letterSpacing: '0.06em' }}>ACTIVE</span>
+                <span className="db-badge db-badge--success">Active</span>
               )}
               {isCanceling && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,149,0,.1)', color: '#FF9500', letterSpacing: '0.06em' }}>CANCELING</span>
+                <span className="db-badge db-badge--warn">Canceling</span>
               )}
               {subDetails.status === 'past_due' && (
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,59,48,.09)', color: '#FF3B30', letterSpacing: '0.06em' }}>PAST DUE</span>
+                <span className="db-badge db-badge--danger">Past due</span>
               )}
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--db-muted)' }}>
                 Billed {subDetails.interval === 'year' ? 'annually' : 'monthly'}
               </span>
             </div>
@@ -573,30 +551,30 @@ function SubscriptionPage() {
               {/* Billing dates */}
               {subDetails.current_period_end && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 4 }}>
                     {isCanceling ? 'Cancels on' : 'Next billing date'}
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{fmtDate(subDetails.current_period_end)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>{fmtDate(subDetails.current_period_end)}</div>
                 </div>
               )}
               {/* Next invoice */}
               {subDetails.next_invoice_amount != null && !isCanceling && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4 }}>Next charge</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{fmtAmount(subDetails.next_invoice_amount)}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 4 }}>Next charge</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>{fmtAmount(subDetails.next_invoice_amount)}</div>
                 </div>
               )}
               {/* Payment method */}
               {subDetails.payment_method && (
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)', marginBottom: 4 }}>Payment method</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--db-muted)', marginBottom: 4 }}>Payment method</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
                     ••••{subDetails.payment_method.last4}
-                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginLeft: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--db-muted)', marginLeft: 6 }}>
                       {cardBrand(subDetails.payment_method.brand)}
                     </span>
                   </div>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--db-muted)' }}>
                     exp {subDetails.payment_method.exp_month}/{subDetails.payment_method.exp_year}
                   </div>
                 </div>
@@ -606,39 +584,23 @@ function SubscriptionPage() {
             {/* Action buttons */}
             <div style={{ padding: '0 20px 16px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button
+                className="db-btn db-btn--ghost"
                 onClick={() => setUpdatingCard(true)}
-                style={{
-                  padding: '8px 16px', fontSize: 12, fontWeight: 500,
-                  border: '1px solid var(--border-2)', borderRadius: 7,
-                  background: 'var(--bg)', color: 'var(--text-2)',
-                  cursor: 'pointer',
-                }}
               >
                 Update payment method
               </button>
               {isCanceling ? (
                 <button
+                  className="db-btn db-btn--accent-ghost"
                   onClick={handleReactivate}
                   disabled={reactivating}
-                  style={{
-                    padding: '8px 16px', fontSize: 12, fontWeight: 600,
-                    border: '1px solid var(--accent)', borderRadius: 7,
-                    background: 'var(--accent-dim)', color: 'var(--accent-text)',
-                    cursor: reactivating ? 'default' : 'pointer',
-                    opacity: reactivating ? 0.65 : 1,
-                  }}
                 >
                   {reactivating ? 'Reactivating…' : 'Reactivate subscription'}
                 </button>
               ) : (
                 <button
+                  className="db-btn db-btn--danger-ghost"
                   onClick={() => setShowCancel(true)}
-                  style={{
-                    padding: '8px 16px', fontSize: 12, fontWeight: 500,
-                    border: '1px solid rgba(255,59,48,.25)', borderRadius: 7,
-                    background: 'transparent', color: '#FF3B30',
-                    cursor: 'pointer',
-                  }}
                 >
                   Cancel subscription
                 </button>
@@ -646,15 +608,15 @@ function SubscriptionPage() {
             </div>
 
             {isCanceling && periodEnd && (
-              <div style={{ padding: '0 20px 16px', fontSize: 12, color: '#FF9500' }}>
+              <div style={{ padding: '0 20px 16px', fontSize: 12, color: 'var(--db-warn-text)' }}>
                 Your subscription will remain active until {periodEnd}, then automatically cancel.
               </div>
             )}
           </div>
         ) : (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', padding: '20px', marginBottom: 32 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No active subscription</div>
-            <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Choose a plan below to get started.</div>
+          <div className="db-card" style={{ padding: '20px', marginBottom: 32 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No active subscription</div>
+            <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>Choose a plan below to get started.</div>
           </div>
         )}
 
@@ -665,11 +627,11 @@ function SubscriptionPage() {
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
               style={{ maxWidth: 460, marginBottom: 32 }}
             >
-              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Upgrade to {upgradePayment.plan.label}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-text)' }}>
-                    {upgradePayment.plan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+              <div className="db-card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>Upgrade to {upgradePayment.plan.label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--db-accent-text)' }}>
+                    {upgradePayment.plan.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--db-muted)' }}>/mo</span>
                   </span>
                 </div>
                 <UpgradePaymentForm
@@ -698,9 +660,9 @@ function SubscriptionPage() {
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
               style={{ maxWidth: 460, marginBottom: 32 }}
             >
-              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Update payment method</span>
+              <div className="db-card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>Update payment method</span>
                 </div>
                 <UpdatePaymentForm
                   tenantId={tenantId}
@@ -723,14 +685,14 @@ function SubscriptionPage() {
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
               style={{ maxWidth: 460, marginBottom: 32 }}
             >
-              <div style={{ border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+              <div className="db-card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
                     {payingPlan.label} Plan
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-text)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--db-accent-text)' }}>
                     {billingInterval === 'year' ? payingPlan.priceYear : payingPlan.price}
-                    <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>{billingInterval === 'year' ? '/yr' : '/mo'}</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--db-muted)' }}>{billingInterval === 'year' ? '/yr' : '/mo'}</span>
                   </span>
                 </div>
                 <PaymentForm
@@ -754,22 +716,23 @@ function SubscriptionPage() {
         {!payingPlan && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div className="db-section-title">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
+              <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
               {/* Monthly / Annual toggle — only for new subscribers (plan changes keep current interval) */}
               {!isActiveSub && (
-                <div style={{ display: 'inline-flex', border: '1px solid var(--border-2)', borderRadius: 8, overflow: 'hidden' }}>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--db-border)', borderRadius: 8, overflow: 'hidden' }}>
                   {(['month', 'year'] as const).map(iv => (
                     <button
                       key={iv}
                       onClick={() => setBillingInterval(iv)}
                       style={{
                         fontSize: 12, fontWeight: 600, padding: '6px 14px', border: 'none', cursor: 'pointer',
-                        background: billingInterval === iv ? 'var(--accent-dim)' : 'transparent',
-                        color: billingInterval === iv ? 'var(--accent)' : 'var(--text-3)',
+                        fontFamily: 'var(--font-dm), sans-serif',
+                        background: billingInterval === iv ? 'var(--db-accent-bg)' : 'transparent',
+                        color: billingInterval === iv ? 'var(--db-accent-text)' : 'var(--db-muted)',
                       }}
                     >
                       {iv === 'month' ? 'Monthly' : 'Annual'}
-                      {iv === 'year' && <span style={{ marginLeft: 5, fontSize: 10, color: '#16a34a' }}>2 months free</span>}
+                      {iv === 'year' && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--db-accent-text)' }}>2 months free</span>}
                     </button>
                   ))}
                 </div>
@@ -785,28 +748,30 @@ function SubscriptionPage() {
                     onClick={() => handlePlanClick(plan)}
                     style={{
                       textAlign: 'left', padding: '16px 18px',
-                      border: `1px solid ${isCurrent ? 'var(--accent)' : 'var(--border-2)'}`,
-                      borderRadius: 10,
-                      background: isCurrent ? 'var(--accent-dim)' : 'var(--bg-2)',
+                      border: `1px solid ${isCurrent ? 'var(--db-accent)' : 'var(--db-border)'}`,
+                      borderRadius: 'var(--db-r-md)',
+                      background: isCurrent ? 'var(--db-accent-bg)' : 'var(--db-card)',
                       cursor: isCurrent ? 'default' : 'pointer',
                       transition: 'border-color 0.15s',
+                      fontFamily: 'var(--font-dm), sans-serif',
+                      boxShadow: 'var(--db-shadow-xs)',
                     }}
                   >
-                    <div style={{ fontSize: 14, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: isCurrent ? 'var(--db-accent-text)' : 'var(--db-text)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                       {plan.label}
                       {isCurrent && <span style={{ fontSize: 10 }}>✓</span>}
                     </div>
-                    <div style={{ fontSize: 19, fontWeight: 700, color: isCurrent ? 'var(--accent)' : 'var(--text)', fontFamily: 'var(--font-syne), sans-serif', marginBottom: 2 }}>
+                    <div style={{ fontSize: 19, fontWeight: 700, color: isCurrent ? 'var(--db-accent-text)' : 'var(--db-text)', fontFamily: 'var(--font-syne), sans-serif', marginBottom: 2 }}>
                       {annual ? plan.priceYear : plan.price}
-                      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)' }}>{annual ? '/yr' : '/mo'}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--db-muted)' }}>{annual ? '/yr' : '/mo'}</span>
                     </div>
                     {annual && (
-                      <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, marginBottom: 4 }}>Save {plan.saveYear}/yr</div>
+                      <div style={{ fontSize: 11, color: 'var(--db-accent-text)', fontWeight: 600, marginBottom: 4 }}>Save {plan.saveYear}/yr</div>
                     )}
-                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 10 }}>{plan.minutes}</div>
+                    <div style={{ fontSize: 11, color: 'var(--db-muted)', marginBottom: 10 }}>{plan.minutes}</div>
                     {plan.features.map(f => (
-                      <div key={f} style={{ fontSize: 11, color: 'var(--text-2)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: 'var(--accent-text)', fontSize: 10 }}>✓</span> {f}
+                      <div key={f} style={{ fontSize: 11, color: 'var(--db-text-2)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ color: 'var(--db-accent-text)', fontSize: 10 }}>✓</span> {f}
                       </div>
                     ))}
                   </button>
@@ -819,29 +784,24 @@ function SubscriptionPage() {
         {/* ── Billing history ── */}
         {invoices.length > 0 && (
           <div style={{ marginBottom: 32 }}>
-            <div className="db-section-title">Billing History</div>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-2)' }}>
+            <div className="db-page-heading">Billing History</div>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
               {invoices.map((inv, i) => (
                 <div key={inv.id} className="invoice-row" style={{
                   display: 'grid', gridTemplateColumns: '1fr auto auto auto',
                   alignItems: 'center', gap: 16,
                   padding: '12px 18px',
-                  borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                  borderTop: i > 0 ? '1px solid var(--db-border)' : 'none',
                 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>
                       {fmtDate(inv.created)}
                     </div>
                   </div>
-                  <div className="invoice-row-amount" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                  <div className="invoice-row-amount" style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
                     {fmtAmount(inv.amount_paid || inv.amount_due, inv.currency)}
                   </div>
-                  <span className="invoice-row-status" style={{
-                    fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-                    padding: '2px 8px', borderRadius: 4,
-                    background: inv.status === 'paid' ? 'var(--accent-dim)' : 'rgba(255,149,0,.1)',
-                    color: inv.status === 'paid' ? 'var(--accent)' : '#FF9500',
-                  }}>
+                  <span className={`invoice-row-status ${statusBadgeClass(inv.status)}`}>
                     {inv.status}
                   </span>
                   {(inv.invoice_pdf || inv.hosted_invoice_url) ? (
@@ -850,7 +810,7 @@ function SubscriptionPage() {
                       href={inv.invoice_pdf ?? inv.hosted_invoice_url ?? '#'}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ fontSize: 12, color: 'var(--text-3)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                      style={{ fontSize: 12, color: 'var(--db-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -864,7 +824,7 @@ function SubscriptionPage() {
           </div>
         )}
 
-        </div>{/* /db-body */}
+        </div>
       </div>{/* /db-content */}
     </>
   )
@@ -872,11 +832,7 @@ function SubscriptionPage() {
 
 export default function SubscriptionPageWrapper() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Loading…</div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingState />}>
       <SubscriptionPage />
     </Suspense>
   )

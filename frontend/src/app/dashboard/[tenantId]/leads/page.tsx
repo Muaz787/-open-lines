@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { timeAgo, capitalize } from '../lib/format'
+import { urgBadgeClass, statusBadgeClass } from '../lib/badges'
+import { Toast } from '../components/Toast'
+import { LoadingState, EmptyState } from '../components/PageStates'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -22,21 +26,6 @@ interface Lead {
 }
 
 type StatusFilter = 'all' | 'new' | 'contacted' | 'converted'
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  const secs = Math.floor(diff / 1000)
-  if (secs < 60) return 'just now'
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
-  return `${Math.floor(secs / 86400)}d ago`
-}
-
-function urgencyColor(u?: string) {
-  if (u === 'high') return '#ef4444'
-  if (u === 'medium') return '#f59e0b'
-  return '#6b7280'
-}
 
 function LeadsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
@@ -97,11 +86,7 @@ function LeadsPage() {
   )
 
   if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f4f3f0' }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Loading…</div>
-      </div>
-    )
+    return <LoadingState />
   }
 
   const statusCounts = {
@@ -115,21 +100,7 @@ function LeadsPage() {
     <>
 
         {/* Toast */}
-        <AnimatePresence>
-          {toast && (
-            <motion.div
-              initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
-              style={{
-                position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
-                background: '#16161a', color: '#fff', padding: '10px 20px',
-                borderRadius: 8, fontSize: 13, fontWeight: 500, zIndex: 300,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-              }}
-            >
-              {toast}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <Toast message={toast} />
 
         {/* Desktop topbar */}
         <div className="db-topbar">
@@ -144,28 +115,17 @@ function LeadsPage() {
             {(['all', 'new', 'contacted', 'converted'] as const).map(f => (
               <button
                 key={f}
+                className={`db-pill${filter === f ? ' active' : ''}`}
                 onClick={() => setFilter(f)}
-                style={{
-                  padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 500,
-                  border: '1px solid',
-                  borderColor: filter === f ? '#3dba72' : '#e8e6e0',
-                  background: filter === f ? '#eafaf2' : '#fff',
-                  color: filter === f ? '#1a7a45' : '#666',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-dm), sans-serif',
-                }}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-                <span style={{ marginLeft: 5, opacity: 0.7 }}>{statusCounts[f]}</span>
+                {capitalize(f)}
+                <span style={{ opacity: 0.7 }}>{statusCounts[f]}</span>
               </button>
             ))}
             <button
+              className="db-btn db-btn--ghost db-btn--sm"
               onClick={loadLeads}
-              style={{
-                marginLeft: 'auto', padding: '5px 12px', borderRadius: 6, fontSize: 12,
-                border: '1px solid #e8e6e0', background: '#fff', color: '#666',
-                cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif',
-              }}
+              style={{ marginLeft: 'auto' }}
             >
               Refresh
             </button>
@@ -173,11 +133,16 @@ function LeadsPage() {
 
           {/* Lead list */}
           {filtered.length === 0 ? (
-            <div style={{
-              background: '#fff', border: '1px solid #e8e6e0', borderRadius: 10,
-              padding: '40px 20px', textAlign: 'center', color: '#aaa', fontSize: 13,
-            }}>
-              {filter === 'all' ? 'No leads yet — they appear here after calls.' : `No ${filter} leads.`}
+            <div className="db-card">
+              <EmptyState
+                icon={
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                }
+                title={filter === 'all' ? 'No leads yet.' : `No ${filter} leads.`}
+                sub={filter === 'all' ? 'They appear here after calls.' : undefined}
+              />
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -187,10 +152,8 @@ function LeadsPage() {
                 return (
                   <div
                     key={lead.id}
-                    style={{
-                      background: '#fff', border: '1px solid #e8e6e0',
-                      borderRadius: 10, overflow: 'hidden',
-                    }}
+                    className="db-card"
+                    style={{ overflow: 'hidden' }}
                   >
                     {/* Row */}
                     <div
@@ -200,19 +163,13 @@ function LeadsPage() {
                       }}
                       onClick={() => setExpanded(isOpen ? null : lead.id)}
                     >
-                      {/* Urgency dot */}
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                        background: urgencyColor(lead.urgency),
-                      }} />
-
                       {/* Name / phone */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#16161a' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
                           {lead.name || 'Unknown'}
                         </div>
                         {lead.phone && (
-                          <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>{lead.phone}</div>
+                          <div style={{ fontSize: 11, color: 'var(--db-muted)', marginTop: 1 }}>{lead.phone}</div>
                         )}
                       </div>
 
@@ -223,18 +180,20 @@ function LeadsPage() {
                         </div>
                       )}
 
+                      {/* Urgency */}
+                      {lead.urgency && (
+                        <span className={urgBadgeClass(lead.urgency)}>
+                          {capitalize(lead.urgency)}
+                        </span>
+                      )}
+
                       {/* Status badge */}
-                      <span style={{
-                        fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4,
-                        textTransform: 'uppercase', letterSpacing: '0.04em',
-                        background: status === 'converted' ? '#eafaf2' : status === 'contacted' ? '#eff6ff' : '#fef3c7',
-                        color: status === 'converted' ? '#1a7a45' : status === 'contacted' ? '#1d4ed8' : '#92400e',
-                      }}>
+                      <span className={statusBadgeClass(status)}>
                         {status}
                       </span>
 
                       {/* Time — last activity (falls back to creation) */}
-                      <div style={{ fontSize: 11, color: '#aaa', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, color: 'var(--db-faint)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {timeAgo(lead.updated_at || lead.created_at)}
                       </div>
 
@@ -252,20 +211,17 @@ function LeadsPage() {
                           style={{ overflow: 'hidden' }}
                         >
                           <div style={{
-                            borderTop: '1px solid #f0ede8', padding: '12px 14px',
+                            borderTop: '1px solid var(--db-border-lt)', padding: '12px 14px',
                             display: 'flex', flexDirection: 'column', gap: 10,
                           }}>
                             {/* Key details */}
                             {lead.metadata?.key_details && Object.keys(lead.metadata.key_details).length > 0 && (
                               <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Details</div>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--db-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Details</div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                   {Object.entries(lead.metadata.key_details).map(([k, v]) => (
-                                    <div key={k} style={{
-                                      fontSize: 12, padding: '3px 8px', borderRadius: 5,
-                                      background: '#f4f3f0', color: '#444',
-                                    }}>
-                                      <span style={{ fontWeight: 600 }}>{k}:</span> {v}
+                                    <div key={k} className="db-chip">
+                                      <b>{k}:</b> {v}
                                     </div>
                                   ))}
                                 </div>
@@ -274,31 +230,22 @@ function LeadsPage() {
 
                             {/* Suggested next step */}
                             {lead.metadata?.suggested_next_step && (
-                              <div style={{ fontSize: 12, color: '#555' }}>
+                              <div style={{ fontSize: 12, color: 'var(--db-text-2)' }}>
                                 <span style={{ fontWeight: 600 }}>Next step:</span> {lead.metadata.suggested_next_step}
                               </div>
                             )}
 
                             {/* Status update */}
-                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
-                              <span style={{ fontSize: 11, color: '#888' }}>Mark as:</span>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>Mark as:</span>
                               {(['new', 'contacted', 'converted'] as const).map(s => (
                                 <button
                                   key={s}
+                                  className={`db-pill db-pill--sm${status === s ? ' active' : ''}`}
                                   disabled={status === s || updating === lead.id}
                                   onClick={() => updateStatus(lead.id, s)}
-                                  style={{
-                                    padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: 500,
-                                    border: '1px solid',
-                                    borderColor: status === s ? '#3dba72' : '#e8e6e0',
-                                    background: status === s ? '#eafaf2' : '#fff',
-                                    color: status === s ? '#1a7a45' : '#555',
-                                    cursor: status === s ? 'default' : 'pointer',
-                                    opacity: updating === lead.id ? 0.6 : 1,
-                                    fontFamily: 'var(--font-dm), sans-serif',
-                                  }}
                                 >
-                                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                                  {capitalize(s)}
                                 </button>
                               ))}
                             </div>
