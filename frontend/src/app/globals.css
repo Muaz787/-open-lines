@@ -213,98 +213,49 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 }
 
 .prob-card {
-  position: relative;
-  height: 300px;
+  display: flex;
+  flex-direction: column;
+  padding: 26px 24px 28px;
   border: 1px solid var(--border-2);
   border-radius: 16px;
   background: var(--bg-2);
-  overflow: hidden;
-  cursor: pointer;
-  transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease);
-  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease), background 0.5s;
 }
-.prob-card:hover,
-.prob-card.active {
-  border-color: var(--border-2);
+.prob-card:hover {
+  border-color: color-mix(in srgb, #FF3B30 30%, var(--border-2));
   box-shadow: var(--shadow-lg);
 }
-
-/* ── Default face ── */
-.prob-face {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
-}
-.prob-icon {
-  flex: 1;
+.prob-icon-wrap {
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 56px;
-  padding-bottom: 16px;
-  user-select: none;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  margin-bottom: 20px;
+  transition: transform 0.3s var(--ease), border-color 0.3s var(--ease), background 0.5s;
 }
-.prob-footer {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 18px 20px;
-  border-top: 1px solid var(--border);
+.prob-card:hover .prob-icon-wrap {
+  transform: scale(1.05);
+  border-color: var(--border-2);
 }
 .prob-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.4;
+  font-family: var(--font-syne), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
   letter-spacing: -0.01em;
-}
-.prob-chevron {
-  color: var(--text-3);
-  flex-shrink: 0;
-  margin-top: 1px;
-  transition: color 0.2s;
-}
-
-/* ── Hover / active back ── */
-.prob-back {
-  position: absolute;
-  inset: 0;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
-}
-.prob-back-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
+  line-height: 1.35;
+  color: var(--text);
+  margin-bottom: 8px;
 }
 .prob-desc {
   font-size: 13px;
   color: var(--text-2);
   line-height: 1.7;
   font-weight: 300;
-}
-
-/* Swap layers on hover / active */
-.prob-card:hover .prob-face,
-.prob-card.active .prob-face {
-  opacity: 0;
-  transform: translateY(-14px);
-}
-.prob-card:hover .prob-back,
-.prob-card.active .prob-back {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 /* ── Demo Section ── */
@@ -462,23 +413,67 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
 }
 .process-copy { max-width: 360px; }
 
-.process-cards {
+.process-timeline {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+}
+.process-rail {
+  position: absolute;
+  left: 11px;
+  top: 26px;
+  bottom: 26px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border-2);
+}
+.process-rail-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: top;
+  border-radius: 1px;
+}
+.process-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+.process-dot {
+  width: 24px;
+  height: 24px;
+  margin-top: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-2);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  transition: border-color 0.3s var(--ease), background 0.5s;
+}
+.process-dot-fill {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: block;
 }
 .process-card {
   background: var(--bg-2);
   border: 1px solid var(--border-2);
   border-radius: 16px;
   padding: 24px 26px;
-  margin-left: var(--step-offset, 0px);
   box-shadow: var(--shadow);
-  transition: box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease), background 0.5s;
 }
 .process-card:hover {
   box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-2));
 }
 .process-num {
   font-size: 11px;
@@ -487,6 +482,19 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 700; letter-spacing: -0.025
   color: var(--accent-text);
   margin-bottom: 10px;
   font-family: var(--font-dm), sans-serif;
+}
+.process-title {
+  font-family: var(--font-syne), sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.process-body {
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 300;
+  line-height: 1.65;
 }
 
 /* ── Interactive Demo section ── */
@@ -855,7 +863,6 @@ footer {
   .demo-browser { display: none; }
   .demo-mobile-cta { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; max-width: 400px; margin: 0 auto; }
   .process-copy { max-width: 100%; }
-  .process-card { margin-left: 0 !important; }
 }
 
 /* ── Tablet dashboard (≤ 768 px) ── */
@@ -901,17 +908,10 @@ footer {
   .cmp-ours, .cmp-human { white-space: nowrap; }
   .cmp-table th:first-child { width: 30%; }
 
-  /* Problem cards → single column, always show back face */
+  /* Problem cards → single column */
   .prob-grid { grid-template-columns: 1fr; gap: 12px; }
-  .prob-card { height: auto; }
-  .prob-face { display: none; }
-  .prob-back {
-    position: static;
-    opacity: 1;
-    transform: none;
-    padding: 18px 20px;
-  }
-  .prob-back-header { margin-bottom: 10px; }
+  .prob-card { padding: 22px 20px; }
+  .prob-icon-wrap { width: 56px; height: 56px; margin-bottom: 16px; }
 
   /* Section defaults */
   .sec { padding: 56px 20px; }
@@ -920,6 +920,10 @@ footer {
 
   /* Process section */
   .process-grid { padding-left: 20px; padding-right: 20px; padding-top: 48px; padding-bottom: 48px; gap: 24px; }
+  .process-step { grid-template-columns: 20px 1fr; gap: 14px; }
+  .process-dot { width: 20px; height: 20px; }
+  .process-rail { left: 9px; }
+  .process-card { padding: 20px 18px; }
 
   /* Industry tabs: scroll horizontally */
   .tab-row {

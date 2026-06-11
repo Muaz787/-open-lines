@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
 
 // ── Update this when you have your Calendly link ──
@@ -51,22 +51,22 @@ function useTypewriter(phrases: string[], typeMs = 65, deleteMs = 38, pauseMs = 
 
 const PROBLEMS = [
   {
-    icon: '📵',
+    icon: 'phone-off',
     title: 'Missed calls, lost revenue.',
     body: "Most callers won't leave a voicemail — they'll call your competitor. The first business to pick up wins the client, and right now that's not you.",
   },
   {
-    icon: '🌙',
+    icon: 'moon',
     title: 'No coverage after hours.',
     body: "Your phone goes to voicemail after 5pm, on weekends, and during your busiest moments — exactly when new clients are trying to reach you.",
   },
   {
-    icon: '📋',
+    icon: 'clipboard',
     title: 'Leads that never convert.',
     body: "Your team spends hours returning calls only to find the prospect wasn't a fit, wanted the wrong service, or already booked elsewhere.",
   },
   {
-    icon: '💸',
+    icon: 'dollar',
     title: "Overhead that doesn't scale.",
     body: "A full-time receptionist costs $2,800–$4,000 a month. Part-time staff means gaps. Neither adapts to call volume or grows with your business.",
   },
@@ -89,10 +89,12 @@ const DEMO_SCRIPT = [
   { who: 'ai',  msg: "Done — Saturday at 10am is booked. You'll get a text confirmation shortly. Is there anything else I can help you with?" },
 ]
 
+const EASE = [0.4, 0, 0.2, 1] as [number, number, number, number]
+
 const up = (delay: number) => ({
   initial: { opacity: 0, y: 18 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.8, ease: [0.4, 0, 0.2, 1] as [number, number, number, number], delay },
+  transition: { duration: 0.8, ease: EASE, delay },
 })
 
 const hwaveAnim = (delay: number) => ({
@@ -110,6 +112,141 @@ const LogoMark = ({ size = 28 }: { size?: number }) => (
   </svg>
 )
 
+// ── Problem section: animated line icons ──
+// Base strokes draw first; the red "problem" accent draws last.
+const probDraw = {
+  hidden: { pathLength: 0, opacity: 0 },
+  show: {
+    pathLength: 1, opacity: 1,
+    transition: { pathLength: { duration: 0.8, ease: EASE, delay: 0.25 }, opacity: { duration: 0.15, delay: 0.25 } },
+  },
+}
+const probDrawAccent = {
+  hidden: { pathLength: 0, opacity: 0 },
+  show: {
+    pathLength: 1, opacity: 1,
+    transition: { pathLength: { duration: 0.45, ease: EASE, delay: 0.85 }, opacity: { duration: 0.15, delay: 0.85 } },
+  },
+}
+
+const PROB_ICON_PATHS: Record<string, { base: string[]; accent: string[] }> = {
+  'phone-off': {
+    base: ['M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7a2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91'],
+    accent: ['M23 1 1 23'],
+  },
+  'moon': {
+    base: ['M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'],
+    accent: ['M17 3h4l-4 5h4'],
+  },
+  'clipboard': {
+    base: [
+      'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2',
+      'M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z',
+    ],
+    accent: ['M9.5 11.5 14.5 16.5', 'M14.5 11.5 9.5 16.5'],
+  },
+  'dollar': {
+    base: ['M12 2v20', 'M16.5 5.5H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7'],
+    accent: ['M17 21l4-4', 'M21 21v-4h-4'],
+  },
+}
+
+const ProbIcon = ({ kind, animate }: { kind: string; animate: boolean }) => {
+  const { base, accent } = PROB_ICON_PATHS[kind]
+  return (
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {base.map((d, j) => animate
+        ? <motion.path key={j} d={d} variants={probDraw} />
+        : <path key={j} d={d} />
+      )}
+      {accent.map((d, j) => animate
+        ? <motion.path key={`a${j}`} d={d} stroke="#FF3B30" variants={probDrawAccent} />
+        : <path key={`a${j}`} d={d} stroke="#FF3B30" />
+      )}
+    </svg>
+  )
+}
+
+const probCardVar = {
+  hidden: { opacity: 0, y: 26 },
+  show: (i: number) => ({
+    opacity: 1, y: 0,
+    transition: { duration: 0.7, ease: EASE, delay: i * 0.08 },
+  }),
+}
+
+// ── How it works: connected timeline ──
+const PROCESS_STEPS = [
+  {
+    n: '01',
+    title: 'Sign up & connect',
+    body: 'Enter your business details and website. Your AI agent is trained and your dedicated phone number goes live in under 10 minutes.',
+  },
+  {
+    n: '02',
+    title: 'Calls handled from day one',
+    body: 'Your AI answers every call, qualifies leads, books appointments, and sends you a WhatsApp summary after each one.',
+  },
+  {
+    n: '03',
+    title: 'It gets smarter over time',
+    body: 'Update your knowledge base anytime. The AI learns from every interaction and improves with your business.',
+  },
+]
+
+function ProcessTimeline() {
+  const reduce = useReducedMotion()
+  const railRef = useRef<HTMLDivElement>(null)
+  // Rail fills as the timeline crosses the viewport — scrubs with scroll
+  const { scrollYProgress } = useScroll({
+    target: railRef,
+    offset: ['start 0.8', 'end 0.55'],
+  })
+  const railProgress = useSpring(scrollYProgress, { stiffness: 140, damping: 28 })
+
+  return (
+    <div className="process-timeline" ref={railRef}>
+      <div className="process-rail" aria-hidden="true">
+        <motion.div
+          className="process-rail-fill"
+          style={{ scaleY: reduce ? 1 : railProgress }}
+        />
+      </div>
+
+      {PROCESS_STEPS.map((step, i) => (
+        <motion.div
+          key={step.n}
+          className="process-step"
+          initial={reduce ? false : { opacity: 0, x: 28 }}
+          whileInView={{ opacity: 1, x: 0 }}
+          viewport={{ once: true, amount: 0.5 }}
+          transition={{ duration: 0.6, ease: EASE, delay: i * 0.05 }}
+        >
+          <div className="process-dot">
+            <motion.span
+              className="process-dot-fill"
+              initial={reduce ? false : { scale: 0 }}
+              whileInView={{ scale: 1 }}
+              viewport={{ once: true, amount: 1 }}
+              transition={{ duration: 0.35, ease: EASE, delay: 0.25 + i * 0.05 }}
+            />
+          </div>
+          <motion.div
+            className="process-card"
+            whileHover={reduce ? undefined : { y: -4 }}
+            transition={{ duration: 0.25, ease: EASE }}
+          >
+            <div className="process-num">{step.n}</div>
+            <h3 className="process-title">{step.title}</h3>
+            <p className="process-body">{step.body}</p>
+          </motion.div>
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
 export default function Home() {
   const [isDark, setIsDark]           = useState(false)
   const [activeInd, setActiveInd]     = useState('re')
@@ -120,7 +257,7 @@ export default function Home() {
   const transcriptRef  = useRef<HTMLDivElement>(null)
   const demoSectionRef = useRef<HTMLDivElement>(null)
   const autoPlayedRef  = useRef(false)
-  const [activeProb, setActiveProb] = useState<number | null>(null)
+  const reduceMotion   = useReducedMotion()
 
   useEffect(() => {
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light'
@@ -322,35 +459,23 @@ export default function Home() {
           </h2>
           <div className="prob-grid">
             {PROBLEMS.map((p, i) => (
-              <div
-                key={i}
-                className={`prob-card${activeProb === i ? ' active' : ''}`}
-                onMouseEnter={() => setActiveProb(i)}
-                onMouseLeave={() => setActiveProb(null)}
-                onClick={() => setActiveProb(activeProb === i ? null : i)}
+              <motion.div
+                key={p.icon}
+                className="prob-card"
+                custom={i}
+                variants={probCardVar}
+                initial={reduceMotion ? false : 'hidden'}
+                whileInView="show"
+                viewport={{ once: true, amount: 0.4 }}
+                whileHover={reduceMotion ? undefined : { y: -5 }}
+                transition={{ duration: 0.25, ease: EASE }}
               >
-                {/* Default face: icon + title footer */}
-                <div className="prob-face">
-                  <div className="prob-icon">{p.icon}</div>
-                  <div className="prob-footer">
-                    <span className="prob-title">{p.title}</span>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="prob-chevron">
-                      <path d="M2 9L7 4L12 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
+                <div className="prob-icon-wrap">
+                  <ProbIcon kind={p.icon} animate={!reduceMotion} />
                 </div>
-
-                {/* Hover back: full text */}
-                <div className="prob-back">
-                  <div className="prob-back-header">
-                    <span className="prob-title">{p.title}</span>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="prob-chevron">
-                      <path d="M2 5L7 10L12 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </div>
-                  <p className="prob-desc">{p.body}</p>
-                </div>
-              </div>
+                <h3 className="prob-title">{p.title}</h3>
+                <p className="prob-desc">{p.body}</p>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -626,42 +751,8 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Right: staggered cards */}
-          <div className="process-cards">
-            {[
-              {
-                n: '01',
-                title: 'Sign up & connect',
-                body: 'Enter your business details and website. Your AI agent is trained and your dedicated phone number goes live in under 10 minutes.',
-              },
-              {
-                n: '02',
-                title: 'Calls handled from day one',
-                body: 'Your AI answers every call, qualifies leads, books appointments, and sends you a WhatsApp summary after each one.',
-              },
-              {
-                n: '03',
-                title: 'It gets smarter over time',
-                body: 'Update your knowledge base anytime. The AI learns from every interaction and improves with your business.',
-              },
-            ].map((step, i) => (
-              <motion.div
-                key={i}
-                className="process-card"
-                style={{ '--step-offset': `${i * 28}px` } as React.CSSProperties}
-                whileHover={{ y: -6, boxShadow: '0 12px 36px rgba(0,0,0,0.09)' }}
-                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <div className="process-num">{step.n}</div>
-                <div style={{ fontFamily: 'var(--font-syne), sans-serif', fontWeight: 700, fontSize: 15, marginBottom: 8, color: 'var(--text)' }}>
-                  {step.title}
-                </div>
-                <div style={{ fontSize: 13, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.65 }}>
-                  {step.body}
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          {/* Right: connected timeline */}
+          <ProcessTimeline />
 
         </div>
       </div>
