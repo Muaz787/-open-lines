@@ -30,6 +30,32 @@ export async function PATCH(
   return Response.json(data)
 }
 
+// PUT — enable smart routing (sets serverUrl on Vapi phone number)
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireAdmin(req)
+  if (auth instanceof Response) return auth
+
+  const { id } = await params
+  const { supabase, userId } = auth
+
+  const res = await fetch(`${BACKEND}/admin/tenants/${id}/enable-smart-routing`, {
+    method: 'POST',
+    headers: { 'x-admin-key': ADMIN_KEY },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    return Response.json({ error: body?.detail ?? 'Failed' }, { status: res.status })
+  }
+
+  const data = await res.json()
+  await logAdminAction(supabase, userId, 'smart_routing_enabled', 'tenant', id)
+  return Response.json(data)
+}
+
 // POST — rebuild and push system prompt
 export async function POST(
   req: NextRequest,

@@ -99,6 +99,25 @@ export default function TenantDetailPage() {
     setTimeout(() => setActionMsg(''), 4000)
   }
 
+  async function enableSmartRouting() {
+    if (actionLoading) return
+    setActionLoading(true)
+    setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      setActionMsg(res.ok ? 'Smart routing enabled — calls now route through backend' : `Failed: ${json.error ?? res.statusText}`)
+    } catch {
+      setActionMsg('Network error — check backend is reachable')
+    }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 5000)
+  }
+
   async function reprompt() {
     if (actionLoading) return
     setActionLoading(true)
@@ -208,6 +227,9 @@ export default function TenantDetailPage() {
           </button>
           <button className="adm-btn adm-btn-secondary" onClick={reprompt} disabled={actionLoading}>
             Rebuild System Prompt
+          </button>
+          <button className="adm-btn adm-btn-secondary" onClick={enableSmartRouting} disabled={actionLoading}>
+            Enable Smart Routing
           </button>
           {actionMsg && <span style={{ fontSize: 13, color: actionMsg.startsWith('Failed') || actionMsg.startsWith('Network') ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{actionMsg}</span>}
         </div>
