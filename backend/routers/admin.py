@@ -137,6 +137,8 @@ async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(
 
     try:
         await vapi.update_phone_number(stored_phone_id, {
+            "assistantId": None,
+            "squadId": None,
             "serverUrl": f"{app_backend_url}/webhooks/vapi-call-ended",
         })
     except Exception as e:
