@@ -31,7 +31,18 @@ export default function LoginPage() {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) throw authError
       const tenantId = data.user?.user_metadata?.tenant_id
-      if (!tenantId) throw new Error('No dashboard found for this account.')
+      if (!tenantId) {
+        // Check if this is an admin account
+        const meRes = await fetch('/api/admin/me', {
+          headers: { Authorization: `Bearer ${data.session?.access_token}` },
+        })
+        if (meRes.ok) {
+          trackEvent('login_completed')
+          router.replace('/admin')
+          return
+        }
+        throw new Error('No dashboard found for this account.')
+      }
       if (data.user) {
         identifyUser(data.user.id, { email: data.user.email, tenant_id: tenantId })
         trackEvent('login_completed')
