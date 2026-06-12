@@ -355,6 +355,14 @@
 .adm-pagination button:disabled { opacity: 0.4; cursor: default; }
 .adm-pagination button:hover:not(:disabled) { background: var(--db-subtle, #f8f7f4); }
 
+/* ── Action Button Group ────────────────────── */
+.adm-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 /* ── Action Buttons ─────────────────────────── */
 .adm-btn {
   height: 36px;
@@ -402,6 +410,14 @@
 .adm-health-name  { font-weight: 500; color: var(--db-text, #16161a); min-width: 200px; flex-shrink: 0; }
 .adm-health-msg   { color: var(--db-muted, #888); flex: 1; }
 .adm-health-status { margin-left: auto; flex-shrink: 0; }
+
+/* ── Chart Grid (3-col → 1-col on mobile) ───── */
+.adm-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
 
 /* ── Bar Chart ──────────────────────────────── */
 .adm-chart-wrap {
@@ -497,6 +513,17 @@
   .adm-card { padding: 14px 16px; }
   .adm-card-value { font-size: 22px; }
   .adm-section { padding: 16px; }
+
+  /* Charts: stack vertically on mobile */
+  .adm-chart-grid { grid-template-columns: 1fr; gap: 12px; }
+
+  /* Toolbar: search input full-width on its own row, filters wrap below */
   .adm-toolbar { gap: 8px; }
-  .adm-input { min-width: 0; flex: 1; }
+  .adm-toolbar .adm-input { width: 100%; min-width: 0; flex: none; }
+  .adm-toolbar .adm-select { flex: 1; min-width: 0; }
+  .adm-toolbar .adm-btn { white-space: nowrap; }
+
+  /* Action buttons: wrap and fill row on narrow screens */
+  .adm-btn-group { gap: 8px; }
+  .adm-btn-group .adm-btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; min-width: 0; }
 }

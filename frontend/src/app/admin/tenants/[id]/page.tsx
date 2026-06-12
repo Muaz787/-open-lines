@@ -217,7 +217,7 @@ export default function TenantDetailPage() {
       {/* Admin actions */}
       <div className="adm-section">
         <div className="adm-section-title">Admin Actions</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="adm-btn-group">
           <button
             className={`adm-btn ${tenant.is_active ? 'adm-btn-danger' : 'adm-btn-primary'}`}
             onClick={toggleActive}
@@ -231,8 +231,8 @@ export default function TenantDetailPage() {
           <button className="adm-btn adm-btn-secondary" onClick={enableSmartRouting} disabled={actionLoading}>
             Enable Smart Routing
           </button>
-          {actionMsg && <span style={{ fontSize: 13, color: actionMsg.startsWith('Failed') || actionMsg.startsWith('Network') ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{actionMsg}</span>}
         </div>
+        {actionMsg && <p style={{ margin: '10px 0 0', fontSize: 13, color: actionMsg.startsWith('Failed') || actionMsg.startsWith('Network') ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{actionMsg}</p>}
       </div>
 
       {/* Recent calls */}

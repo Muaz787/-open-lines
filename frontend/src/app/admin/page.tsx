@@ -126,7 +126,7 @@ export default function AdminOverview() {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div className="adm-chart-grid">
         {[
           { label: 'Signups (30d)', data: data.signups_30d, color: '#4f6ef7' },
           { label: 'Calls (30d)', data: data.calls_30d, color: '#3dba72' },
