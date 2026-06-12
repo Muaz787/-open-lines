@@ -1,6 +1,61 @@
 import type { NextRequest } from 'next/server'
 import { requireAdmin, logAdminAction } from '@/lib/admin-auth'
 
+const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const ADMIN_KEY = process.env.ADMIN_API_KEY ?? ''
+
+// PATCH — toggle tenant active/inactive
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireAdmin(req)
+  if (auth instanceof Response) return auth
+
+  const { id } = await params
+  const { supabase, userId } = auth
+
+  const res = await fetch(`${BACKEND}/admin/tenants/${id}/toggle`, {
+    method: 'PATCH',
+    headers: { 'x-admin-key': ADMIN_KEY },
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    return Response.json({ error: text || 'Toggle failed' }, { status: res.status })
+  }
+
+  const data = await res.json()
+  await logAdminAction(supabase, userId, 'tenant_toggled', 'tenant', id)
+  return Response.json(data)
+}
+
+// POST — rebuild and push system prompt
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireAdmin(req)
+  if (auth instanceof Response) return auth
+
+  const { id } = await params
+  const { supabase, userId } = auth
+
+  const res = await fetch(`${BACKEND}/admin/tenants/${id}/reprompt`, {
+    method: 'POST',
+    headers: { 'x-admin-key': ADMIN_KEY },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    return Response.json({ error: body?.detail ?? 'Reprompt failed' }, { status: res.status })
+  }
+
+  const data = await res.json()
+  await logAdminAction(supabase, userId, 'tenant_reprompted', 'tenant', id)
+  return Response.json(data)
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

@@ -5,8 +5,6 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY ?? ''
 
 interface TenantDetail {
   tenant: {
@@ -80,31 +78,44 @@ export default function TenantDetailPage() {
   async function toggleActive() {
     if (!data || actionLoading) return
     setActionLoading(true)
-    const res = await fetch(`${API}/admin/tenants/${id}/toggle`, {
-      method: 'PATCH',
-      headers: { 'x-admin-key': ADMIN_KEY },
-    })
-    if (res.ok) {
-      const updated = await res.json()
-      setData(d => d ? { ...d, tenant: { ...d.tenant, is_active: updated.is_active } } : d)
-      setActionMsg(`Tenant ${updated.is_active ? 'activated' : 'deactivated'}`)
-    } else {
-      setActionMsg('Action failed — check ADMIN_API_KEY env var')
+    setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setData(d => d ? { ...d, tenant: { ...d.tenant, is_active: json.is_active } } : d)
+        setActionMsg(`Tenant ${json.is_active ? 'activated' : 'deactivated'}`)
+      } else {
+        setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+      }
+    } catch {
+      setActionMsg('Network error — check backend is reachable')
     }
     setActionLoading(false)
-    setTimeout(() => setActionMsg(''), 3000)
+    setTimeout(() => setActionMsg(''), 4000)
   }
 
   async function reprompt() {
     if (actionLoading) return
     setActionLoading(true)
-    const res = await fetch(`${API}/admin/tenants/${id}/reprompt`, {
-      method: 'POST',
-      headers: { 'x-admin-key': ADMIN_KEY },
-    })
-    setActionMsg(res.ok ? 'System prompt rebuilt and pushed to Vapi' : 'Reprompt failed — check logs')
+    setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      setActionMsg(res.ok ? 'System prompt rebuilt and pushed to Vapi' : `Failed: ${json.error ?? res.statusText}`)
+    } catch {
+      setActionMsg('Network error — check backend is reachable')
+    }
     setActionLoading(false)
-    setTimeout(() => setActionMsg(''), 4000)
+    setTimeout(() => setActionMsg(''), 5000)
   }
 
   if (loading) return <div className="adm-loading"><div className="adm-spinner" />Loading tenant…</div>
@@ -198,13 +209,8 @@ export default function TenantDetailPage() {
           <button className="adm-btn adm-btn-secondary" onClick={reprompt} disabled={actionLoading}>
             Rebuild System Prompt
           </button>
-          {actionMsg && <span style={{ fontSize: 13, color: 'var(--db-muted)' }}>{actionMsg}</span>}
+          {actionMsg && <span style={{ fontSize: 13, color: actionMsg.startsWith('Failed') || actionMsg.startsWith('Network') ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{actionMsg}</span>}
         </div>
-        {!ADMIN_KEY && (
-          <p style={{ marginTop: 10, fontSize: 12, color: 'var(--db-warn-text)' }}>
-            ⚠ NEXT_PUBLIC_ADMIN_API_KEY is not set — actions will fail. Add it to Vercel env vars.
-          </p>
-        )}
       </div>
 
       {/* Recent calls */}
