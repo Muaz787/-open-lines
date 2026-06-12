@@ -142,8 +142,12 @@ async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(
             "serverUrl": f"{app_backend_url}/webhooks/vapi-call-ended",
         })
     except Exception as e:
-        logger.error("Failed to update Vapi phone number %s: %s", stored_phone_id, e)
-        raise HTTPException(status_code=500, detail="Failed to update Vapi phone number")
+        detail = str(e)
+        import httpx as _httpx
+        if isinstance(e, _httpx.HTTPStatusError):
+            detail = f"Vapi {e.response.status_code}: {e.response.text[:300]}"
+        logger.error("Failed to update Vapi phone number %s: %s", stored_phone_id, detail)
+        raise HTTPException(status_code=500, detail=detail)
 
     logger.info("Smart routing enabled for tenant %s (phone number %s)", tenant_id, stored_phone_id)
     return {"status": "enabled", "vapi_phone_number_id": stored_phone_id}
