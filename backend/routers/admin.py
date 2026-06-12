@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 
 from db import supabase as db
 from services import vapi
@@ -14,8 +14,17 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 _TENANT_SUMMARY_FIELDS = "id, business_name, industry, twilio_phone_number, is_active, created_at"
 
 
+def _check_admin_key(x_admin_key: str | None) -> None:
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key:
+        raise HTTPException(status_code=503, detail="Admin API key not configured")
+    if x_admin_key != admin_key:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 @router.get("/tenants")
-async def list_tenants():
+async def list_tenants(x_admin_key: str | None = Header(None)):
+    _check_admin_key(x_admin_key)
     try:
         res = (
             db.get_client()
@@ -31,7 +40,8 @@ async def list_tenants():
 
 
 @router.patch("/tenants/{tenant_id}/toggle")
-async def toggle_tenant(tenant_id: str):
+async def toggle_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
+    _check_admin_key(x_admin_key)
     # Fetch current state first so the toggle is always accurate
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -61,8 +71,9 @@ async def toggle_tenant(tenant_id: str):
 
 
 @router.post("/tenants/{tenant_id}/reprompt")
-async def reprompt_tenant(tenant_id: str):
+async def reprompt_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
     """Rebuild the system prompt from the current template and push it to the Vapi assistant."""
+    _check_admin_key(x_admin_key)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -82,9 +93,10 @@ async def reprompt_tenant(tenant_id: str):
 
 
 @router.post("/tenants/{tenant_id}/enable-smart-routing")
-async def enable_smart_routing(tenant_id: str):
+async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(None)):
     """Switch the tenant's Vapi phone number from assistantId to serverUrl so that
     assistant-request fires on every inbound call (enables instant caller recognition)."""
+    _check_admin_key(x_admin_key)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
