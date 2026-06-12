@@ -14,13 +14,13 @@ export async function GET(req: NextRequest) {
   const dateTo = searchParams.get('date_to') ?? ''
   const hasAppt = searchParams.get('has_appointment') ?? ''
 
+  // Fetch calls with lead + tenant joins (both have registered FKs)
   let query = supabase
     .from('calls')
     .select(`
       id, created_at, duration_secs, vapi_call_id, tenant_id,
       leads:lead_id (name, phone, urgency, status),
-      tenants:tenant_id (business_name),
-      appointments:vapi_call_id (id)
+      tenants:tenant_id (business_name)
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range((page - 1) * perPage, page * perPage - 1)
@@ -32,10 +32,25 @@ export async function GET(req: NextRequest) {
   const { data, count, error } = await query
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
-  let calls = (data ?? []).map((c: Record<string, unknown>) => {
+  const callRows = data ?? []
+
+  // Check appointment existence via vapi_call_id in a single batch query
+  const vapiIds = callRows
+    .map((c: Record<string, unknown>) => c.vapi_call_id as string)
+    .filter(Boolean)
+
+  let apptVapiIds = new Set<string>()
+  if (vapiIds.length > 0) {
+    const { data: apptData } = await supabase
+      .from('appointments')
+      .select('vapi_call_id')
+      .in('vapi_call_id', vapiIds)
+    apptVapiIds = new Set((apptData ?? []).map(a => a.vapi_call_id).filter(Boolean))
+  }
+
+  let calls = callRows.map((c: Record<string, unknown>) => {
     const lead = c.leads as { name?: string; phone?: string; urgency?: string; status?: string } | null
     const tenant = c.tenants as { business_name?: string } | null
-    const appts = c.appointments as unknown[]
     return {
       id: c.id,
       created_at: c.created_at,
@@ -46,7 +61,7 @@ export async function GET(req: NextRequest) {
       caller_phone: maskPhone(lead?.phone),
       urgency: lead?.urgency ?? null,
       lead_status: lead?.status ?? null,
-      has_appointment: Array.isArray(appts) && appts.length > 0,
+      has_appointment: Boolean(c.vapi_call_id && apptVapiIds.has(c.vapi_call_id as string)),
     }
   })
 
