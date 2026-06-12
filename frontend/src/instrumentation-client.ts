@@ -14,6 +14,7 @@ if (key) {
     // PRIVACY: the dashboard renders caller phone numbers, lead names and
     // full call transcripts. Autocapture sends clicked-element text, so it
     // stays OFF — all product events are explicit via lib/analytics.ts.
+    capture_pageleave: true,
     autocapture: false,
     // PRIVACY: session recordings would capture transcripts, calendar
     // details and uploaded knowledge-base content. Never enable without
