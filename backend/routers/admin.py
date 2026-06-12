@@ -131,7 +131,7 @@ async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(
             raise HTTPException(status_code=500, detail="Failed to look up Vapi phone number")
 
     # Switch from assistantId → serverUrl
-    app_backend_url = os.getenv("APP_BACKEND_URL", "")
+    app_backend_url = os.getenv("APP_BACKEND_URL", "").strip().rstrip("/")
     if not app_backend_url:
         raise HTTPException(status_code=500, detail="APP_BACKEND_URL not set")
 
