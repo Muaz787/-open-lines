@@ -437,7 +437,6 @@ async def _provision_after_twilio(
             phone_number=purchased_number,
             twilio_account_sid=subaccount_sid,
             twilio_auth_token=subaccount_token,
-            assistant_id=vapi_assistant_id,
             label=business_name,
             server_url=f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended",
             api_key=suborg_key,
@@ -465,6 +464,7 @@ async def _provision_after_twilio(
             "vapi_assistant_id": vapi_assistant_id,
             "vapi_phone_number_id": vapi_phone_id,
             "pinecone_namespace": pinecone_namespace,
+            "last_system_prompt": system_prompt,
             "is_active": True,
         }
         if suborg_id:
