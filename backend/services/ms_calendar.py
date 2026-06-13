@@ -132,11 +132,34 @@ async def get_user_email(refresh_token: str) -> str | None:
             res = await http.get(
                 f"{_MS_GRAPH_BASE}/me",
                 headers={"Authorization": f"Bearer {access}"},
+                params={"$select": "mail,userPrincipalName,identities"},
                 timeout=8.0,
             )
-            if res.status_code == 200:
-                d = res.json()
-                return d.get("mail") or d.get("userPrincipalName")
+            if res.status_code != 200:
+                return None
+            d = res.json()
+
+            # Best: mail field (set for most personal/work accounts)
+            if d.get("mail"):
+                return d["mail"]
+
+            # Second: identities array — emailAddress sign-in type holds the real address
+            for identity in d.get("identities") or []:
+                if identity.get("signInType") == "emailAddress":
+                    email = identity.get("issuerAssignedId")
+                    if email:
+                        return email
+
+            # Fallback: reconstruct from external-user UPN format
+            # e.g. "User_outlook.com#EXT#@tenant.onmicrosoft.com" → "User@outlook.com"
+            upn = d.get("userPrincipalName", "")
+            if "#EXT#" in upn:
+                local = upn.split("#EXT#")[0]
+                idx = local.rfind("_")
+                if idx > 0:
+                    return local[:idx] + "@" + local[idx + 1:]
+
+            return upn or None
     except Exception:
         pass
     return None
