@@ -15,6 +15,8 @@ from fastapi import APIRouter, HTTPException, Request
 from services import analytics
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
+from services import ms_calendar as ms_cal_svc
+from services.ms_calendar import MsCalendarTokenExpiredError
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from db import supabase as db
@@ -79,6 +81,18 @@ def _parse_tool_call(body: dict) -> tuple[str, str, dict]:
 
 def _result(tc_id: str, text: str) -> dict:
     return {"results": [{"toolCallId": tc_id, "result": text}]}
+
+
+def _calendar_provider(tenant: dict) -> tuple[str | None, str]:
+    """Return (refresh_token, provider) where provider is 'google', 'microsoft', or ''.
+    Google takes priority when both are connected."""
+    g = tenant.get("google_refresh_token")
+    if g:
+        return g, "google"
+    m = tenant.get("microsoft_refresh_token")
+    if m:
+        return m, "microsoft"
+    return None, ""
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +217,7 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         logger.error("tools/availability: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
-    refresh_token = tenant.get("google_refresh_token")
+    refresh_token, cal_provider = _calendar_provider(tenant)
     if not refresh_token:
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
@@ -258,25 +272,30 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/availability: existing-appt check failed: %s", e)
 
+    _slot_kwargs = dict(
+        refresh_token=refresh_token,
+        date_str=date_str,
+        duration_minutes=duration_minutes,
+        timezone=timezone,
+        period=period,
+        exclude_event_id=exclude_event_id,
+        exclude_range=exclude_range,
+        business_hours_start=business_hours_start,
+        business_hours_end=business_hours_end,
+        business_days=business_days,
+        break_start=break_start,
+        break_end=break_end,
+    )
     try:
-        slots = await cal_svc.list_free_slots(
-            refresh_token=refresh_token,
-            date_str=date_str,
-            duration_minutes=duration_minutes,
-            timezone=timezone,
-            period=period,
-            exclude_event_id=exclude_event_id,
-            exclude_range=exclude_range,
-            business_hours_start=business_hours_start,
-            business_hours_end=business_hours_end,
-            business_days=business_days,
-            break_start=break_start,
-            break_end=break_end,
-        )
-    except CalendarTokenExpiredError:
+        if cal_provider == "microsoft":
+            slots = await ms_cal_svc.list_free_slots(**_slot_kwargs)
+        else:
+            slots = await cal_svc.list_free_slots(**_slot_kwargs)
+    except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
         logger.error("tools/availability: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+        clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
         try:
-            await db.update_tenant(tenant_id, {"google_refresh_token": None})
+            await db.update_tenant(tenant_id, {clear_field: None})
         except Exception:
             pass
         return _result(tc_id, _CALENDAR_ERROR_MSG)
@@ -357,7 +376,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/book: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
-    refresh_token    = tenant.get("google_refresh_token")
+    refresh_token, cal_provider = _calendar_provider(tenant)
     duration_minutes = tenant.get("appointment_duration_minutes") or 60
     timezone         = tenant.get("calendar_timezone") or "America/Toronto"
     business_name    = tenant["business_name"]
@@ -410,12 +429,16 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             old_event_id = existing_appt.get("google_event_id", "")
             if old_event_id:
                 try:
-                    await cal_svc.cancel_event(refresh_token, old_event_id)
+                    if cal_provider == "microsoft":
+                        await ms_cal_svc.cancel_event(refresh_token, old_event_id)
+                    else:
+                        await cal_svc.cancel_event(refresh_token, old_event_id)
                     logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
-                except CalendarTokenExpiredError:
+                except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
                     logger.error("tools/book: calendar token expired during reschedule for tenant %s — auto-disconnecting", tenant_id)
+                    clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
                     try:
-                        await db.update_tenant(tenant_id, {"google_refresh_token": None})
+                        await db.update_tenant(tenant_id, {clear_field: None})
                     except Exception:
                         pass
                     return _result(tc_id, _CALENDAR_ERROR_MSG)
@@ -429,7 +452,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             f"Caller: {caller_name}\n"
             f"Phone: {caller_phone}"
         )
-        event = await cal_svc.create_event(
+        _event_kwargs = dict(
             refresh_token=refresh_token,
             title=f"{service} — {caller_name}" if caller_name else service,
             start_dt=start_dt,
@@ -437,19 +460,24 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             timezone=timezone,
             description=description,
         )
+        if cal_provider == "microsoft":
+            event = await ms_cal_svc.create_event(**_event_kwargs)
+        else:
+            event = await cal_svc.create_event(**_event_kwargs)
         logger.info(
-            "Booked appointment for tenant %s: %s on %s at %s (event %s)",
-            tenant_id, service, date_str, time_str, event.get("id"),
+            "Booked appointment for tenant %s: %s on %s at %s (event %s, provider %s)",
+            tenant_id, service, date_str, time_str, event.get("id"), cal_provider,
         )
         analytics.capture(
             analytics.distinct_id_for(tenant, tenant_id),
             "calendar_event_created",
-            {"tenant_id": tenant_id},
+            {"tenant_id": tenant_id, "provider": cal_provider},
         )
-    except CalendarTokenExpiredError:
+    except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
         logger.error("tools/book: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+        clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
         try:
-            await db.update_tenant(tenant_id, {"google_refresh_token": None})
+            await db.update_tenant(tenant_id, {clear_field: None})
         except Exception:
             pass
         return _result(tc_id, _CALENDAR_ERROR_MSG)
@@ -562,16 +590,20 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/cancel: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, "I had trouble processing the cancellation. Please call back and we'll get that sorted.")
 
-    refresh_token = (tenant or {}).get("google_refresh_token")
+    refresh_token, cal_provider = _calendar_provider(tenant or {})
     event_id = appt.get("google_event_id", "")
 
     if refresh_token and event_id:
         try:
-            await cal_svc.cancel_event(refresh_token, event_id)
-        except CalendarTokenExpiredError:
+            if cal_provider == "microsoft":
+                await ms_cal_svc.cancel_event(refresh_token, event_id)
+            else:
+                await cal_svc.cancel_event(refresh_token, event_id)
+        except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
             logger.error("tools/cancel: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
+            clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
             try:
-                await db.update_tenant(tenant_id, {"google_refresh_token": None})
+                await db.update_tenant(tenant_id, {clear_field: None})
             except Exception:
                 pass
         except Exception as e:

@@ -11,6 +11,9 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CalendarStatus {
   connected: boolean
+  google_connected: boolean
+  microsoft_connected: boolean
+  microsoft_user_email?: string | null
   appointment_duration_minutes: number
   calendar_timezone: string
 }
@@ -56,6 +59,7 @@ function CalendarPage() {
   const [loading, setLoading]             = useState(true)
   const [calStatus, setCalStatus]         = useState<CalendarStatus | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
+  const [msDisconnecting, setMsDisconnecting]   = useState(false)
   const [toast, setToast]                 = useState<string | null>(null)
   const [showPast, setShowPast]           = useState(false)
 
@@ -99,14 +103,14 @@ function CalendarPage() {
     }
     init()
 
-    // pick up ?calendar=connected redirect from OAuth flow
+    // pick up ?calendar=* redirect from OAuth flow
     const params = new URLSearchParams(window.location.search)
     const calParam = params.get('calendar')
-    if (calParam === 'connected') {
-      showToast('Google Calendar connected!')
+    if (calParam === 'connected' || calParam === 'ms_connected') {
+      showToast(calParam === 'ms_connected' ? 'Microsoft Outlook connected!' : 'Google Calendar connected!')
       fetch(`${API}/calendar/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setCalStatus(d))
       window.history.replaceState({}, '', window.location.pathname)
-    } else if (calParam === 'error') {
+    } else if (calParam === 'error' || calParam === 'ms_error') {
       showToast('Calendar connection failed. Please try again.')
       window.history.replaceState({}, '', window.location.pathname)
     }
@@ -121,6 +125,18 @@ function CalendarPage() {
       if (r.ok) setCalStatus(await r.json())
     } finally {
       setCalDisconnecting(false)
+    }
+  }
+
+  const disconnectOutlook = async () => {
+    if (!confirm('Disconnect Microsoft Outlook? The AI will no longer be able to book appointments in real time.')) return
+    setMsDisconnecting(true)
+    try {
+      await fetch(`${API}/calendar/microsoft/disconnect/${tenantId}`, { method: 'POST' })
+      const r = await fetch(`${API}/calendar/status/${tenantId}`)
+      if (r.ok) setCalStatus(await r.json())
+    } finally {
+      setMsDisconnecting(false)
     }
   }
 
@@ -189,51 +205,104 @@ function CalendarPage() {
         {/* Content */}
         <div className="db-content">
 
-          {/* Google Calendar connection banner */}
-          {calStatus && !calStatus.connected && (
-            <div className="db-card" style={{
-              padding: '18px 20px', marginBottom: 16,
+          {/* Calendar integration section */}
+          <div className="db-card" style={{ padding: '18px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', marginBottom: 4 }}>
+              Calendar Integration
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--db-faint)', marginBottom: 16, lineHeight: 1.5 }}>
+              Connect a calendar so the AI can check availability and book appointments in real time.
+              {calStatus?.google_connected && calStatus?.microsoft_connected && (
+                <span style={{ color: 'var(--db-accent-text)', display: 'block', marginTop: 4 }}>
+                  Both calendars connected — Google Calendar takes priority for bookings.
+                </span>
+              )}
+            </div>
+
+            {/* Google Calendar row */}
+            <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              flexWrap: 'wrap', gap: 12,
+              flexWrap: 'wrap', gap: 10, paddingBottom: 14,
+              borderBottom: '1px solid var(--db-border)', marginBottom: 14,
             }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', marginBottom: 3 }}>
-                  Connect Google Calendar
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.5 }}>
-                  Allow the AI to check availability and book appointments in real time.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <rect width="24" height="24" rx="4" fill="#fff"/>
+                  <path d="M21.805 10.023H21V10h-9v4h5.651C16.785 15.933 14.557 17 12 17c-2.761 0-5-2.239-5-5s2.239-5 5-5c1.266 0 2.418.48 3.292 1.265l2.828-2.828C16.595 3.93 14.407 3 12 3 7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9c0-.604-.062-1.193-.195-1.757" fill="#4285F4"/>
+                  <path d="M4.306 7.691l3.286 2.41A4.996 4.996 0 0 1 12 7c1.266 0 2.418.48 3.292 1.265l2.828-2.828C16.595 3.93 14.407 3 12 3c-3.316 0-6.185 1.79-7.694 4.691" fill="#34A853"/>
+                  <path d="M12 21c2.361 0 4.51-.899 6.127-2.366l-2.83-2.395A4.974 4.974 0 0 1 12 17c-2.548 0-4.772-1.058-6.338-2.933l-3.27 2.52C4.034 19.08 7.825 21 12 21" fill="#FBBC05"/>
+                  <path d="M21.805 10.023H21V10h-9v4h5.651a5.016 5.016 0 0 1-2.479 2.239l2.829 2.395C17.786 18.146 21 15 21 12c0-.604-.062-1.193-.195-1.757" fill="#EA4335"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text)' }}>Google Calendar</div>
+                  {calStatus?.google_connected && (
+                    <div style={{ fontSize: 11, color: 'var(--db-accent-text)', marginTop: 1 }}>Connected</div>
+                  )}
                 </div>
               </div>
-              <a
-                href={`${API}/calendar/connect/${tenantId}`}
-                className="db-btn db-btn--dark"
-                onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', tenant_id: tenantId })}
-              >
-                Connect Google Calendar
-              </a>
+              {calStatus?.google_connected ? (
+                <button
+                  className="db-btn db-btn--ghost db-btn--sm"
+                  onClick={disconnectCalendar}
+                  disabled={calDisconnecting}
+                >
+                  {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                </button>
+              ) : (
+                <a
+                  href={`${API}/calendar/connect/${tenantId}`}
+                  className="db-btn db-btn--dark"
+                  style={{ fontSize: 12 }}
+                  onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', provider: 'google', tenant_id: tenantId })}
+                >
+                  Connect
+                </a>
+              )}
             </div>
-          )}
 
-          {calStatus?.connected && (
+            {/* Microsoft Outlook row */}
             <div style={{
-              background: 'var(--db-accent-bg)', border: '1px solid var(--db-accent-border)', borderRadius: 'var(--db-r-md)',
-              padding: '12px 16px', marginBottom: 16,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               flexWrap: 'wrap', gap: 10,
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 14, color: 'var(--db-accent-text)' }}>✓</span>
-                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--db-accent-text)' }}>Google Calendar connected</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <rect width="24" height="24" rx="4" fill="#0078D4"/>
+                  <path d="M13 5h7v7h-7z" fill="#fff" opacity=".8"/>
+                  <path d="M13 12h7v7h-7z" fill="#fff" opacity=".5"/>
+                  <path d="M6 12h7v7H6z" fill="#fff" opacity=".5"/>
+                  <rect x="4" y="7" width="8" height="8" rx="4" fill="#fff" opacity=".9"/>
+                  <circle cx="8" cy="11" r="2.5" fill="#0078D4"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text)' }}>Microsoft Outlook</div>
+                  {calStatus?.microsoft_connected && (
+                    <div style={{ fontSize: 11, color: 'var(--db-accent-text)', marginTop: 1 }}>
+                      Connected{calStatus.microsoft_user_email ? ` · ${calStatus.microsoft_user_email}` : ''}
+                    </div>
+                  )}
+                </div>
               </div>
-              <button
-                className="db-btn db-btn--ghost db-btn--sm"
-                onClick={disconnectCalendar}
-                disabled={calDisconnecting}
-              >
-                {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
-              </button>
+              {calStatus?.microsoft_connected ? (
+                <button
+                  className="db-btn db-btn--ghost db-btn--sm"
+                  onClick={disconnectOutlook}
+                  disabled={msDisconnecting}
+                >
+                  {msDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                </button>
+              ) : (
+                <a
+                  href={`${API}/calendar/microsoft/connect?tenant_id=${tenantId}`}
+                  className="db-btn db-btn--dark"
+                  style={{ fontSize: 12 }}
+                  onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', provider: 'microsoft', tenant_id: tenantId })}
+                >
+                  Connect
+                </a>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Availability settings */}
           <div className="db-card" style={{ padding: '18px 20px', marginBottom: 16 }}>
