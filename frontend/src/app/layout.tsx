@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Syne, DM_Sans, DM_Mono } from 'next/font/google'
+import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
 const syne = Syne({
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${syne.variable} ${dmSans.variable} ${dmMono.variable}`}>
       <body style={{ fontFamily: 'var(--font-dm), sans-serif' }} suppressHydrationWarning>
         {children}
+        <Analytics />
       </body>
     </html>
   )
