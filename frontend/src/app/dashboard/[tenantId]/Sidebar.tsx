@@ -70,6 +70,14 @@ const IconSettings = () => (
     <circle cx="7.5" cy="4.8" r="2.3"/><path d="M2 13.5c0-3.04 2.46-5.5 5.5-5.5s5.5 2.46 5.5 5.5" strokeLinecap="round"/>
   </svg>
 )
+const IconIntegrations = () => (
+  <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+    <rect x="1.5" y="1.5" width="5" height="5" rx="1.2"/>
+    <rect x="8.5" y="1.5" width="5" height="5" rx="1.2"/>
+    <path d="M4 6.5v2M4 8.5h7M11 6.5v2" strokeLinecap="round"/>
+    <rect x="8.5" y="8.5" width="5" height="5" rx="1.2"/>
+  </svg>
+)
 const IconBilling = () => (
   <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
     <path d="M1.5 7.5L7.5 2l6 5.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -142,6 +150,7 @@ export default function Sidebar({
         {tenant && BOOKING_INDUSTRIES.has(tenant.industry) &&
           navItem(`${base}/calendar`, <IconCalendar />, 'Calendar', apptsCount > 0 ? <span className="db-nav-badge db-badge-green">{apptsCount}</span> : undefined)}
         <div className="db-nav-label">Account</div>
+        {navItem(`${base}/integrations`, <IconIntegrations />, 'Integrations')}
         {navItem(`${base}/settings`, <IconSettings />, 'Settings')}
         {navItem(`${base}/subscription`, <IconBilling />, <>Billing &amp; Payments</>, planBadge())}
         {navItem(`${base}/usage`, <IconUsage />, 'Usage')}

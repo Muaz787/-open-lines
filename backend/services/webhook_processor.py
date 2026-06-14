@@ -195,6 +195,21 @@ async def process_end_of_call(payload: dict) -> None:
             "urgency": analysis.get("urgency", ""),
         })
 
+    # HubSpot CRM sync (non-fatal — never blocks call processing)
+    if tenant.get("hubspot_refresh_token"):
+        try:
+            from services.hubspot import sync_call_to_hubspot
+            await sync_call_to_hubspot(
+                tenant=tenant,
+                caller_phone=caller_number,
+                caller_name=analysis.get("caller_name") if analysis else None,
+                analysis=analysis or {},
+                call_id=call_id,
+            )
+            analytics.capture(_distinct, "hubspot_sync_completed", {"tenant_id": tenant_id})
+        except Exception as e:
+            logger.error("HubSpot sync failed for tenant %s call %s: %s", tenant_id, call_id, e)
+
     # WhatsApp notification (non-fatal)
     whatsapp_number = tenant.get("whatsapp_number", "")
     if whatsapp_number:

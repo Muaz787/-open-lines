@@ -59,7 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls
+from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls, hubspot
 
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
@@ -70,6 +70,7 @@ app.include_router(calendar.router)
 app.include_router(tools.router)
 app.include_router(billing.router)
 app.include_router(calls.router)
+app.include_router(hubspot.router)
 
 
 @app.get("/health")
