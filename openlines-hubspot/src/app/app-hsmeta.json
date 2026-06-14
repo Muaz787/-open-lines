@@ -1,0 +1,26 @@
+{
+  "uid": "openlines-hubspot-app",
+  "type": "app",
+  "config": {
+    "name": "Openlines.ai",
+    "description": "AI phone receptionist and appointment booking integration for SMBs.",
+    "distribution": "marketplace",
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": [
+        "https://backend-production-71174.up.railway.app/hubspot/callback"
+      ],
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write"
+      ],
+      "optionalScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [],
+      "iframe": [],
+      "img": []
+    }
+  }
+}

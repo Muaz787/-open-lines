@@ -21,9 +21,7 @@ _CRM_BASE   = "https://api.hubapi.com/crm/v3/objects"
 
 _SCOPES = (
     "crm.objects.contacts.read "
-    "crm.objects.contacts.write "
-    "crm.objects.notes.write "
-    "oauth"
+    "crm.objects.contacts.write"
 )
 
 
