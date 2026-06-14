@@ -27,7 +27,7 @@ const QUICK_STEPS = [
 const HUBSPOT_STEPS = [
   { title: 'Navigate to Integrations',    body: 'In your dashboard go to Account → Integrations. Available on Pro and Business plans.' },
   { title: 'Connect HubSpot',             body: 'Click "Connect HubSpot" and authorize Open Lines to access your portal via OAuth.' },
-  { title: 'Automatic contact sync',      body: 'After every call, Open Lines searches HubSpot for the caller's phone number and creates or updates the contact.' },
+  { title: 'Automatic contact sync',      body: "After every call, Open Lines searches HubSpot for the caller's phone number and creates or updates the contact." },
   { title: 'AI summaries as notes',       body: 'A structured note is added: urgency, appointment status, key details, and suggested next steps. No full transcript.' },
 ]
 
