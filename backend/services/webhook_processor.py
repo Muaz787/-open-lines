@@ -210,6 +210,22 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("HubSpot sync failed for tenant %s call %s: %s", tenant_id, call_id, e)
 
+    # Slack notification (non-fatal)
+    if tenant.get("slack_webhook_url"):
+        try:
+            from services.slack import post_call_summary as slack_post
+            await slack_post(
+                webhook_url=tenant["slack_webhook_url"],
+                business_name=business_name,
+                analysis=analysis or {},
+                caller_number=caller_number,
+            )
+            analytics.capture(_distinct, "owner_notification_sent", {
+                "tenant_id": tenant_id, "channel": "slack",
+            })
+        except Exception as e:
+            logger.error("Slack notification failed for tenant %s: %s", tenant_id, e)
+
     # WhatsApp notification (non-fatal)
     whatsapp_number = tenant.get("whatsapp_number", "")
     if whatsapp_number:
