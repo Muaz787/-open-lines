@@ -231,6 +231,36 @@ export default function DocsPage() {
               ))}
             </div>
           </div>
+
+          {/* Required permissions */}
+          <div className="mt-4 p-4 rounded-xl" id="hubspot-scopes"
+            style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Required HubSpot permissions
+            </p>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-2)', lineHeight: 1.6 }}>
+              When you connect HubSpot, Open Lines requests the minimum scopes needed to create and update contacts.
+              No other HubSpot data is accessed.
+            </p>
+            <div className="space-y-2">
+              {[
+                { scope: 'crm.objects.contacts.read',  why: 'Search for existing contacts by caller phone number to avoid duplicates.' },
+                { scope: 'crm.objects.contacts.write', why: 'Create new contacts and update names when identified from the call.' },
+                { scope: 'oauth',                      why: 'Required by HubSpot to establish and maintain the OAuth connection.' },
+              ].map(({ scope, why }) => (
+                <div key={scope} className="flex gap-3 items-start">
+                  <code className="flex-shrink-0 text-xs px-2 py-0.5 rounded"
+                    style={{ background: 'var(--bg-3)', color: 'var(--accent-text)', fontFamily: 'var(--font-mono)', border: '1px solid var(--border)' }}>
+                    {scope}
+                  </code>
+                  <span className="text-xs" style={{ color: 'var(--text-2)', lineHeight: 1.6 }}>{why}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs mt-3" style={{ color: 'var(--text-3)' }}>
+              You can revoke access at any time from HubSpot Settings → Connected Apps, or from your Open Lines dashboard under Account → Integrations.
+            </p>
+          </div>
         </section>
 
         {/* Google Calendar */}
