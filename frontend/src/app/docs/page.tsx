@@ -1,10 +1,5 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import {
-  Zap, Phone, BookOpen, Calendar, TestTube2, HelpCircle, ChevronRight,
-  CheckCircle2, AlertCircle, ArrowRight, Database, Settings, Mail,
-  RefreshCw, Link2, Users, Clock,
-} from 'lucide-react'
 
 export const metadata: Metadata = {
   title: 'Documentation — Open Lines AI',
@@ -22,75 +17,46 @@ const LogoMark = () => (
 )
 
 const QUICK_STEPS = [
-  { icon: Users,      step: '01', title: 'Create your account',        body: 'Sign up at openlines.ai and complete your business profile. Add your business name, industry, and contact preferences.' },
-  { icon: Phone,      step: '02', title: 'Connect a phone number',     body: 'Provision a local or toll-free number through our dashboard. Your AI receptionist will answer all calls made to this number.' },
-  { icon: Database,   step: '03', title: 'Upload your business info',  body: 'Add your services, pricing, FAQs, and team details to the Knowledge Base. The AI uses this to answer caller questions accurately.' },
-  { icon: Calendar,   step: '04', title: 'Connect your calendar',      body: 'Link Google Calendar or Microsoft Outlook. The AI checks your availability in real time and books appointments automatically.' },
-  { icon: TestTube2,  step: '05', title: 'Test your AI receptionist', body: 'Call your number and speak with the AI. Adjust the tone, knowledge, and booking logic in Settings until it feels right.' },
+  { n: '01', title: 'Create your account',        body: 'Sign up at openlines.ai and complete your business profile — name, industry, and contact preferences.' },
+  { n: '02', title: 'Connect a phone number',     body: 'Provision a local or toll-free number. Your AI receptionist answers every call made to this number.' },
+  { n: '03', title: 'Upload your business info',  body: 'Add services, pricing, FAQs, and team details to the Knowledge Base. The AI uses this to answer questions accurately.' },
+  { n: '04', title: 'Connect your calendar',      body: 'Link Google Calendar or Outlook. The AI checks availability in real time and books appointments automatically.' },
+  { n: '05', title: 'Test your AI receptionist', body: 'Call your number and speak with the AI. Adjust tone, knowledge, and booking logic in Settings until it feels right.' },
 ]
 
 const HUBSPOT_STEPS = [
-  { title: 'Navigate to Integrations',     body: 'In your dashboard, go to Account → Integrations. This feature is available on Pro and Business plans.' },
-  { title: 'Connect HubSpot',              body: 'Click "Connect HubSpot" and authorize Open Lines to access your HubSpot portal via OAuth.' },
-  { title: 'Automatic contact sync',       body: 'After every call, Open Lines searches HubSpot for the caller\'s phone number. If no contact exists, a new one is created automatically.' },
-  { title: 'AI call summaries as notes',   body: 'A structured note is added to the contact containing urgency level, appointment status, key details, and suggested next steps — no full transcript.' },
+  { title: 'Navigate to Integrations',    body: 'In your dashboard go to Account → Integrations. Available on Pro and Business plans.' },
+  { title: 'Connect HubSpot',             body: 'Click "Connect HubSpot" and authorize Open Lines to access your portal via OAuth.' },
+  { title: 'Automatic contact sync',      body: 'After every call, Open Lines searches HubSpot for the caller's phone number and creates or updates the contact.' },
+  { title: 'AI summaries as notes',       body: 'A structured note is added: urgency, appointment status, key details, and suggested next steps. No full transcript.' },
 ]
 
-const FAQS = [
-  {
-    q: 'What happens if the AI can\'t answer a question?',
-    a: 'If the caller asks something not covered in your Knowledge Base, the AI politely informs them it will pass the message along and captures their contact details for follow-up.',
-  },
-  {
-    q: 'Can I use my existing phone number?',
-    a: 'Yes — you can port your existing number to Open Lines or use call forwarding to route calls from your current number to your Open Lines line.',
-  },
-  {
-    q: 'How does calendar booking work?',
-    a: 'The AI checks your connected calendar for available slots, offers times to the caller, and creates a calendar event with the caller\'s details. Reschedule and cancellation are also handled automatically.',
-  },
-  {
-    q: 'Is the call transcript stored?',
-    a: 'Call transcripts are processed to generate a structured summary and lead record, then discarded. We do not store raw transcripts. Only the summary, urgency, and key details are retained.',
-  },
-  {
-    q: 'What\'s the difference between plans?',
-    a: 'The Starter plan covers AI calling and lead capture. Pro adds calendar booking and HubSpot sync. Business adds priority support, higher call volume, and advanced customization.',
-  },
-  {
-    q: 'How do I change what the AI says?',
-    a: 'Go to Settings in your dashboard to update your AI\'s name, greeting, tone, and the specific qualification questions it asks callers.',
-  },
+const SCOPES = [
+  { scope: 'crm.objects.contacts.read',  why: 'Search for existing contacts by caller phone number to avoid duplicates.' },
+  { scope: 'crm.objects.contacts.write', why: 'Create new contacts and update names when identified from the call.' },
+  { scope: 'oauth',                      why: 'Required by HubSpot to establish and maintain the OAuth connection.' },
 ]
 
 const TROUBLESHOOTING = [
-  {
-    icon: AlertCircle,
-    title: 'AI not answering calls',
-    steps: ['Verify your Twilio number is active in Settings → Phone Number', 'Check that your Vapi assistant is connected (Settings → AI Config)', 'Ensure your account is on an active plan'],
-  },
-  {
-    icon: Calendar,
-    title: 'Calendar not booking',
-    steps: ['Re-connect your calendar under Account → Calendar', 'Confirm your business hours are set correctly', 'Check that the calendar token hasn\'t expired (reconnect fixes this)'],
-  },
-  {
-    icon: Link2,
-    title: 'HubSpot not syncing',
-    steps: ['Go to Account → Integrations and verify HubSpot shows Connected', 'Disconnect and reconnect to refresh the OAuth token', 'Check that your HubSpot portal has contacts permissions enabled'],
-  },
-  {
-    icon: RefreshCw,
-    title: 'AI giving wrong answers',
-    steps: ['Update your Knowledge Base with more detailed information', 'Add specific FAQs for topics the AI is getting wrong', 'Use the Calls page to review recent transcripts and identify gaps'],
-  },
+  { title: 'AI not answering calls',     steps: ['Verify your Twilio number is active in Settings → Phone Number', 'Check that your Vapi assistant is connected under Settings', 'Ensure your account is on an active plan'] },
+  { title: 'Calendar not booking',       steps: ['Re-connect your calendar under Account → Calendar', 'Confirm business hours are set correctly', 'Check that the calendar token hasn\'t expired — a reconnect fixes it'] },
+  { title: 'HubSpot not syncing',        steps: ['Go to Account → Integrations and verify HubSpot shows Connected', 'Disconnect and reconnect to refresh the OAuth token', 'Confirm your HubSpot portal has contacts permissions enabled'] },
+  { title: 'AI giving wrong answers',    steps: ['Update your Knowledge Base with more specific information', 'Add explicit FAQs for topics the AI is getting wrong', 'Review recent calls to identify gaps in your knowledge entries'] },
+]
+
+const FAQS = [
+  { q: 'What happens if the AI can\'t answer a question?', a: 'The AI politely lets the caller know it will pass the message on, and captures their contact details for follow-up.' },
+  { q: 'Can I use my existing phone number?', a: 'Yes — you can port your existing number to Open Lines, or use call forwarding from your current number.' },
+  { q: 'How does calendar booking work?', a: 'The AI checks your connected calendar for available slots, offers times to the caller, and creates the event automatically. Reschedule and cancel are also handled.' },
+  { q: 'Is the call transcript stored?', a: 'Transcripts are processed to generate a structured summary, then discarded. Only the summary, urgency, and key details are retained.' },
+  { q: 'What\'s the difference between plans?', a: 'Starter covers AI calling and lead capture. Pro adds calendar booking and HubSpot sync. Business adds priority support and higher call volume.' },
+  { q: 'How do I change what the AI says?', a: 'Go to Settings in your dashboard to update your AI\'s name, greeting, tone, and the qualification questions it asks callers.' },
 ]
 
 export default function DocsPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
 
-      {/* Nav */}
       <nav>
         <Link href="/" className="nav-logo">
           <LogoMark />
@@ -103,187 +69,108 @@ export default function DocsPage() {
         </div>
         <div className="nav-right">
           <Link href="/login">
-            <button className="btn-nav" style={{ background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-2)' }}>
-              Sign in
-            </button>
+            <button className="btn-nav" style={{ background: 'transparent', color: 'var(--text-2)', border: '1px solid var(--border-2)' }}>Sign in</button>
           </Link>
           <Link href="/onboarding">
-            <button className="btn-nav" style={{ background: 'var(--text)', color: 'var(--bg)' }}>
-              Get started
-            </button>
+            <button className="btn-nav" style={{ background: 'var(--text)', color: 'var(--bg)' }}>Get started</button>
           </Link>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="pt-32 pb-16 px-6" style={{ borderBottom: '1px solid var(--border)' }}>
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-6"
-            style={{ background: 'var(--accent-dim)', color: 'var(--accent-text)', border: '1px solid rgba(52,199,89,0.2)' }}>
-            <BookOpen size={12} />
-            Documentation
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4"
-            style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
-            Everything you need to get started
-          </h1>
-          <p className="text-lg mb-8" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Set up your AI phone receptionist in minutes. Connect your calendar, sync your CRM,
-            and start capturing leads around the clock.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <a href="#quickstart"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
-              style={{ background: 'var(--text)', color: 'var(--bg)' }}>
-              Quick start <ArrowRight size={14} />
-            </a>
-            <a href="#faq"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
-              style={{ border: '1px solid var(--border-2)', color: 'var(--text-2)' }}>
-              View FAQ
-            </a>
-          </div>
+      <div className="pricing-hero">
+        <div className="sec-label" style={{ marginBottom: 14 }}>Documentation</div>
+        <h1 style={{ fontSize: 'clamp(28px, 4vw, 48px)', fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1, marginBottom: 16, fontFamily: 'var(--font-syne), sans-serif' }}>
+          Everything you need to get started
+        </h1>
+        <p style={{ fontSize: 16, color: 'var(--text-2)', maxWidth: 480, margin: '0 auto 28px', lineHeight: 1.7, fontWeight: 300 }}>
+          Set up your AI phone receptionist, connect your calendar, sync your CRM, and start capturing leads.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <a href="#quickstart" className="btn-main" style={{ fontSize: 14, padding: '10px 22px' }}>Quick start</a>
+          <a href="#faq" className="btn-ghost" style={{ fontSize: 14, padding: '10px 22px' }}>View FAQ</a>
         </div>
-      </section>
+      </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-16 space-y-24">
+      <div className="legal-body" style={{ paddingTop: 0 }}>
 
         {/* Quick Start */}
-        <section id="quickstart">
-          <SectionLabel icon={Zap} label="Quick Start" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            Up and running in 5 steps
-          </h2>
-          <p className="text-sm mb-10" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Follow these steps in order to configure your AI receptionist from scratch.
-          </p>
-          <div className="space-y-4">
-            {QUICK_STEPS.map(({ icon: Icon, step, title, body }) => (
-              <div key={step}
-                className="flex gap-5 p-5 rounded-xl transition-all duration-200 hover:shadow-md"
-                style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{ background: 'var(--accent-dim)' }}>
-                  <Icon size={18} style={{ color: 'var(--accent-text)' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-3)' }}>{step}</span>
-                    <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{title}</span>
-                  </div>
-                  <p className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>{body}</p>
-                </div>
-                <ChevronRight size={16} className="flex-shrink-0 mt-1" style={{ color: 'var(--text-3)' }} />
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* HubSpot Integration */}
-        <section id="hubspot">
-          <SectionLabel icon={Link2} label="HubSpot Integration" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            How HubSpot CRM sync works
-          </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Open Lines automatically creates and updates contacts in HubSpot after every call — no manual data entry needed.
-            Available on Pro and Business plans.
-          </p>
-
-          <div className="p-5 rounded-xl mb-8"
-            style={{ background: 'var(--accent-dim)', border: '1px solid rgba(52,199,89,0.2)' }}>
-            <div className="flex items-start gap-3">
-              <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--accent-text)' }} />
-              <p className="text-sm" style={{ color: 'var(--text)', lineHeight: 1.7 }}>
-                <strong>Privacy by default:</strong> Open Lines never sends full call transcripts to HubSpot.
-                Only structured summaries — urgency, intent, and next steps — are synced.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            {HUBSPOT_STEPS.map(({ title, body }, i) => (
-              <div key={i} className="flex gap-4 p-4 rounded-xl"
-                style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <div className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: 'var(--text)', color: 'var(--bg)' }}>
-                  {i + 1}
-                </div>
+        <Section id="quickstart" label="Quick Start" title="Up and running in 5 steps" subtitle="Follow these steps in order to configure your AI receptionist from scratch.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {QUICK_STEPS.map(({ n, title, body }) => (
+              <div key={n} style={{ display: 'flex', gap: 16, padding: '16px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <div style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', paddingTop: 2, minWidth: 24 }}>{n}</div>
                 <div>
-                  <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text)' }}>{title}</p>
-                  <p className="text-sm" style={{ color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</p>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{title}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</div>
                 </div>
               </div>
             ))}
           </div>
+        </Section>
 
-          <div className="mt-6 p-4 rounded-xl"
-            style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              What gets synced to each contact note
-            </p>
-            <div className="grid grid-cols-2 gap-2">
+        <div className="div-line" style={{ margin: '48px 0' }} />
+
+        {/* HubSpot */}
+        <Section id="hubspot" label="HubSpot Integration" title="How HubSpot CRM sync works" subtitle="Open Lines automatically creates and updates contacts after every call. Available on Pro and Business plans.">
+          <div style={{ padding: '14px 16px', background: 'var(--accent-dim)', border: '1px solid rgba(52,199,89,0.2)', borderRadius: 10, marginBottom: 20, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+            <strong>Privacy by default:</strong> Open Lines never sends full call transcripts to HubSpot. Only structured summaries are synced.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            {HUBSPOT_STEPS.map(({ title, body }, i) => (
+              <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'var(--text)', color: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{i + 1}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>{title}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <InfoBox label="What gets synced to each contact note">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
               {['Call date & time', 'Caller phone number', 'Urgency (Hot / Warm / Cold)', 'Appointment booked (Yes / No)', '2-sentence AI summary', 'Suggested next step', 'Key qualification details'].map(item => (
-                <div key={item} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
-                  <CheckCircle2 size={12} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />
-                  {item}
+                <div key={item} style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', gap: 7 }}>
+                  <span style={{ color: 'var(--accent-text)', flexShrink: 0 }}>✓</span>{item}
                 </div>
               ))}
             </div>
+          </InfoBox>
+          <div style={{ marginTop: 12 }}>
+            <InfoBox label="Required HubSpot permissions">
+              <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 14 }}>
+                Open Lines requests the minimum scopes needed to create and update contacts. No other HubSpot data is accessed.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {SCOPES.map(({ scope, why }) => (
+                  <div key={scope} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                    <code style={{ flexShrink: 0, fontSize: 11, padding: '2px 8px', borderRadius: 5, background: 'var(--bg-3)', color: 'var(--accent-text)', border: '1px solid var(--border)', fontFamily: 'var(--font-mono)' }}>{scope}</code>
+                    <span style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{why}</span>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12, lineHeight: 1.6 }}>
+                Revoke access any time from HubSpot Settings → Connected Apps, or from Open Lines → Account → Integrations.
+              </p>
+            </InfoBox>
           </div>
+        </Section>
 
-          {/* Required permissions */}
-          <div className="mt-4 p-4 rounded-xl" id="hubspot-scopes"
-            style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Required HubSpot permissions
-            </p>
-            <p className="text-xs mb-3" style={{ color: 'var(--text-2)', lineHeight: 1.6 }}>
-              When you connect HubSpot, Open Lines requests the minimum scopes needed to create and update contacts.
-              No other HubSpot data is accessed.
-            </p>
-            <div className="space-y-2">
-              {[
-                { scope: 'crm.objects.contacts.read',  why: 'Search for existing contacts by caller phone number to avoid duplicates.' },
-                { scope: 'crm.objects.contacts.write', why: 'Create new contacts and update names when identified from the call.' },
-                { scope: 'oauth',                      why: 'Required by HubSpot to establish and maintain the OAuth connection.' },
-              ].map(({ scope, why }) => (
-                <div key={scope} className="flex gap-3 items-start">
-                  <code className="flex-shrink-0 text-xs px-2 py-0.5 rounded"
-                    style={{ background: 'var(--bg-3)', color: 'var(--accent-text)', fontFamily: 'var(--font-mono)', border: '1px solid var(--border)' }}>
-                    {scope}
-                  </code>
-                  <span className="text-xs" style={{ color: 'var(--text-2)', lineHeight: 1.6 }}>{why}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs mt-3" style={{ color: 'var(--text-3)' }}>
-              You can revoke access at any time from HubSpot Settings → Connected Apps, or from your Open Lines dashboard under Account → Integrations.
-            </p>
-          </div>
-        </section>
+        <div className="div-line" style={{ margin: '48px 0' }} />
 
-        {/* Google Calendar */}
-        <section id="calendar">
-          <SectionLabel icon={Calendar} label="Calendar" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            Connecting Google Calendar or Outlook
-          </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Once connected, your AI receptionist checks your real-time availability and books appointments
-            directly into your calendar — no double bookings, no missed slots.
-          </p>
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
+        {/* Calendar */}
+        <Section id="calendar" label="Calendar" title="Connecting Google Calendar or Outlook" subtitle="Your AI receptionist checks real-time availability and books appointments directly into your calendar.">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             {[
-              { name: 'Google Calendar', steps: ['Go to Account → Calendar', 'Click "Connect Google Calendar"', 'Sign in and grant access', 'Set your business hours and appointment duration'] },
+              { name: 'Google Calendar', steps: ['Go to Account → Calendar', 'Click "Connect Google Calendar"', 'Sign in and grant access', 'Set business hours and appointment duration'] },
               { name: 'Microsoft Outlook', steps: ['Go to Account → Calendar', 'Click "Connect Outlook"', 'Sign in with your Microsoft account', 'Set your availability preferences'] },
             ].map(({ name, steps }) => (
-              <div key={name} className="p-5 rounded-xl" style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>{name}</p>
-                <ol className="space-y-2">
+              <div key={name} style={{ padding: '16px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>{name}</div>
+                <ol style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {steps.map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
-                      <span className="flex-shrink-0 font-mono text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{i + 1}.</span>
+                    <li key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--text-2)' }}>
+                      <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', paddingTop: 2 }}>{i + 1}.</span>
                       {s}
                     </li>
                   ))}
@@ -291,66 +178,49 @@ export default function DocsPage() {
               </div>
             ))}
           </div>
-          <div className="p-4 rounded-xl" style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Calendar settings you can configure</p>
-            <div className="grid grid-cols-2 gap-1.5">
+          <InfoBox label="Calendar settings you can configure">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
               {['Appointment duration', 'Business hours', 'Buffer time between appointments', 'Days available for booking', 'Break / lunch windows', 'Timezone'].map(s => (
-                <div key={s} className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
-                  <Settings size={11} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
-                  {s}
+                <div key={s} style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', gap: 7 }}>
+                  <span style={{ color: 'var(--text-3)', flexShrink: 0 }}>·</span>{s}
                 </div>
               ))}
             </div>
-          </div>
-        </section>
+          </InfoBox>
+        </Section>
+
+        <div className="div-line" style={{ margin: '48px 0' }} />
 
         {/* Knowledge Base */}
-        <section id="knowledge-base">
-          <SectionLabel icon={Database} label="Knowledge Base" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            Uploading your business knowledge
-          </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            The Knowledge Base is the source of truth for your AI. The more detail you provide,
-            the more accurately it answers caller questions.
-          </p>
-          <div className="space-y-3">
+        <Section id="knowledge-base" label="Knowledge Base" title="Uploading your business knowledge" subtitle="The more detail you provide, the more accurately your AI answers caller questions.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
-              { title: 'Services & pricing',     body: 'List every service you offer with pricing ranges. The AI will quote these to callers and use them to qualify intent.' },
-              { title: 'Team & availability',    body: 'Add staff names, roles, and specialties. The AI can route callers to the right person or book with the right team member.' },
-              { title: 'FAQs',                   body: 'Write out your most common caller questions and ideal answers. The AI treats these as ground truth.' },
-              { title: 'Location & hours',       body: 'Add your address, parking info, and opening hours so the AI answers location questions without guessing.' },
-              { title: 'Policies',               body: 'Cancellation policy, refund terms, and any other business rules the AI should communicate clearly.' },
+              { title: 'Services & pricing',  body: 'List every service with pricing ranges. The AI quotes these to callers and uses them to qualify intent.' },
+              { title: 'Team & availability', body: 'Add staff names, roles, and specialties so the AI can route callers to the right person.' },
+              { title: 'FAQs',                body: 'Write your most common caller questions and ideal answers. The AI treats these as ground truth.' },
+              { title: 'Location & hours',    body: 'Add your address, parking info, and opening hours so location questions are answered accurately.' },
+              { title: 'Policies',            body: 'Cancellation policy, refund terms, and business rules the AI should communicate clearly.' },
             ].map(({ title, body }) => (
-              <div key={title} className="p-4 rounded-xl transition-all duration-200 hover:shadow-md"
-                style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>{title}</p>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>{body}</p>
+              <div key={title} style={{ padding: '14px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{title}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</div>
               </div>
             ))}
           </div>
-        </section>
+        </Section>
+
+        <div className="div-line" style={{ margin: '48px 0' }} />
 
         {/* Troubleshooting */}
-        <section id="troubleshooting">
-          <SectionLabel icon={AlertCircle} label="Troubleshooting" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            Common issues & fixes
-          </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Most issues resolve with a reconnect or a Knowledge Base update. Here are the most frequent ones.
-          </p>
-          <div className="grid md:grid-cols-2 gap-4">
-            {TROUBLESHOOTING.map(({ icon: Icon, title, steps }) => (
-              <div key={title} className="p-5 rounded-xl" style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon size={15} style={{ color: 'var(--accent-text)' }} />
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{title}</p>
-                </div>
-                <ol className="space-y-1.5">
+        <Section id="troubleshooting" label="Troubleshooting" title="Common issues & fixes" subtitle="Most issues resolve with a reconnect or a Knowledge Base update.">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {TROUBLESHOOTING.map(({ title, steps }) => (
+              <div key={title} style={{ padding: '16px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>{title}</div>
+                <ol style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {steps.map((s, i) => (
-                    <li key={i} className="flex gap-2 text-sm" style={{ color: 'var(--text-2)' }}>
-                      <span className="flex-shrink-0 font-mono text-xs mt-0.5" style={{ color: 'var(--text-3)' }}>{i + 1}.</span>
+                    <li key={i} style={{ display: 'flex', gap: 8, fontSize: 13, color: 'var(--text-2)' }}>
+                      <span style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', paddingTop: 2 }}>{i + 1}.</span>
                       {s}
                     </li>
                   ))}
@@ -358,84 +228,67 @@ export default function DocsPage() {
               </div>
             ))}
           </div>
-        </section>
+        </Section>
+
+        <div className="div-line" style={{ margin: '48px 0' }} />
 
         {/* FAQ */}
-        <section id="faq">
-          <SectionLabel icon={HelpCircle} label="FAQ" />
-          <h2 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)', letterSpacing: '-0.02em' }}>
-            Frequently asked questions
-          </h2>
-          <p className="text-sm mb-8" style={{ color: 'var(--text-2)' }}>
-            Can&apos;t find what you&apos;re looking for?{' '}
-            <Link href="/support" style={{ color: 'var(--accent-text)' }}>Contact support →</Link>
-          </p>
-          <div className="space-y-3">
+        <Section id="faq" label="FAQ" title="Frequently asked questions" subtitle={undefined}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {FAQS.map(({ q, a }) => (
-              <div key={q} className="p-5 rounded-xl" style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-                <p className="text-sm font-semibold mb-2" style={{ color: 'var(--text)' }}>{q}</p>
-                <p className="text-sm leading-relaxed" style={{ color: 'var(--text-2)' }}>{a}</p>
+              <div key={q} style={{ padding: '16px 18px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>{q}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7 }}>{a}</div>
               </div>
             ))}
           </div>
-        </section>
+        </Section>
+
+        <div className="div-line" style={{ margin: '48px 0' }} />
 
         {/* Support CTA */}
-        <section className="rounded-2xl p-8 text-center"
-          style={{ background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-          <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--accent-dim)' }}>
-            <Mail size={18} style={{ color: 'var(--accent-text)' }} />
-          </div>
-          <h3 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-syne)' }}>
-            Still need help?
-          </h3>
-          <p className="text-sm mb-6" style={{ color: 'var(--text-2)', lineHeight: 1.7 }}>
-            Our support team is here for you. Reach out and we&apos;ll get back to you within one business day.
+        <div style={{ textAlign: 'center', padding: '40px 0 20px' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-syne)', marginBottom: 10 }}>Still need help?</div>
+          <p style={{ fontSize: 14, color: 'var(--text-2)', marginBottom: 24, lineHeight: 1.7 }}>
+            Our support team gets back to you within one business day.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link href="/support"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
-              style={{ background: 'var(--text)', color: 'var(--bg)' }}>
-              Visit support centre <ArrowRight size={14} />
-            </Link>
-            <a href="mailto:support@openlines.ai"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
-              style={{ border: '1px solid var(--border-2)', color: 'var(--text-2)' }}>
-              support@openlines.ai
-            </a>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/support" className="btn-main" style={{ fontSize: 14, padding: '10px 22px' }}>Visit support</Link>
+            <a href="mailto:support@openlines.ai" className="btn-ghost" style={{ fontSize: 14, padding: '10px 22px' }}>support@openlines.ai</a>
           </div>
-        </section>
+        </div>
 
       </div>
 
-      {/* Footer */}
-      <footer className="border-t py-8 px-6" style={{ borderColor: 'var(--border)' }}>
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <Link href="/" className="nav-logo">
-            <LogoMark />
-            <span className="logo-name">open lines</span>
-          </Link>
-          <div className="flex gap-6 text-xs" style={{ color: 'var(--text-3)' }}>
-            <Link href="/privacy" className="hover:underline">Privacy</Link>
-            <Link href="/terms" className="hover:underline">Terms</Link>
-            <Link href="/support" className="hover:underline">Support</Link>
-            <a href="mailto:support@openlines.ai" className="hover:underline">support@openlines.ai</a>
-          </div>
+      <footer style={{ borderTop: '1px solid var(--border)', padding: '28px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <Link href="/" className="nav-logo"><LogoMark /><span className="logo-name">open lines</span></Link>
+        <div style={{ display: 'flex', gap: 20, fontSize: 12, color: 'var(--text-3)' }}>
+          <Link href="/privacy" style={{ color: 'inherit', textDecoration: 'none' }}>Privacy</Link>
+          <Link href="/terms"   style={{ color: 'inherit', textDecoration: 'none' }}>Terms</Link>
+          <Link href="/support" style={{ color: 'inherit', textDecoration: 'none' }}>Support</Link>
+          <a href="mailto:support@openlines.ai" style={{ color: 'inherit', textDecoration: 'none' }}>support@openlines.ai</a>
         </div>
       </footer>
-
     </div>
   )
 }
 
-function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+function Section({ id, label, title, subtitle, children }: { id?: string; label: string; title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <Icon size={14} style={{ color: 'var(--accent-text)' }} />
-      <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--accent-text)' }}>
-        {label}
-      </span>
+    <section id={id} style={{ marginBottom: 0 }}>
+      <div className="sec-label" style={{ marginBottom: 8 }}>{label}</div>
+      <h2 style={{ fontSize: 'clamp(20px, 2.5vw, 26px)', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)', marginBottom: subtitle ? 8 : 20, fontFamily: 'var(--font-syne)' }}>{title}</h2>
+      {subtitle && <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 20 }}>{subtitle}</p>}
+      {children}
+    </section>
+  )
+}
+
+function InfoBox({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>{label}</div>
+      {children}
     </div>
   )
 }
