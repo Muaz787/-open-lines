@@ -19,7 +19,8 @@ const TYPING_PHRASES = [
   'Logistics',
   'Home Services',
   'Landscaping',
-  'E-commerce & Retail',
+  'E-commerce',
+  'Retail',
   'Automotive',
 ]
 
