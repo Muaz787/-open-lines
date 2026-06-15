@@ -48,53 +48,44 @@ async def onboard(tenant_id: str):
 
 
 # ---------------------------------------------------------------------------
-# GET /stripe-connect/return   (Stripe redirects here after onboarding)
+# POST /stripe-connect/verify/{tenant_id}
+# Called by the frontend after Stripe returns from onboarding.
 # ---------------------------------------------------------------------------
 
-@router.get("/return")
-async def connect_return(tenant_id: str, account_id: str):
+@router.post("/verify/{tenant_id}")
+async def connect_verify(tenant_id: str, body: dict):
+    """Check account status, update DB, patch assistant. Called client-side after onboarding."""
+    account_id = body.get("account_id") or ""
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id required")
+
     try:
         account = await svc.get_account(account_id)
     except Exception as e:
-        logger.error("Stripe Connect return: account fetch failed for %s: %s", account_id, e)
-        return RedirectResponse(f"{_payments_page(tenant_id)}?stripe=error")
+        logger.error("Stripe verify: account fetch failed for %s: %s", account_id, e)
+        raise HTTPException(status_code=500, detail="Could not verify Stripe account")
 
     try:
-        await db.update_tenant(tenant_id, {
-            "stripe_account_id":    account["id"],
-        })
+        await db.update_tenant(tenant_id, {"stripe_account_id": account["id"]})
     except Exception as e:
-        logger.error("Stripe Connect return: DB update failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{_payments_page(tenant_id)}?stripe=error")
+        logger.error("Stripe verify: DB update failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="DB update failed")
 
     if account["charges_enabled"]:
-        # Patch assistant to expose deposit tool if deposits are already enabled
         try:
             tenant = await db.get_tenant_by_id(tenant_id)
             if tenant:
                 await vapi.patch_assistant_tools(tenant)
         except Exception as e:
-            logger.warning("Stripe Connect return: assistant patch failed for tenant %s: %s", tenant_id, e)
+            logger.warning("Stripe verify: assistant patch failed for tenant %s: %s", tenant_id, e)
 
-    logger.info(
-        "Stripe Connect return for tenant %s account %s (charges_enabled=%s)",
-        tenant_id, account_id, account["charges_enabled"],
-    )
-    return RedirectResponse(f"{_payments_page(tenant_id)}?stripe=connected")
-
-
-# ---------------------------------------------------------------------------
-# GET /stripe-connect/refresh   (Stripe sends here if the link expires)
-# ---------------------------------------------------------------------------
-
-@router.get("/refresh")
-async def connect_refresh(tenant_id: str, account_id: str):
-    try:
-        link_url = await svc.create_account_link(account_id, tenant_id)
-    except Exception as e:
-        logger.error("Stripe Connect refresh failed for %s: %s", account_id, e)
-        return RedirectResponse(f"{_payments_page(tenant_id)}?stripe=error")
-    return RedirectResponse(link_url)
+    logger.info("Stripe Connect verified for tenant %s account %s charges_enabled=%s",
+                tenant_id, account_id, account["charges_enabled"])
+    return {
+        "charges_enabled":   account["charges_enabled"],
+        "payouts_enabled":   account["payouts_enabled"],
+        "details_submitted": account["details_submitted"],
+    }
 
 
 # ---------------------------------------------------------------------------

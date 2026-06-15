@@ -124,16 +124,41 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     load()
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('stripe') === 'connected') {
-      showToast('Stripe connected!')
+    const params  = new URLSearchParams(window.location.search)
+    const stripe  = params.get('stripe')
+    const acctId  = params.get('account_id')
+
+    if (stripe === 'return' && acctId) {
+      // Stripe redirected back after onboarding — verify account server-side
       window.history.replaceState({}, '', window.location.pathname)
-      load()
-    } else if (params.get('stripe') === 'error') {
+      fetch(`${API}/stripe-connect/verify/${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: acctId }),
+      }).then(r => r.json()).then(data => {
+        if (data.charges_enabled) {
+          showToast('Stripe connected! Charges enabled.')
+        } else {
+          showToast('Stripe account created — finish onboarding to enable charges.')
+        }
+        load()
+      }).catch(() => {
+        showToast('Could not verify Stripe account — try reconnecting.')
+        load()
+      })
+    } else if (stripe === 'refresh' && acctId) {
+      // Link expired — restart onboarding for this account
+      window.history.replaceState({}, '', window.location.pathname)
+      setConnecting(true)
+      fetch(`${API}/stripe-connect/onboard/${tenantId}`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.url) window.location.href = d.url })
+        .catch(() => { showToast('Could not refresh onboarding link.'); setConnecting(false) })
+    } else if (stripe === 'error') {
       showToast('Stripe connection failed. Please try again.')
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [load])
+  }, [load, tenantId])
 
   const handleConnect = async () => {
     setConnecting(true)

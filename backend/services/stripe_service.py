@@ -35,11 +35,13 @@ async def create_connect_account(business_name: str) -> str:
 
 
 async def create_account_link(account_id: str, tenant_id: str) -> str:
-    """Create a Stripe Connect onboarding link. Returns the URL."""
+    """Create a Stripe Connect onboarding link. Returns the URL.
+    Both return/refresh go to the frontend — avoids APP_BACKEND_URL dependency."""
+    dashboard_url = f"{FRONTEND_URL}/dashboard/{tenant_id}/payments"
     link = stripe.AccountLink.create(
         account=account_id,
-        refresh_url=f"{APP_BACKEND_URL}/stripe-connect/refresh?tenant_id={tenant_id}&account_id={account_id}",
-        return_url=f"{APP_BACKEND_URL}/stripe-connect/return?tenant_id={tenant_id}&account_id={account_id}",
+        refresh_url=f"{dashboard_url}?stripe=refresh&account_id={account_id}",
+        return_url=f"{dashboard_url}?stripe=return&account_id={account_id}",
         type="account_onboarding",
         api_key=_key(),
     )
