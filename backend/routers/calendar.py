@@ -111,31 +111,17 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
         logger.error("Failed to store Google refresh token for tenant %s: %s", tenant_id, e)
         return RedirectResponse(f"{cal_page}?calendar=error")
 
-    # Patch Vapi assistant with calendar tools + updated system prompt
-    assistant_id = tenant.get("vapi_assistant_id")
-    if assistant_id:
+    # Re-fetch tenant so patch_assistant_tools sees the new refresh token
+    try:
+        updated_tenant = await db.get_tenant_by_id(tenant_id) or tenant
+    except Exception:
+        updated_tenant = tenant
+
+    if updated_tenant.get("vapi_assistant_id"):
         try:
-            tenant_key = vapi.get_tenant_vapi_key(tenant)
-            tools = vapi.build_calendar_tools(tenant_id)
-            # Fetch current assistant to get existing system prompt
-            current = await vapi.get_assistant(assistant_id, api_key=tenant_key)
-            raw_messages = (current.get("model") or {}).get("messages") or []
-            # Strip to role+content only — Vapi GET may return extra metadata fields
-            messages = [{"role": m["role"], "content": m["content"]} for m in raw_messages if m.get("role") and m.get("content")]
-            if messages and messages[0].get("role") == "system":
-                existing_prompt = messages[0]["content"]
-                if "CALENDAR BOOKING TOOLS AVAILABLE" in existing_prompt:
-                    existing_prompt = existing_prompt[:existing_prompt.index("\n\nCALENDAR BOOKING TOOLS AVAILABLE")]
-                messages[0]["content"] = existing_prompt + _CALENDAR_NOTE
-            await vapi.update_assistant(assistant_id, {
-                "model": {
-                    "provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.7,
-                    "tools": tools, "messages": messages,
-                },
-            }, api_key=tenant_key)
+            await vapi.patch_assistant_tools(updated_tenant)
         except Exception as e:
-            logger.error("Failed to update Vapi assistant %s with calendar tools: %s", assistant_id, e)
-            # Non-fatal: calendar is connected, tools just aren't live yet
+            logger.error("Failed to patch Vapi assistant after Google Calendar connect for tenant %s: %s", tenant_id, e)
 
     logger.info("Google Calendar connected for tenant %s", tenant_id)
     # Source of truth for calendar_connected — frontend does NOT fire this

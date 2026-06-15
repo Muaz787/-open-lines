@@ -442,6 +442,138 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
     ]
 
 
+_DEPOSIT_NOTE = """
+
+DEPOSIT COLLECTION
+When a deposit is required after booking:
+1. Tell the caller: "To secure your booking I'm sending you a secure payment link right now."
+2. IMMEDIATELY call request_deposit — never skip this step.
+3. After request_deposit returns, say: "Your payment link has been sent. Please complete the deposit to confirm your appointment — the link expires in a couple of hours."
+"""
+
+
+def build_deposit_tool(tenant_id: str, amount_cents: int, mandatory: bool) -> dict:
+    amount_str   = f"${amount_cents / 100:.2f}"
+    requirement  = "required to confirm" if mandatory else "optional"
+    return {
+        "type": "function",
+        "function": {
+            "name": "request_deposit",
+            "description": (
+                f"Send a secure {amount_str} payment link via SMS to the caller's phone "
+                f"to collect their appointment deposit. The deposit is {requirement}. "
+                "Call this IMMEDIATELY after book_appointment succeeds — never skip it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "caller_phone": {
+                        "type": "string",
+                        "description": "Caller's phone number in E.164 format (e.g. '+16471234567').",
+                    },
+                    "caller_name": {
+                        "type": "string",
+                        "description": "Caller's full name.",
+                    },
+                    "service": {
+                        "type": "string",
+                        "description": "The service being booked (e.g. 'Haircut', 'Consultation').",
+                    },
+                },
+                "required": ["caller_phone", "caller_name", "service"],
+            },
+        },
+        "server": {
+            "url": f"{APP_BACKEND_URL}/tools/{tenant_id}/request-deposit",
+            "timeoutSeconds": 20,
+        },
+    }
+
+
+def build_all_tools(tenant: dict) -> list[dict]:
+    """Return the full Vapi tool list for a tenant based on which features are active."""
+    tenant_id     = tenant.get("id", "")
+    has_calendar  = bool(
+        tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
+    )
+    has_deposits  = bool(
+        tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled")
+    )
+
+    if has_calendar:
+        tools = build_calendar_tools(tenant_id)   # includes caller_lookup
+    else:
+        tools = [build_caller_lookup_tool(tenant_id)]
+
+    if has_deposits:
+        tools.append(build_deposit_tool(
+            tenant_id=tenant_id,
+            amount_cents=int(tenant.get("stripe_deposit_cents") or 2500),
+            mandatory=bool(tenant.get("stripe_deposit_mandatory", True)),
+        ))
+
+    return tools
+
+
+def _strip_injected_notes(prompt: str) -> str:
+    """Remove previously-injected feature notes from the system prompt."""
+    for marker in ("\n\nCALENDAR BOOKING TOOLS AVAILABLE", "\n\nDEPOSIT COLLECTION"):
+        if marker in prompt:
+            prompt = prompt[:prompt.index(marker)]
+    return prompt
+
+
+async def patch_assistant_tools(tenant: dict) -> None:
+    """Rebuild the Vapi assistant's tool list and system-prompt notes.
+    Call this whenever a feature (calendar, deposits) is enabled or disabled."""
+    assistant_id = tenant.get("vapi_assistant_id")
+    if not assistant_id:
+        return
+
+    tenant_vapi_key = get_tenant_vapi_key(tenant)
+    tools   = build_all_tools(tenant)
+    current = await get_assistant(assistant_id, api_key=tenant_vapi_key)
+
+    raw_msgs = (current.get("model") or {}).get("messages") or []
+    messages = [
+        {"role": m["role"], "content": m["content"]}
+        for m in raw_msgs if m.get("role") and m.get("content")
+    ]
+
+    if messages and messages[0].get("role") == "system":
+        base = _strip_injected_notes(messages[0]["content"])
+        has_calendar = bool(
+            tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
+        )
+        has_deposits = bool(
+            tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled")
+        )
+        from routers.calendar import _CALENDAR_NOTE
+        if has_calendar:
+            base += _CALENDAR_NOTE
+        if has_deposits:
+            base += _DEPOSIT_NOTE
+        messages[0]["content"] = base
+
+    await update_assistant(
+        assistant_id,
+        {
+            "model": {
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "temperature": 0.7,
+                "tools": tools,
+                "messages": messages,
+            }
+        },
+        api_key=tenant_vapi_key,
+    )
+    logger.info(
+        "Patched assistant %s — tools=%s",
+        assistant_id, [t["function"]["name"] for t in tools],
+    )
+
+
 async def get_call_details(call_id: str) -> dict:
     try:
         async with httpx.AsyncClient() as client:

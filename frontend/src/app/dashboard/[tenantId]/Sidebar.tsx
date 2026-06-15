@@ -84,6 +84,13 @@ const IconBilling = () => (
     <path d="M3 7v5.5a.5.5 0 00.5.5H6V9.5h3v3.5h2.5a.5.5 0 00.5-.5V7" strokeLinejoin="round"/>
   </svg>
 )
+const IconPayments = () => (
+  <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+    <rect x="1.5" y="3.5" width="12" height="8" rx="1.2"/>
+    <path d="M1.5 6.5h12" strokeLinecap="round"/>
+    <path d="M4 9.5h2" strokeLinecap="round"/>
+  </svg>
+)
 const IconUsage = () => (
   <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
     <rect x="1.5" y="9.5" width="2.5" height="4" rx="0.5"/><rect x="6.25" y="6" width="2.5" height="7.5" rx="0.5"/>
@@ -151,6 +158,7 @@ export default function Sidebar({
           navItem(`${base}/calendar`, <IconCalendar />, 'Calendar', apptsCount > 0 ? <span className="db-nav-badge db-badge-green">{apptsCount}</span> : undefined)}
         <div className="db-nav-label">Account</div>
         {navItem(`${base}/integrations`, <IconIntegrations />, 'Integrations')}
+        {navItem(`${base}/payments`, <IconPayments />, 'Payments')}
         {navItem(`${base}/settings`, <IconSettings />, 'Settings')}
         {navItem(`${base}/subscription`, <IconBilling />, <>Billing &amp; Payments</>, planBadge())}
         {navItem(`${base}/usage`, <IconUsage />, 'Usage')}

@@ -552,7 +552,133 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
         "You'll receive a text confirmation shortly."
     )
+    # When deposits are enabled and mandatory, let the AI know to call request_deposit next
+    if tenant.get("stripe_deposits_enabled") and tenant.get("stripe_account_id"):
+        deposit_cents = int(tenant.get("stripe_deposit_cents") or 2500)
+        deposit_dollars = f"${deposit_cents / 100:.2f}"
+        expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
+        mandatory = bool(tenant.get("stripe_deposit_mandatory", True))
+        requirement = "required to confirm this booking" if mandatory else "optional"
+        confirmation = (
+            f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
+            f"DEPOSIT: A {deposit_dollars} deposit is {requirement}. "
+            f"Tell the caller their slot is held and you are sending them a payment link now. "
+            f"IMMEDIATELY call request_deposit — do NOT end the call first."
+        )
     return _result(tc_id, confirmation)
+
+
+# ---------------------------------------------------------------------------
+# POST /tools/{tenant_id}/request-deposit
+# ---------------------------------------------------------------------------
+
+@router.post("/{tenant_id}/request-deposit")
+@limiter.limit("10/minute", key_func=tenant_key)
+async def request_deposit(request: Request, tenant_id: str, body: dict):
+    try:
+        tc_id, call_id, args = _parse_tool_call(body)
+    except Exception as e:
+        logger.error("tools/request-deposit: bad payload for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=400, detail="Malformed tool-call payload")
+
+    msg = body.get("message", body)
+    # Prefer Vapi call metadata phone (most reliable)
+    caller_phone = (
+        (msg.get("call") or {}).get("customer", {}).get("number", "")
+        or args.get("caller_phone", "")
+    )
+    caller_name = args.get("caller_name", "")
+    service     = args.get("service", "Appointment")
+
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        logger.error("tools/request-deposit: tenant lookup failed %s: %s", tenant_id, e)
+        return _result(tc_id, "I wasn't able to send the payment link right now. Our team will follow up to arrange the deposit.")
+
+    if not tenant or not tenant.get("stripe_deposits_enabled") or not tenant.get("stripe_account_id"):
+        return _result(tc_id, "Payment collection is not set up for this business.")
+
+    deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
+    expiry_minutes = int(tenant.get("stripe_deposit_expiry_min") or 120)
+    business_name  = tenant.get("business_name", "the business")
+    deposit_dollars = f"${deposit_cents / 100:.2f}"
+    expiry_hours   = expiry_minutes // 60
+
+    try:
+        import uuid
+        from services.stripe_service import create_checkout_session
+
+        payment_id  = str(uuid.uuid4())
+        description = f"Deposit — {service} at {business_name}"
+
+        appointment = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
+        appointment_id = appointment["id"] if appointment else None
+
+        session_id, checkout_url = await create_checkout_session(
+            stripe_account_id=tenant["stripe_account_id"],
+            amount_cents=deposit_cents,
+            description=description,
+            tenant_id=tenant_id,
+            payment_id=payment_id,
+            caller_name=caller_name or "Customer",
+            expiry_minutes=expiry_minutes,
+        )
+
+        from datetime import datetime, timezone, timedelta
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
+
+        await db.insert_payment({
+            "id": payment_id,
+            "tenant_id": tenant_id,
+            "appointment_id": appointment_id,
+            "stripe_account_id": tenant["stripe_account_id"],
+            "checkout_session_id": session_id,
+            "amount_cents": deposit_cents,
+            "currency": "usd",
+            "status": "pending",
+            "caller_phone": caller_phone,
+            "caller_name": caller_name,
+            "service": service,
+            "description": description,
+            "expires_at": expires_at,
+        })
+        logger.info("Created deposit payment %s for tenant %s caller %s", payment_id, tenant_id, caller_phone)
+
+    except Exception as e:
+        logger.error("tools/request-deposit: checkout session failed for tenant %s: %s", tenant_id, e)
+        return _result(tc_id, "I wasn't able to generate the payment link right now. Our team will follow up.")
+
+    # Send SMS
+    try:
+        sid   = tenant.get("twilio_subaccount_sid", "")
+        tok   = tenant.get("twilio_auth_token", "")
+        from_n = tenant.get("twilio_phone_number", "")
+        if sid and tok and from_n and caller_phone:
+            greeting = f"Hi {caller_name}! " if caller_name else "Hi! "
+            sms_body = (
+                f"{greeting}Here's your secure {deposit_dollars} deposit link for your "
+                f"{service} at {business_name}: {checkout_url} "
+                f"(expires in {expiry_hours} hrs) — {business_name}"
+            )
+            await telephony.send_sms(
+                subaccount_sid=sid,
+                subaccount_token=tok,
+                from_number=from_n,
+                to_number=caller_phone,
+                body=sms_body,
+            )
+            logger.info("Deposit SMS sent to %s for tenant %s", caller_phone, tenant_id)
+    except Exception as e:
+        logger.error("tools/request-deposit: SMS failed for tenant %s: %s", tenant_id, e)
+
+    return _result(
+        tc_id,
+        f"Payment link sent to {caller_phone}. "
+        f"Tell the caller: 'I've sent you a secure {deposit_dollars} payment link. "
+        f"Please complete the deposit within {expiry_hours} hours to confirm your booking — "
+        f"your slot is held until then.'"
+    )
 
 
 # ---------------------------------------------------------------------------

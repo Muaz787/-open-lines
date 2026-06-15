@@ -420,6 +420,77 @@ async def mark_webhook_failed(event_id: str, attempts: int, error: str) -> None:
     }).eq("id", event_id).execute()
 
 
+# ---------------------------------------------------------------------------
+# Payments
+# ---------------------------------------------------------------------------
+
+async def insert_payment(data: dict) -> dict:
+    res = get_client().table("payments").insert(data).execute()
+    return res.data[0] if res.data else {}
+
+
+async def update_payment(payment_id: str, data: dict) -> dict:
+    res = (
+        get_client().table("payments").update(data).eq("id", payment_id).execute()
+    )
+    return res.data[0] if res.data else {}
+
+
+async def get_payment_by_checkout_session(session_id: str) -> dict | None:
+    res = (
+        get_client().table("payments").select("*")
+        .eq("checkout_session_id", session_id).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
+
+
+async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
+    res = (
+        get_client().table("payments").select("*")
+        .eq("tenant_id", tenant_id).order("created_at", desc=True).limit(limit).execute()
+    )
+    return res.data or []
+
+
+async def get_latest_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
+    """Most recent appointment (any status) for this caller."""
+    res = (
+        get_client().table("appointments").select("*")
+        .eq("tenant_id", tenant_id).eq("caller_phone", phone)
+        .order("created_at", desc=True).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
+
+
+async def get_stripe_webhook_event(stripe_event_id: str) -> dict | None:
+    res = (
+        get_client().table("stripe_webhook_events").select("id, processed")
+        .eq("stripe_event_id", stripe_event_id).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
+
+
+async def insert_stripe_webhook_event(
+    stripe_event_id: str, event_type: str, tenant_id: str | None, payload: dict
+) -> None:
+    get_client().table("stripe_webhook_events").insert({
+        "stripe_event_id": stripe_event_id,
+        "event_type": event_type,
+        "tenant_id": tenant_id,
+        "payload": payload,
+    }).execute()
+
+
+async def mark_stripe_webhook_processed(stripe_event_id: str) -> None:
+    get_client().table("stripe_webhook_events").update({"processed": True}).eq(
+        "stripe_event_id", stripe_event_id
+    ).execute()
+
+
+# ---------------------------------------------------------------------------
+# KB
+# ---------------------------------------------------------------------------
+
 async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
     get_client().table("kb_entries").delete().eq("tenant_id", tenant_id).eq("type", "website").execute()
     res = get_client().table("kb_entries").insert({
