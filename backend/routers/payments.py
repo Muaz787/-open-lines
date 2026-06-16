@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from services import stripe_service as svc, vapi
+from services import stripe_service as svc, vapi, telephony
 from services.webhook_processor import _format_whatsapp_message
 from db import supabase as db
 
@@ -191,18 +192,21 @@ async def _handle_checkout_completed(session: dict) -> None:
     logger.info("Payment %s succeeded for tenant %s", payment["id"], tenant_id)
 
     # Confirm the linked appointment
+    appointment = None
     if payment.get("appointment_id"):
         try:
             await db.update_appointment(payment["appointment_id"], {"status": "confirmed"})
             logger.info("Appointment %s confirmed after payment", payment["appointment_id"])
+            appointment = await db.get_appointment_by_id(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
 
-    # Notify the business owner
+    # Notify the business owner and send caller confirmation SMS
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         if tenant:
             await _notify_payment(tenant, payment)
+            await _sms_caller_confirmation(tenant, payment, appointment)
     except Exception as e:
         logger.error("Payment notification failed for tenant %s: %s", tenant_id, e)
 
@@ -220,6 +224,50 @@ async def _handle_checkout_expired(session: dict) -> None:
 
     await db.update_payment(payment["id"], {"status": "expired"})
     logger.info("Payment %s expired (checkout session timed out)", payment["id"])
+
+
+async def _sms_caller_confirmation(tenant: dict, payment: dict, appointment: dict | None) -> None:
+    """Send the caller an appointment confirmation SMS after their deposit clears."""
+    caller_phone = payment.get("caller_phone", "")
+    caller_name  = payment.get("caller_name", "") or "there"
+    service      = payment.get("service") or "appointment"
+    business_name = tenant.get("business_name", "us")
+    sid   = tenant.get("twilio_subaccount_sid", "")
+    tok   = tenant.get("twilio_auth_token", "")
+    from_n = tenant.get("twilio_phone_number", "")
+
+    if not (sid and tok and from_n and caller_phone):
+        return
+
+    friendly = ""
+    if appointment:
+        try:
+            tz_str  = tenant.get("calendar_timezone") or "America/Toronto"
+            appt_dt = datetime.fromisoformat(appointment["appointment_datetime"])
+            if appt_dt.tzinfo is None:
+                appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
+            appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
+            h = appt_dt.hour % 12 or 12
+            ampm = "AM" if appt_dt.hour < 12 else "PM"
+            friendly = f" for {appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
+        except Exception:
+            pass
+
+    sms_body = (
+        f"Hi {caller_name}! Your deposit was received — your {service} at {business_name}"
+        f"{friendly} is now confirmed. See you then! — {business_name}"
+    )
+    try:
+        await telephony.send_sms(
+            subaccount_sid=sid,
+            subaccount_token=tok,
+            from_number=from_n,
+            to_number=caller_phone,
+            body=sms_body,
+        )
+        logger.info("Caller confirmation SMS sent to %s after payment for tenant %s", caller_phone, tenant.get("id"))
+    except Exception as e:
+        logger.error("Caller confirmation SMS failed for tenant %s: %s", tenant.get("id"), e)
 
 
 async def _notify_payment(tenant: dict, payment: dict) -> None:

@@ -356,18 +356,31 @@ export default function PaymentsPage() {
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
                   Deposit amount (USD)
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, color: 'var(--db-muted)' }}>$</span>
+                <div style={{ position: 'relative', maxWidth: 180 }}>
+                  <span style={{
+                    position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 14, color: 'var(--db-muted)', pointerEvents: 'none', userSelect: 'none',
+                  }}>$</span>
                   <input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="25.00"
                     value={(depositCents / 100).toFixed(2)}
-                    onChange={e => setDepositCents(Math.round(parseFloat(e.target.value || '0') * 100))}
+                    onFocus={e => e.target.select()}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, '')
+                      const num = parseFloat(raw)
+                      if (!isNaN(num)) setDepositCents(Math.round(num * 100))
+                    }}
+                    onBlur={e => {
+                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
+                      if (isNaN(num) || num < 0.5) setDepositCents(50)
+                    }}
                     className="db-input"
-                    style={{ width: 100 }}
+                    style={{ paddingLeft: 28, width: '100%', fontSize: 15, height: 44 }}
                   />
                 </div>
+                <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 5 }}>Minimum $0.50</div>
               </div>
 
               {/* Mandatory toggle */}
@@ -441,34 +454,69 @@ export default function PaymentsPage() {
           ) : (
             <div>
               <div className="db-page-heading" style={{ marginBottom: 12, fontSize: 14 }}>Payment history</div>
-              <div className="db-card" style={{ overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--db-border-lt)' }}>
-                      {['Date', 'Customer', 'Service', 'Amount', 'Status'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--db-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p, i) => (
-                      <tr key={p.id} style={{ borderBottom: i < payments.length - 1 ? '1px solid var(--db-border-lt)' : 'none' }}>
-                        <td style={{ padding: '12px 14px', fontSize: 12, color: 'var(--db-muted)' }}>
-                          {new Date(p.created_at).toLocaleDateString()}
-                        </td>
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>{p.caller_name || '—'}</div>
-                          {p.caller_phone && <div style={{ fontSize: 11, color: 'var(--db-faint)' }}>{p.caller_phone}</div>}
-                        </td>
-                        <td style={{ padding: '12px 14px', fontSize: 13, color: 'var(--db-text-2)' }}>{p.service || '—'}</td>
-                        <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
-                          ${(p.amount_cents / 100).toFixed(2)}
-                        </td>
-                        <td style={{ padding: '12px 14px' }}><StatusBadge status={p.status} /></td>
+
+              {/* Mobile card list — shown below ~600 px */}
+              <div className="db-card" style={{ overflow: 'hidden' }} id="payments-mobile">
+                <style>{`
+                  @media (min-width: 600px) { #payments-mobile .pay-cards { display: none !important; } }
+                  @media (max-width: 599px) { #payments-mobile .pay-table-wrap { display: none !important; } }
+                `}</style>
+
+                {/* Card layout for mobile */}
+                <div className="pay-cards">
+                  {payments.map((p, i) => (
+                    <div key={p.id} style={{
+                      padding: '14px 16px',
+                      borderBottom: i < payments.length - 1 ? '1px solid var(--db-border-lt)' : 'none',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>{p.caller_name || '—'}</div>
+                          {p.caller_phone && <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 2 }}>{p.caller_phone}</div>}
+                        </div>
+                        <StatusBadge status={p.status} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: 12, color: 'var(--db-text-2)' }}>{p.service || '—'}</div>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--db-text)' }}>${(p.amount_cents / 100).toFixed(2)}</span>
+                          <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>{new Date(p.created_at).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Table layout for desktop */}
+                <div className="pay-table-wrap" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--db-border-lt)' }}>
+                        {['Status', 'Date', 'Customer', 'Service', 'Amount'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--db-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {payments.map((p, i) => (
+                        <tr key={p.id} style={{ borderBottom: i < payments.length - 1 ? '1px solid var(--db-border-lt)' : 'none' }}>
+                          <td style={{ padding: '12px 14px' }}><StatusBadge status={p.status} /></td>
+                          <td style={{ padding: '12px 14px', fontSize: 12, color: 'var(--db-muted)', whiteSpace: 'nowrap' }}>
+                            {new Date(p.created_at).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>{p.caller_name || '—'}</div>
+                            {p.caller_phone && <div style={{ fontSize: 11, color: 'var(--db-faint)' }}>{p.caller_phone}</div>}
+                          </td>
+                          <td style={{ padding: '12px 14px', fontSize: 13, color: 'var(--db-text-2)' }}>{p.service || '—'}</td>
+                          <td style={{ padding: '12px 14px', fontSize: 13, fontWeight: 600, color: 'var(--db-text)', whiteSpace: 'nowrap' }}>
+                            ${(p.amount_cents / 100).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}

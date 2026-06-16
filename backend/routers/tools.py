@@ -485,6 +485,13 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/book: calendar event creation failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
+    deposits_mandatory = (
+        bool(tenant.get("stripe_deposits_enabled"))
+        and bool(tenant.get("stripe_account_id"))
+        and bool(tenant.get("stripe_deposit_mandatory", True))
+    )
+    appt_status = "pending_payment" if deposits_mandatory else "confirmed"
+
     try:
         appt_data = {
             "tenant_id":             tenant_id,
@@ -493,7 +500,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             "service":               service,
             "appointment_datetime":  start_dt.isoformat(),
             "duration_minutes":      duration_minutes,
-            "status":                "confirmed",
+            "status":                appt_status,
             "vapi_call_id":          call_id,
             "google_event_id":       event.get("id", ""),
         }
@@ -521,32 +528,35 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     ampm = "AM" if start_dt.hour < 12 else "PM"
     friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}"
 
-    # Send SMS confirmation now — more reliable than waiting for end-of-call-report
-    try:
-        subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
-        subaccount_token = tenant.get("twilio_auth_token", "")
-        business_phone   = tenant.get("twilio_phone_number", "")
-        if subaccount_sid and subaccount_token and business_phone and caller_phone:
-            greeting = f"Hi {caller_name}! " if caller_name else ""
-            sms_body = (
-                f"{greeting}Your {service} at {business_name} is confirmed "
-                f"for {friendly}. See you then! — {business_name}"
-            )
-            await telephony.send_sms(
-                subaccount_sid=subaccount_sid,
-                subaccount_token=subaccount_token,
-                from_number=business_phone,
-                to_number=caller_phone,
-                body=sms_body,
-            )
-            logger.info("Appointment SMS sent to %s for tenant %s", caller_phone, tenant_id)
-            analytics.capture(
-                analytics.distinct_id_for(tenant, tenant_id),
-                "sms_confirmation_sent",
-                {"tenant_id": tenant_id},
-            )
-    except Exception as e:
-        logger.error("tools/book: SMS failed for tenant %s: %s", tenant_id, e)
+    # Send SMS confirmation — but only when no mandatory deposit is required.
+    # When deposits are mandatory the confirmation SMS is sent from the payment webhook
+    # after the caller actually pays, so we don't falsely confirm an unpaid booking.
+    if not deposits_mandatory:
+        try:
+            subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
+            subaccount_token = tenant.get("twilio_auth_token", "")
+            business_phone   = tenant.get("twilio_phone_number", "")
+            if subaccount_sid and subaccount_token and business_phone and caller_phone:
+                greeting = f"Hi {caller_name}! " if caller_name else ""
+                sms_body = (
+                    f"{greeting}Your {service} at {business_name} is confirmed "
+                    f"for {friendly}. See you then! — {business_name}"
+                )
+                await telephony.send_sms(
+                    subaccount_sid=subaccount_sid,
+                    subaccount_token=subaccount_token,
+                    from_number=business_phone,
+                    to_number=caller_phone,
+                    body=sms_body,
+                )
+                logger.info("Appointment SMS sent to %s for tenant %s", caller_phone, tenant_id)
+                analytics.capture(
+                    analytics.distinct_id_for(tenant, tenant_id),
+                    "sms_confirmation_sent",
+                    {"tenant_id": tenant_id},
+                )
+        except Exception as e:
+            logger.error("tools/book: SMS failed for tenant %s: %s", tenant_id, e)
 
     confirmation = (
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
@@ -649,6 +659,20 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         logger.error("tools/request-deposit: checkout session failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, "I wasn't able to generate the payment link right now. Our team will follow up.")
 
+    # Shorten the Stripe checkout URL before texting it
+    short_url = checkout_url
+    try:
+        import httpx
+        r = await httpx.AsyncClient().get(
+            "https://tinyurl.com/api-create.php",
+            params={"url": checkout_url},
+            timeout=5.0,
+        )
+        if r.status_code == 200 and r.text.startswith("http"):
+            short_url = r.text.strip()
+    except Exception as e:
+        logger.warning("URL shortening failed for tenant %s, using full URL: %s", tenant_id, e)
+
     # Send SMS
     try:
         sid   = tenant.get("twilio_subaccount_sid", "")
@@ -657,8 +681,8 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         if sid and tok and from_n and caller_phone:
             greeting = f"Hi {caller_name}! " if caller_name else "Hi! "
             sms_body = (
-                f"{greeting}Here's your secure {deposit_dollars} deposit link for your "
-                f"{service} at {business_name}: {checkout_url} "
+                f"{greeting}Pay your {deposit_dollars} deposit for your "
+                f"{service} at {business_name}: {short_url} "
                 f"(expires in {expiry_hours} hrs) — {business_name}"
             )
             await telephony.send_sms(

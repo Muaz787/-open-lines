@@ -260,6 +260,18 @@ async def update_appointment(appointment_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def get_appointment_by_id(appointment_id: str) -> dict | None:
+    res = (
+        get_client()
+        .table("appointments")
+        .select("*")
+        .eq("id", appointment_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 async def get_appointment_by_call_id(call_id: str) -> dict | None:
     res = (
         get_client()
