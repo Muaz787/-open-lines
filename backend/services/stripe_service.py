@@ -67,6 +67,7 @@ async def create_checkout_session(
     payment_id: str,
     caller_name: str,
     expiry_minutes: int,
+    currency: str = "usd",
 ) -> tuple[str, str]:
     """Create a Stripe Checkout Session on the tenant's connected account.
     Returns (session_id, checkout_url)."""
@@ -78,7 +79,7 @@ async def create_checkout_session(
         payment_method_types=["card"],
         line_items=[{
             "price_data": {
-                "currency": "usd",
+                "currency": currency.lower(),
                 "product_data": {"name": description},
                 "unit_amount": amount_cents,
             },

@@ -16,6 +16,7 @@ interface Settings {
   deposit_mandatory: boolean
   deposit_expiry_min: number
   deposit_label: string
+  currency: string
 }
 
 interface Payment {
@@ -87,6 +88,8 @@ export default function PaymentsPage() {
   // Editable form state
   const [depositEnabled, setDepositEnabled] = useState(false)
   const [depositCents, setDepositCents]     = useState(2500)
+  const [amountStr, setAmountStr]           = useState('25.00')
+  const [currency, setCurrency]             = useState('CAD')
   const [mandatory, setMandatory]           = useState(true)
   const [expiryMin, setExpiryMin]           = useState(120)
   const [label, setLabel]                   = useState('Appointment Deposit')
@@ -108,6 +111,8 @@ export default function PaymentsPage() {
         setSettings(s)
         setDepositEnabled(s.deposits_enabled)
         setDepositCents(s.deposit_cents)
+        setAmountStr((s.deposit_cents / 100).toFixed(2))
+        setCurrency(s.currency || 'CAD')
         setMandatory(s.deposit_mandatory)
         setExpiryMin(s.deposit_expiry_min)
         setLabel(s.deposit_label || 'Appointment Deposit')
@@ -354,33 +359,38 @@ export default function PaymentsPage() {
               {/* Deposit amount */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
-                  Deposit amount (USD)
+                  Deposit amount ({currency})
                 </label>
-                <div style={{ position: 'relative', maxWidth: 180 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 200 }}>
                   <span style={{
-                    position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-                    fontSize: 14, color: 'var(--db-muted)', pointerEvents: 'none', userSelect: 'none',
-                  }}>$</span>
+                    fontSize: 13, fontWeight: 600, color: 'var(--db-text-2)',
+                    flexShrink: 0, userSelect: 'none', minWidth: 36,
+                  }}>{currency}</span>
                   <input
                     type="text"
                     inputMode="decimal"
                     placeholder="25.00"
-                    value={(depositCents / 100).toFixed(2)}
+                    value={amountStr}
                     onFocus={e => e.target.select()}
                     onChange={e => {
-                      const raw = e.target.value.replace(/[^0-9.]/g, '')
-                      const num = parseFloat(raw)
-                      if (!isNaN(num)) setDepositCents(Math.round(num * 100))
+                      const v = e.target.value
+                      if (/^(\d{0,6}\.?\d{0,2})?$/.test(v)) {
+                        setAmountStr(v)
+                        const num = parseFloat(v)
+                        if (!isNaN(num)) setDepositCents(Math.round(num * 100))
+                      }
                     }}
-                    onBlur={e => {
-                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
-                      if (isNaN(num) || num < 0.5) setDepositCents(50)
+                    onBlur={() => {
+                      const num = parseFloat(amountStr)
+                      const clamped = isNaN(num) || num < 0.5 ? 0.5 : num
+                      setDepositCents(Math.round(clamped * 100))
+                      setAmountStr(clamped.toFixed(2))
                     }}
                     className="db-input"
-                    style={{ paddingLeft: 28, width: '100%', fontSize: 15, height: 44 }}
+                    style={{ flex: 1, fontSize: 16, height: 48, textAlign: 'right', letterSpacing: '0.02em' }}
                   />
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 5 }}>Minimum $0.50</div>
+                <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 5 }}>Minimum 0.50 {currency}</div>
               </div>
 
               {/* Mandatory toggle */}

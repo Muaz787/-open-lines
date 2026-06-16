@@ -17,6 +17,16 @@ _ELIGIBLE_PLANS   = {"pro", "business"}
 _ELIGIBLE_STATUSES = {"active", "trialing", "canceling"}
 
 
+_COUNTRY_CURRENCY: dict[str, str] = {
+    "US": "usd", "CA": "cad", "AU": "aud", "GB": "gbp",
+    "NZ": "nzd", "IE": "eur", "AE": "aed", "SG": "sgd",
+}
+
+def _currency_for(tenant: dict) -> str:
+    country = (tenant.get("country") or "CA").upper()
+    return _COUNTRY_CURRENCY.get(country, "usd")
+
+
 def _is_eligible(tenant: dict) -> bool:
     plan   = (tenant.get("subscription_plan") or "").lower()
     status = tenant.get("subscription_status") or ""
@@ -45,6 +55,7 @@ async def get_settings(tenant_id: str):
         "deposit_mandatory":     bool(tenant.get("stripe_deposit_mandatory", True)),
         "deposit_expiry_min":    int(tenant.get("stripe_deposit_expiry_min") or 120),
         "deposit_label":         tenant.get("stripe_deposit_label") or "Appointment Deposit",
+        "currency":              _currency_for(tenant).upper(),
     }
 
 

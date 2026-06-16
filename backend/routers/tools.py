@@ -564,14 +564,16 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     )
     # When deposits are enabled and mandatory, let the AI know to call request_deposit next
     if tenant.get("stripe_deposits_enabled") and tenant.get("stripe_account_id"):
-        deposit_cents = int(tenant.get("stripe_deposit_cents") or 2500)
-        deposit_dollars = f"${deposit_cents / 100:.2f}"
-        expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
+        from routers.payments import _currency_for
+        _dep_cents = int(tenant.get("stripe_deposit_cents") or 2500)
+        _currency  = _currency_for(tenant).upper()
+        _dep_amount = f"{_currency} {_dep_cents / 100:.2f}"
+        _expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
         mandatory = bool(tenant.get("stripe_deposit_mandatory", True))
         requirement = "required to confirm this booking" if mandatory else "optional"
         confirmation = (
             f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
-            f"DEPOSIT: A {deposit_dollars} deposit is {requirement}. "
+            f"DEPOSIT: A {_dep_amount} deposit is {requirement}. "
             f"Tell the caller their slot is held and you are sending them a payment link now. "
             f"IMMEDIATELY call request_deposit — do NOT end the call first."
         )
@@ -612,8 +614,11 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
     expiry_minutes = int(tenant.get("stripe_deposit_expiry_min") or 120)
     business_name  = tenant.get("business_name", "the business")
-    deposit_dollars = f"${deposit_cents / 100:.2f}"
     expiry_hours   = expiry_minutes // 60
+
+    from routers.payments import _currency_for
+    currency = _currency_for(tenant)
+    deposit_amount = f"{currency.upper()} {deposit_cents / 100:.2f}"
 
     try:
         import uuid
@@ -633,6 +638,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             payment_id=payment_id,
             caller_name=caller_name or "Customer",
             expiry_minutes=expiry_minutes,
+            currency=currency,
         )
 
         from datetime import datetime, timezone, timedelta
@@ -645,7 +651,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             "stripe_account_id": tenant["stripe_account_id"],
             "checkout_session_id": session_id,
             "amount_cents": deposit_cents,
-            "currency": "usd",
+            "currency": currency,
             "status": "pending",
             "caller_phone": caller_phone,
             "caller_name": caller_name,
@@ -681,7 +687,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         if sid and tok and from_n and caller_phone:
             greeting = f"Hi {caller_name}! " if caller_name else "Hi! "
             sms_body = (
-                f"{greeting}Pay your {deposit_dollars} deposit for your "
+                f"{greeting}Pay your {deposit_amount} deposit for your "
                 f"{service} at {business_name}: {short_url} "
                 f"(expires in {expiry_hours} hrs) — {business_name}"
             )
@@ -699,7 +705,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     return _result(
         tc_id,
         f"Payment link sent to {caller_phone}. "
-        f"Tell the caller: 'I've sent you a secure {deposit_dollars} payment link. "
+        f"Tell the caller: 'I've sent you a secure {deposit_amount} payment link. "
         f"Please complete the deposit within {expiry_hours} hours to confirm your booking — "
         f"your slot is held until then.'"
     )
