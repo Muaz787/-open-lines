@@ -390,7 +390,6 @@ export default function PaymentsPage() {
                     style={{ flex: 1, fontSize: 16, height: 48, textAlign: 'right', letterSpacing: '0.02em' }}
                   />
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 5 }}>Minimum 0.50 {currency}</div>
               </div>
 
               {/* Mandatory toggle */}
