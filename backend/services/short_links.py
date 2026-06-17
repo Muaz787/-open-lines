@@ -14,9 +14,11 @@ _CODE_LEN  = 8
 
 _VALID_CODE_RE = re.compile(r"^[A-Z2-9]{8,10}$")
 
-_ALLOWED_STRIPE_PREFIXES = (
+_ALLOWED_PAYMENT_PREFIXES = (
     "https://checkout.stripe.com/",
     "https://buy.stripe.com/",
+    "https://checkout.squareup.com/",
+    "https://sandbox.checkout.squareup.com/",
 )
 
 _CURRENCY_DISPLAY: dict[str, str] = {
@@ -45,8 +47,11 @@ def is_valid_short_code(code: str) -> bool:
     return bool(_VALID_CODE_RE.match(code))
 
 
-def is_safe_stripe_url(url: str) -> bool:
-    return any(url.startswith(p) for p in _ALLOWED_STRIPE_PREFIXES)
+def is_safe_payment_url(url: str) -> bool:
+    return any(url.startswith(p) for p in _ALLOWED_PAYMENT_PREFIXES)
+
+# Backward-compat alias — existing imports of is_safe_stripe_url still work
+is_safe_stripe_url = is_safe_payment_url
 
 
 def build_branded_url(short_code: str) -> str:

@@ -12,11 +12,22 @@ interface Settings {
   eligible: boolean
   stripe_connected: boolean
   deposits_enabled: boolean
+  square_connected: boolean
+  square_deposits_enabled: boolean
+  square_merchant_id?: string
+  square_currency?: string
   deposit_cents: number
   deposit_mandatory: boolean
   deposit_expiry_min: number
   deposit_label: string
   currency: string
+  active_provider?: string | null
+}
+
+interface SquareStatus {
+  connected: boolean
+  merchant_id?: string
+  currency?: string
 }
 
 interface Payment {
@@ -64,6 +75,16 @@ function LockIcon() {
   )
 }
 
+function SquareIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#1A1A1A"/>
+      <rect x="9" y="9" width="14" height="14" rx="2" fill="white"/>
+      <rect x="13" y="13" width="6" height="6" rx="1" fill="#1A1A1A"/>
+    </svg>
+  )
+}
+
 function StripeIcon() {
   return (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
@@ -78,21 +99,25 @@ export default function PaymentsPage() {
 
   const [settings, setSettings]         = useState<Settings | null>(null)
   const [stripeStatus, setStripeStatus] = useState<StripeStatus | null>(null)
+  const [squareStatus, setSquareStatus] = useState<SquareStatus | null>(null)
   const [payments, setPayments]         = useState<Payment[]>([])
   const [loading, setLoading]           = useState(true)
   const [saving, setSaving]             = useState(false)
   const [connecting, setConnecting]     = useState(false)
-  const [disconnecting, setDisconnecting] = useState(false)
+  const [disconnecting, setDisconnecting]   = useState(false)
+  const [sqConnecting, setSqConnecting]     = useState(false)
+  const [sqDisconnecting, setSqDisconnecting] = useState(false)
   const [toast, setToast]               = useState<string | null>(null)
 
   // Editable form state
-  const [depositEnabled, setDepositEnabled] = useState(false)
-  const [depositCents, setDepositCents]     = useState(2500)
-  const [amountStr, setAmountStr]           = useState('25.00')
-  const [currency, setCurrency]             = useState('CAD')
-  const [mandatory, setMandatory]           = useState(true)
-  const [expiryMin, setExpiryMin]           = useState(120)
-  const [label, setLabel]                   = useState('Appointment Deposit')
+  const [depositEnabled, setDepositEnabled]         = useState(false)
+  const [squareDepositsEnabled, setSquareDepositsEnabled] = useState(false)
+  const [depositCents, setDepositCents]             = useState(2500)
+  const [amountStr, setAmountStr]                   = useState('25.00')
+  const [currency, setCurrency]                     = useState('CAD')
+  const [mandatory, setMandatory]                   = useState(true)
+  const [expiryMin, setExpiryMin]                   = useState(120)
+  const [label, setLabel]                           = useState('Appointment Deposit')
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -101,15 +126,17 @@ export default function PaymentsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [sRes, stRes, pRes] = await Promise.all([
+      const [sRes, stRes, sqRes, pRes] = await Promise.all([
         fetch(`${API}/payments/settings/${tenantId}`),
         fetch(`${API}/stripe-connect/status/${tenantId}`),
+        fetch(`${API}/square-connect/status/${tenantId}`),
         fetch(`${API}/payments/list/${tenantId}`),
       ])
       if (sRes.ok) {
         const s: Settings = await sRes.json()
         setSettings(s)
         setDepositEnabled(s.deposits_enabled)
+        setSquareDepositsEnabled(s.square_deposits_enabled || false)
         setDepositCents(s.deposit_cents)
         setAmountStr((s.deposit_cents / 100).toFixed(2))
         setCurrency(s.currency || 'CAD')
@@ -118,6 +145,7 @@ export default function PaymentsPage() {
         setLabel(s.deposit_label || 'Appointment Deposit')
       }
       if (stRes.ok) setStripeStatus(await stRes.json())
+      if (sqRes.ok) setSquareStatus(await sqRes.json())
       if (pRes.ok) {
         const d = await pRes.json()
         setPayments(d.payments || [])
@@ -132,6 +160,16 @@ export default function PaymentsPage() {
     const params  = new URLSearchParams(window.location.search)
     const stripe  = params.get('stripe')
     const acctId  = params.get('account_id')
+
+    const square = params.get('square')
+    if (square === 'connected') {
+      showToast('Square connected!')
+      window.history.replaceState({}, '', window.location.pathname)
+      load()
+    } else if (square === 'error') {
+      showToast('Square connection failed. Please try again.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
 
     if (stripe === 'return' && acctId) {
       // Stripe redirected back after onboarding — verify account server-side
@@ -164,6 +202,42 @@ export default function PaymentsPage() {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [load, tenantId])
+
+  const handleSquareConnect = async () => {
+    setSqConnecting(true)
+    try {
+      const res = await fetch(`${API}/square-connect/onboard/${tenantId}`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        showToast(err.detail || 'Connect failed')
+        return
+      }
+      const { url } = await res.json()
+      window.location.href = url
+    } catch {
+      showToast('Network error — try again.')
+    } finally {
+      setSqConnecting(false)
+    }
+  }
+
+  const handleSquareDisconnect = async () => {
+    if (!confirm('Disconnect Square? Square deposits will stop working immediately.')) return
+    setSqDisconnecting(true)
+    try {
+      const res = await fetch(`${API}/square-connect/disconnect/${tenantId}`, { method: 'POST' })
+      if (res.ok) {
+        showToast('Square disconnected.')
+        await load()
+      } else {
+        showToast('Disconnect failed — try again.')
+      }
+    } catch {
+      showToast('Network error.')
+    } finally {
+      setSqDisconnecting(false)
+    }
+  }
 
   const handleConnect = async () => {
     setConnecting(true)
@@ -208,11 +282,12 @@ export default function PaymentsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          deposits_enabled:   depositEnabled,
-          deposit_cents:      depositCents,
-          deposit_mandatory:  mandatory,
-          deposit_expiry_min: expiryMin,
-          deposit_label:      label,
+          deposits_enabled:        depositEnabled,
+          square_deposits_enabled: squareDepositsEnabled,
+          deposit_cents:           depositCents,
+          deposit_mandatory:       mandatory,
+          deposit_expiry_min:      expiryMin,
+          deposit_label:           label,
         }),
       })
       if (res.ok) {
@@ -282,7 +357,7 @@ export default function PaymentsPage() {
           )}
 
           {/* Stripe Connect */}
-          <div className="db-card" style={{ marginBottom: 16, overflow: 'hidden' }}>
+          <div className="db-card" style={{ marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--db-border-lt)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
               <div style={{ flexShrink: 0, marginTop: 2 }}><StripeIcon /></div>
               <div style={{ flex: 1 }}>
@@ -316,6 +391,42 @@ export default function PaymentsPage() {
               ) : (
                 <button className="db-btn db-btn--dark" style={{ fontSize: 13 }} onClick={handleConnect} disabled={connecting || !isEligible}>
                   {connecting ? 'Opening Stripe…' : 'Connect Stripe'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Square Connect */}
+          <div className="db-card" style={{ marginBottom: 16, overflow: 'hidden' }}>
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--db-border-lt)', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{ flexShrink: 0, marginTop: 2 }}><SquareIcon /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 4 }}>Square Connect</div>
+                <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.6 }}>
+                  Connect your Square account as an alternative payment provider for deposit collection.
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              {squareStatus?.connected ? (
+                <>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, color: 'var(--db-accent-text)' }}>✓</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-accent-text)' }}>Connected</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 2 }}>
+                      {squareStatus.merchant_id ? `Merchant ${squareStatus.merchant_id.slice(0, 14)}…` : 'Square account linked'}
+                      {squareStatus.currency ? ` · ${squareStatus.currency}` : ''}
+                    </div>
+                  </div>
+                  <button className="db-btn db-btn--ghost db-btn--sm" onClick={handleSquareDisconnect} disabled={sqDisconnecting || !isEligible}>
+                    {sqDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                </>
+              ) : (
+                <button className="db-btn db-btn--dark" style={{ fontSize: 13 }} onClick={handleSquareConnect} disabled={sqConnecting || !isEligible}>
+                  {sqConnecting ? 'Opening Square…' : 'Connect Square'}
                 </button>
               )}
             </div>
@@ -355,6 +466,36 @@ export default function PaymentsPage() {
                   }} />
                 </button>
               </div>
+
+              {/* Square deposits toggle — only shown when Square is connected */}
+              {squareStatus?.connected && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Enable Square deposits</div>
+                    <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>
+                      {squareDepositsEnabled
+                        ? 'Square is active — takes priority over Stripe when both are enabled'
+                        : 'Use Square as the payment provider for deposit collection'}
+                    </div>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={squareDepositsEnabled}
+                    onClick={() => setSquareDepositsEnabled(v => !v)}
+                    style={{
+                      width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+                      background: squareDepositsEnabled ? 'var(--db-accent-text)' : 'var(--db-border)',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 3, left: squareDepositsEnabled ? 21 : 3,
+                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s',
+                    }} />
+                  </button>
+                </div>
+              )}
 
               {/* Deposit amount */}
               <div>

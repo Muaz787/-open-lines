@@ -485,9 +485,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/book: calendar event creation failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
+    from routers.payments import _deposit_provider
+    _dep_provider = _deposit_provider(tenant)
     deposits_mandatory = (
-        bool(tenant.get("stripe_deposits_enabled"))
-        and bool(tenant.get("stripe_account_id"))
+        bool(_dep_provider)
         and bool(tenant.get("stripe_deposit_mandatory", True))
     )
     appt_status = "pending_payment" if deposits_mandatory else "confirmed"
@@ -563,11 +564,14 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         "You'll receive a text confirmation shortly."
     )
     # When deposits are enabled and mandatory, let the AI know to call request_deposit next
-    if tenant.get("stripe_deposits_enabled") and tenant.get("stripe_account_id"):
+    if _dep_provider:
         from routers.payments import _currency_for
         from services.short_links import format_currency_voice
-        _dep_cents    = int(tenant.get("stripe_deposit_cents") or 2500)
-        _currency     = _currency_for(tenant)
+        _dep_cents = int(tenant.get("stripe_deposit_cents") or 2500)
+        if _dep_provider == "square":
+            _currency = (tenant.get("square_currency") or "usd").lower()
+        else:
+            _currency = _currency_for(tenant)
         _voice_word   = format_currency_voice(_currency)
         _dep_display  = f"{_dep_cents // 100} {_voice_word}" if _dep_cents % 100 == 0 else f"{_dep_cents / 100:.2f} {_voice_word}"
         _expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
@@ -610,7 +614,9 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         logger.error("tools/request-deposit: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, "I wasn't able to send the payment link right now. Our team will follow up to arrange the deposit.")
 
-    if not tenant or not tenant.get("stripe_deposits_enabled") or not tenant.get("stripe_account_id"):
+    from routers.payments import _deposit_provider, _currency_for
+    _provider = _deposit_provider(tenant)
+    if not tenant or not _provider:
         return _result(tc_id, "Payment collection is not set up for this business.")
 
     deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
@@ -618,63 +624,99 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     business_name  = tenant.get("business_name", "the business")
     expiry_hours   = expiry_minutes // 60
 
-    from routers.payments import _currency_for
-    currency = _currency_for(tenant)
-    deposit_amount = f"{currency.upper()} {deposit_cents / 100:.2f}"
+    if _provider == "square":
+        currency = (tenant.get("square_currency") or "usd").lower()
+    else:
+        currency = _currency_for(tenant)
 
     try:
         import uuid
-        from services.stripe_service import create_checkout_session
-
         payment_id  = str(uuid.uuid4())
         description = f"Deposit — {service} at {business_name}"
 
         appointment = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
         appointment_id = appointment["id"] if appointment else None
 
-        session_id, checkout_url = await create_checkout_session(
-            stripe_account_id=tenant["stripe_account_id"],
-            amount_cents=deposit_cents,
-            description=description,
-            tenant_id=tenant_id,
-            payment_id=payment_id,
-            caller_name=caller_name or "Customer",
-            expiry_minutes=expiry_minutes,
-            currency=currency,
-        )
-
         from datetime import datetime, timezone, timedelta
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
 
-        await db.insert_payment({
-            "id": payment_id,
-            "tenant_id": tenant_id,
-            "appointment_id": appointment_id,
-            "stripe_account_id": tenant["stripe_account_id"],
-            "checkout_session_id": session_id,
-            "amount_cents": deposit_cents,
-            "currency": currency,
-            "status": "pending",
-            "caller_phone": caller_phone,
-            "caller_name": caller_name,
-            "service": service,
-            "description": description,
-            "expires_at": expires_at,
-        })
-        logger.info("Created deposit payment %s for tenant %s caller %s", payment_id, tenant_id, caller_phone)
+        if _provider == "square":
+            from services.square_service import create_payment_link
+            from services.security import decrypt
+            access_token = decrypt(tenant["square_access_token"])
+            location_id  = tenant.get("square_location_id", "")
+            link_id, order_id, checkout_url = await create_payment_link(
+                access_token=access_token,
+                location_id=location_id,
+                amount_cents=deposit_cents,
+                currency=currency,
+                name=f"Deposit — {service}",
+                note=f"Refundable deposit for {service} at {business_name}",
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                expiry_minutes=expiry_minutes,
+            )
+            await db.insert_payment({
+                "id": payment_id,
+                "tenant_id": tenant_id,
+                "appointment_id": appointment_id,
+                "checkout_session_id": order_id,
+                "payment_intent_id":   link_id,
+                "amount_cents": deposit_cents,
+                "currency": currency,
+                "status": "pending",
+                "provider": "square",
+                "caller_phone": caller_phone,
+                "caller_name": caller_name,
+                "service": service,
+                "description": description,
+                "expires_at": expires_at,
+            })
+            session_id = link_id
+        else:
+            from services.stripe_service import create_checkout_session
+            session_id, checkout_url = await create_checkout_session(
+                stripe_account_id=tenant["stripe_account_id"],
+                amount_cents=deposit_cents,
+                description=description,
+                tenant_id=tenant_id,
+                payment_id=payment_id,
+                caller_name=caller_name or "Customer",
+                expiry_minutes=expiry_minutes,
+                currency=currency,
+            )
+            await db.insert_payment({
+                "id": payment_id,
+                "tenant_id": tenant_id,
+                "appointment_id": appointment_id,
+                "stripe_account_id": tenant["stripe_account_id"],
+                "checkout_session_id": session_id,
+                "amount_cents": deposit_cents,
+                "currency": currency,
+                "status": "pending",
+                "provider": "stripe",
+                "caller_phone": caller_phone,
+                "caller_name": caller_name,
+                "service": service,
+                "description": description,
+                "expires_at": expires_at,
+            })
+
+        logger.info("Created deposit payment %s via %s for tenant %s caller %s",
+                    payment_id, _provider, tenant_id, caller_phone)
 
     except Exception as e:
-        logger.error("tools/request-deposit: checkout session failed for tenant %s: %s", tenant_id, e)
+        logger.error("tools/request-deposit: payment link creation failed for tenant %s: %s", tenant_id, e)
         return _result(
             tc_id,
             "I'm sorry, there was an issue generating the payment link. "
             "Please apologise to the caller and let them know the team will follow up shortly to arrange payment.",
         )
 
-    # Create branded short payment link (replaces TinyURL / raw Stripe URL)
+    # Create branded short payment link
     from services.short_links import generate_short_code, build_branded_url, format_currency, format_currency_voice
-    currency_display = format_currency(currency)   # "CAD" — used in SMS text
-    currency_voice   = format_currency_voice(currency)  # "dollars" — used in AI speech
+    currency_display = format_currency(currency)
+    currency_voice   = format_currency_voice(currency)
     branded_url = checkout_url  # fallback if short link creation fails
     try:
         short_code = generate_short_code()
@@ -684,23 +726,23 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             short_code = generate_short_code()
 
         await db.create_payment_short_link({
-            "tenant_id":          tenant_id,
-            "appointment_id":     appointment_id,
-            "short_code":         short_code,
+            "tenant_id":           tenant_id,
+            "appointment_id":      appointment_id,
+            "short_code":          short_code,
             "stripe_checkout_url": checkout_url,
-            "stripe_session_id":  session_id,
-            "amount_cents":       deposit_cents,
-            "currency":           currency,
-            "purpose":            "appointment_deposit",
-            "expires_at":         expires_at,
+            "stripe_session_id":   session_id,
+            "amount_cents":        deposit_cents,
+            "currency":            currency,
+            "purpose":             "appointment_deposit",
+            "expires_at":          expires_at,
         })
         branded_url = build_branded_url(short_code)
         logger.info("Created short payment link %s for tenant %s caller %s", short_code, tenant_id, caller_phone)
     except Exception as e:
         logger.error("tools/request-deposit: short link creation failed for tenant %s: %s", tenant_id, e)
-        # branded_url already set to raw checkout_url above — safe fallback
 
     # Send branded SMS
+    provider_label = "Square" if _provider == "square" else "Stripe"
     sms_sent = False
     try:
         sid    = tenant.get("twilio_subaccount_sid", "")
@@ -715,7 +757,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
                 f"To confirm your {service_display} at {business_name}, please pay the refundable "
                 f"{currency_display} {amount_display} deposit:\n\n"
                 f"{branded_url}\n\n"
-                f"Secure payment powered by Stripe.\n"
+                f"Secure payment powered by {provider_label}.\n"
                 f"Expires in {expiry_hours} hrs."
             )
             sms_sent = await telephony.send_sms(

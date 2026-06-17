@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from db import supabase as db
-from services.short_links import is_valid_short_code, is_safe_stripe_url
+from services.short_links import is_valid_short_code, is_safe_payment_url
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +107,8 @@ async def redirect_payment_link(short_code: str):
         except Exception as e:
             logger.warning("pay/redirect: could not parse expires_at for %s: %s", short_code, e)
 
-    stripe_url = link.get("stripe_checkout_url", "")
-    if not is_safe_stripe_url(stripe_url):
+    payment_url = link.get("stripe_checkout_url", "")
+    if not is_safe_payment_url(payment_url):
         logger.error("pay/redirect: unsafe URL blocked for short_code %s", short_code)
         return HTMLResponse(_404_HTML, status_code=404)
 
@@ -118,7 +118,7 @@ async def redirect_payment_link(short_code: str):
         logger.warning("pay/redirect: click tracking failed for %s: %s", short_code, e)
 
     logger.info(
-        "pay/redirect: %s → Stripe (tenant %s, click #%s)",
+        "pay/redirect: %s → payment (tenant %s, click #%s)",
         short_code, link.get("tenant_id"), (link.get("click_count") or 0) + 1,
     )
-    return RedirectResponse(url=stripe_url, status_code=302)
+    return RedirectResponse(url=payment_url, status_code=302)

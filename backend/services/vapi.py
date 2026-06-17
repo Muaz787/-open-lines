@@ -519,7 +519,8 @@ def build_all_tools(tenant: dict) -> list[dict]:
         tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
     )
     has_deposits  = bool(
-        tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled")
+        (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))
+        or (tenant.get("square_access_token") and tenant.get("square_deposits_enabled"))
     )
 
     if has_calendar:
@@ -568,7 +569,8 @@ async def patch_assistant_tools(tenant: dict) -> None:
             tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
         )
         has_deposits = bool(
-            tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled")
+            (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))
+            or (tenant.get("square_access_token") and tenant.get("square_deposits_enabled"))
         )
         from routers.calendar import _CALENDAR_NOTE
         if has_calendar:

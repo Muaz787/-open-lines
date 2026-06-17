@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -33,6 +34,16 @@ def _is_eligible(tenant: dict) -> bool:
     return plan in _ELIGIBLE_PLANS and status in _ELIGIBLE_STATUSES
 
 
+def _deposit_provider(tenant: dict) -> str:
+    """Return the active deposit provider: 'square', 'stripe', or ''.
+    Square takes priority when both are enabled."""
+    if tenant.get("square_deposits_enabled") and tenant.get("square_access_token"):
+        return "square"
+    if tenant.get("stripe_deposits_enabled") and tenant.get("stripe_account_id"):
+        return "stripe"
+    return ""
+
+
 # ---------------------------------------------------------------------------
 # GET /payments/settings/{tenant_id}
 # ---------------------------------------------------------------------------
@@ -48,14 +59,19 @@ async def get_settings(tenant_id: str):
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     return {
-        "eligible":              _is_eligible(tenant),
-        "stripe_connected":      bool(tenant.get("stripe_account_id")),
-        "deposits_enabled":      bool(tenant.get("stripe_deposits_enabled")),
-        "deposit_cents":         int(tenant.get("stripe_deposit_cents") or 2500),
-        "deposit_mandatory":     bool(tenant.get("stripe_deposit_mandatory", True)),
-        "deposit_expiry_min":    int(tenant.get("stripe_deposit_expiry_min") or 120),
-        "deposit_label":         tenant.get("stripe_deposit_label") or "Appointment Deposit",
-        "currency":              _currency_for(tenant).upper(),
+        "eligible":                _is_eligible(tenant),
+        "stripe_connected":        bool(tenant.get("stripe_account_id")),
+        "deposits_enabled":        bool(tenant.get("stripe_deposits_enabled")),
+        "square_connected":        bool(tenant.get("square_access_token")),
+        "square_deposits_enabled": bool(tenant.get("square_deposits_enabled")),
+        "square_merchant_id":      tenant.get("square_merchant_id"),
+        "square_currency":         (tenant.get("square_currency") or "").upper(),
+        "deposit_cents":           int(tenant.get("stripe_deposit_cents") or 2500),
+        "deposit_mandatory":       bool(tenant.get("stripe_deposit_mandatory", True)),
+        "deposit_expiry_min":      int(tenant.get("stripe_deposit_expiry_min") or 120),
+        "deposit_label":           tenant.get("stripe_deposit_label") or "Appointment Deposit",
+        "currency":                _currency_for(tenant).upper(),
+        "active_provider":         _deposit_provider(tenant) or None,
     }
 
 
@@ -64,11 +80,12 @@ async def get_settings(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 class DepositSettingsRequest(BaseModel):
-    deposits_enabled:   bool
-    deposit_cents:      int
-    deposit_mandatory:  bool
-    deposit_expiry_min: int
-    deposit_label:      str | None = None
+    deposits_enabled:        bool
+    square_deposits_enabled: bool = False
+    deposit_cents:           int
+    deposit_mandatory:       bool
+    deposit_expiry_min:      int
+    deposit_label:           str | None = None
 
 
 @router.post("/settings/{tenant_id}")
@@ -93,9 +110,16 @@ async def save_settings(tenant_id: str, body: DepositSettingsRequest):
             detail="Connect your Stripe account before enabling deposits",
         )
 
+    if not tenant.get("square_access_token") and body.square_deposits_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Connect your Square account before enabling Square deposits",
+        )
+
     update = {
-        "stripe_deposits_enabled": body.deposits_enabled,
-        "stripe_deposit_cents":    body.deposit_cents,
+        "stripe_deposits_enabled":  body.deposits_enabled,
+        "square_deposits_enabled":  body.square_deposits_enabled,
+        "stripe_deposit_cents":     body.deposit_cents,
         "stripe_deposit_mandatory": body.deposit_mandatory,
         "stripe_deposit_expiry_min": body.deposit_expiry_min,
     }
@@ -279,6 +303,89 @@ async def _sms_caller_confirmation(tenant: dict, payment: dict, appointment: dic
         logger.info("Caller confirmation SMS sent to %s after payment for tenant %s", caller_phone, tenant.get("id"))
     except Exception as e:
         logger.error("Caller confirmation SMS failed for tenant %s: %s", tenant.get("id"), e)
+
+
+# ---------------------------------------------------------------------------
+# POST /payments/square-webhook  (Square webhook — raw body required)
+# ---------------------------------------------------------------------------
+
+@router.post("/square-webhook")
+async def square_webhook(request: Request):
+    payload    = await request.body()
+    sig_header = request.headers.get("x-square-hmacsha256-signature", "")
+
+    from services import square_service as sq_svc
+    if not sq_svc.SQUARE_WEBHOOK_SIGNATURE_KEY:
+        logger.warning("SQUARE_WEBHOOK_SIGNATURE_KEY not set — refusing Square webhook")
+        raise HTTPException(status_code=400, detail="Square webhook not configured")
+
+    notification_url = f"{sq_svc.APP_BACKEND_URL}/payments/square-webhook"
+    try:
+        if not sq_svc.verify_webhook(payload, sig_header, notification_url):
+            logger.warning("Square webhook signature verification failed")
+            raise HTTPException(status_code=400, detail="Invalid signature")
+    except RuntimeError as e:
+        logger.error("Square webhook verification error: %s", e)
+        raise HTTPException(status_code=400, detail="Verification error")
+
+    try:
+        event = json.loads(payload)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = event.get("type", "")
+    event_id   = event.get("event_id", "")
+
+    try:
+        match event_type:
+            case "payment.completed":
+                await _handle_square_payment_completed(event)
+    except Exception as e:
+        logger.error("Square webhook processing failed for event %s: %s", event_id, e)
+        raise HTTPException(status_code=500, detail="Processing failed")
+
+    return {"status": "ok"}
+
+
+async def _handle_square_payment_completed(event: dict) -> None:
+    payment_obj = (event.get("data", {}).get("object", {}).get("payment", {}))
+    order_id    = payment_obj.get("order_id", "")
+    square_pay_id = payment_obj.get("id", "")
+
+    if not order_id:
+        logger.warning("square payment.completed missing order_id")
+        return
+
+    payment = await db.get_payment_by_checkout_session(order_id)
+    if not payment:
+        logger.warning("No payment record found for Square order_id %s", order_id)
+        return
+
+    tenant_id = payment.get("tenant_id", "")
+    paid_at   = datetime.now(timezone.utc).isoformat()
+    await db.update_payment(payment["id"], {
+        "status":           "succeeded",
+        "paid_at":          paid_at,
+        "payment_intent_id": square_pay_id,
+    })
+    logger.info("Square payment %s succeeded for tenant %s", payment["id"], tenant_id)
+
+    appointment = None
+    if payment.get("appointment_id"):
+        try:
+            await db.update_appointment(payment["appointment_id"], {"status": "confirmed"})
+            logger.info("Appointment %s confirmed after Square payment", payment["appointment_id"])
+            appointment = await db.get_appointment_by_id(payment["appointment_id"])
+        except Exception as e:
+            logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
+
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        if tenant:
+            await _notify_payment(tenant, payment)
+            await _sms_caller_confirmation(tenant, payment, appointment)
+    except Exception as e:
+        logger.error("Square payment notification failed for tenant %s: %s", tenant_id, e)
 
 
 async def _notify_payment(tenant: dict, payment: dict) -> None:
