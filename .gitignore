@@ -4,3 +4,6 @@ node_modules/
 venv/
 __pycache__/
 .DS_Store
+
+# HubSpot config file
+hubspot.config.yml
