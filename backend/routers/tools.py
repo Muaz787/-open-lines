@@ -565,15 +565,17 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     # When deposits are enabled and mandatory, let the AI know to call request_deposit next
     if tenant.get("stripe_deposits_enabled") and tenant.get("stripe_account_id"):
         from routers.payments import _currency_for
-        _dep_cents = int(tenant.get("stripe_deposit_cents") or 2500)
-        _currency  = _currency_for(tenant).upper()
-        _dep_amount = f"{_currency} {_dep_cents / 100:.2f}"
+        from services.short_links import format_currency_voice
+        _dep_cents    = int(tenant.get("stripe_deposit_cents") or 2500)
+        _currency     = _currency_for(tenant)
+        _voice_word   = format_currency_voice(_currency)
+        _dep_display  = f"{_dep_cents // 100} {_voice_word}" if _dep_cents % 100 == 0 else f"{_dep_cents / 100:.2f} {_voice_word}"
         _expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
-        mandatory = bool(tenant.get("stripe_deposit_mandatory", True))
-        requirement = "required to confirm this booking" if mandatory else "optional"
-        confirmation = (
+        mandatory     = bool(tenant.get("stripe_deposit_mandatory", True))
+        requirement   = "required to confirm this booking" if mandatory else "optional"
+        confirmation  = (
             f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
-            f"DEPOSIT: A {_dep_amount} deposit is {requirement}. "
+            f"DEPOSIT: A {_dep_display} deposit is {requirement}. "
             f"Tell the caller their slot is held and you are sending them a payment link now. "
             f"IMMEDIATELY call request_deposit — do NOT end the call first."
         )
@@ -670,8 +672,9 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         )
 
     # Create branded short payment link (replaces TinyURL / raw Stripe URL)
-    from services.short_links import generate_short_code, build_branded_url, format_currency
-    currency_display = format_currency(currency)
+    from services.short_links import generate_short_code, build_branded_url, format_currency, format_currency_voice
+    currency_display = format_currency(currency)   # "CAD" — used in SMS text
+    currency_voice   = format_currency_voice(currency)  # "dollars" — used in AI speech
     branded_url = checkout_url  # fallback if short link creation fails
     try:
         short_code = generate_short_code()
@@ -744,7 +747,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         tc_id,
         f"SMS_SENT. Now close the call professionally. Say: "
         f"'I've just sent a secure payment link to your phone. "
-        f"Once you complete the {currency_display} {amount_display} deposit, "
+        f"Once you complete the {amount_display} {currency_voice} deposit, "
         f"your {service_display} at {business_name} will be fully confirmed — "
         f"you'll receive a confirmation text straight away. "
         f"The link expires in {expiry_hours} hours, so please check your messages when you get a chance. "

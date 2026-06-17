@@ -24,6 +24,18 @@ _CURRENCY_DISPLAY: dict[str, str] = {
     "eur": "EUR", "nzd": "NZD", "aed": "AED", "sgd": "SGD",
 }
 
+# Natural spoken words for each currency — used in AI voice responses
+_CURRENCY_VOICE: dict[str, str] = {
+    "usd": "dollars",
+    "cad": "dollars",
+    "aud": "dollars",
+    "nzd": "dollars",
+    "sgd": "dollars",
+    "gbp": "pounds",
+    "eur": "euros",
+    "aed": "dirhams",
+}
+
 
 def generate_short_code() -> str:
     return "".join(secrets.choice(_ALPHABET) for _ in range(_CODE_LEN))
@@ -44,3 +56,9 @@ def build_branded_url(short_code: str) -> str:
 def format_currency(code: str) -> str:
     """Normalize a Stripe lowercase currency code to display form (e.g. 'cad' → 'CAD')."""
     return _CURRENCY_DISPLAY.get((code or "").lower(), (code or "").upper())
+
+
+def format_currency_voice(code: str) -> str:
+    """Return the natural spoken word for a currency (e.g. 'cad' → 'dollars', 'eur' → 'euros').
+    Used in AI voice scripts so the assistant says '20 dollars' not '20 CAD'."""
+    return _CURRENCY_VOICE.get((code or "").lower(), format_currency(code))
