@@ -27,6 +27,7 @@ origins = [
     "https://openlines.ai",
     "https://www.openlines.ai",
     "https://open-lines.vercel.app",
+    "https://pay.openlines.ai",
 ]
 if FRONTEND_URL and FRONTEND_URL not in origins:
     origins.append(FRONTEND_URL)
