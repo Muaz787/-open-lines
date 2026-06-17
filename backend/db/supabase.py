@@ -464,6 +464,43 @@ async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
     return res.data or []
 
 
+# ---------------------------------------------------------------------------
+# Payment short links
+# ---------------------------------------------------------------------------
+
+async def create_payment_short_link(data: dict) -> dict:
+    res = get_client().table("payment_short_links").insert(data).execute()
+    return res.data[0] if res.data else {}
+
+
+async def get_payment_short_link_by_code(short_code: str) -> dict | None:
+    res = (
+        get_client().table("payment_short_links")
+        .select("*")
+        .eq("short_code", short_code)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+async def increment_short_link_click(link_id: str) -> None:
+    from datetime import datetime, timezone
+    client = get_client()
+    row = (
+        client.table("payment_short_links")
+        .select("click_count, clicked_at")
+        .eq("id", link_id).limit(1).execute()
+    )
+    if not row.data:
+        return
+    current = row.data[0]
+    update: dict = {"click_count": (current.get("click_count") or 0) + 1}
+    if not current.get("clicked_at"):
+        update["clicked_at"] = datetime.now(timezone.utc).isoformat()
+    client.table("payment_short_links").update(update).eq("id", link_id).execute()
+
+
 async def get_latest_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     """Most recent appointment (any status) for this caller."""
     res = (

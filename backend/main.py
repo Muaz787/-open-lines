@@ -59,7 +59,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls, hubspot, slack, stripe_connect, payments
+from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls, hubspot, slack, stripe_connect, payments, pay
 
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
@@ -74,6 +74,7 @@ app.include_router(hubspot.router)
 app.include_router(slack.router)
 app.include_router(stripe_connect.router)
 app.include_router(payments.router)
+app.include_router(pay.router)
 
 
 @app.get("/health")

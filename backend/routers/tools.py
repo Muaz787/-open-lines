@@ -663,51 +663,95 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
 
     except Exception as e:
         logger.error("tools/request-deposit: checkout session failed for tenant %s: %s", tenant_id, e)
-        return _result(tc_id, "I wasn't able to generate the payment link right now. Our team will follow up.")
-
-    # Shorten the Stripe checkout URL before texting it
-    short_url = checkout_url
-    try:
-        import httpx
-        r = await httpx.AsyncClient().get(
-            "https://tinyurl.com/api-create.php",
-            params={"url": checkout_url},
-            timeout=5.0,
+        return _result(
+            tc_id,
+            "I'm sorry, there was an issue generating the payment link. "
+            "Please apologise to the caller and let them know the team will follow up shortly to arrange payment.",
         )
-        if r.status_code == 200 and r.text.startswith("http"):
-            short_url = r.text.strip()
-    except Exception as e:
-        logger.warning("URL shortening failed for tenant %s, using full URL: %s", tenant_id, e)
 
-    # Send SMS
+    # Create branded short payment link (replaces TinyURL / raw Stripe URL)
+    from services.short_links import generate_short_code, build_branded_url, format_currency
+    currency_display = format_currency(currency)
+    branded_url = checkout_url  # fallback if short link creation fails
     try:
-        sid   = tenant.get("twilio_subaccount_sid", "")
-        tok   = tenant.get("twilio_auth_token", "")
+        short_code = generate_short_code()
+        for _ in range(4):
+            if not await db.get_payment_short_link_by_code(short_code):
+                break
+            short_code = generate_short_code()
+
+        await db.create_payment_short_link({
+            "tenant_id":          tenant_id,
+            "appointment_id":     appointment_id,
+            "short_code":         short_code,
+            "stripe_checkout_url": checkout_url,
+            "stripe_session_id":  session_id,
+            "amount_cents":       deposit_cents,
+            "currency":           currency,
+            "purpose":            "appointment_deposit",
+            "expires_at":         expires_at,
+        })
+        branded_url = build_branded_url(short_code)
+        logger.info("Created short payment link %s for tenant %s caller %s", short_code, tenant_id, caller_phone)
+    except Exception as e:
+        logger.error("tools/request-deposit: short link creation failed for tenant %s: %s", tenant_id, e)
+        # branded_url already set to raw checkout_url above — safe fallback
+
+    # Send branded SMS
+    sms_sent = False
+    try:
+        sid    = tenant.get("twilio_subaccount_sid", "")
+        tok    = tenant.get("twilio_auth_token", "")
         from_n = tenant.get("twilio_phone_number", "")
         if sid and tok and from_n and caller_phone:
-            greeting = f"Hi {caller_name}! " if caller_name else "Hi! "
+            caller_display  = caller_name or "there"
+            service_display = service or "appointment"
+            amount_display  = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
             sms_body = (
-                f"{greeting}Pay your {deposit_amount} deposit for your "
-                f"{service} at {business_name}: {short_url} "
-                f"(expires in {expiry_hours} hrs) — {business_name}"
+                f"Hi {caller_display}!\n\n"
+                f"To confirm your {service_display} at {business_name}, please pay the refundable "
+                f"{currency_display} {amount_display} deposit:\n\n"
+                f"{branded_url}\n\n"
+                f"Secure payment powered by Stripe.\n"
+                f"Expires in {expiry_hours} hrs."
             )
-            await telephony.send_sms(
+            sms_sent = await telephony.send_sms(
                 subaccount_sid=sid,
                 subaccount_token=tok,
                 from_number=from_n,
                 to_number=caller_phone,
                 body=sms_body,
             )
-            logger.info("Deposit SMS sent to %s for tenant %s", caller_phone, tenant_id)
+            if sms_sent:
+                logger.info("Deposit SMS sent to %s for tenant %s", caller_phone, tenant_id)
+            else:
+                logger.warning("Deposit SMS send returned False for tenant %s", tenant_id)
     except Exception as e:
         logger.error("tools/request-deposit: SMS failed for tenant %s: %s", tenant_id, e)
 
+    if not sms_sent:
+        return _result(
+            tc_id,
+            "I'm sorry, there was an issue sending the payment link by text. "
+            "Please tell the caller: 'I'm having a little trouble sending the link right now. "
+            "Our team will follow up with you shortly to arrange the payment.' "
+            "Then close the call warmly.",
+        )
+
+    service_display = service or "appointment"
+    amount_display  = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
     return _result(
         tc_id,
-        f"Payment link sent to {caller_phone}. "
-        f"Tell the caller: 'I've sent you a secure {deposit_amount} payment link. "
-        f"Please complete the deposit within {expiry_hours} hours to confirm your booking — "
-        f"your slot is held until then.'"
+        f"SMS_SENT. Now close the call professionally. Say: "
+        f"'I've just sent a secure payment link to your phone. "
+        f"Once you complete the {currency_display} {amount_display} deposit, "
+        f"your {service_display} at {business_name} will be fully confirmed — "
+        f"you'll receive a confirmation text straight away. "
+        f"The link expires in {expiry_hours} hours, so please check your messages when you get a chance. "
+        f"Is there anything else I can help you with?' "
+        f"Listen for the caller's reply, then close warmly: "
+        f"'Thank you for choosing {business_name}. Have a wonderful day!' "
+        f"Then end the call.",
     )
 
 

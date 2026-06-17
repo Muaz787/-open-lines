@@ -445,10 +445,32 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
 _DEPOSIT_NOTE = """
 
 DEPOSIT COLLECTION
-When a deposit is required after booking:
-1. Tell the caller: "To secure your booking I'm sending you a secure payment link right now."
-2. IMMEDIATELY call request_deposit — never skip this step.
-3. After request_deposit returns, say: "Your payment link has been sent. Please complete the deposit to confirm your appointment — the link expires in a couple of hours."
+When a deposit is required after booking, follow this exact sequence:
+
+1. Immediately after book_appointment succeeds, say:
+   "Perfect — I've temporarily reserved your [appointment type] for [date] at [time].
+   To secure your slot, I'm sending you a secure payment link right now."
+
+2. Call request_deposit immediately — never skip or delay this step.
+
+3. Once request_deposit returns with SMS_SENT, deliver this closing naturally:
+   "I've just sent a secure payment link to your phone.
+   Once you complete the deposit, your booking will be fully confirmed —
+   you'll receive a confirmation text straight away.
+   The link expires in a couple of hours, so please check your messages when you get a chance.
+   Is there anything else I can help you with?"
+
+4. Listen for the caller's response. Then close warmly:
+   "Thank you for choosing [business name]. Have a wonderful day!"
+   Then end the call.
+
+CRITICAL RULES:
+- Never end the call immediately after book_appointment — always call request_deposit first.
+- Never read any URL or link aloud.
+- Always say "secure payment link" — never say "checkout link", "Stripe link", or "URL".
+- Never say the booking is fully confirmed until payment succeeds.
+- Never abruptly disconnect — always close with a warm farewell.
+- If request_deposit reports an SMS error, apologise professionally and offer to have the team follow up.
 """
 
 
