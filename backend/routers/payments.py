@@ -338,7 +338,7 @@ async def square_webhook(request: Request):
 
     try:
         match event_type:
-            case "payment.completed":
+            case "payment.updated" | "payment.created":
                 await _handle_square_payment_completed(event)
     except Exception as e:
         logger.error("Square webhook processing failed for event %s: %s", event_id, e)
@@ -348,8 +348,12 @@ async def square_webhook(request: Request):
 
 
 async def _handle_square_payment_completed(event: dict) -> None:
-    payment_obj = (event.get("data", {}).get("object", {}).get("payment", {}))
-    order_id    = payment_obj.get("order_id", "")
+    payment_obj   = (event.get("data", {}).get("object", {}).get("payment", {}))
+    square_status = payment_obj.get("status", "")
+    if square_status != "COMPLETED":
+        return  # ignore created/pending/failed updates
+
+    order_id      = payment_obj.get("order_id", "")
     square_pay_id = payment_obj.get("id", "")
 
     if not order_id:
