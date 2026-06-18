@@ -11,6 +11,11 @@ from slowapi import _rate_limit_exceeded_handler
 
 load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(name)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Open Lines API")
