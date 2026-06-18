@@ -7,10 +7,24 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SQUARE_APP_ID      = os.getenv("SQUARE_APP_ID", "")
-SQUARE_APP_SECRET  = os.getenv("SQUARE_APP_SECRET", "")
-SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "sandbox")  # "sandbox" or "production"
+SQUARE_APP_ID         = os.getenv("SQUARE_APP_ID", "")          # Production app ID (sq0idp-...)
+SQUARE_APP_SECRET     = os.getenv("SQUARE_APP_SECRET", "")       # Production app secret
+SQUARE_SANDBOX_APP_ID = os.getenv("SQUARE_SANDBOX_APP_ID", "")   # Sandbox app ID (sandbox-sq0idp-...)
+SQUARE_SANDBOX_APP_SECRET = os.getenv("SQUARE_SANDBOX_APP_SECRET", "")  # Sandbox app secret
+SQUARE_ENVIRONMENT    = os.getenv("SQUARE_ENVIRONMENT", "sandbox")  # "sandbox" or "production"
 SQUARE_WEBHOOK_SIGNATURE_KEY = os.getenv("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
+
+
+def _app_id() -> str:
+    if SQUARE_ENVIRONMENT == "sandbox" and SQUARE_SANDBOX_APP_ID:
+        return SQUARE_SANDBOX_APP_ID
+    return SQUARE_APP_ID
+
+
+def _app_secret() -> str:
+    if SQUARE_ENVIRONMENT == "sandbox" and SQUARE_SANDBOX_APP_SECRET:
+        return SQUARE_SANDBOX_APP_SECRET
+    return SQUARE_APP_SECRET
 
 _raw_frontend = os.getenv("FRONTEND_URL", "https://openlines.ai")
 FRONTEND_URL = _raw_frontend if _raw_frontend.startswith("http") else f"https://{_raw_frontend}"
@@ -49,7 +63,7 @@ def _sq_headers(access_token: str) -> dict:
 def build_oauth_url(tenant_id: str, state: str) -> str:
     from urllib.parse import urlencode
     params = {
-        "client_id": SQUARE_APP_ID,
+        "client_id": _app_id(),
         "scope": " ".join(_SCOPES),
         "session": "false",
         "state": state,
@@ -64,8 +78,8 @@ async def exchange_code(code: str) -> dict:
         res = await client.post(
             f"{_oauth_base()}/oauth2/token",
             json={
-                "client_id": SQUARE_APP_ID,
-                "client_secret": SQUARE_APP_SECRET,
+                "client_id": _app_id(),
+                "client_secret": _app_secret(),
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": callback_url,
@@ -82,8 +96,8 @@ async def refresh_access_token(refresh_token: str) -> dict:
         res = await client.post(
             f"{_oauth_base()}/oauth2/token",
             json={
-                "client_id": SQUARE_APP_ID,
-                "client_secret": SQUARE_APP_SECRET,
+                "client_id": _app_id(),
+                "client_secret": _app_secret(),
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
             },
