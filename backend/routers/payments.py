@@ -364,6 +364,12 @@ async def _handle_square_payment_completed(event: dict) -> None:
     if square_status != "COMPLETED":
         return  # ignore created/pending/failed updates
 
+    # A refund fires payment.updated with status still COMPLETED but
+    # refunded_money populated — never treat that as a new deposit.
+    if payment_obj.get("refunded_money") or payment_obj.get("refund_ids"):
+        logger.info("Square payment.updated is a refund — skipping confirmation")
+        return
+
     order_id      = payment_obj.get("order_id", "")
     square_pay_id = payment_obj.get("id", "")
 
@@ -374,6 +380,13 @@ async def _handle_square_payment_completed(event: dict) -> None:
     payment = await db.get_payment_by_checkout_session(order_id)
     if not payment:
         logger.warning("No payment record found for Square order_id %s", order_id)
+        return
+
+    # Idempotency: Square sends multiple payment.updated events for the
+    # same payment. Only process the first transition to succeeded so we
+    # never re-send the confirmation SMS.
+    if payment.get("status") == "succeeded":
+        logger.info("Square payment %s already processed — skipping duplicate webhook", payment["id"])
         return
 
     tenant_id = payment.get("tenant_id", "")
