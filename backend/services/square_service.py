@@ -17,7 +17,12 @@ FRONTEND_URL = _raw_frontend if _raw_frontend.startswith("http") else f"https://
 _raw_backend = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app").strip()
 APP_BACKEND_URL = _raw_backend if _raw_backend.startswith("http") else f"https://{_raw_backend}"
 
-_OAUTH_BASE = "https://connect.squareup.com"
+def _oauth_base() -> str:
+    """OAuth base URL must match the API environment.
+    Production tokens (connect.squareup.com) are rejected by the sandbox API and vice versa."""
+    if SQUARE_ENVIRONMENT == "production":
+        return "https://connect.squareup.com"
+    return "https://connect.squareupsandbox.com"
 
 _SCOPES = [
     "MERCHANT_PROFILE_READ",
@@ -49,7 +54,7 @@ def build_oauth_url(tenant_id: str, state: str) -> str:
         "session": "false",
         "state": state,
     }
-    return f"{_OAUTH_BASE}/oauth2/authorize?{urlencode(params)}"
+    return f"{_oauth_base()}/oauth2/authorize?{urlencode(params)}"
 
 
 async def exchange_code(code: str) -> dict:
@@ -57,7 +62,7 @@ async def exchange_code(code: str) -> dict:
     callback_url = f"{APP_BACKEND_URL}/square-connect/callback"
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            f"{_OAUTH_BASE}/oauth2/token",
+            f"{_oauth_base()}/oauth2/token",
             json={
                 "client_id": SQUARE_APP_ID,
                 "client_secret": SQUARE_APP_SECRET,
@@ -75,7 +80,7 @@ async def exchange_code(code: str) -> dict:
 async def refresh_access_token(refresh_token: str) -> dict:
     async with httpx.AsyncClient() as client:
         res = await client.post(
-            f"{_OAUTH_BASE}/oauth2/token",
+            f"{_oauth_base()}/oauth2/token",
             json={
                 "client_id": SQUARE_APP_ID,
                 "client_secret": SQUARE_APP_SECRET,
