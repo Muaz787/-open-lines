@@ -445,8 +445,8 @@ export default function PaymentsPage() {
               {/* Enable toggle */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Enable deposits</div>
-                  <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>AI will request a deposit after every booking</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Enable Stripe deposits</div>
+                  <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>Use Stripe as the payment provider for deposit collection</div>
                 </div>
                 <button
                   role="switch"
