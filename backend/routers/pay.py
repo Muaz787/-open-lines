@@ -109,7 +109,7 @@ async def redirect_payment_link(short_code: str):
 
     payment_url = link.get("stripe_checkout_url", "")
     if not is_safe_payment_url(payment_url):
-        logger.error("pay/redirect: unsafe URL blocked for short_code %s", short_code)
+        logger.error("pay/redirect: unsafe URL blocked for short_code %s: %r", short_code, payment_url)
         return HTMLResponse(_404_HTML, status_code=404)
 
     try:

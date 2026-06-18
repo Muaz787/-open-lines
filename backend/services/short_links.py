@@ -17,6 +17,11 @@ _VALID_CODE_RE = re.compile(r"^[A-Z2-9]{8,10}$")
 _ALLOWED_PAYMENT_PREFIXES = (
     "https://checkout.stripe.com/",
     "https://buy.stripe.com/",
+    # Square payment-links API returns square.link short URLs
+    "https://square.link/",
+    "https://sandbox.square.link/",
+    # Square hosted checkout (older / alternate formats)
+    "https://checkout.square.site/",
     "https://checkout.squareup.com/",
     "https://sandbox.checkout.squareup.com/",
 )
