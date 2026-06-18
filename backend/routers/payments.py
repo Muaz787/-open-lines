@@ -34,6 +34,17 @@ def _is_eligible(tenant: dict) -> bool:
     return plan in _ELIGIBLE_PLANS and status in _ELIGIBLE_STATUSES
 
 
+def _effective_currency(tenant: dict) -> str:
+    """Return the currency that will actually be used for deposit payments.
+    When Square is the active provider, use the Square account's currency
+    (Square requires payment links to match the merchant account currency).
+    Otherwise derive from tenant country."""
+    provider = _deposit_provider(tenant)
+    if provider == "square" and tenant.get("square_currency"):
+        return tenant["square_currency"].upper()
+    return _currency_for(tenant).upper()
+
+
 def _deposit_provider(tenant: dict) -> str:
     """Return the active deposit provider: 'square', 'stripe', or ''.
     Square takes priority when both are enabled."""
@@ -70,7 +81,7 @@ async def get_settings(tenant_id: str):
         "deposit_mandatory":       bool(tenant.get("stripe_deposit_mandatory", True)),
         "deposit_expiry_min":      int(tenant.get("stripe_deposit_expiry_min") or 120),
         "deposit_label":           tenant.get("stripe_deposit_label") or "Appointment Deposit",
-        "currency":                _currency_for(tenant).upper(),
+        "currency":                _effective_currency(tenant),
         "active_provider":         _deposit_provider(tenant) or None,
     }
 
