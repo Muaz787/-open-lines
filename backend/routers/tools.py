@@ -759,6 +759,15 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         sid    = tenant.get("twilio_subaccount_sid", "")
         tok    = tenant.get("twilio_auth_token", "")
         from_n = tenant.get("twilio_phone_number", "")
+        if not caller_phone:
+            logger.warning(
+                "Deposit SMS skipped for tenant %s — caller_phone is empty "
+                "(web/test call with no real number injected by Vapi)",
+                tenant_id,
+            )
+        elif not (sid and tok and from_n):
+            missing = [k for k, v in {"sid": sid, "token": tok, "from_number": from_n}.items() if not v]
+            logger.warning("Deposit SMS skipped for tenant %s — Twilio creds missing: %s", tenant_id, missing)
         if sid and tok and from_n and caller_phone:
             caller_display  = caller_name or "there"
             service_display = service or "appointment"
