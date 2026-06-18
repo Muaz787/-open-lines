@@ -106,11 +106,14 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         currency = merchant_info.get("currency", "USD").lower()
         if not merchant_id:
             merchant_id = merchant_info.get("merchant_id", "")
+    except Exception as e:
+        logger.warning("Square OAuth: could not fetch merchant info for tenant %s: %s", tenant_id, e)
+    try:
         locations = await sq_svc.list_locations(access_token)
         if locations:
             location_id = locations[0].get("id", "")
     except Exception as e:
-        logger.warning("Square OAuth: could not fetch merchant info for tenant %s: %s", tenant_id, e)
+        logger.warning("Square OAuth: could not fetch locations for tenant %s: %s", tenant_id, e)
 
     try:
         update = {

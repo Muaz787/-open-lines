@@ -641,10 +641,21 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
 
         if _provider == "square":
-            from services.square_service import create_payment_link
+            from services.square_service import create_payment_link, list_locations
             from services.security import decrypt
             access_token = decrypt(tenant["square_access_token"])
-            location_id  = tenant.get("square_location_id", "")
+            location_id  = tenant.get("square_location_id") or ""
+            if not location_id:
+                # location_id may not have been saved during OAuth — fetch and cache it now
+                try:
+                    locs = await list_locations(access_token)
+                    if locs:
+                        location_id = locs[0].get("id", "")
+                        await db.update_tenant(tenant_id, {"square_location_id": location_id})
+                except Exception as _le:
+                    logger.warning("Could not fetch Square location for tenant %s: %s", tenant_id, _le)
+            if not location_id:
+                raise RuntimeError("No Square location found — re-connect your Square account")
             link_id, order_id, checkout_url = await create_payment_link(
                 access_token=access_token,
                 location_id=location_id,
