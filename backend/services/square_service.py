@@ -41,6 +41,7 @@ def _oauth_base() -> str:
 _SCOPES = [
     "MERCHANT_PROFILE_READ",
     "PAYMENTS_WRITE_ADDITIONAL_RECIPIENTS",
+    "ORDERS_READ",
     "ORDERS_WRITE",
     "PAYMENTS_WRITE",
 ]
