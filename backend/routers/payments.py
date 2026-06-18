@@ -203,6 +203,8 @@ async def stripe_webhook(request: Request):
                 await _handle_checkout_completed(event["data"]["object"])
             case "checkout.session.expired":
                 await _handle_checkout_expired(event["data"]["object"])
+            case "charge.refunded":
+                await _handle_charge_refunded(event["data"]["object"])
     except Exception as e:
         logger.error("Stripe webhook processing failed for event %s: %s", event_id, e)
         raise HTTPException(status_code=500, detail="Processing failed")
@@ -270,6 +272,27 @@ async def _handle_checkout_expired(session: dict) -> None:
 
     await db.update_payment(payment["id"], {"status": "expired"})
     logger.info("Payment %s expired (checkout session timed out)", payment["id"])
+
+
+async def _handle_charge_refunded(charge: dict) -> None:
+    """Stripe charge.refunded — the charge carries no metadata, so look up
+    the payment by its payment_intent."""
+    payment_intent = charge.get("payment_intent")
+    if not payment_intent:
+        logger.warning("charge.refunded missing payment_intent")
+        return
+
+    payment = await db.get_payment_by_payment_intent(payment_intent)
+    if not payment:
+        logger.warning("No payment record found for refunded payment_intent %s", payment_intent)
+        return
+
+    tenant = await db.get_tenant_by_id(payment.get("tenant_id", ""))
+    if not tenant:
+        logger.warning("No tenant for refunded payment %s", payment["id"])
+        return
+
+    await _process_refund(payment, tenant)
 
 
 async def _sms_caller_confirmation(tenant: dict, payment: dict, appointment: dict | None) -> None:
@@ -365,9 +388,10 @@ async def _handle_square_payment_completed(event: dict) -> None:
         return  # ignore created/pending/failed updates
 
     # A refund fires payment.updated with status still COMPLETED but
-    # refunded_money populated — never treat that as a new deposit.
+    # refunded_money populated — route it to the refund handler instead
+    # of treating it as a new deposit.
     if payment_obj.get("refunded_money") or payment_obj.get("refund_ids"):
-        logger.info("Square payment.updated is a refund — skipping confirmation")
+        await _handle_square_refund(payment_obj)
         return
 
     order_id      = payment_obj.get("order_id", "")
@@ -414,6 +438,191 @@ async def _handle_square_payment_completed(event: dict) -> None:
             await _sms_caller_confirmation(tenant, payment, appointment)
     except Exception as e:
         logger.error("Square payment notification failed for tenant %s: %s", tenant_id, e)
+
+
+async def _handle_square_refund(payment_obj: dict) -> None:
+    """Square payment.updated carrying refunded_money — look up the payment
+    by order_id and process the refund."""
+    order_id = payment_obj.get("order_id", "")
+    if not order_id:
+        logger.warning("Square refund event missing order_id")
+        return
+
+    payment = await db.get_payment_by_checkout_session(order_id)
+    if not payment:
+        logger.warning("No payment record found for refunded Square order_id %s", order_id)
+        return
+
+    tenant = await db.get_tenant_by_id(payment.get("tenant_id", ""))
+    if not tenant:
+        logger.warning("No tenant for refunded Square payment %s", payment["id"])
+        return
+
+    await _process_refund(payment, tenant)
+
+
+async def _process_refund(payment: dict, tenant: dict) -> None:
+    """Shared refund logic for both providers: mark the payment refunded,
+    cancel the linked appointment (status + calendar event), and notify
+    the caller and business. Idempotent — repeat webhooks are ignored."""
+    # Idempotency: both providers re-fire refund/updated events.
+    if payment.get("status") == "refunded":
+        logger.info("Payment %s already refunded — skipping duplicate webhook", payment["id"])
+        return
+
+    tenant_id = tenant.get("id", "")
+    await db.update_payment(payment["id"], {
+        "status":      "refunded",
+        "refunded_at": datetime.now(timezone.utc).isoformat(),
+    })
+    logger.info("Payment %s refunded for tenant %s", payment["id"], tenant_id)
+
+    # Cancel the linked appointment: remove the calendar event, then mark cancelled.
+    appointment = None
+    appointment_id = payment.get("appointment_id")
+    if appointment_id:
+        try:
+            appointment = await db.get_appointment_by_id(appointment_id)
+        except Exception as e:
+            logger.error("Refund: could not load appointment %s: %s", appointment_id, e)
+
+        if appointment:
+            await _cancel_appointment_calendar(tenant, appointment)
+            try:
+                await db.update_appointment(appointment_id, {"status": "cancelled"})
+                logger.info("Appointment %s cancelled after refund", appointment_id)
+            except Exception as e:
+                logger.error("Refund: failed to cancel appointment %s: %s", appointment_id, e)
+
+    try:
+        await _notify_refund(tenant, payment)
+        await _sms_caller_refund(tenant, payment, appointment)
+    except Exception as e:
+        logger.error("Refund notification failed for tenant %s: %s", tenant_id, e)
+
+
+async def _cancel_appointment_calendar(tenant: dict, appointment: dict) -> None:
+    """Delete the appointment's calendar event (Google or Microsoft).
+    Mirrors the cancel flow in routers/tools.py."""
+    from services import calendar as cal_svc
+    from services.calendar import CalendarTokenExpiredError
+    from services import ms_calendar as ms_cal_svc
+    from services.ms_calendar import MsCalendarTokenExpiredError
+
+    event_id = appointment.get("google_event_id") or ""
+    if not event_id:
+        return
+
+    refresh_token = tenant.get("google_refresh_token")
+    cal_provider = "google"
+    if not refresh_token:
+        refresh_token = tenant.get("microsoft_refresh_token")
+        cal_provider = "microsoft"
+    if not refresh_token:
+        return
+
+    try:
+        if cal_provider == "microsoft":
+            await ms_cal_svc.cancel_event(refresh_token, event_id)
+        else:
+            await cal_svc.cancel_event(refresh_token, event_id)
+        logger.info("Calendar event %s deleted after refund (tenant %s)", event_id, tenant.get("id"))
+    except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
+        logger.error("Refund: calendar token expired for tenant %s — auto-disconnecting", tenant.get("id"))
+        clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
+        try:
+            await db.update_tenant(tenant.get("id", ""), {clear_field: None})
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning("Refund: could not delete calendar event %s: %s", event_id, e)
+
+
+async def _sms_caller_refund(tenant: dict, payment: dict, appointment: dict | None) -> None:
+    """Tell the caller their deposit was refunded and the appointment cancelled."""
+    caller_phone = payment.get("caller_phone", "")
+    caller_name  = payment.get("caller_name", "") or "there"
+    service      = payment.get("service") or "appointment"
+    business_name = tenant.get("business_name", "us")
+    sid    = tenant.get("twilio_subaccount_sid", "")
+    tok    = tenant.get("twilio_auth_token", "")
+    from_n = tenant.get("twilio_phone_number", "")
+
+    if not (sid and tok and from_n and caller_phone):
+        return
+
+    from services.short_links import format_currency
+    amount_cents = payment.get("amount_cents", 0)
+    currency     = format_currency(payment.get("currency", "usd"))
+    amount_display = f"{amount_cents // 100}" if amount_cents % 100 == 0 else f"{amount_cents / 100:.2f}"
+
+    sms_body = (
+        f"Hi {caller_name}! Your {currency} {amount_display} deposit for your {service} at "
+        f"{business_name} has been refunded, and your appointment has been cancelled. "
+        f"Please contact us if you'd like to rebook. — {business_name}"
+    )
+    try:
+        await telephony.send_sms(
+            subaccount_sid=sid,
+            subaccount_token=tok,
+            from_number=from_n,
+            to_number=caller_phone,
+            body=sms_body,
+        )
+        logger.info("Caller refund SMS sent to %s for tenant %s", caller_phone, tenant.get("id"))
+    except Exception as e:
+        logger.error("Caller refund SMS failed for tenant %s: %s", tenant.get("id"), e)
+
+
+async def _notify_refund(tenant: dict, payment: dict) -> None:
+    """Fire Slack and/or email notification that a deposit was refunded."""
+    caller_name   = payment.get("caller_name") or "Customer"
+    caller_phone  = payment.get("caller_phone") or ""
+    service       = payment.get("service") or "Appointment"
+    amount        = f"${payment.get('amount_cents', 0) / 100:.2f}"
+    business_name = tenant.get("business_name", "")
+
+    # Slack
+    if tenant.get("slack_webhook_url"):
+        try:
+            import httpx
+            blocks = [
+                {"type": "header", "text": {"type": "plain_text", "text": f"💸 Deposit refunded — {business_name}"}},
+                {"type": "section", "fields": [
+                    {"type": "mrkdwn", "text": f"*Customer:*\n{caller_name}"},
+                    {"type": "mrkdwn", "text": f"*Phone:*\n{caller_phone}"},
+                    {"type": "mrkdwn", "text": f"*Service:*\n{service}"},
+                    {"type": "mrkdwn", "text": f"*Amount:*\n{amount}"},
+                ]},
+                {"type": "context", "elements": [
+                    {"type": "mrkdwn", "text": "Appointment has been cancelled ❌"}
+                ]},
+            ]
+            async with httpx.AsyncClient() as client:
+                await client.post(tenant["slack_webhook_url"], json={"blocks": blocks}, timeout=10.0)
+        except Exception as e:
+            logger.error("Refund Slack notification failed for tenant %s: %s", tenant.get("id"), e)
+
+    # Email
+    notification_email = tenant.get("notification_email", "")
+    if notification_email and tenant.get("email_notifications", False):
+        try:
+            from services.email import send_call_summary_email
+            fake_analysis = {
+                "caller_name": caller_name,
+                "summary": f"Deposit of {amount} for {service} was refunded. Appointment cancelled.",
+                "urgency": "warm",
+                "suggested_next_step": f"Follow up with {caller_name} if a rebooking is expected.",
+                "key_details": {"Refund": amount, "Service": service},
+            }
+            await send_call_summary_email(
+                to=notification_email,
+                business_name=business_name,
+                analysis=fake_analysis,
+                caller_number=caller_phone,
+            )
+        except Exception as e:
+            logger.error("Refund email notification failed for tenant %s: %s", tenant.get("id"), e)
 
 
 async def _notify_payment(tenant: dict, payment: dict) -> None:

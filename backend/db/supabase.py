@@ -456,6 +456,14 @@ async def get_payment_by_checkout_session(session_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
+async def get_payment_by_payment_intent(payment_intent_id: str) -> dict | None:
+    res = (
+        get_client().table("payments").select("*")
+        .eq("payment_intent_id", payment_intent_id).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
+
+
 async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
     res = (
         get_client().table("payments").select("*")
