@@ -132,6 +132,8 @@ async def list_locations(access_token: str) -> list[dict]:
             headers=_sq_headers(access_token),
             timeout=15.0,
         )
+        if not res.is_success:
+            logger.error("Square list_locations failed %s: %s", res.status_code, res.text)
         res.raise_for_status()
         return res.json().get("locations", [])
 
@@ -172,6 +174,11 @@ async def create_payment_link(
             headers=_sq_headers(access_token),
             timeout=15.0,
         )
+        if not res.is_success:
+            logger.error(
+                "Square create_payment_link failed %s: %s",
+                res.status_code, res.text,
+            )
         res.raise_for_status()
         link = res.json().get("payment_link", {})
 
