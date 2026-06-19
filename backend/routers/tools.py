@@ -883,15 +883,16 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     service  = appt.get("service", "appointment")
     appt_dt_raw = appt.get("appointment_datetime", "")
     friendly = appt_dt_raw
+    appt_dt_utc = None
     try:
+        appt_dt_utc = datetime.fromisoformat(appt_dt_raw)
+        if appt_dt_utc.tzinfo is None:
+            appt_dt_utc = appt_dt_utc.replace(tzinfo=ZoneInfo("UTC"))
         tz_str  = (tenant or {}).get("calendar_timezone") or "America/Toronto"
-        appt_dt = datetime.fromisoformat(appt_dt_raw)
-        if appt_dt.tzinfo is None:
-            appt_dt = appt_dt.replace(tzinfo=ZoneInfo("UTC"))
-        appt_dt = appt_dt.astimezone(ZoneInfo(tz_str))
-        h    = appt_dt.hour % 12 or 12
-        ampm = "AM" if appt_dt.hour < 12 else "PM"
-        friendly = f"{appt_dt.strftime('%A, %B')} {appt_dt.day} at {h}:{appt_dt.minute:02d} {ampm}"
+        appt_dt_local = appt_dt_utc.astimezone(ZoneInfo(tz_str))
+        h    = appt_dt_local.hour % 12 or 12
+        ampm = "AM" if appt_dt_local.hour < 12 else "PM"
+        friendly = f"{appt_dt_local.strftime('%A, %B')} {appt_dt_local.day} at {h}:{appt_dt_local.minute:02d} {ampm}"
     except Exception:
         pass
 
@@ -901,4 +902,66 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         "appointment_cancelled",
         {"tenant_id": tenant_id},
     )
-    return _result(tc_id, f"Done — your {service} on {friendly} has been cancelled. Is there anything else I can help you with?")
+
+    # ---- Deposit refund per the business's cancellation policy ----
+    from services import refunds as refund_svc
+    from services.short_links import format_currency
+
+    tenant = tenant or {}
+    caller_name = appt.get("caller_name", "") or ""
+    refund_clause = ""  # appended to the AI's spoken confirmation
+    try:
+        payment = await db.get_payment_by_appointment_id(appt["id"])
+    except Exception as e:
+        logger.error("tools/cancel: payment lookup failed for tenant %s: %s", tenant_id, e)
+        payment = None
+
+    if payment:
+        refund_hours = int(tenant.get("cancellation_refund_hours") if tenant.get("cancellation_refund_hours") is not None else 24)
+        eligible = refund_svc.refund_eligible(appt_dt_utc, refund_hours)
+        amount_cents = int(payment.get("amount_cents") or 0)
+        cur          = format_currency(payment.get("currency", "usd"))
+        amt          = f"{amount_cents // 100}" if amount_cents % 100 == 0 else f"{amount_cents / 100:.2f}"
+
+        if eligible:
+            ok = await refund_svc.issue_provider_refund(payment, tenant)
+            if ok:
+                try:
+                    await db.update_payment(payment["id"], {
+                        "status":      "refunded",
+                        "refunded_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                except Exception as e:
+                    logger.error("tools/cancel: failed to mark payment refunded for tenant %s: %s", tenant_id, e)
+                await refund_svc.sms_caller_refund(tenant, payment, appt)
+                await refund_svc.notify_business(tenant, payment, refunded=True)
+                refund_clause = f" Your {cur} {amt} deposit will be refunded, and you'll get a confirmation text shortly."
+            else:
+                # Refund API failed — leave payment as-is, have the team follow up.
+                await refund_svc.notify_business(tenant, payment, refunded=False, service=service)
+                refund_clause = " There was an issue processing your deposit refund automatically, but our team will follow up to arrange it."
+        else:
+            # Cancelled inside the non-refundable window — deposit forfeited.
+            await refund_svc.sms_caller_cancelled(
+                tenant, caller_phone, caller_name, service,
+                deposit_forfeited=True, amount_cents=amount_cents,
+                currency=payment.get("currency", "usd"), refund_hours=refund_hours,
+            )
+            await refund_svc.notify_business(tenant, payment, refunded=False, service=service)
+            refund_clause = (
+                f" As this is within {refund_hours} hours of the appointment, the "
+                f"{cur} {amt} deposit is non-refundable per the cancellation policy."
+            )
+    else:
+        # No deposit on file — just confirm the cancellation.
+        await refund_svc.sms_caller_cancelled(tenant, caller_phone, caller_name, service)
+        await refund_svc.notify_business(
+            tenant, None, refunded=False, service=service,
+            caller_name=caller_name, caller_phone=caller_phone,
+        )
+
+    return _result(
+        tc_id,
+        f"Done — your {service} on {friendly} has been cancelled.{refund_clause} "
+        f"Is there anything else I can help you with?",
+    )

@@ -456,6 +456,17 @@ async def get_payment_by_checkout_session(session_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
+async def get_payment_by_appointment_id(appointment_id: str) -> dict | None:
+    """Return the most recent succeeded deposit for an appointment, if any."""
+    res = (
+        get_client().table("payments").select("*")
+        .eq("appointment_id", appointment_id)
+        .eq("status", "succeeded")
+        .order("created_at", desc=True).limit(1).execute()
+    )
+    return res.data[0] if res.data else None
+
+
 async def get_payment_by_payment_intent(payment_intent_id: str) -> dict | None:
     res = (
         get_client().table("payments").select("*")

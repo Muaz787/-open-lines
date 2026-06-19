@@ -190,6 +190,38 @@ async def create_payment_link(
     )
 
 
+async def refund_payment(
+    access_token: str,
+    square_payment_id: str,
+    amount_cents: int,
+    currency: str,
+    reason: str = "Appointment cancelled",
+) -> dict:
+    """Issue a full refund for a Square payment. Returns the refund object.
+    Square refunds may be PENDING and complete asynchronously."""
+    import uuid
+    payload = {
+        "idempotency_key": str(uuid.uuid4()),
+        "payment_id": square_payment_id,
+        "amount_money": {
+            "amount": amount_cents,
+            "currency": currency.upper(),
+        },
+        "reason": reason,
+    }
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{_api_base()}/v2/refunds",
+            json=payload,
+            headers=_sq_headers(access_token),
+            timeout=15.0,
+        )
+        if not res.is_success:
+            logger.error("Square refund_payment failed %s: %s", res.status_code, res.text)
+        res.raise_for_status()
+        return res.json().get("refund", {})
+
+
 def verify_webhook(payload: bytes, signature: str, notification_url: str) -> bool:
     """Verify Square HMAC-SHA256 webhook signature. Returns True if valid."""
     if not SQUARE_WEBHOOK_SIGNATURE_KEY:

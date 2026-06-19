@@ -437,7 +437,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 ),
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
-            "server": {"url": f"{base}/cancel", "timeoutSeconds": 15},
+            "server": {"url": f"{base}/cancel", "timeoutSeconds": 20},
         },
     ]
 
