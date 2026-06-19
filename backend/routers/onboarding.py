@@ -5,8 +5,9 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
-from services import analytics, provisioning, vapi
+from services import analytics, provisioning, vapi, website_analysis
 from services.ratelimit import limiter
+from services.security import validate_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class ProvisionRequest(BaseModel):
     business_description: str = ""
     email: str = ""
     password: str = ""
+    analysis_token: str = ""
 
     @field_validator("industry")
     @classmethod
@@ -54,13 +56,58 @@ class ProvisionRequest(BaseModel):
         return v.strip()
 
 
+class AnalyzeWebsiteRequest(BaseModel):
+    website_url: str
+    email: str = ""
+
+
+@router.post("/analyze-website")
+@limiter.limit("10/hour")
+async def analyze_website(request: Request, body: AnalyzeWebsiteRequest):
+    """Scrape + classify a business website so the UI can demonstrate value
+    before provisioning. Returns detected fields + an analysis_token that the
+    /provision call reuses to avoid scraping twice."""
+    url = body.website_url.strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    try:
+        validate_public_url(url)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Please enter a valid website URL")
+
+    try:
+        result = await website_analysis.analyze_website(url)
+    except Exception as e:
+        logger.error("analyze-website failed for %s: %s", url, e)
+        raise HTTPException(status_code=502, detail="We couldn't analyse that website. You can continue and fill in the details manually.")
+
+    result["website_url"] = url
+
+    analytics.capture(
+        body.email or url,
+        "website_analysis_succeeded" if result.get("scrape_ok") else "website_analysis_failed",
+        {
+            "industry_detected": result.get("industry"),
+            "services_count": len(result.get("services") or []),
+            "faq_count": result.get("faq_count", 0),
+            "scrape_ok": result.get("scrape_ok"),
+        },
+    )
+    return result
+
+
 @router.post("/provision")
 @limiter.limit("3/hour")
 async def provision(request: Request, body: ProvisionRequest):
+    import time
+    _started = time.monotonic()
     try:
         provision_data = body.model_dump(exclude={"email", "password"})
         result = await provisioning.provision_tenant(provision_data)
-        logger.info("Provisioned tenant %s (%s)", result.get("tenant_id"), body.business_name)
+        _duration_ms = int((time.monotonic() - _started) * 1000)
+        logger.info("Provisioned tenant %s (%s) in %dms", result.get("tenant_id"), body.business_name, _duration_ms)
 
         distinct_id = result.get("tenant_id", "")
         if body.email and body.password:
@@ -81,6 +128,7 @@ async def provision(request: Request, body: ProvisionRequest):
         }
         analytics.capture(distinct_id, "tenant_created", common)
         analytics.capture(distinct_id, "phone_number_provisioned", {"tenant_id": result.get("tenant_id")})
+        analytics.capture(distinct_id, "provision_succeeded", {**common, "duration_ms": _duration_ms})
         if body.email:
             analytics.capture(distinct_id, "signup_completed", common)
 
