@@ -288,11 +288,24 @@ async def provision_tenant(payload: dict) -> dict:
         logger.error("[Step %d] Twilio provisioning failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
+    # Reuse the pre-provision website scrape if onboarding already did one.
+    prescraped_text = None
+    analysis_token = payload.get("analysis_token", "")
+    if analysis_token:
+        try:
+            from services import website_analysis
+            cached = website_analysis.get_cached_scrape(analysis_token)
+            if cached:
+                prescraped_text = cached.get("text", "")
+                logger.info("[provision] Reusing cached scrape (%d chars) for token", len(prescraped_text or ""))
+        except Exception as e:
+            logger.warning("[provision] Could not load cached scrape: %s", e)
+
     # Steps 4–11 are wrapped so any failure releases the purchased number before raising
     try:
         return await _provision_after_twilio(
             payload, subaccount_sid, subaccount_token, purchased_number,
-            template, qualification_fields,
+            template, qualification_fields, prescraped_text,
         )
     except HTTPException:
         logger.warning("Rolling back: releasing number %s on sub-account %s", purchased_number, subaccount_sid)
@@ -307,6 +320,7 @@ async def _provision_after_twilio(
     purchased_number: str,
     template: str | None,
     qualification_fields: dict | None,
+    prescraped_text: str | None = None,
 ) -> dict:
     business_name: str = payload["business_name"]
     industry: str = payload["industry"]
@@ -315,10 +329,14 @@ async def _provision_after_twilio(
     website_url: str = payload.get("website_url", "")
     agent_name: str = payload.get("agent_name", "Alex")
 
-    # Step 4 — Scrape website (non-fatal: provisioning continues without knowledge base)
+    # Step 4 — Scrape website (non-fatal: provisioning continues without knowledge base).
+    # Reuse the onboarding pre-scrape when present to avoid a second Firecrawl call.
     step = 4
     scraped_text = ""
-    if website_url:
+    if prescraped_text:
+        scraped_text = prescraped_text
+        logger.info("[Step %d] Reusing onboarding pre-scrape (%d chars)", step, len(scraped_text))
+    elif website_url:
         try:
             scraped_text = await knowledge.scrape_website(website_url)
             logger.info("[Step %d] Scraped website %s", step, website_url)
@@ -453,6 +471,7 @@ async def _provision_after_twilio(
             "business_name": business_name,
             "industry": industry,
             "owner_name": owner_name,
+            "country": payload.get("country", "") or None,
             "whatsapp_number": whatsapp_number,
             "website_url": website_url,
             "agent_name": agent_name,
