@@ -20,6 +20,7 @@ interface Settings {
   deposit_mandatory: boolean
   deposit_expiry_min: number
   deposit_label: string
+  cancellation_refund_hours: number
   currency: string
   active_provider?: string | null
 }
@@ -118,6 +119,7 @@ export default function PaymentsPage() {
   const [mandatory, setMandatory]                   = useState(true)
   const [expiryMin, setExpiryMin]                   = useState(120)
   const [label, setLabel]                           = useState('Appointment Deposit')
+  const [refundHours, setRefundHours]               = useState(24)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -143,6 +145,7 @@ export default function PaymentsPage() {
         setMandatory(s.deposit_mandatory)
         setExpiryMin(s.deposit_expiry_min)
         setLabel(s.deposit_label || 'Appointment Deposit')
+        setRefundHours(s.cancellation_refund_hours ?? 24)
       }
       if (stRes.ok) setStripeStatus(await stRes.json())
       if (sqRes.ok) setSquareStatus(await sqRes.json())
@@ -288,6 +291,7 @@ export default function PaymentsPage() {
           deposit_mandatory:       mandatory,
           deposit_expiry_min:      expiryMin,
           deposit_label:           label,
+          cancellation_refund_hours: refundHours,
         }),
       })
       if (res.ok) {
@@ -579,6 +583,29 @@ export default function PaymentsPage() {
                   <option value={480}>8 hours</option>
                   <option value={1440}>24 hours</option>
                 </select>
+              </div>
+
+              {/* Cancellation refund policy */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
+                  Refund deposit on cancellation
+                </label>
+                <select
+                  value={refundHours}
+                  onChange={e => setRefundHours(Number(e.target.value))}
+                  className="db-input"
+                  style={{ width: 260 }}
+                >
+                  <option value={0}>Always refund</option>
+                  <option value={24}>If cancelled 24+ hours before</option>
+                  <option value={48}>If cancelled 48+ hours before</option>
+                  <option value={72}>If cancelled 72+ hours before</option>
+                  <option value={9999}>Never auto-refund</option>
+                </select>
+                <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 6 }}>
+                  When a caller cancels by phone, the deposit is automatically refunded if they
+                  cancel early enough. Later cancellations forfeit the deposit.
+                </div>
               </div>
 
               <button
