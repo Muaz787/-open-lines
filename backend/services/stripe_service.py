@@ -106,3 +106,14 @@ def verify_webhook(payload: bytes, sig_header: str) -> dict:
     return stripe.Webhook.construct_event(
         payload, sig_header, STRIPE_PAYMENTS_WEBHOOK_SECRET
     )
+
+
+async def refund_payment(stripe_account_id: str, payment_intent_id: str) -> dict:
+    """Issue a full refund for a deposit on the tenant's connected account.
+    Returns the Stripe Refund object."""
+    refund = stripe.Refund.create(
+        payment_intent=payment_intent_id,
+        stripe_account=stripe_account_id,
+        api_key=_key(),
+    )
+    return refund

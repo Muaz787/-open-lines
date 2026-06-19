@@ -81,6 +81,7 @@ async def get_settings(tenant_id: str):
         "deposit_mandatory":       bool(tenant.get("stripe_deposit_mandatory", True)),
         "deposit_expiry_min":      int(tenant.get("stripe_deposit_expiry_min") or 120),
         "deposit_label":           tenant.get("stripe_deposit_label") or "Appointment Deposit",
+        "cancellation_refund_hours": int(tenant.get("cancellation_refund_hours") if tenant.get("cancellation_refund_hours") is not None else 24),
         "currency":                _effective_currency(tenant),
         "active_provider":         _deposit_provider(tenant) or None,
     }
@@ -97,6 +98,7 @@ class DepositSettingsRequest(BaseModel):
     deposit_mandatory:       bool
     deposit_expiry_min:      int
     deposit_label:           str | None = None
+    cancellation_refund_hours: int = 24
 
 
 @router.post("/settings/{tenant_id}")
@@ -133,6 +135,7 @@ async def save_settings(tenant_id: str, body: DepositSettingsRequest):
         "stripe_deposit_cents":     body.deposit_cents,
         "stripe_deposit_mandatory": body.deposit_mandatory,
         "stripe_deposit_expiry_min": body.deposit_expiry_min,
+        "cancellation_refund_hours": max(0, body.cancellation_refund_hours),
     }
     if body.deposit_label:
         update["stripe_deposit_label"] = body.deposit_label
@@ -539,90 +542,17 @@ async def _cancel_appointment_calendar(tenant: dict, appointment: dict) -> None:
 
 
 async def _sms_caller_refund(tenant: dict, payment: dict, appointment: dict | None) -> None:
-    """Tell the caller their deposit was refunded and the appointment cancelled."""
-    caller_phone = payment.get("caller_phone", "")
-    caller_name  = payment.get("caller_name", "") or "there"
-    service      = payment.get("service") or "appointment"
-    business_name = tenant.get("business_name", "us")
-    sid    = tenant.get("twilio_subaccount_sid", "")
-    tok    = tenant.get("twilio_auth_token", "")
-    from_n = tenant.get("twilio_phone_number", "")
-
-    if not (sid and tok and from_n and caller_phone):
-        return
-
-    from services.short_links import format_currency
-    amount_cents = payment.get("amount_cents", 0)
-    currency     = format_currency(payment.get("currency", "usd"))
-    amount_display = f"{amount_cents // 100}" if amount_cents % 100 == 0 else f"{amount_cents / 100:.2f}"
-
-    sms_body = (
-        f"Hi {caller_name}! Your {currency} {amount_display} deposit for your {service} at "
-        f"{business_name} has been refunded, and your appointment has been cancelled. "
-        f"Please contact us if you'd like to rebook. — {business_name}"
-    )
-    try:
-        await telephony.send_sms(
-            subaccount_sid=sid,
-            subaccount_token=tok,
-            from_number=from_n,
-            to_number=caller_phone,
-            body=sms_body,
-        )
-        logger.info("Caller refund SMS sent to %s for tenant %s", caller_phone, tenant.get("id"))
-    except Exception as e:
-        logger.error("Caller refund SMS failed for tenant %s: %s", tenant.get("id"), e)
+    """Tell the caller their deposit was refunded and the appointment cancelled.
+    Delegates to the shared services.refunds helper (also used by the cancel tool)."""
+    from services import refunds as refund_svc
+    await refund_svc.sms_caller_refund(tenant, payment, appointment)
 
 
 async def _notify_refund(tenant: dict, payment: dict) -> None:
-    """Fire Slack and/or email notification that a deposit was refunded."""
-    caller_name   = payment.get("caller_name") or "Customer"
-    caller_phone  = payment.get("caller_phone") or ""
-    service       = payment.get("service") or "Appointment"
-    amount        = f"${payment.get('amount_cents', 0) / 100:.2f}"
-    business_name = tenant.get("business_name", "")
-
-    # Slack
-    if tenant.get("slack_webhook_url"):
-        try:
-            import httpx
-            blocks = [
-                {"type": "header", "text": {"type": "plain_text", "text": f"💸 Deposit refunded — {business_name}"}},
-                {"type": "section", "fields": [
-                    {"type": "mrkdwn", "text": f"*Customer:*\n{caller_name}"},
-                    {"type": "mrkdwn", "text": f"*Phone:*\n{caller_phone}"},
-                    {"type": "mrkdwn", "text": f"*Service:*\n{service}"},
-                    {"type": "mrkdwn", "text": f"*Amount:*\n{amount}"},
-                ]},
-                {"type": "context", "elements": [
-                    {"type": "mrkdwn", "text": "Appointment has been cancelled ❌"}
-                ]},
-            ]
-            async with httpx.AsyncClient() as client:
-                await client.post(tenant["slack_webhook_url"], json={"blocks": blocks}, timeout=10.0)
-        except Exception as e:
-            logger.error("Refund Slack notification failed for tenant %s: %s", tenant.get("id"), e)
-
-    # Email
-    notification_email = tenant.get("notification_email", "")
-    if notification_email and tenant.get("email_notifications", False):
-        try:
-            from services.email import send_call_summary_email
-            fake_analysis = {
-                "caller_name": caller_name,
-                "summary": f"Deposit of {amount} for {service} was refunded. Appointment cancelled.",
-                "urgency": "warm",
-                "suggested_next_step": f"Follow up with {caller_name} if a rebooking is expected.",
-                "key_details": {"Refund": amount, "Service": service},
-            }
-            await send_call_summary_email(
-                to=notification_email,
-                business_name=business_name,
-                analysis=fake_analysis,
-                caller_number=caller_phone,
-            )
-        except Exception as e:
-            logger.error("Refund email notification failed for tenant %s: %s", tenant.get("id"), e)
+    """Fire Slack and/or email notification that a deposit was refunded.
+    Delegates to the shared services.refunds helper."""
+    from services import refunds as refund_svc
+    await refund_svc.notify_business(tenant, payment, refunded=True)
 
 
 async def _notify_payment(tenant: dict, payment: dict) -> None:
