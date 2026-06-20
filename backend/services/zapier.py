@@ -106,7 +106,9 @@ async def emit(tenant_id: str, event: str, payload: dict) -> None:
     if not subs:
         return
 
-    body = json.dumps({"event": event, "tenant_id": tenant_id, "data": payload}).encode("utf-8")
+    # Flat payload (fields at top level) so Zapier field-mapping matches the
+    # /triggers/{event}/sample shape. _event / _tenant_id carry the envelope.
+    body = json.dumps({**payload, "_event": event, "_tenant_id": tenant_id}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     sig = _sign(body)
     if sig:
