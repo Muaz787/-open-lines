@@ -64,6 +64,17 @@ async def subscribe(
     tenant = await _tenant_from_api_key(x_api_key)
     event = await _read_field(request, "event")
     target_url = await _read_field(request, "target_url")
+    # One-time diagnostics: reveal exactly how Zapier sends the subscribe payload.
+    try:
+        raw_body = (await request.body()).decode("utf-8", "replace")[:500]
+    except Exception:
+        raw_body = "<unreadable>"
+    logger.info(
+        "zapier.subscribe DEBUG ct=%r query_keys=%s body=%r -> event=%r target_url=%r",
+        request.headers.get("content-type"),
+        list(request.query_params.keys()),
+        raw_body, event, target_url,
+    )
     if not event or not target_url:
         raise HTTPException(status_code=400, detail="event and target_url are required")
     if event not in zapier.EVENTS:
