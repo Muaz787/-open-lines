@@ -70,10 +70,11 @@ async def trigger_sample(
     """Sample payload for Zapier field-mapping. Zapier polls this when a Zap is
     being built and no live data exists yet. Returns a list (Zapier expects an
     array of trigger objects)."""
-    await _tenant_from_api_key(x_api_key)
+    tenant = await _tenant_from_api_key(x_api_key)
     if event not in zapier.EVENTS:
         raise HTTPException(status_code=404, detail="Unknown event")
-    return [zapier.SAMPLES.get(event, {})]
+    # Match the live emit() shape: flat fields + _event / _tenant_id.
+    return [{**zapier.SAMPLES.get(event, {}), "_event": event, "_tenant_id": tenant["id"]}]
 
 
 # ---------------------------------------------------------------------------
