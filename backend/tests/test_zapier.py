@@ -182,3 +182,63 @@ async def test_search_lead_empty_when_not_found():
          patch("routers.zapier.db.get_lead_by_phone", AsyncMock(return_value=None)):
         res = await zr.search_lead_by_phone(phone="+1416", x_api_key="ol_live_x")
     assert res == []
+
+
+# ---------------------------------------------------------------------------
+# Subscribe — flexible body parsing (Zapier sends query/form/JSON inconsistently)
+# ---------------------------------------------------------------------------
+
+class _FakeReq:
+    def __init__(self, query=None, json_data=None, form_data=None):
+        self.query_params = query or {}
+        self._json = json_data
+        self._form = form_data
+    async def json(self):
+        if self._json is None:
+            raise ValueError("no json body")
+        return self._json
+    async def form(self):
+        return self._form or {}
+
+
+@pytest.mark.asyncio
+async def test_read_field_from_query():
+    from routers import zapier as zr
+    req = _FakeReq(query={"event": "call_completed"})
+    assert await zr._read_field(req, "event") == "call_completed"
+
+
+@pytest.mark.asyncio
+async def test_read_field_from_json():
+    from routers import zapier as zr
+    req = _FakeReq(json_data={"target_url": "https://hooks.zapier.com/x"})
+    assert await zr._read_field(req, "target_url") == "https://hooks.zapier.com/x"
+
+
+@pytest.mark.asyncio
+async def test_read_field_from_form():
+    from routers import zapier as zr
+    req = _FakeReq(form_data={"event": "new_lead"})
+    assert await zr._read_field(req, "event") == "new_lead"
+
+
+@pytest.mark.asyncio
+async def test_subscribe_via_query_params():
+    from routers import zapier as zr
+    req = _FakeReq(query={"event": "call_completed", "target_url": "https://hooks.zapier.com/abc"})
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.insert_zapier_subscription", AsyncMock(return_value={"id": "sub-1"})) as ins:
+        res = await zr.subscribe(req, x_api_key="ol_live_x")
+    assert res == {"id": "sub-1"}
+    ins.assert_awaited_once_with("t-1", "call_completed", "https://hooks.zapier.com/abc")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_missing_fields_400():
+    from routers import zapier as zr
+    from fastapi import HTTPException
+    req = _FakeReq(query={"event": "call_completed"})  # no target_url
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))):
+        with pytest.raises(HTTPException) as exc:
+            await zr.subscribe(req, x_api_key="ol_live_x")
+    assert exc.value.status_code == 400
