@@ -484,6 +484,79 @@ async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Zapier: API keys + REST Hook subscriptions
+# ---------------------------------------------------------------------------
+
+async def insert_api_key(tenant_id: str, key_hash: str, key_prefix: str, label: str | None) -> dict:
+    res = (
+        get_client().table("tenant_api_keys")
+        .insert({"tenant_id": tenant_id, "key_hash": key_hash, "key_prefix": key_prefix, "label": label})
+        .execute()
+    )
+    return res.data[0] if res.data else {}
+
+
+async def get_api_keys(tenant_id: str) -> list:
+    res = (
+        get_client().table("tenant_api_keys").select("id, key_prefix, label, last_used_at, revoked_at, created_at")
+        .eq("tenant_id", tenant_id).order("created_at", desc=True).execute()
+    )
+    return res.data or []
+
+
+async def get_tenant_by_api_key_hash(key_hash: str) -> dict | None:
+    """Return the tenant owning a non-revoked API key, or None."""
+    res = (
+        get_client().table("tenant_api_keys").select("id, tenant_id, revoked_at")
+        .eq("key_hash", key_hash).limit(1).execute()
+    )
+    row = res.data[0] if res.data else None
+    if not row or row.get("revoked_at"):
+        return None
+    try:
+        get_client().table("tenant_api_keys").update(
+            {"last_used_at": datetime.now(timezone.utc).isoformat()}
+        ).eq("id", row["id"]).execute()
+    except Exception:
+        pass
+    return await get_tenant_by_id(row["tenant_id"])
+
+
+async def revoke_api_key(tenant_id: str, key_id: str) -> bool:
+    res = (
+        get_client().table("tenant_api_keys")
+        .update({"revoked_at": datetime.now(timezone.utc).isoformat()})
+        .eq("id", key_id).eq("tenant_id", tenant_id).execute()
+    )
+    return bool(res.data)
+
+
+async def insert_zapier_subscription(tenant_id: str, event: str, target_url: str) -> dict:
+    res = (
+        get_client().table("zapier_subscriptions")
+        .insert({"tenant_id": tenant_id, "event": event, "target_url": target_url})
+        .execute()
+    )
+    return res.data[0] if res.data else {}
+
+
+async def get_zapier_subscriptions(tenant_id: str, event: str) -> list:
+    res = (
+        get_client().table("zapier_subscriptions").select("id, target_url")
+        .eq("tenant_id", tenant_id).eq("event", event).execute()
+    )
+    return res.data or []
+
+
+async def delete_zapier_subscription(tenant_id: str, subscription_id: str) -> bool:
+    res = (
+        get_client().table("zapier_subscriptions").delete()
+        .eq("id", subscription_id).eq("tenant_id", tenant_id).execute()
+    )
+    return bool(res.data)
+
+
+# ---------------------------------------------------------------------------
 # Payment short links
 # ---------------------------------------------------------------------------
 

@@ -116,6 +116,7 @@ async def process_end_of_call(payload: dict) -> None:
 
     # Find or create lead
     existing_lead = await db.get_lead_by_phone(tenant_id, caller_number)
+    is_new_lead = existing_lead is None
     if existing_lead:
         lead_id: str = existing_lead["id"]
     else:
@@ -194,6 +195,37 @@ async def process_end_of_call(payload: dict) -> None:
             "call_id": call_id,
             "urgency": analysis.get("urgency", ""),
         })
+
+    # Zapier REST Hook triggers (best-effort — never blocks call processing).
+    # Unlike analytics, these payloads carry the tenant's own caller data, since
+    # they flow to the tenant's own connected apps.
+    try:
+        from services import zapier
+        _caller_name = (analysis.get("caller_name") if analysis else "") or ""
+        _urgency = (analysis.get("urgency") if analysis else "") or ""
+        await zapier.emit(tenant_id, "call_completed", {
+            "call_id": call_id,
+            "caller_name": _caller_name,
+            "caller_phone": caller_number,
+            "duration_secs": int(duration) if duration else None,
+            "urgency": _urgency,
+            "summary": analysis.get("summary", "") if analysis else "",
+            "suggested_next_step": analysis.get("suggested_next_step", "") if analysis else "",
+            "key_details": analysis.get("key_details", {}) if analysis else {},
+            "transcript": transcript,
+        })
+        if is_new_lead:
+            await zapier.emit(tenant_id, "new_lead", {
+                "lead_id": lead_id, "name": _caller_name, "phone": caller_number, "status": "new",
+            })
+        if _urgency.lower() == "hot":
+            await zapier.emit(tenant_id, "hot_lead", {
+                "lead_id": lead_id, "name": _caller_name, "phone": caller_number, "urgency": _urgency,
+                "summary": analysis.get("summary", "") if analysis else "",
+                "key_details": analysis.get("key_details", {}) if analysis else {},
+            })
+    except Exception as e:
+        logger.warning("Zapier emit failed for call %s tenant %s (non-fatal): %s", call_id, tenant_id, e)
 
     # HubSpot CRM sync (non-fatal — never blocks call processing)
     if tenant.get("hubspot_refresh_token"):

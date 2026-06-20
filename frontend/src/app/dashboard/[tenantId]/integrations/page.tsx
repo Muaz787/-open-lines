@@ -3,10 +3,26 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+interface ApiKey {
+  id: string
+  key_prefix: string
+  label?: string | null
+  last_used_at?: string | null
+  revoked_at?: string | null
+  created_at: string
+}
 
 interface Tenant {
   id: string
@@ -75,6 +91,11 @@ function IntegrationsPage() {
   const [slDisconnecting, setSlDisconnecting] = useState(false)
   const [toast, setToast]                     = useState<string | null>(null)
 
+  const [apiKeys, setApiKeys]                 = useState<ApiKey[]>([])
+  const [newKey, setNewKey]                   = useState<string | null>(null)
+  const [keyLabel, setKeyLabel]               = useState('')
+  const [creatingKey, setCreatingKey]         = useState(false)
+
   const showToast = (msg: string) => {
     setToast(msg)
     setTimeout(() => setToast(null), 3500)
@@ -91,6 +112,10 @@ function IntegrationsPage() {
         if (tRes.ok) setTenant(await tRes.json())
         if (hRes.ok) setHsStatus(await hRes.json())
         if (sRes.ok) setSlackStatus(await sRes.json())
+        try {
+          const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
+          if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
+        } catch {}
       } finally {
         setLoading(false)
       }
@@ -141,6 +166,39 @@ function IntegrationsPage() {
       else showToast('Disconnect failed — try again.')
     } catch { showToast('Network error — try again.') }
     finally { setSlDisconnecting(false) }
+  }
+
+  const createApiKey = async () => {
+    setCreatingKey(true)
+    setNewKey(null)
+    try {
+      const res = await fetch(`${API}/zapier/keys/${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ label: keyLabel.trim() || null }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setNewKey(data.api_key)
+        setKeyLabel('')
+        const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
+        if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
+      } else {
+        showToast('Could not create API key.')
+      }
+    } catch { showToast('Network error — try again.') }
+    finally { setCreatingKey(false) }
+  }
+
+  const revokeApiKey = async (id: string) => {
+    if (!confirm('Revoke this API key? Any Zap or app using it will stop working immediately.')) return
+    try {
+      const res = await fetch(`${API}/zapier/keys/${tenantId}/${id}`, { method: 'DELETE', headers: await authHeaders() })
+      if (res.ok) {
+        setApiKeys(keys => keys.map(k => k.id === id ? { ...k, revoked_at: new Date().toISOString() } : k))
+        showToast('API key revoked.')
+      } else showToast('Revoke failed — try again.')
+    } catch { showToast('Network error — try again.') }
   }
 
   if (loading) return <LoadingState />
@@ -249,6 +307,112 @@ function IntegrationsPage() {
             />
           </div>
 
+          {/* Zapier / API keys */}
+          <div style={{ marginTop: 16 }}>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 4 }}>
+                  Zapier &amp; API Access
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.6, marginBottom: 8 }}>
+                  Generate an API key to connect Open Lines to 6,000+ apps via Zapier — push new leads,
+                  call summaries, bookings, and deposits to your CRM, spreadsheets, and more.
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {[
+                    'Trigger Zaps on calls, leads, bookings, and deposits',
+                    'Send the API key + base URL below to Zapier',
+                    'Revoke a key anytime to instantly disconnect',
+                  ].map(f => (
+                    <div key={f} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={{ color: 'var(--db-accent-text)', fontSize: 11, flexShrink: 0 }}>✓</span>
+                      <span style={{ fontSize: 12, color: 'var(--db-text-2)' }}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ padding: '14px 20px' }}>
+                {!isPaidEligible ? (
+                  <div style={{ fontSize: 12, color: 'var(--db-faint)' }}>Available on Pro and Business plans</div>
+                ) : (
+                  <>
+                    {/* API base URL */}
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, color: 'var(--db-muted)', marginBottom: 4 }}>API base URL</div>
+                      <code style={{
+                        display: 'block', fontSize: 12, padding: '8px 10px', borderRadius: 6,
+                        background: 'var(--db-bg-2)', border: '1px solid var(--db-border)', wordBreak: 'break-all',
+                      }}>{API}</code>
+                    </div>
+
+                    {/* Newly created key (shown once) */}
+                    {newKey && (
+                      <div style={{
+                        marginBottom: 14, padding: '12px 14px', borderRadius: 8,
+                        background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)',
+                      }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>
+                          Copy your API key now — it won&rsquo;t be shown again.
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <code style={{
+                            flex: 1, fontSize: 12, padding: '8px 10px', borderRadius: 6,
+                            background: 'var(--db-bg)', border: '1px solid var(--db-border)', wordBreak: 'break-all',
+                          }}>{newKey}</code>
+                          <button className="db-btn db-btn--dark db-btn--sm"
+                            onClick={() => { navigator.clipboard?.writeText(newKey); showToast('Copied to clipboard.') }}>
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Create form */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: apiKeys.length ? 16 : 0 }}>
+                      <input className="db-input" placeholder="Key label (e.g. Zapier)" value={keyLabel}
+                        onChange={e => setKeyLabel(e.target.value)} style={{ flex: 1 }} maxLength={40} />
+                      <button className="db-btn db-btn--dark db-btn--sm" onClick={createApiKey} disabled={creatingKey}>
+                        {creatingKey ? 'Generating…' : 'Generate key'}
+                      </button>
+                    </div>
+
+                    {/* Existing keys */}
+                    {apiKeys.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {apiKeys.map(k => {
+                          const revoked = !!k.revoked_at
+                          return (
+                            <div key={k.id} style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                              padding: '8px 12px', borderRadius: 6, border: '1px solid var(--db-border-lt)',
+                              opacity: revoked ? 0.5 : 1,
+                            }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--db-text)' }}>
+                                  {k.label || 'API key'}{' '}
+                                  <code style={{ fontSize: 11, color: 'var(--db-faint)' }}>{k.key_prefix}…</code>
+                                </div>
+                                <div style={{ fontSize: 11, color: 'var(--db-faint)' }}>
+                                  {revoked ? 'Revoked' : (k.last_used_at ? 'Active · in use' : 'Active · never used')}
+                                </div>
+                              </div>
+                              {!revoked && (
+                                <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => revokeApiKey(k.id)}>
+                                  Revoke
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Coming soon */}
           <div style={{
             marginTop: 32,
@@ -262,7 +426,7 @@ function IntegrationsPage() {
               More integrations coming soon
             </div>
             <div style={{ fontSize: 12, color: 'var(--db-faint)' }}>
-              Google Sheets, Zapier, and more.
+              Google Sheets, QuickBooks, and more.
             </div>
           </div>
 

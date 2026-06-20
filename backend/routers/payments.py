@@ -261,6 +261,8 @@ async def _handle_checkout_completed(session: dict) -> None:
     except Exception as e:
         logger.error("Payment notification failed for tenant %s: %s", tenant_id, e)
 
+    await _emit_zapier_deposit(tenant_id, payment, "deposit_paid")
+
 
 async def _handle_checkout_expired(session: dict) -> None:
     meta       = session.get("metadata") or {}
@@ -442,6 +444,24 @@ async def _handle_square_payment_completed(event: dict) -> None:
     except Exception as e:
         logger.error("Square payment notification failed for tenant %s: %s", tenant_id, e)
 
+    await _emit_zapier_deposit(tenant_id, payment, "deposit_paid")
+
+
+async def _emit_zapier_deposit(tenant_id: str, payment: dict, event: str) -> None:
+    """Fire a Zapier deposit_paid / deposit_refunded trigger (best-effort)."""
+    try:
+        from services import zapier
+        await zapier.emit(tenant_id, event, {
+            "caller_name": payment.get("caller_name", ""),
+            "caller_phone": payment.get("caller_phone", ""),
+            "service": payment.get("service", ""),
+            "amount": round(int(payment.get("amount_cents") or 0) / 100, 2),
+            "currency": (payment.get("currency") or "usd").upper(),
+            "provider": payment.get("provider") or "stripe",
+        })
+    except Exception as e:
+        logger.warning("Zapier %s emit failed for tenant %s (non-fatal): %s", event, tenant_id, e)
+
 
 async def _handle_square_refund(payment_obj: dict) -> None:
     """Square payment.updated carrying refunded_money — look up the payment
@@ -502,6 +522,8 @@ async def _process_refund(payment: dict, tenant: dict) -> None:
         await _sms_caller_refund(tenant, payment, appointment)
     except Exception as e:
         logger.error("Refund notification failed for tenant %s: %s", tenant_id, e)
+
+    await _emit_zapier_deposit(tenant_id, payment, "deposit_refunded")
 
 
 async def _cancel_appointment_calendar(tenant: dict, appointment: dict) -> None:
