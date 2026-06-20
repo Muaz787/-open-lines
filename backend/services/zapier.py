@@ -33,6 +33,42 @@ EVENTS = (
 _KEY_PREFIX = "ol_live_"
 _SIGNING_SECRET = os.getenv("ZAPIER_SIGNING_SECRET", "")
 
+# Representative payloads Zapier uses to set up field mapping before live data
+# exists. Shapes must match what emit() actually sends per event.
+SAMPLES: dict[str, dict] = {
+    "call_completed": {
+        "call_id": "c_sample_123", "caller_name": "Jordan Lee", "caller_phone": "+14165550123",
+        "duration_secs": 142, "urgency": "hot", "summary": "Caller wants a 3-bed condo viewing this weekend.",
+        "suggested_next_step": "Book a Saturday viewing and confirm budget.",
+        "key_details": {"budget": "$650k", "timeline": "30 days", "pre_approved": "yes"},
+        "transcript": "AI: Thanks for calling… You: Hi, I'm looking for…",
+    },
+    "new_lead": {
+        "lead_id": "l_sample_123", "name": "Jordan Lee", "phone": "+14165550123", "status": "new",
+    },
+    "hot_lead": {
+        "lead_id": "l_sample_123", "name": "Jordan Lee", "phone": "+14165550123", "urgency": "hot",
+        "summary": "Ready to buy within 30 days, pre-approved.",
+        "key_details": {"budget": "$650k", "timeline": "30 days"},
+    },
+    "appointment_booked": {
+        "caller_name": "Jordan Lee", "caller_phone": "+14165550123", "service": "Property viewing",
+        "datetime": "2026-07-02T14:00:00+00:00", "duration_minutes": 30, "status": "confirmed",
+    },
+    "appointment_cancelled": {
+        "caller_name": "Jordan Lee", "caller_phone": "+14165550123", "service": "Property viewing",
+        "datetime": "2026-07-02T14:00:00+00:00", "refunded": True, "refund_amount": 20.0, "currency": "CAD",
+    },
+    "deposit_paid": {
+        "caller_name": "Jordan Lee", "caller_phone": "+14165550123", "service": "Property viewing",
+        "amount": 20.0, "currency": "CAD", "provider": "square",
+    },
+    "deposit_refunded": {
+        "caller_name": "Jordan Lee", "caller_phone": "+14165550123", "service": "Property viewing",
+        "amount": 20.0, "currency": "CAD", "provider": "square",
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # API keys

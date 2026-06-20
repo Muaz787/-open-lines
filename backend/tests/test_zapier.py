@@ -91,3 +91,10 @@ def test_signing_enabled_returns_sha256(monkeypatch):
     monkeypatch.setattr(zapier, "_SIGNING_SECRET", "secret")
     sig = zapier._sign(b"body")
     assert sig and sig.startswith("sha256=")
+
+
+def test_every_event_has_a_sample():
+    # Zapier needs sample data for field mapping on every trigger.
+    for event in zapier.EVENTS:
+        assert event in zapier.SAMPLES, f"missing sample for {event}"
+        assert isinstance(zapier.SAMPLES[event], dict) and zapier.SAMPLES[event]

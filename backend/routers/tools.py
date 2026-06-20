@@ -520,6 +520,19 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 "is_reschedule": bool(existing_appt),
             },
         )
+        try:
+            from services import zapier
+            await zapier.emit(tenant_id, "appointment_booked", {
+                "caller_name": caller_name,
+                "caller_phone": caller_phone,
+                "service": service,
+                "datetime": start_dt.isoformat(),
+                "duration_minutes": duration_minutes,
+                "status": appt_status,
+                "is_reschedule": bool(existing_appt),
+            })
+        except Exception as e:
+            logger.warning("tools/book: Zapier emit failed for tenant %s (non-fatal): %s", tenant_id, e)
     except Exception as e:
         logger.error("tools/book: failed to save appointment for tenant %s: %s", tenant_id, e)
         # Don't fail the whole response — event was created in Google, just log the DB miss
@@ -910,6 +923,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     tenant = tenant or {}
     caller_name = appt.get("caller_name", "") or ""
     refund_clause = ""  # appended to the AI's spoken confirmation
+    cancel_refunded = False
     try:
         payment = await db.get_payment_by_appointment_id(appt["id"])
     except Exception as e:
@@ -935,6 +949,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
                     logger.error("tools/cancel: failed to mark payment refunded for tenant %s: %s", tenant_id, e)
                 await refund_svc.sms_caller_refund(tenant, payment, appt)
                 await refund_svc.notify_business(tenant, payment, refunded=True)
+                cancel_refunded = True
                 refund_clause = f" Your {cur} {amt} deposit will be refunded, and you'll get a confirmation text shortly."
             else:
                 # Refund API failed — leave payment as-is, have the team follow up.
@@ -959,6 +974,22 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
             tenant, None, refunded=False, service=service,
             caller_name=caller_name, caller_phone=caller_phone,
         )
+
+    try:
+        from services import zapier
+        _pay = payment or {}
+        _amt_cents = int(_pay.get("amount_cents") or 0)
+        await zapier.emit(tenant_id, "appointment_cancelled", {
+            "caller_name": caller_name,
+            "caller_phone": caller_phone,
+            "service": service,
+            "datetime": appt.get("appointment_datetime", ""),
+            "refunded": cancel_refunded,
+            "refund_amount": round(_amt_cents / 100, 2) if cancel_refunded else 0,
+            "currency": format_currency(_pay.get("currency", "usd")) if _pay else "",
+        })
+    except Exception as e:
+        logger.warning("tools/cancel: Zapier emit failed for tenant %s (non-fatal): %s", tenant_id, e)
 
     return _result(
         tc_id,

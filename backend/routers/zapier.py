@@ -62,6 +62,20 @@ async def unsubscribe(
     return {"status": "ok"}
 
 
+@router.get("/triggers/{event}/sample")
+async def trigger_sample(
+    event: str,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+):
+    """Sample payload for Zapier field-mapping. Zapier polls this when a Zap is
+    being built and no live data exists yet. Returns a list (Zapier expects an
+    array of trigger objects)."""
+    await _tenant_from_api_key(x_api_key)
+    if event not in zapier.EVENTS:
+        raise HTTPException(status_code=404, detail="Unknown event")
+    return [zapier.SAMPLES.get(event, {})]
+
+
 # ---------------------------------------------------------------------------
 # API-key management (owner-authenticated via Supabase JWT)
 # ---------------------------------------------------------------------------
