@@ -191,6 +191,7 @@ async def test_search_lead_empty_when_not_found():
 class _FakeReq:
     def __init__(self, query=None, json_data=None, form_data=None):
         self.query_params = query or {}
+        self.headers = {}
         self._json = json_data
         self._form = form_data
     async def json(self):
@@ -199,6 +200,8 @@ class _FakeReq:
         return self._json
     async def form(self):
         return self._form or {}
+    async def body(self):
+        return b""
 
 
 @pytest.mark.asyncio
