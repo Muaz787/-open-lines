@@ -237,6 +237,21 @@ async def test_subscribe_via_query_params():
 
 
 @pytest.mark.asyncio
+async def test_subscribe_strips_key_whitespace_and_hookurl_fallback():
+    # Real Zapier payload: "event " key had trailing spaces; target via hookUrl.
+    from routers import zapier as zr
+    req = _FakeReq(json_data={
+        "event  ": "call_completed ",
+        "hookUrl": "https://hooks.zapier.com/hooks/standard/x/y/",
+    })
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.insert_zapier_subscription", AsyncMock(return_value={"id": "sub-9"})) as ins:
+        res = await zr.subscribe(req, x_api_key="ol_live_x")
+    assert res == {"id": "sub-9"}
+    ins.assert_awaited_once_with("t-1", "call_completed", "https://hooks.zapier.com/hooks/standard/x/y/")
+
+
+@pytest.mark.asyncio
 async def test_subscribe_missing_fields_400():
     from routers import zapier as zr
     from fastapi import HTTPException

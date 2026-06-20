@@ -34,21 +34,27 @@ async def me(x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None)
 
 
 async def _read_field(request: Request, name: str) -> str | None:
-    """Read a field from JSON body, query params, or form — Zapier's REST Hook
-    subscribe doesn't reliably send a JSON body, so accept all three."""
-    qp = request.query_params.get(name)
-    if qp:
-        return qp
+    """Read a field from query params, JSON body, or form. Keys and values are
+    whitespace-stripped — Zapier's Visual Builder can introduce stray spaces in
+    a Request Body key (e.g. "event " instead of "event")."""
+    name = name.strip()
+
+    for k, v in request.query_params.items():
+        if k.strip() == name and v and v.strip():
+            return v.strip()
     try:
         data = await request.json()
-        if isinstance(data, dict) and data.get(name):
-            return str(data[name])
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if k.strip() == name and v not in (None, "") and str(v).strip():
+                    return str(v).strip()
     except Exception:
         pass
     try:
         form = await request.form()
-        if form.get(name):
-            return str(form[name])
+        for k, v in form.items():
+            if k.strip() == name and v and str(v).strip():
+                return str(v).strip()
     except Exception:
         pass
     return None
@@ -60,27 +66,21 @@ async def subscribe(
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ):
     """Zapier registers a REST Hook target URL for an event. Accepts the
-    event/target_url from JSON body, query params, or form data."""
+    event/target_url from JSON body, query params, or form; falls back to
+    Zapier's native hookUrl for the target."""
     tenant = await _tenant_from_api_key(x_api_key)
     event = await _read_field(request, "event")
-    target_url = await _read_field(request, "target_url")
-    # One-time diagnostics: reveal exactly how Zapier sends the subscribe payload.
-    try:
-        raw_body = (await request.body()).decode("utf-8", "replace")[:500]
-    except Exception:
-        raw_body = "<unreadable>"
-    logger.info(
-        "zapier.subscribe DEBUG ct=%r query_keys=%s body=%r -> event=%r target_url=%r",
-        request.headers.get("content-type"),
-        list(request.query_params.keys()),
-        raw_body, event, target_url,
+    target_url = (
+        await _read_field(request, "target_url")
+        or await _read_field(request, "hookUrl")
     )
     if not event or not target_url:
         raise HTTPException(status_code=400, detail="event and target_url are required")
     if event not in zapier.EVENTS:
         raise HTTPException(status_code=400, detail=f"Unknown event. Supported: {', '.join(zapier.EVENTS)}")
-    validate_public_url(target_url.strip())
-    sub = await db.insert_zapier_subscription(tenant["id"], event, target_url.strip())
+    validate_public_url(target_url)
+    sub = await db.insert_zapier_subscription(tenant["id"], event, target_url)
+    logger.info("zapier.subscribe: tenant %s event %s -> %s", tenant["id"], event, target_url)
     return {"id": sub.get("id")}
 
 
