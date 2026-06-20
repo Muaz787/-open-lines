@@ -98,3 +98,87 @@ def test_every_event_has_a_sample():
     for event in zapier.EVENTS:
         assert event in zapier.SAMPLES, f"missing sample for {event}"
         assert isinstance(zapier.SAMPLES[event], dict) and zapier.SAMPLES[event]
+
+
+# ---------------------------------------------------------------------------
+# Actions / search endpoints
+# ---------------------------------------------------------------------------
+
+TENANT = {
+    "id": "t-1", "business_name": "Acme",
+    "twilio_subaccount_sid": "AC1", "twilio_auth_token": "tok", "twilio_phone_number": "+14165550100",
+    "pinecone_namespace": "acme",
+}
+
+
+@pytest.mark.asyncio
+async def test_send_sms_success():
+    from routers import zapier as zr
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.telephony.send_sms", AsyncMock(return_value=True)) as send:
+        res = await zr.action_send_sms(zr.SendSmsRequest(to="+14165559999", message="hi"), x_api_key="ol_live_x")
+    assert res["status"] == "sent"
+    send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_sms_no_phone_number_configured():
+    from routers import zapier as zr
+    from fastapi import HTTPException
+    tenant = {**TENANT, "twilio_phone_number": ""}
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=tenant)):
+        with pytest.raises(HTTPException) as exc:
+            await zr.action_send_sms(zr.SendSmsRequest(to="+1416", message="hi"), x_api_key="ol_live_x")
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_invalid_api_key_rejected():
+    from routers import zapier as zr
+    from fastapi import HTTPException
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=None)):
+        with pytest.raises(HTTPException) as exc:
+            await zr.me(x_api_key="ol_live_bad")
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_upsert_lead_creates_when_absent():
+    from routers import zapier as zr
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.get_lead_by_phone", AsyncMock(return_value=None)), \
+         patch("routers.zapier.db.insert_lead", AsyncMock(return_value={"id": "l-1", "phone": "+1416"})) as ins:
+        res = await zr.action_upsert_lead(zr.UpsertLeadRequest(phone="+1416", name="Jo"), x_api_key="ol_live_x")
+    assert res["status"] == "created"
+    ins.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_upsert_lead_updates_when_present():
+    from routers import zapier as zr
+    existing = {"id": "l-9", "phone": "+1416", "metadata": {}}
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.get_lead_by_phone", AsyncMock(return_value=existing)), \
+         patch("routers.zapier.db.update_lead", AsyncMock(return_value={**existing, "name": "Jo"})) as upd:
+        res = await zr.action_upsert_lead(zr.UpsertLeadRequest(phone="+1416", name="Jo"), x_api_key="ol_live_x")
+    assert res["status"] == "updated" and res["lead_id"] == "l-9"
+    upd.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_search_lead_returns_array():
+    from routers import zapier as zr
+    lead = {"id": "l-1", "phone": "+1416", "name": "Jo"}
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.get_lead_by_phone", AsyncMock(return_value=lead)):
+        res = await zr.search_lead_by_phone(phone="+1416", x_api_key="ol_live_x")
+    assert res == [lead]
+
+
+@pytest.mark.asyncio
+async def test_search_lead_empty_when_not_found():
+    from routers import zapier as zr
+    with patch("routers.zapier.db.get_tenant_by_api_key_hash", AsyncMock(return_value=dict(TENANT))), \
+         patch("routers.zapier.db.get_lead_by_phone", AsyncMock(return_value=None)):
+        res = await zr.search_lead_by_phone(phone="+1416", x_api_key="ol_live_x")
+    assert res == []
