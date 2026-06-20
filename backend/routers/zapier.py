@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from db import supabase as db
@@ -33,22 +33,43 @@ async def me(x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None)
     return {"tenant_id": tenant["id"], "business_name": tenant.get("business_name", "")}
 
 
-class SubscribeRequest(BaseModel):
-    event: str
-    target_url: str
+async def _read_field(request: Request, name: str) -> str | None:
+    """Read a field from JSON body, query params, or form — Zapier's REST Hook
+    subscribe doesn't reliably send a JSON body, so accept all three."""
+    qp = request.query_params.get(name)
+    if qp:
+        return qp
+    try:
+        data = await request.json()
+        if isinstance(data, dict) and data.get(name):
+            return str(data[name])
+    except Exception:
+        pass
+    try:
+        form = await request.form()
+        if form.get(name):
+            return str(form[name])
+    except Exception:
+        pass
+    return None
 
 
 @router.post("/subscribe")
 async def subscribe(
-    body: SubscribeRequest,
+    request: Request,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ):
-    """Zapier registers a REST Hook target URL for an event."""
+    """Zapier registers a REST Hook target URL for an event. Accepts the
+    event/target_url from JSON body, query params, or form data."""
     tenant = await _tenant_from_api_key(x_api_key)
-    if body.event not in zapier.EVENTS:
+    event = await _read_field(request, "event")
+    target_url = await _read_field(request, "target_url")
+    if not event or not target_url:
+        raise HTTPException(status_code=400, detail="event and target_url are required")
+    if event not in zapier.EVENTS:
         raise HTTPException(status_code=400, detail=f"Unknown event. Supported: {', '.join(zapier.EVENTS)}")
-    validate_public_url(body.target_url)
-    sub = await db.insert_zapier_subscription(tenant["id"], body.event, body.target_url.strip())
+    validate_public_url(target_url.strip())
+    sub = await db.insert_zapier_subscription(tenant["id"], event, target_url.strip())
     return {"id": sub.get("id")}
 
 
