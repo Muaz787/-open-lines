@@ -487,11 +487,27 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
     from routers.payments import _deposit_provider
     _dep_provider = _deposit_provider(tenant)
+
+    # Rescheduling an appointment whose deposit was already paid must NOT require
+    # another deposit. The deposit stays linked to the same appointment row (we
+    # update it in place), so a succeeded payment on the existing appointment
+    # means the reschedule is already covered.
+    already_paid = False
+    if existing_appt:
+        try:
+            _existing_payment = await db.get_payment_by_appointment_id(existing_appt["id"])
+            already_paid = _existing_payment is not None
+        except Exception as e:
+            logger.warning("tools/book: deposit lookup failed for tenant %s (assuming unpaid): %s", tenant_id, e)
+
     deposits_mandatory = (
         bool(_dep_provider)
         and bool(tenant.get("stripe_deposit_mandatory", True))
     )
-    appt_status = "pending_payment" if deposits_mandatory else "confirmed"
+    # A deposit is only requested when the provider is active AND this booking
+    # isn't already covered by the original appointment's paid deposit.
+    needs_deposit = bool(_dep_provider) and not already_paid
+    appt_status = "pending_payment" if (deposits_mandatory and not already_paid) else "confirmed"
 
     try:
         appt_data = {
@@ -542,20 +558,29 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     ampm = "AM" if start_dt.hour < 12 else "PM"
     friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}"
 
-    # Send SMS confirmation — but only when no mandatory deposit is required.
-    # When deposits are mandatory the confirmation SMS is sent from the payment webhook
-    # after the caller actually pays, so we don't falsely confirm an unpaid booking.
-    if not deposits_mandatory:
+    # Send SMS confirmation — but only when no mandatory deposit is still owed.
+    # When a deposit is mandatory AND not already paid, the confirmation SMS is
+    # sent from the payment webhook after the caller pays, so we don't falsely
+    # confirm an unpaid booking. A reschedule of an already-paid appointment is
+    # confirmed here directly.
+    if not (deposits_mandatory and not already_paid):
         try:
             subaccount_sid   = tenant.get("twilio_subaccount_sid", "")
             subaccount_token = tenant.get("twilio_auth_token", "")
             business_phone   = tenant.get("twilio_phone_number", "")
             if subaccount_sid and subaccount_token and business_phone and caller_phone:
                 greeting = f"Hi {caller_name}! " if caller_name else ""
-                sms_body = (
-                    f"{greeting}Your {service} at {business_name} is confirmed "
-                    f"for {friendly}. See you then! — {business_name}"
-                )
+                if already_paid:
+                    sms_body = (
+                        f"{greeting}Your {service} at {business_name} has been rescheduled "
+                        f"to {friendly}. Your deposit is already on file — no further payment needed. "
+                        f"See you then! — {business_name}"
+                    )
+                else:
+                    sms_body = (
+                        f"{greeting}Your {service} at {business_name} is confirmed "
+                        f"for {friendly}. See you then! — {business_name}"
+                    )
                 await telephony.send_sms(
                     subaccount_sid=subaccount_sid,
                     subaccount_token=subaccount_token,
@@ -576,8 +601,16 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
         "You'll receive a text confirmation shortly."
     )
-    # When deposits are enabled and mandatory, let the AI know to call request_deposit next
-    if _dep_provider:
+    if already_paid:
+        # Reschedule of an already-paid appointment — never ask for another deposit.
+        confirmation = (
+            f"Done! Your {service} at {business_name} has been rescheduled to {friendly}. "
+            f"Tell the caller their deposit is already on file, so no further payment is needed, "
+            f"and they'll get a confirmation text shortly. Do NOT call request_deposit."
+        )
+    # When a deposit is still owed (provider active and not already paid),
+    # let the AI know to call request_deposit next.
+    elif needs_deposit:
         from routers.payments import _currency_for
         from services.short_links import format_currency_voice
         _dep_cents = int(tenant.get("stripe_deposit_cents") or 2500)
@@ -649,6 +682,22 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
 
         appointment = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
         appointment_id = appointment["id"] if appointment else None
+
+        # Defense-in-depth: never collect a second deposit for an appointment
+        # whose deposit was already paid (e.g. a reschedule). The deposit stays
+        # linked to the same appointment row.
+        if appointment_id:
+            try:
+                if await db.get_payment_by_appointment_id(appointment_id):
+                    logger.info("request_deposit: appointment %s already has a paid deposit — skipping", appointment_id)
+                    return _result(
+                        tc_id,
+                        "The deposit for this appointment has already been paid, so no further "
+                        "payment is needed. Reassure the caller their booking is confirmed and "
+                        "close the call warmly. Do not send a payment link.",
+                    )
+            except Exception as e:
+                logger.warning("request_deposit: paid-deposit check failed for tenant %s: %s", tenant_id, e)
 
         from datetime import datetime, timezone, timedelta
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
