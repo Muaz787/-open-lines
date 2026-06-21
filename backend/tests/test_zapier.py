@@ -44,9 +44,21 @@ class _FakeClient:
 
 
 @pytest.mark.asyncio
+async def test_emit_noop_when_disabled():
+    fake = _FakeClient()
+    with patch("services.zapier.ENABLED", False), \
+         patch("services.zapier.db.get_zapier_subscriptions", AsyncMock()) as lookup, \
+         patch("services.zapier.httpx.AsyncClient", return_value=fake):
+        await zapier.emit("tenant-1", "call_completed", {"x": 1})
+    lookup.assert_not_awaited()
+    fake.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_emit_no_subscriptions_skips_post():
     fake = _FakeClient()
-    with patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=[])), \
+    with patch("services.zapier.ENABLED", True), \
+         patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=[])), \
          patch("services.zapier.httpx.AsyncClient", return_value=fake):
         await zapier.emit("tenant-1", "call_completed", {"x": 1})
     fake.post.assert_not_awaited()
@@ -57,7 +69,8 @@ async def test_emit_posts_to_each_subscriber():
     fake = _FakeClient()
     subs = [{"id": "s1", "target_url": "https://hooks.zapier.com/a"},
             {"id": "s2", "target_url": "https://hooks.zapier.com/b"}]
-    with patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=subs)), \
+    with patch("services.zapier.ENABLED", True), \
+         patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=subs)), \
          patch("services.zapier.httpx.AsyncClient", return_value=fake):
         await zapier.emit("tenant-1", "deposit_paid", {"amount": 2000})
     assert fake.post.await_count == 2
@@ -68,7 +81,8 @@ async def test_emit_posts_to_each_subscriber():
 @pytest.mark.asyncio
 async def test_emit_swallows_lookup_errors():
     # Must never raise into the calling flow (a call/payment must not fail).
-    with patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(side_effect=Exception("db down"))):
+    with patch("services.zapier.ENABLED", True), \
+         patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(side_effect=Exception("db down"))):
         await zapier.emit("tenant-1", "new_lead", {})  # no exception = pass
 
 
@@ -77,7 +91,8 @@ async def test_emit_swallows_post_errors():
     fake = _FakeClient()
     fake.post.side_effect = Exception("hook down")
     subs = [{"id": "s1", "target_url": "https://hooks.zapier.com/a"}]
-    with patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=subs)), \
+    with patch("services.zapier.ENABLED", True), \
+         patch("services.zapier.db.get_zapier_subscriptions", AsyncMock(return_value=subs)), \
          patch("services.zapier.httpx.AsyncClient", return_value=fake):
         await zapier.emit("tenant-1", "new_lead", {})  # no exception = pass
 

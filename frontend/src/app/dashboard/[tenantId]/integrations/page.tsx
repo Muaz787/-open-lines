@@ -9,6 +9,9 @@ import { LoadingState } from '../components/PageStates'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+// Zapier integration is paused — set to true to bring the API key UI back.
+const ZAPIER_ENABLED = false
+
 async function authHeaders(): Promise<Record<string, string>> {
   const { data } = await supabase.auth.getSession()
   const token = data.session?.access_token
@@ -112,10 +115,12 @@ function IntegrationsPage() {
         if (tRes.ok) setTenant(await tRes.json())
         if (hRes.ok) setHsStatus(await hRes.json())
         if (sRes.ok) setSlackStatus(await sRes.json())
-        try {
-          const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
-          if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
-        } catch {}
+        if (ZAPIER_ENABLED) {
+          try {
+            const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
+            if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
+          } catch {}
+        }
       } finally {
         setLoading(false)
       }
@@ -307,7 +312,8 @@ function IntegrationsPage() {
             />
           </div>
 
-          {/* Zapier / API keys */}
+          {/* Zapier / API keys — paused (hidden behind ZAPIER_ENABLED) */}
+          {ZAPIER_ENABLED && (
           <div style={{ marginTop: 16 }}>
             <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
@@ -412,6 +418,7 @@ function IntegrationsPage() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Coming soon */}
           <div style={{

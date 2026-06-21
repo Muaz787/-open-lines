@@ -19,6 +19,11 @@ from db import supabase as db
 
 logger = logging.getLogger(__name__)
 
+# Master switch for the whole Zapier integration. Off by default — the feature
+# is paused. Set ZAPIER_ENABLED=true (Railway) to bring it back. When off, the
+# /zapier/* routes are not registered and emit() is a no-op.
+ENABLED = os.getenv("ZAPIER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+
 # Supported REST Hook events (kept in sync with the Zapier app triggers)
 EVENTS = (
     "call_completed",
@@ -97,7 +102,10 @@ def _sign(body: bytes) -> str | None:
 
 async def emit(tenant_id: str, event: str, payload: dict) -> None:
     """POST `payload` to every Zapier subscription for (tenant_id, event).
-    Best-effort: logs and swallows all errors."""
+    Best-effort: logs and swallows all errors. No-op while the integration is
+    paused (ENABLED is false)."""
+    if not ENABLED:
+        return
     try:
         subs = await db.get_zapier_subscriptions(tenant_id, event)
     except Exception as e:
