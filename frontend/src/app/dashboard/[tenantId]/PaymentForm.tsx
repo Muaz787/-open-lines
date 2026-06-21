@@ -435,7 +435,7 @@ export interface PaymentFormProps {
   onCancel: () => void
 }
 
-// Shared dark Elements appearance
+// Shared dark Elements appearance (card forms render on dark surfaces)
 const ELEMENTS_APPEARANCE = {
   theme: 'night' as const,
   variables: {
@@ -446,6 +446,24 @@ const ELEMENTS_APPEARANCE = {
     colorDanger: '#FF453A',
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
     borderRadius: '8px',
+  },
+}
+
+// Light appearance for the billing-address modal, which renders on a white card —
+// dark, high-contrast labels and white inputs so the field labels read clearly.
+const ADDRESS_APPEARANCE = {
+  theme: 'stripe' as const,
+  variables: {
+    colorPrimary: '#1A6BFF',
+    colorBackground: '#ffffff',
+    colorText: '#16161a',
+    colorTextSecondary: '#3d4d5c',
+    colorDanger: '#e53e3e',
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    borderRadius: '8px',
+  },
+  rules: {
+    '.Label': { color: '#16161a', fontWeight: '500' },
   },
 }
 
@@ -652,7 +670,6 @@ function AddressCollectInner({
   return (
     <div className="pay-form">
       <div className="pay-field">
-        <label className="pay-label">Billing address</label>
         <AddressElement options={{ mode: 'billing', fields: { phone: 'never' } }} />
       </div>
       {error && <div className="pay-err">{error}</div>}
@@ -662,7 +679,9 @@ function AddressCollectInner({
         </button>
         <button type="button" onClick={onCancel} disabled={saving} className="pay-cancel">Cancel</button>
       </div>
-      <p className="pay-secure">Required so we can calculate sales tax (GST/HST) on your invoice.</p>
+      <p className="pay-secure" style={{ color: '#5a6b7a' }}>
+        Required so we can calculate sales tax (GST/HST) on your invoice.
+      </p>
     </div>
   )
 }
@@ -678,7 +697,7 @@ export function AddressCollectForm({ tenantId, onSaved, onCancel }: AddressColle
     <div className="pay-wrap">
       <Elements
         stripe={stripePromise}
-        options={{ mode: 'setup', currency: 'cad', appearance: ELEMENTS_APPEARANCE }}
+        options={{ mode: 'setup', currency: 'cad', appearance: ADDRESS_APPEARANCE }}
       >
         <AddressCollectInner tenantId={tenantId} onSaved={onSaved} onCancel={onCancel} />
       </Elements>
