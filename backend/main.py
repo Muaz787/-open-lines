@@ -82,7 +82,11 @@ app.include_router(stripe_connect.router)
 app.include_router(square_connect.router)
 app.include_router(payments.router)
 app.include_router(pay.router)
-app.include_router(zapier.router)
+
+# Zapier integration is paused — only mount its routes when explicitly enabled.
+from services import zapier as _zapier_service
+if _zapier_service.ENABLED:
+    app.include_router(zapier.router)
 
 
 @app.get("/health")
