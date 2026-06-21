@@ -600,3 +600,88 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
     </div>
   )
 }
+
+// ─── Standalone billing-address capture ───────────────────────────────────────
+// For existing customers created before the subscribe flow collected an address.
+// Stripe Tax can't price an upgrade without a location, so we let them add one.
+
+function AddressCollectInner({
+  tenantId,
+  onSaved,
+  onCancel,
+}: {
+  tenantId: string
+  onSaved: () => void
+  onCancel: () => void
+}) {
+  const elements = useElements()
+  const [error, setError]   = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!elements) return
+    const el = elements.getElement(AddressElement)
+    if (!el) return
+    setSaving(true)
+    setError(null)
+    const { complete, value } = await el.getValue()
+    if (!complete) {
+      setError('Please enter your full billing address.')
+      setSaving(false)
+      return
+    }
+    try {
+      const res = await fetch(`${API}/billing/billing-address/${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: value.address, name: value.name ?? '' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.detail ?? 'Could not save address.')
+        setSaving(false)
+        return
+      }
+      onSaved()
+    } catch {
+      setError('Network error — please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="pay-form">
+      <div className="pay-field">
+        <label className="pay-label">Billing address</label>
+        <AddressElement options={{ mode: 'billing', fields: { phone: 'never' } }} />
+      </div>
+      {error && <div className="pay-err">{error}</div>}
+      <div className="pay-actions">
+        <button type="button" onClick={handleSave} disabled={saving} className="pay-submit">
+          {saving ? 'Saving…' : 'Save address'}
+        </button>
+        <button type="button" onClick={onCancel} disabled={saving} className="pay-cancel">Cancel</button>
+      </div>
+      <p className="pay-secure">Required so we can calculate sales tax (GST/HST) on your invoice.</p>
+    </div>
+  )
+}
+
+export interface AddressCollectFormProps {
+  tenantId: string
+  onSaved: () => void
+  onCancel: () => void
+}
+
+export function AddressCollectForm({ tenantId, onSaved, onCancel }: AddressCollectFormProps) {
+  return (
+    <div className="pay-wrap">
+      <Elements
+        stripe={stripePromise}
+        options={{ mode: 'setup', currency: 'cad', appearance: ELEMENTS_APPEARANCE }}
+      >
+        <AddressCollectInner tenantId={tenantId} onSaved={onSaved} onCancel={onCancel} />
+      </Elements>
+    </div>
+  )
+}

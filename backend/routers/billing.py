@@ -995,6 +995,61 @@ async def downgrade_plan(body: dict):
         raise HTTPException(status_code=500, detail=f"Downgrade failed: {e.user_message or str(e)}")
 
 
+@router.get("/billing-address/{tenant_id}")
+async def get_billing_address(tenant_id: str):
+    """Return whether the tenant's Stripe Customer has a tax-resolvable address.
+    Used to prompt existing customers (created before address collection) to add one."""
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id") or ""
+    if not customer_id:
+        return {"has_address": False}
+
+    try:
+        cust = stripe.Customer.retrieve(customer_id)
+        addr = getattr(cust, "address", None) or {}
+        country = addr.get("country") if isinstance(addr, dict) else getattr(addr, "country", None)
+        postal  = addr.get("postal_code") if isinstance(addr, dict) else getattr(addr, "postal_code", None)
+        return {"has_address": bool(country and postal)}
+    except stripe.StripeError as e:
+        logger.error("get_billing_address failed for tenant %s: %s", tenant_id, e)
+        return {"has_address": False}
+
+
+@router.post("/billing-address/{tenant_id}")
+async def save_billing_address(tenant_id: str, body: dict):
+    """Persist a billing address onto the tenant's Stripe Customer so automatic_tax
+    can resolve a GST/HST jurisdiction. Needed for customers created before the
+    subscribe flow collected an address (otherwise upgrades fail with
+    'customer's location isn't recognized')."""
+    address = _clean_address(body.get("address"))
+    name    = str(body.get("name") or "").strip()
+    if not address:
+        raise HTTPException(status_code=400, detail="A complete billing address (country + postal code) is required")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    customer_id = tenant.get("stripe_customer_id") or ""
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer linked to this tenant")
+
+    try:
+        upd: dict = {"address": address}
+        if name:
+            upd["name"] = name
+        stripe.Customer.modify(customer_id, **upd)
+    except stripe.StripeError as e:
+        logger.error("Save billing address failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Could not save billing address")
+
+    logger.info("Billing address saved for tenant %s", tenant_id)
+    return {"status": "saved"}
+
+
 @router.post("/setup-intent/{tenant_id}")
 async def create_setup_intent(tenant_id: str):
     """Create a Stripe SetupIntent so the customer can add/update a payment method in-app."""

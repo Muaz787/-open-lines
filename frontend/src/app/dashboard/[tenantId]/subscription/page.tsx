@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm } from '../PaymentForm'
+import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm, AddressCollectForm } from '../PaymentForm'
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
@@ -320,6 +320,9 @@ function SubscriptionPage() {
   const [upgradePayment, setUpgradePayment]     = useState<{
     clientSecret: string; amountDue: number; currency: string; plan: Plan; subscriptionId: string
   } | null>(null)
+  // Existing customers created before address collection: prompt for a billing
+  // address when Stripe Tax rejects an upgrade/downgrade for an unknown location.
+  const [needAddress, setNeedAddress] = useState(false)
 
   useEffect(() => {
     fetch(`${API}/onboarding/status/${tenantId}`)
@@ -373,6 +376,10 @@ function SubscriptionPage() {
     setConfirmPlan(plan)
   }
 
+  // Stripe Tax rejects plan changes when the customer has no resolvable location.
+  const isMissingAddressError = (detail?: string) =>
+    !!detail && /location isn'?t recognized|valid customer address|calculate tax/i.test(detail)
+
   const handleConfirm = async () => {
     if (!confirmPlan || !subDetails) return
     const isActiveSub = subDetails.has_subscription &&
@@ -399,7 +406,10 @@ function SubscriptionPage() {
           body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
         })
         const data = await res.json()
-        if (!res.ok) { showToast(data.detail ?? 'Upgrade failed — try again'); return }
+        if (!res.ok) {
+          if (isMissingAddressError(data.detail)) { setNeedAddress(true); return }
+          showToast(data.detail ?? 'Upgrade failed — try again'); return
+        }
 
         setConfirmPlan(null)
         if (data.needs_payment) {
@@ -422,7 +432,10 @@ function SubscriptionPage() {
           body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
         })
         const data = await res.json()
-        if (!res.ok) { showToast(data.detail ?? 'Downgrade failed — try again'); return }
+        if (!res.ok) {
+          if (isMissingAddressError(data.detail)) { setNeedAddress(true); return }
+          showToast(data.detail ?? 'Downgrade failed — try again'); return
+        }
 
         setConfirmPlan(null)
         const effectiveDate = data.effective_date
@@ -498,7 +511,7 @@ function SubscriptionPage() {
 
       {/* Modals */}
       <AnimatePresence>
-        {confirmPlan && subDetails && (
+        {confirmPlan && subDetails && !needAddress && (
           <ConfirmModal
             currentPlan={currentPlan}
             newPlan={confirmPlan}
@@ -509,6 +522,46 @@ function SubscriptionPage() {
             onConfirm={handleConfirm}
             onCancel={() => setConfirmPlan(null)}
           />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {needAddress && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              zIndex: 300, padding: 20,
+            }}
+            onClick={() => setNeedAddress(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'var(--db-card)',
+                border: '1px solid var(--db-border)',
+                borderRadius: 'var(--db-r-lg)',
+                width: '100%', maxWidth: 420,
+                boxShadow: 'var(--db-shadow-pop)',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ padding: '20px 24px 4px' }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--db-text)' }}>Add your billing address</div>
+                <p style={{ fontSize: 13, color: 'var(--db-muted)', margin: '6px 0 0' }}>
+                  We need this to calculate sales tax (GST/HST) before changing your plan.
+                </p>
+              </div>
+              <AddressCollectForm
+                tenantId={tenantId}
+                onSaved={() => { setNeedAddress(false); void handleConfirm() }}
+                onCancel={() => setNeedAddress(false)}
+              />
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
       <AnimatePresence>
