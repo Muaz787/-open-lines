@@ -8,6 +8,7 @@ import {
   CardExpiryElement,
   CardCvcElement,
   PaymentRequestButtonElement,
+  AddressElement,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js'
@@ -434,32 +435,112 @@ export interface PaymentFormProps {
   onCancel: () => void
 }
 
+// Shared dark Elements appearance
+const ELEMENTS_APPEARANCE = {
+  theme: 'night' as const,
+  variables: {
+    colorPrimary: '#1A6BFF',
+    colorBackground: '#111820',
+    colorText: '#DDE8F2',
+    colorTextSecondary: '#7A92AA',
+    colorDanger: '#FF453A',
+    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+    borderRadius: '8px',
+  },
+}
+
+interface BillingAddress {
+  line1?: string
+  line2?: string
+  city?: string
+  state?: string
+  postal_code?: string
+  country?: string
+}
+
+// ─── Step 1: collect billing address (needed for Stripe Tax / GST-HST) ────────
+function AddressStep({
+  planLabel,
+  onContinue,
+  onCancel,
+  submitting,
+}: {
+  planLabel: string
+  onContinue: (address: BillingAddress, name: string) => void
+  onCancel: () => void
+  submitting: boolean
+}) {
+  const elements = useElements()
+  const [error, setError]   = useState<string | null>(null)
+  const [busy, setBusy]     = useState(false)
+
+  const handleContinue = async () => {
+    if (!elements) return
+    const el = elements.getElement(AddressElement)
+    if (!el) return
+    setBusy(true)
+    setError(null)
+    const { complete, value } = await el.getValue()
+    if (!complete) {
+      setError('Please enter your full billing address.')
+      setBusy(false)
+      return
+    }
+    setBusy(false)
+    onContinue(value.address as BillingAddress, value.name ?? '')
+  }
+
+  return (
+    <div className="pay-form">
+      <div className="pay-field">
+        <label className="pay-label">Billing address</label>
+        <AddressElement options={{ mode: 'billing', fields: { phone: 'never' } }} />
+      </div>
+      {error && <div className="pay-err">{error}</div>}
+      <div className="pay-actions">
+        <button type="button" onClick={handleContinue} disabled={busy || submitting} className="pay-submit">
+          {busy || submitting ? 'Loading…' : `Continue — ${planLabel}`}
+        </button>
+        <button type="button" onClick={onCancel} disabled={busy || submitting} className="pay-cancel">
+          Cancel
+        </button>
+      </div>
+      <p className="pay-secure">Taxes are calculated based on your billing address.</p>
+    </div>
+  )
+}
+
 export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onSuccess, onCancel }: PaymentFormProps) {
   const [clientSecret, setClientSecret]     = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string>('')
   const [loadError, setLoadError]           = useState<string | null>(null)
+  const [submitting, setSubmitting]         = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    fetch(`${API}/billing/create-subscription`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenant_id: tenantId, plan, interval }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return
-        if (data.needs_payment === false) { onSuccess(); return }
-        if (data.client_secret) {
-          setClientSecret(data.client_secret)
-          setSubscriptionId(data.subscription_id)
-        } else {
-          setLoadError(data.detail ?? 'Could not initialise payment. Please try again.')
-        }
+  // Step 2: once we have the address, create the subscription server-side
+  // (which saves the address to the Customer first, so tax is on invoice #1).
+  const startSubscription = async (address: BillingAddress, name: string) => {
+    setSubmitting(true)
+    setLoadError(null)
+    try {
+      const res = await fetch(`${API}/billing/create-subscription`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId, plan, interval, address, name }),
       })
-      .catch(() => { if (!cancelled) setLoadError('Network error — please try again.') })
-    return () => { cancelled = true }
-  }, [tenantId, plan, interval, onSuccess])
+      const data = await res.json()
+      if (data.needs_payment === false) { onSuccess(); return }
+      if (data.client_secret) {
+        setSubscriptionId(data.subscription_id)
+        setClientSecret(data.client_secret)
+      } else {
+        setLoadError(data.detail ?? 'Could not initialise payment. Please try again.')
+      }
+    } catch {
+      setLoadError('Network error — please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (loadError) {
     return (
@@ -475,14 +556,29 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
     )
   }
 
+  // Phase 1 — address (no clientSecret yet): mount Elements in deferred setup mode
   if (!clientSecret) {
     return (
-      <div style={{ padding: '14px 18px', fontSize: 13, color: 'var(--text-3)' }}>
-        Preparing payment form…
+      <div className="pay-wrap">
+        <div className="pay-header">
+          Subscribe to <span className="pay-plan">{planLabel}</span>
+        </div>
+        <Elements
+          stripe={stripePromise}
+          options={{ mode: 'setup', currency: 'cad', appearance: ELEMENTS_APPEARANCE }}
+        >
+          <AddressStep
+            planLabel={planLabel}
+            onContinue={startSubscription}
+            onCancel={onCancel}
+            submitting={submitting}
+          />
+        </Elements>
       </div>
     )
   }
 
+  // Phase 2 — card entry against the subscription's PaymentIntent
   return (
     <div className="pay-wrap">
       <div className="pay-header">
@@ -490,21 +586,7 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
       </div>
       <Elements
         stripe={stripePromise}
-        options={{
-          clientSecret,
-          appearance: {
-            theme: 'night',
-            variables: {
-              colorPrimary: '#1A6BFF',
-              colorBackground: '#111820',
-              colorText: '#DDE8F2',
-              colorTextSecondary: '#7A92AA',
-              colorDanger: '#FF453A',
-              fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-              borderRadius: '8px',
-            },
-          },
-        }}
+        options={{ clientSecret, appearance: ELEMENTS_APPEARANCE }}
       >
         <CheckoutForm
           tenantId={tenantId}

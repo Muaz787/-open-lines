@@ -138,12 +138,21 @@ async def create_checkout(body: dict):
         "cancel_url":  cancel_url,
         "client_reference_id": tenant_id,
         "metadata": {"tenant_id": tenant_id, "plan": plan},
+        # Stripe Tax: compute GST/HST automatically from the customer's address.
+        # Requires a billing address, so we force collection below.
+        "automatic_tax": {"enabled": True},
+        "billing_address_collection": "required",
+        # Let business customers enter a GST/HST number (reverse-charge / B2B).
+        "tax_id_collection": {"enabled": True},
     }
 
     # Reuse existing Stripe customer so payment methods are remembered
     customer_id = tenant.get("stripe_customer_id")
     if customer_id:
         session_params["customer"] = customer_id
+        # Persist the address Checkout collects back onto the Customer so
+        # automatic_tax can resolve a jurisdiction (required when `customer` is set).
+        session_params["customer_update"] = {"address": "auto", "name": "auto"}
     else:
         email = tenant.get("email")
         if email:
@@ -313,11 +322,27 @@ async def stripe_webhook(request: Request):
     return {"status": "ok"}
 
 
+def _clean_address(raw) -> dict | None:
+    """Keep only the Stripe-recognised address fields the AddressElement returns.
+    Stripe Tax needs at least country + postal_code to resolve a GST/HST jurisdiction."""
+    if not isinstance(raw, dict):
+        return None
+    allowed = ("line1", "line2", "city", "state", "postal_code", "country")
+    addr = {k: str(raw[k]).strip() for k in allowed if raw.get(k)}
+    if not addr.get("country") or not addr.get("postal_code"):
+        return None
+    return addr
+
+
 @router.post("/create-subscription")
 async def create_subscription(body: dict):
     tenant_id: str = body.get("tenant_id", "")
     plan: str      = body.get("plan", "").lower()
     interval: str  = _norm_interval(body.get("interval"))
+    # Billing address from the Stripe AddressElement — persisted to the Customer
+    # below so automatic_tax can compute GST/HST on the very first invoice.
+    address: dict | None = _clean_address(body.get("address"))
+    billing_name: str    = str(body.get("name") or "").strip()
 
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
@@ -343,14 +368,28 @@ async def create_subscription(body: dict):
             params: dict = {"metadata": {"tenant_id": tenant_id}}
             if tenant.get("email"):
                 params["email"] = tenant["email"]
-            if tenant.get("business_name"):
-                params["name"] = tenant["business_name"]
+            if billing_name or tenant.get("business_name"):
+                params["name"] = billing_name or tenant["business_name"]
+            if address:
+                params["address"] = address
             customer = stripe.Customer.create(**params)
             customer_id = customer.id
             await db.update_tenant(tenant_id, {"stripe_customer_id": customer_id})
         except stripe.StripeError as e:
             logger.error("Failed to create Stripe customer for tenant %s: %s", tenant_id, e)
             raise HTTPException(status_code=500, detail="Failed to create Stripe customer")
+
+    # Persist the billing address onto the Customer BEFORE any subscription/invoice
+    # is created — automatic_tax reads the customer's address to pick the GST/HST rate,
+    # and an already-created invoice won't recompute tax retroactively.
+    if address and customer_id:
+        try:
+            upd: dict = {"address": address}
+            if billing_name:
+                upd["name"] = billing_name
+            stripe.Customer.modify(customer_id, **upd)
+        except stripe.StripeError as e:
+            logger.warning("Could not save billing address to customer %s: %s", customer_id, e)
 
     # If a subscription already exists, handle based on its status
     existing_sub_id: str = tenant.get("stripe_subscription_id", "") or ""
@@ -384,6 +423,7 @@ async def create_subscription(body: dict):
                         existing_sub_id,
                         items=[{"id": base.id, "price": price_id}],
                         proration_behavior="always_invoice",
+                        automatic_tax={"enabled": True},
                     )
                 except stripe.StripeError as se:
                     logger.error("Stripe modify failed for sub %s tenant %s: %s", existing_sub_id, tenant_id, se)
@@ -423,6 +463,7 @@ async def create_subscription(body: dict):
             items=items_payload,
             payment_behavior="default_incomplete",
             payment_settings={"save_default_payment_method": "on_subscription"},
+            automatic_tax={"enabled": True},
             expand=["latest_invoice.payment_intent"],
             metadata={"tenant_id": tenant_id, "plan": plan},
         )
@@ -643,7 +684,7 @@ async def subscription_details(tenant_id: str):
         # Upcoming invoice amount
         next_amount = None
         try:
-            upcoming    = stripe.Invoice.upcoming(customer=customer_id, subscription=sub_id)
+            upcoming    = stripe.Invoice.upcoming(customer=customer_id, subscription=sub_id, automatic_tax={"enabled": True})
             next_amount = int(upcoming.amount_due or 0) or None
         except Exception:
             pass
@@ -803,6 +844,7 @@ async def proration_preview(body: dict):
             subscription=sub_id,
             subscription_items=[{"id": item.id, "price": price_id}],
             subscription_proration_behavior="always_invoice",
+            automatic_tax={"enabled": True},
         )
         return {
             "amount_due":   upcoming.amount_due,
@@ -845,6 +887,7 @@ async def upgrade_plan(body: dict):
             sub_id,
             items=[{"id": item.id, "price": price_id}],
             proration_behavior="always_invoice",
+            automatic_tax={"enabled": True},
             expand=["latest_invoice.payment_intent"],
         )
 
@@ -919,6 +962,7 @@ async def downgrade_plan(body: dict):
             items=[{"id": item.id, "price": price_id}],
             proration_behavior="none",
             billing_cycle_anchor="unchanged",
+            automatic_tax={"enabled": True},
         )
 
         # Update DB to reflect the new plan (billing changes at next cycle)
