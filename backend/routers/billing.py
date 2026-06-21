@@ -62,18 +62,38 @@ def _interval_from_price(price_id: str) -> str:
     return "month"
 
 
+def _items_data(sub) -> list:
+    """Return a subscription's line items, robust against the dict.items() name
+    collision on Stripe SDK objects — `sub.items` resolves to the builtin dict
+    method, not the items field, so always reach the data via subscripting."""
+    if sub is None:
+        return []
+    try:
+        items = sub["items"]
+    except (KeyError, TypeError, AttributeError):
+        items = None
+    if not items:
+        return []
+    try:
+        data = items["data"]
+    except (KeyError, TypeError, AttributeError):
+        data = getattr(items, "data", None)
+    return list(data or [])
+
+
 def _base_item(sub):
     """Return the subscription item for the base plan price (not the overage meter item)."""
-    for item in (sub.items.data if sub.items else []):
+    items = _items_data(sub)
+    for item in items:
         price_id = getattr(getattr(item, "price", None), "id", "") or ""
         if price_id != STRIPE_OVERAGE_PRICE_ID and price_id in _ALL_PLAN_PRICE_IDS:
             return item
     # Fallback: first item that is not the overage price
-    for item in (sub.items.data if sub.items else []):
+    for item in items:
         price_id = getattr(getattr(item, "price", None), "id", "") or ""
         if price_id != STRIPE_OVERAGE_PRICE_ID:
             return item
-    return sub.items.data[0]
+    return items[0] if items else None
 
 
 def _sub_interval(sub) -> str:
@@ -240,7 +260,7 @@ async def stripe_webhook(request: Request):
                 sub = stripe.Subscription.retrieve(sub_id)
                 has_overage = any(
                     (getattr(getattr(it, "price", None), "id", "") == STRIPE_OVERAGE_PRICE_ID)
-                    for it in (sub.items.data if sub.items else [])
+                    for it in _items_data(sub)
                 )
                 if not has_overage:
                     stripe.SubscriptionItem.create(
@@ -413,7 +433,7 @@ async def create_subscription(body: dict):
         if existing is not None:
             if existing.status in ("active", "trialing", "past_due"):
                 # Upgrade/downgrade — modify only the base plan item, leave overage item untouched
-                sub_items = (existing.items.data if existing.items else []) or []
+                sub_items = _items_data(existing)
                 if not sub_items:
                     logger.error("No items on sub %s for tenant %s", existing_sub_id, tenant_id)
                     raise HTTPException(status_code=500, detail="Could not modify subscription — no items found")
@@ -542,7 +562,7 @@ async def confirm_payment(body: dict):
         "canceled": "canceled", "incomplete_expired": "canceled",
     }.get(stripe_status, stripe_status)
 
-    items = (sub.get("items") or {}).get("data", [])
+    items = _items_data(sub)
     plan = "starter"
     for _it in items:
         _p = _plan_from_price((_it.get("price") or {}).get("id", ""))
@@ -605,7 +625,7 @@ async def sync_subscription(tenant_id: str):
         }.get(stripe_status, stripe_status)
 
         # Extract plan from subscription items (use attribute access — SDK objects aren't dicts)
-        items = list(getattr(sub.items, "data", []) if getattr(sub, "items", None) else [])
+        items = _items_data(sub)
         plan = tenant.get("subscription_plan", "starter")
         for _it in items:
             _p = _plan_from_price(str(getattr(getattr(_it, "price", None), "id", "") or ""))
