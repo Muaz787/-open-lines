@@ -152,6 +152,16 @@ function IntegrationsPage() {
     }
   }, [tenantId])
 
+  // Owner-authenticated connect: mint the OAuth URL via authedFetch, then redirect.
+  const startConnect = async (path: string) => {
+    try {
+      const res = await authedFetch(`${API}${path}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.url) window.location.href = data.url
+      // On 401 authedFetch already redirects to /login.
+    } catch {}
+  }
+
   const disconnectHubSpot = async () => {
     if (!confirm('Disconnect HubSpot? Call summaries will no longer sync to your CRM.')) return
     setHsDisconnecting(true)
@@ -281,7 +291,7 @@ function IntegrationsPage() {
                 : null
             }
             isPaidEligible={isPaidEligible}
-            connectHref={`${API}/hubspot/connect?tenant_id=${tenantId}`}
+            onConnect={() => startConnect(`/hubspot/connect?tenant_id=${tenantId}`)}
             connectLabel="Connect HubSpot"
             onDisconnect={disconnectHubSpot}
             disconnecting={hsDisconnecting}
@@ -306,7 +316,7 @@ function IntegrationsPage() {
                   : null
               }
               isPaidEligible={isPaidEligible}
-              connectHref={`${API}/slack/connect?tenant_id=${tenantId}`}
+              onConnect={() => startConnect(`/slack/connect?tenant_id=${tenantId}`)}
               connectLabel="Connect Slack"
               onDisconnect={disconnectSlack}
               disconnecting={slDisconnecting}
@@ -454,7 +464,7 @@ interface IntegrationCardProps {
   connected: boolean
   connectedLabel: string | null
   isPaidEligible: boolean
-  connectHref: string
+  onConnect: () => void
   connectLabel: string
   onDisconnect: () => void
   disconnecting: boolean
@@ -463,7 +473,7 @@ interface IntegrationCardProps {
 function IntegrationCard({
   icon, title, description, features,
   connected, connectedLabel, isPaidEligible,
-  connectHref, connectLabel, onDisconnect, disconnecting,
+  onConnect, connectLabel, onDisconnect, disconnecting,
 }: IntegrationCardProps) {
   return (
     <div className="db-card" style={{ overflow: 'hidden' }}>
@@ -508,9 +518,9 @@ function IntegrationCard({
             </button>
           </>
         ) : isPaidEligible ? (
-          <a href={connectHref} className="db-btn db-btn--dark" style={{ fontSize: 13 }}>
+          <button type="button" onClick={onConnect} className="db-btn db-btn--dark" style={{ fontSize: 13 }}>
             {connectLabel}
-          </a>
+          </button>
         ) : (
           <div style={{ fontSize: 12, color: 'var(--db-faint)' }}>Available on Pro and Business plans</div>
         )}

@@ -267,6 +267,15 @@ function DashboardPage() {
     }
   }, [searchParams, fetchCalendar, tenantId])
 
+  const startCalendarConnect = async () => {
+    trackEvent('calendar_connect_started', { location: 'dashboard', tenant_id: tenantId })
+    try {
+      const res = await authedFetch(`${API}/calendar/connect/${tenantId}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.url) window.location.href = data.url
+    } catch {}
+  }
+
   const disconnectCalendar = async () => {
     if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
     setCalDisconnecting(true)
@@ -693,13 +702,13 @@ function DashboardPage() {
                       <div style={{ fontSize: 12, color: 'var(--db-muted)', marginBottom: 10, lineHeight: 1.5 }}>
                         Connect Google Calendar to book appointments in real time.
                       </div>
-                      <a
-                        href={`${API}/calendar/connect/${tenantId}`}
+                      <button
+                        type="button"
                         className="db-btn db-btn--dark"
-                        onClick={() => trackEvent('calendar_connect_started', { location: 'dashboard', tenant_id: tenantId })}
+                        onClick={startCalendarConnect}
                       >
                         Connect Calendar
-                      </a>
+                      </button>
                     </div>
                   ) : appointments.length === 0 ? (
                     <div style={{ padding: '14px', fontSize: 12, color: 'var(--db-faint)', textAlign: 'center' }}>

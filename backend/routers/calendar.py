@@ -57,15 +57,16 @@ class CalendarSettingsRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/connect/{tenant_id}")
-async def calendar_connect(tenant_id: str):
-    # Public (full-page redirect) — but the OAuth state is now a single-use,
-    # time-limited server nonce bound to this tenant + provider, not the raw id.
+async def calendar_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    # Owner-only: only the verified tenant owner may mint an OAuth state and start
+    # a connection. Returns the URL as JSON; the frontend redirects to it.
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         state = await oauth_state.issue_state(tenant_id, "google_calendar")
         url = cal_svc.build_oauth_url(state=state)
     except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 # ---------------------------------------------------------------------------
@@ -310,13 +311,14 @@ async def get_appointments(tenant_id: str, authorization: Annotated[str | None, 
 # ---------------------------------------------------------------------------
 
 @router.get("/microsoft/connect")
-async def microsoft_connect(tenant_id: str):
+async def microsoft_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         state = await oauth_state.issue_state(tenant_id, "microsoft_calendar")
         url = ms_cal_svc.build_oauth_url(state=state)
     except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 # ---------------------------------------------------------------------------

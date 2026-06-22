@@ -117,6 +117,17 @@ function CalendarPage() {
     }
   }, [tenantId])
 
+  // Owner-authenticated connect: mint the OAuth URL via authedFetch, then redirect.
+  const startConnect = async (path: string, provider: string) => {
+    trackEvent('calendar_connect_started', { location: 'calendar_page', provider, tenant_id: tenantId })
+    try {
+      const res = await authedFetch(`${API}${path}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.url) window.location.href = data.url
+      // On 401 authedFetch already redirects to /login.
+    } catch {}
+  }
+
   const disconnectCalendar = async () => {
     if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
     setCalDisconnecting(true)
@@ -250,14 +261,14 @@ function CalendarPage() {
                   {calDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                 </button>
               ) : (
-                <a
-                  href={`${API}/calendar/connect/${tenantId}`}
+                <button
+                  type="button"
                   className="db-btn db-btn--dark"
                   style={{ fontSize: 12 }}
-                  onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', provider: 'google', tenant_id: tenantId })}
+                  onClick={() => startConnect(`/calendar/connect/${tenantId}`, 'google')}
                 >
                   Connect
-                </a>
+                </button>
               )}
             </div>
 
@@ -293,14 +304,14 @@ function CalendarPage() {
                   {msDisconnecting ? 'Disconnecting…' : 'Disconnect'}
                 </button>
               ) : (
-                <a
-                  href={`${API}/calendar/microsoft/connect?tenant_id=${tenantId}`}
+                <button
+                  type="button"
                   className="db-btn db-btn--dark"
                   style={{ fontSize: 12 }}
-                  onClick={() => trackEvent('calendar_connect_started', { location: 'calendar_page', provider: 'microsoft', tenant_id: tenantId })}
+                  onClick={() => startConnect(`/calendar/microsoft/connect?tenant_id=${tenantId}`, 'microsoft')}
                 >
                   Connect
-                </a>
+                </button>
               )}
             </div>
           </div>

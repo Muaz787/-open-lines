@@ -20,13 +20,14 @@ FRONTEND_URL  = _raw_frontend if _raw_frontend.startswith("http") else f"https:/
 
 
 @router.get("/connect")
-async def slack_connect(tenant_id: str):
+async def slack_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         state = await oauth_state.issue_state(tenant_id, "slack")
         url = slack_svc.build_auth_url(state)
     except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 @router.get("/callback")
