@@ -13,7 +13,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
   { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  priceYear: '$990',   saveYear: '$198', minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
-  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'WhatsApp alerts'] },
+  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'Email & SMS alerts'] },
   { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, priceYear: '$3,790', saveYear: '$758', minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
 ] as const
 

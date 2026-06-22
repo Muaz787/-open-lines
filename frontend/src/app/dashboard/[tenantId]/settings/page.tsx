@@ -24,8 +24,6 @@ function SettingsPage() {
 
   const [tenant, setTenant]               = useState<Tenant | null>(null)
 
-  const [whatsapp, setWhatsapp]                   = useState('')
-  const [whatsappState, setWhatsappState]         = useState<SaveState>('idle')
   const [notifEmail, setNotifEmail]               = useState('')
   const [emailNotifs, setEmailNotifs]             = useState(false)
   const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
@@ -47,28 +45,11 @@ function SettingsPage() {
       if (tRes.ok) {
         const d = await tRes.json()
         setTenant(d)
-        if (d?.whatsapp_number)    setWhatsapp(d.whatsapp_number)
         if (d?.notification_email) setNotifEmail(d.notification_email)
         if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
       }
     })
   }, [tenantId, router])
-
-  const saveWhatsapp = async () => {
-    setWhatsappState('saving')
-    try {
-      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsapp_number: whatsapp.trim() }),
-      })
-      setWhatsappState(res.ok ? 'saved' : 'error')
-      setTimeout(() => setWhatsappState('idle'), 3000)
-    } catch {
-      setWhatsappState('error')
-      setTimeout(() => setWhatsappState('idle'), 3000)
-    }
-  }
 
   const saveNotifEmail = async () => {
     setNotifEmailState('saving')
@@ -134,25 +115,6 @@ function SettingsPage() {
 
             {/* ── Notifications ── */}
             <div className="db-page-heading">Notifications</div>
-            <div className="db-card" style={{ overflow: 'hidden', marginBottom: 24 }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
-                <label className="db-field-label">
-                  WhatsApp number
-                </label>
-                <div className="db-field-help">
-                  After every call, a summary is sent here. Include country code (e.g. +1 416 555 0123).
-                </div>
-                <input type="tel" value={whatsapp} onChange={e => setWhatsapp(e.target.value)}
-                  placeholder="+1 416 555 0123" className="db-input" />
-              </div>
-              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button className="db-btn db-btn--accent-ghost" onClick={saveWhatsapp} disabled={whatsappState === 'saving'}>
-                  {whatsappState === 'saving' ? 'Saving…' : 'Save'}
-                </button>
-                {whatsappState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
-                {whatsappState === 'error' && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Save failed — try again</span>}
-              </div>
-            </div>
 
             {/* ── Email notifications ── */}
             <div className="db-card" style={{ overflow: 'hidden', marginBottom: 24 }}>
