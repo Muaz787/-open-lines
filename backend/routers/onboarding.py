@@ -126,7 +126,14 @@ async def provision(request: Request, body: ProvisionRequest):
         if body.email and body.password:
             try:
                 user_id = await db.create_auth_user(body.email, body.password, result["tenant_id"])
-                await db.update_tenant(result["tenant_id"], {"user_id": user_id, "email": body.email})
+                # Default email call-summaries ON, sent to the owner's account email
+                # (matches the marketing promise; tenant can change/disable in Settings).
+                await db.update_tenant(result["tenant_id"], {
+                    "user_id":             user_id,
+                    "email":               body.email,
+                    "notification_email":  body.email,
+                    "email_notifications": True,
+                })
                 logger.info("Created auth user for tenant %s", result["tenant_id"])
                 distinct_id = user_id
             except Exception as e:
