@@ -156,8 +156,6 @@ export default function OnboardingPage() {
     business_name:        '',
     industry:             'custom',
     country:              'CA',
-    wa_country:           'CA',
-    wa_local:             '',
     extra_instructions:   '',
     agent_name:           'Alex',
     business_description: '',
@@ -180,7 +178,7 @@ export default function OnboardingPage() {
     // after mount (SSR renders the default 'CA' to avoid a hydration mismatch).
     const cc = detectCountry()
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(f => ({ ...f, country: cc, wa_country: cc }))
+    setForm(f => ({ ...f, country: cc }))
   }, [])
 
   useEffect(() => {
@@ -212,11 +210,7 @@ export default function OnboardingPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    if (name === 'country') {
-      setForm(f => ({ ...f, country: value, wa_country: value }))
-    } else {
-      setForm(f => ({ ...f, [name]: value }))
-    }
+    setForm(f => ({ ...f, [name]: value }))
   }
 
   const appendField = (name: 'business_description' | 'extra_instructions', t: string) => {
@@ -274,7 +268,6 @@ export default function OnboardingPage() {
         business_name:      f.business_name || d.business_name || '',
         industry:           d.industry || 'custom',
         country:            d.country && COUNTRIES.some(c => c.code === d.country) ? d.country : f.country,
-        wa_country:         d.country && COUNTRIES.some(c => c.code === d.country) ? d.country : f.wa_country,
         extra_instructions: f.extra_instructions || d.suggested_instructions || '',
       }))
       trackEvent('website_analysis_succeeded', {
