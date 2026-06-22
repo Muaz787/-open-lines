@@ -62,7 +62,7 @@ export default function TermsOfService() {
             <Li>Receive and handle inbound phone calls using an AI voice agent.</Li>
             <Li>Capture and manage lead information from callers.</Li>
             <Li>Book, reschedule, and cancel appointments via Google Calendar integration.</Li>
-            <Li>Receive post-call summaries via WhatsApp and SMS.</Li>
+            <Li>Receive post-call summaries by email, and send callers SMS appointment confirmations.</Li>
             <Li>View call analytics and lead records through a web dashboard.</Li>
           </ul>
           <P>The Service is intended for businesses and is not directed at consumers for personal use.</P>
