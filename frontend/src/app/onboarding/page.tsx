@@ -149,6 +149,7 @@ const Check = () => (
 
 export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
+  const [path, setPath]   = useState<'website' | 'manual'>('website')
   const [form, setForm] = useState({
     website_url:          '',
     email:                '',
@@ -360,6 +361,7 @@ export default function OnboardingPage() {
       }
 
       trackEvent('onboarding_completed', { tenant_id: provisioned.tenant_id, ...getFirstTouch() })
+      trackEvent('provisioning_completed', { tenant_id: provisioned.tenant_id, path })
       trackEvent('activation_screen_viewed', { tenant_id: provisioned.tenant_id })
       setResult(provisioned)
       setStage('done')
@@ -393,71 +395,101 @@ export default function OnboardingPage() {
           {/* ───────── STAGE: URL ───────── */}
           {stage === 'url' && (
             <motion.div key="url" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {/* Free-trial badge */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7, marginBottom: 14,
+                padding: '5px 12px', borderRadius: 999,
+                background: 'rgba(34,197,94,0.10)', border: '1px solid rgba(34,197,94,0.30)',
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d', letterSpacing: '0.01em' }}>7-Day Free Trial</span>
+              </div>
+
               <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-                Create your AI receptionist
+                Your AI receptionist, live in minutes
               </div>
               <div className="ob-sub">
-                Enter your website and we&rsquo;ll build your AI receptionist automatically — in seconds.
+                No credit card required. Your AI answers every call from day one — set it up in under 5 minutes.
               </div>
 
+              {/* Path chooser */}
               <div className="form-group">
-                <label className="form-label">Business Website URL *</label>
-                <input className="form-input" name="website_url" value={form.website_url}
-                  onChange={handleChange} placeholder="https://yourbusiness.com" type="url"
-                  autoFocus />
-                <div style={{
-                  marginTop: 12, padding: '12px 14px', borderRadius: 10,
-                  background: 'var(--surface-2, rgba(127,127,127,0.06))', border: '1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8, fontWeight: 600 }}>We&rsquo;ll automatically:</div>
-                  {['Learn your services', 'Extract FAQs', 'Build your AI knowledge base', 'Configure your AI receptionist'].map(t => (
-                    <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2, var(--text))', marginBottom: 4 }}>
-                      <span style={{ color: '#22c55e', display: 'inline-flex' }}><Check /></span>{t}
+                <label className="form-label">How would you like to get started?</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {([['website', 'I have a website'], ['manual', "I don't have a website"]] as const).map(([p, label]) => {
+                    const active = path === p
+                    return (
+                      <button type="button" key={p}
+                        onClick={() => {
+                          setPath(p)
+                          trackEvent(p === 'website' ? 'website_path_selected' : 'manual_path_selected', {})
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 9, padding: '13px 14px',
+                          borderRadius: 12, cursor: 'pointer', textAlign: 'left',
+                          border: `1.5px solid ${active ? 'var(--text)' : 'var(--border)'}`,
+                          background: active ? 'var(--text)' : 'transparent',
+                          color: active ? 'var(--bg, #fff)' : 'var(--text)',
+                          fontSize: 13.5, fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+                        }}>
+                        <span style={{ display: 'inline-flex', opacity: active ? 1 : 0.35 }}><Check /></span>
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {path === 'website' ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Business Website URL</label>
+                    <input className="form-input" name="website_url" value={form.website_url}
+                      onChange={handleChange} placeholder="https://yourbusiness.com" type="url" autoFocus />
+                    <div style={{
+                      marginTop: 12, padding: '12px 14px', borderRadius: 10,
+                      background: 'var(--surface-2, rgba(127,127,127,0.06))', border: '1px solid var(--border)',
+                    }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 8, fontWeight: 600 }}>We&rsquo;ll automatically:</div>
+                      {['Learn your services', 'Extract FAQs', 'Build your AI knowledge base', 'Configure your receptionist'].map(t => (
+                        <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2, var(--text))', marginBottom: 4 }}>
+                          <span style={{ color: '#22c55e', display: 'inline-flex' }}><Check /></span>{t}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Business Email *</label>
-                <input className="form-input" name="email" type="email" value={form.email}
-                  onChange={handleChange} placeholder="you@business.com" required />
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                  Used for your account and call notifications.
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Business Name{' '}
-                  <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
-                    (optional — we&rsquo;ll detect it)
-                  </span>
-                </label>
-                <input className="form-input" name="business_name" value={form.business_name}
-                  onChange={handleChange} placeholder="Auto-detected from your website" />
-              </div>
-
-              <button
-                type="button"
-                className="btn-submit"
-                disabled={!form.website_url || !emailValid}
-                onClick={() => {
-                  trackEvent('onboarding_step_completed', { step_number: 1, step_name: 'website_url' })
-                  runAnalysis()
-                }}
-              >
-                Analyze my website →
-              </button>
-              <div style={{ textAlign: 'center', marginTop: 12 }}>
-                <button type="button" onClick={() => { if (emailValid) skipWebsite() }}
-                  disabled={!emailValid}
-                  style={{
-                    background: 'none', border: 'none', cursor: emailValid ? 'pointer' : 'not-allowed',
-                    color: 'var(--text-3)', fontSize: 12, textDecoration: 'underline',
+                  </div>
+                  <button type="button" className="btn-submit" disabled={!form.website_url}
+                    onClick={() => {
+                      trackEvent('analyze_clicked', {})
+                      trackEvent('onboarding_step_completed', { step_number: 1, step_name: 'website_url' })
+                      runAnalysis()
+                    }}>
+                    Analyze My Website →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{
+                    margin: '4px 0 18px', padding: '16px', borderRadius: 12,
+                    background: 'var(--surface-2, rgba(127,127,127,0.06))', border: '1px solid var(--border)',
                   }}>
-                  I don&rsquo;t have a website — set up manually
-                </button>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>No website? No problem.</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                      You can still create your AI receptionist. We&rsquo;ll guide you through a quick setup in under 5 minutes.
+                    </div>
+                  </div>
+                  <button type="button" className="btn-submit"
+                    onClick={() => {
+                      trackEvent('onboarding_step_completed', { step_number: 1, step_name: 'manual_start' })
+                      skipWebsite()
+                    }}>
+                    Start Setup →
+                  </button>
+                </>
+              )}
+
+              <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: 'var(--text-3)' }}>
+                7-day free trial · No credit card required · Live in minutes
               </div>
             </motion.div>
           )}
@@ -676,6 +708,7 @@ export default function OnboardingPage() {
                   disabled={!form.business_name || (form.industry === 'custom' && !form.business_description.trim())}
                   onClick={() => {
                     trackEvent('onboarding_step_completed', { step_number: 2, step_name: 'customize', industry: form.industry })
+                    trackEvent('account_creation_started', { path })
                     setStage('review')
                   }}>
                   Continue →
@@ -716,17 +749,23 @@ export default function OnboardingPage() {
 
               <form onSubmit={handleProvision}>
                 <div className="form-group">
-                  <label className="form-label">Create a Password *</label>
-                  <input className="form-input" name="password" type="password" value={form.password}
-                    onChange={handleChange} placeholder="Min. 8 characters" required minLength={8} autoFocus />
+                  <label className="form-label">Business Email *</label>
+                  <input className="form-input" name="email" type="email" value={form.email}
+                    onChange={handleChange} placeholder="you@business.com" required autoFocus />
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                    Secures your dashboard at {form.email || 'your email'}.
+                    Your dashboard login — we&rsquo;ll also email your call summaries here.
                   </div>
                 </div>
 
-                {/* Trust row */}
+                <div className="form-group">
+                  <label className="form-label">Create a Password *</label>
+                  <input className="form-input" name="password" type="password" value={form.password}
+                    onChange={handleChange} placeholder="Min. 8 characters" required minLength={8} />
+                </div>
+
+                {/* Trust row — reinforce the no-card trial at the point of account creation */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', margin: '4px 0 16px' }}>
-                  {['Setup in under 60 seconds', 'No coding required', 'Business number included', 'Cancel anytime'].map(t => (
+                  {['7-day free trial', 'No credit card required', 'Business number included', 'Cancel anytime'].map(t => (
                     <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-3)' }}>
                       <span style={{ color: '#22c55e', display: 'inline-flex' }}><Check /></span>{t}
                     </span>
@@ -737,7 +776,7 @@ export default function OnboardingPage() {
                   <button type="button" className="btn-ghost" onClick={() => setStage('customize')}
                     style={{ flex: '0 0 auto', padding: '13px 20px' }}>← Back</button>
                   <button type="submit" className="btn-submit" style={{ flex: 1, margin: 0 }}
-                    disabled={form.password.length < 8}>
+                    disabled={!emailValid || form.password.length < 8}>
                     Create My AI Receptionist →
                   </button>
                 </div>
