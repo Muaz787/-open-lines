@@ -19,7 +19,7 @@ const PLANS = [
       '24/7 call answering',
       'Lead capture & qualification',
       'Call transcripts & summaries',
-      'WhatsApp & SMS notifications',
+      'Email & SMS notifications',
       'Caller recognition',
       'Dashboard & analytics',
     ],

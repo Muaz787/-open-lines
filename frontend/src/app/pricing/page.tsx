@@ -23,7 +23,7 @@ const ALL_INCLUDED = [
   { icon: '🧠', label: 'Trained on your business', sub: 'Website, files, and custom FAQs' },
   { icon: '👤', label: 'Recognises returning callers', sub: 'Greets by name and recalls history' },
   { icon: '📋', label: 'Qualifies every lead', sub: 'Custom questions for your industry' },
-  { icon: '💬', label: 'WhatsApp summary after each call', sub: 'Sent instantly to your phone' },
+  { icon: '📧', label: 'Email summary after each call', sub: 'Name, intent, urgency & next step' },
   { icon: '🔒', label: 'Your own Twilio number', sub: 'Dedicated line, never shared' },
 ]
 

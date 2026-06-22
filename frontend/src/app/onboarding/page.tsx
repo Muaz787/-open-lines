@@ -311,10 +311,6 @@ export default function OnboardingPage() {
       trackEvent('instructions_added', { length: form.extra_instructions.trim().length })
     }
 
-    const dialCode = COUNTRIES.find(c => c.code === form.wa_country)?.dial ?? '+1'
-    const localNum = form.wa_local.replace(/\D/g, '')
-    const whatsapp = localNum ? `${dialCode}${localNum}` : ''
-
     const body: Record<string, string> = {
       business_name: form.business_name,
       industry:      form.industry,
@@ -323,7 +319,6 @@ export default function OnboardingPage() {
       email:         form.email,
       password:      form.password,
     }
-    if (whatsapp)                   body.whatsapp_number      = whatsapp
     if (form.website_url)           body.website_url          = detected?.website_url || form.website_url
     if (form.extra_instructions)    body.extra_instructions   = form.extra_instructions
     if (form.business_description)  body.business_description  = form.business_description
@@ -376,8 +371,6 @@ export default function OnboardingPage() {
 
   const provisionTotal = files.length > 0 ? PROVISION_STEPS.length : PROVISION_STEPS.length - 1
   const provisionPct = stage === 'provisioning' ? ((stepIndex + 1) / provisionTotal) * 100 : 0
-  const selectedDial = COUNTRIES.find(c => c.code === form.wa_country)?.dial ?? '+1'
-  const selectedFlag = COUNTRIES.find(c => c.code === form.wa_country)?.flag ?? '🌐'
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
 
   const cardWide = stage === 'customize' || stage === 'review'
@@ -666,24 +659,13 @@ export default function OnboardingPage() {
                   style={{ resize: 'vertical', lineHeight: 1.6 }} />
               </div>
 
-              {/* WhatsApp */}
+              {/* Call summary notifications */}
               <div className="form-group">
-                <label className="form-label">
-                  WhatsApp Notifications{' '}
-                  <span style={{ color: 'var(--text-3)', fontWeight: 300, textTransform: 'none', letterSpacing: 0 }}>
-                    (optional)
-                  </span>
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <select name="wa_country" value={form.wa_country} onChange={handleChange}
-                    className="form-input" style={{ width: 110, flexShrink: 0, paddingRight: 6 }}>
-                    {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.dial}</option>)}
-                  </select>
-                  <input className="form-input" name="wa_local" value={form.wa_local}
-                    onChange={handleChange} placeholder="416 555 0100" inputMode="tel" style={{ flex: 1 }} />
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                  Receive call summaries, lead alerts and booking updates here. Customers never see this number.
+                <label className="form-label">Call Summaries</label>
+                <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                  After every call we&rsquo;ll email you a summary — caller name, intent, urgency, and the
+                  suggested next step — to <strong>{form.email || 'your account email'}</strong>. Your customers
+                  also get an instant SMS confirmation when they book. You can change this anytime in Settings.
                 </div>
               </div>
 
@@ -718,7 +700,7 @@ export default function OnboardingPage() {
                   ['Industry', INDUSTRY_LABEL[form.industry] || form.industry],
                   ['Website', form.website_url || '—'],
                   ['AI receptionist', form.agent_name || 'Alex'],
-                  ['Notifications', form.wa_local ? `${selectedFlag} ${selectedDial}${form.wa_local.replace(/\D/g, '')}` : 'Not set'],
+                  ['Call summaries', form.email ? `Emailed to ${form.email}` : 'Emailed to you'],
                   ['Detected services', detected?.services?.length ? `${detected.services.length} found` : '—'],
                   ['Knowledge base', (detected?.knowledge_chars || files.length) ? 'Ready' : 'Will use defaults'],
                 ].map(([k, v], idx, arr) => (
