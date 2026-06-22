@@ -79,8 +79,8 @@ export default function PrivacyPolicy() {
             <Li>Answer inbound phone calls and conduct AI-assisted conversations.</Li>
             <Li>Create and manage lead records in the tenant&apos;s dashboard.</Li>
             <Li>Check calendar availability and create, update, or cancel appointments in Google Calendar on the tenant&apos;s behalf.</Li>
-            <Li>Send post-call summaries to the business via WhatsApp or SMS.</Li>
-            <Li>Send appointment confirmation messages to callers.</Li>
+            <Li>Send post-call summaries to the business by email.</Li>
+            <Li>Send appointment confirmation messages to callers by SMS.</Li>
             <Li>Generate and display call analytics in the tenant dashboard.</Li>
           </ul>
           <P style={{ marginTop: 16 }}>We do not sell personal data to third parties. We do not use caller data for advertising.</P>
