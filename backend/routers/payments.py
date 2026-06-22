@@ -3,9 +3,11 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Request, Header
 from pydantic import BaseModel
 
+from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi, telephony
 from services.webhook_processor import _format_whatsapp_message
 from db import supabase as db
@@ -60,7 +62,8 @@ def _deposit_provider(tenant: dict) -> str:
 # ---------------------------------------------------------------------------
 
 @router.get("/settings/{tenant_id}")
-async def get_settings(tenant_id: str):
+async def get_settings(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -102,7 +105,8 @@ class DepositSettingsRequest(BaseModel):
 
 
 @router.post("/settings/{tenant_id}")
-async def save_settings(tenant_id: str, body: DepositSettingsRequest):
+async def save_settings(tenant_id: str, body: DepositSettingsRequest, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -161,7 +165,8 @@ async def save_settings(tenant_id: str, body: DepositSettingsRequest):
 # ---------------------------------------------------------------------------
 
 @router.get("/list/{tenant_id}")
-async def list_payments(tenant_id: str, limit: int = 50):
+async def list_payments(tenant_id: str, limit: int = 50, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         payments = await db.get_payments_by_tenant(tenant_id, limit=min(limit, 100))
     except Exception as e:

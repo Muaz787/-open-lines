@@ -14,6 +14,7 @@ import {
 } from '@stripe/react-stripe-js'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '')
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const CARD_STYLE = {
@@ -84,7 +85,7 @@ function CheckoutForm({
       }
       ev.complete('success')
       try {
-        await fetch(`${API}/billing/confirm-payment`, {
+        await authedFetch(`${API}/billing/confirm-payment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tenant_id: tenantId, subscription_id: subscriptionId }),
@@ -123,7 +124,7 @@ function CheckoutForm({
     }
 
     try {
-      await fetch(`${API}/billing/confirm-payment`, {
+      await authedFetch(`${API}/billing/confirm-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId, subscription_id: subscriptionId }),
@@ -267,7 +268,7 @@ function UpdateCardForm({
     }
 
     try {
-      await fetch(`${API}/billing/update-payment-method`, {
+      await authedFetch(`${API}/billing/update-payment-method`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId, payment_method_id: setupIntent?.payment_method }),
@@ -338,7 +339,7 @@ export function UpdatePaymentForm({ tenantId, onSuccess, onCancel }: UpdatePayme
 
   useEffect(() => {
     let cancelled = false
-    fetch(`${API}/billing/setup-intent/${tenantId}`, { method: 'POST' })
+    authedFetch(`${API}/billing/setup-intent/${tenantId}`, { method: 'POST' })
       .then(r => r.json())
       .then(data => {
         if (cancelled) return
@@ -540,7 +541,7 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
     setSubmitting(true)
     setLoadError(null)
     try {
-      const res = await fetch(`${API}/billing/create-subscription`, {
+      const res = await authedFetch(`${API}/billing/create-subscription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId, plan, interval, address, name }),
@@ -649,7 +650,7 @@ function AddressCollectInner({
       return
     }
     try {
-      const res = await fetch(`${API}/billing/billing-address/${tenantId}`, {
+      const res = await authedFetch(`${API}/billing/billing-address/${tenantId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: value.address, name: value.name ?? '' }),

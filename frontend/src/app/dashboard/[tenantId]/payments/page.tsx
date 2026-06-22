@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Settings {
@@ -129,10 +130,10 @@ export default function PaymentsPage() {
   const load = useCallback(async () => {
     try {
       const [sRes, stRes, sqRes, pRes] = await Promise.all([
-        fetch(`${API}/payments/settings/${tenantId}`),
-        fetch(`${API}/stripe-connect/status/${tenantId}`),
-        fetch(`${API}/square-connect/status/${tenantId}`),
-        fetch(`${API}/payments/list/${tenantId}`),
+        authedFetch(`${API}/payments/settings/${tenantId}`),
+        authedFetch(`${API}/stripe-connect/status/${tenantId}`),
+        authedFetch(`${API}/square-connect/status/${tenantId}`),
+        authedFetch(`${API}/payments/list/${tenantId}`),
       ])
       if (sRes.ok) {
         const s: Settings = await sRes.json()
@@ -177,7 +178,7 @@ export default function PaymentsPage() {
     if (stripe === 'return' && acctId) {
       // Stripe redirected back after onboarding — verify account server-side
       window.history.replaceState({}, '', window.location.pathname)
-      fetch(`${API}/stripe-connect/verify/${tenantId}`, {
+      authedFetch(`${API}/stripe-connect/verify/${tenantId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_id: acctId }),
@@ -196,7 +197,7 @@ export default function PaymentsPage() {
       // Link expired — restart onboarding for this account
       window.history.replaceState({}, '', window.location.pathname)
       setConnecting(true)
-      fetch(`${API}/stripe-connect/onboard/${tenantId}`, { method: 'POST' })
+      authedFetch(`${API}/stripe-connect/onboard/${tenantId}`, { method: 'POST' })
         .then(r => r.json())
         .then(d => { if (d.url) window.location.href = d.url })
         .catch(() => { showToast('Could not refresh onboarding link.'); setConnecting(false) })
@@ -209,7 +210,7 @@ export default function PaymentsPage() {
   const handleSquareConnect = async () => {
     setSqConnecting(true)
     try {
-      const res = await fetch(`${API}/square-connect/onboard/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/square-connect/onboard/${tenantId}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         showToast(err.detail || 'Connect failed')
@@ -228,7 +229,7 @@ export default function PaymentsPage() {
     if (!confirm('Disconnect Square? Square deposits will stop working immediately.')) return
     setSqDisconnecting(true)
     try {
-      const res = await fetch(`${API}/square-connect/disconnect/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/square-connect/disconnect/${tenantId}`, { method: 'POST' })
       if (res.ok) {
         showToast('Square disconnected.')
         await load()
@@ -245,7 +246,7 @@ export default function PaymentsPage() {
   const handleConnect = async () => {
     setConnecting(true)
     try {
-      const res = await fetch(`${API}/stripe-connect/onboard/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/stripe-connect/onboard/${tenantId}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         showToast(err.detail || 'Connect failed')
@@ -264,7 +265,7 @@ export default function PaymentsPage() {
     if (!confirm('Disconnect Stripe? Deposits will stop working immediately.')) return
     setDisconnecting(true)
     try {
-      const res = await fetch(`${API}/stripe-connect/disconnect/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/stripe-connect/disconnect/${tenantId}`, { method: 'POST' })
       if (res.ok) {
         showToast('Stripe disconnected.')
         await load()
@@ -281,7 +282,7 @@ export default function PaymentsPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const res = await fetch(`${API}/payments/settings/${tenantId}`, {
+      const res = await authedFetch(`${API}/payments/settings/${tenantId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

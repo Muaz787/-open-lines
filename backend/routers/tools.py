@@ -11,7 +11,8 @@ import logging
 from datetime import date as date_type, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
@@ -19,11 +20,20 @@ from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 from services import telephony
 from services.ratelimit import limiter, tenant_key
+from services.security import verify_vapi_server_secret
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/tools", tags=["tools"])
+
+async def _require_vapi_secret(x_vapi_secret: Annotated[str | None, Header()] = None) -> None:
+    """Mid-call tool endpoints are only ever called by Vapi's servers. Gate the
+    whole router on Vapi's shared secret so a tenant UUID alone can't be used to
+    trigger bookings, deposits, or SMS (smishing/abuse prevention)."""
+    verify_vapi_server_secret(x_vapi_secret)
+
+
+router = APIRouter(prefix="/tools", tags=["tools"], dependencies=[Depends(_require_vapi_secret)])
 
 _CALENDAR_ERROR_MSG = (
     "I'm having a little trouble accessing the calendar right now. "

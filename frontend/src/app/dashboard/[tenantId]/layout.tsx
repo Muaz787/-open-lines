@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 function mobileTitle(pathname: string, base: string): string {
@@ -57,9 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/onboarding/status/${tenantId}`),
-      fetch(`${API}/leads/${tenantId}`),
-      fetch(`${API}/calendar/appointments/${tenantId}`),
+      authedFetch(`${API}/onboarding/status/${tenantId}`),
+      authedFetch(`${API}/leads/${tenantId}`),
+      authedFetch(`${API}/calendar/appointments/${tenantId}`),
     ]).then(async ([tRes, lRes, aRes]) => {
       if (tRes.ok) setTenant(await tRes.json())
       if (lRes.ok) { const d = await lRes.json(); setLeads(Array.isArray(d) ? d.length : 0) }

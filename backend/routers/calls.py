@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from db import supabase as db
+from services.security import require_tenant_owner
 
-router = APIRouter(prefix="/calls", tags=["calls"])
+# Every route here exposes tenant call data / transcripts — require ownership.
+router = APIRouter(prefix="/calls", tags=["calls"], dependencies=[Depends(require_tenant_owner)])
 
 
 @router.get("/{tenant_id}/analytics")

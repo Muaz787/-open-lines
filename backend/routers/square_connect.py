@@ -1,11 +1,12 @@
 import logging
 import secrets
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
 from services import square_service as sq_svc, vapi
-from services.security import encrypt
+from services.security import encrypt, verify_tenant_owner
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,9 @@ def _payments_page(tenant_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 @router.post("/onboard/{tenant_id}")
-async def onboard(tenant_id: str):
+async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Generate Square OAuth authorize URL and return it for redirect."""
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -147,7 +149,8 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{tenant_id}")
-async def connect_status(tenant_id: str):
+async def connect_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -172,7 +175,8 @@ async def connect_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/disconnect/{tenant_id}")
-async def connect_disconnect(tenant_id: str):
+async def connect_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         await db.update_tenant(tenant_id, {

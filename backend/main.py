@@ -16,6 +16,33 @@ logging.basicConfig(
     format="%(levelname)s: %(name)s: %(message)s",
 )
 
+# Redact obvious secrets from log lines as a safety net against accidental
+# token/credential logging anywhere in the app.
+import re as _re
+
+_REDACT_PATTERNS = [
+    (_re.compile(r"(Bearer\s+)[A-Za-z0-9._\-]+", _re.I), r"\1[REDACTED]"),
+    (_re.compile(r"\b(sk|rk|pk|whsec|xoxb|xoxp|sk_live|sk_test|rk_live|EAA)[_A-Za-z0-9]{12,}", _re.I), "[REDACTED]"),
+    (_re.compile(r"((?:authorization|api[_-]?key|secret|token|password)\"?\s*[:=]\s*\"?)[^\s\"',}]+", _re.I), r"\1[REDACTED]"),
+]
+
+
+class _RedactFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+            for pat, repl in _REDACT_PATTERNS:
+                msg = pat.sub(repl, msg)
+            record.msg = msg
+            record.args = ()
+        except Exception:
+            pass
+        return True
+
+
+for _h in logging.getLogger().handlers:
+    _h.addFilter(_RedactFilter())
+
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Open Lines API")
@@ -50,10 +77,14 @@ class _CatchAllMiddleware(BaseHTTPMiddleware):
                 "Unhandled exception on %s %s: %s",
                 request.method, request.url.path, exc, exc_info=True,
             )
-            return JSONResponse(
-                status_code=500,
-                content={"detail": f"Internal server error: {type(exc).__name__}: {exc}"},
+            # Don't leak exception type/message (which can contain identifiers or
+            # internal detail) to clients in production.
+            detail = (
+                f"Internal server error: {type(exc).__name__}: {exc}"
+                if APP_ENV != "production"
+                else "Internal server error"
             )
+            return JSONResponse(status_code=500, content={"detail": detail})
 
 
 app.add_middleware(_CatchAllMiddleware)

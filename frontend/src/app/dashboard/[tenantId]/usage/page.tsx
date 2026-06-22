@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import { capitalize } from '../lib/format'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLAN_ALLOCATIONS: Record<string, number> = {
@@ -81,8 +82,8 @@ export default function UsagePage() {
     setLoading(true)
     try {
       const [tenantRes, usageRes] = await Promise.all([
-        fetch(`${API}/onboarding/status/${tenantId}`),
-        fetch(`${API}/billing/usage/${tenantId}`),
+        authedFetch(`${API}/onboarding/status/${tenantId}`),
+        authedFetch(`${API}/billing/usage/${tenantId}`),
       ])
       if (tenantRes.ok) setTenant(await tenantRes.json())
       if (usageRes.ok) setUsage(await usageRes.json())

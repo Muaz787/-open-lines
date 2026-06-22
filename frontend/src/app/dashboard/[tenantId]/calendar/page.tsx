@@ -7,6 +7,7 @@ import { trackEvent } from '@/lib/analytics'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CalendarStatus {
@@ -77,9 +78,9 @@ function CalendarPage() {
     const init = async () => {
       try {
         const [tRes, aRes, cRes] = await Promise.all([
-          fetch(`${API}/onboarding/status/${tenantId}`),
-          fetch(`${API}/calendar/appointments/${tenantId}`),
-          fetch(`${API}/calendar/status/${tenantId}`),
+          authedFetch(`${API}/onboarding/status/${tenantId}`),
+          authedFetch(`${API}/calendar/appointments/${tenantId}`),
+          authedFetch(`${API}/calendar/status/${tenantId}`),
         ])
         if (tRes.ok) {
           const t = await tRes.json()
@@ -108,7 +109,7 @@ function CalendarPage() {
     const calParam = params.get('calendar')
     if (calParam === 'connected' || calParam === 'ms_connected') {
       showToast(calParam === 'ms_connected' ? 'Microsoft Outlook connected!' : 'Google Calendar connected!')
-      fetch(`${API}/calendar/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setCalStatus(d))
+      authedFetch(`${API}/calendar/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setCalStatus(d))
       window.history.replaceState({}, '', window.location.pathname)
     } else if (calParam === 'error' || calParam === 'ms_error') {
       showToast('Calendar connection failed. Please try again.')
@@ -120,8 +121,8 @@ function CalendarPage() {
     if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
     setCalDisconnecting(true)
     try {
-      await fetch(`${API}/calendar/disconnect/${tenantId}`, { method: 'POST' })
-      const r = await fetch(`${API}/calendar/status/${tenantId}`)
+      await authedFetch(`${API}/calendar/disconnect/${tenantId}`, { method: 'POST' })
+      const r = await authedFetch(`${API}/calendar/status/${tenantId}`)
       if (r.ok) setCalStatus(await r.json())
     } finally {
       setCalDisconnecting(false)
@@ -132,8 +133,8 @@ function CalendarPage() {
     if (!confirm('Disconnect Microsoft Outlook? The AI will no longer be able to book appointments in real time.')) return
     setMsDisconnecting(true)
     try {
-      await fetch(`${API}/calendar/microsoft/disconnect/${tenantId}`, { method: 'POST' })
-      const r = await fetch(`${API}/calendar/status/${tenantId}`)
+      await authedFetch(`${API}/calendar/microsoft/disconnect/${tenantId}`, { method: 'POST' })
+      const r = await authedFetch(`${API}/calendar/status/${tenantId}`)
       if (r.ok) setCalStatus(await r.json())
     } finally {
       setMsDisconnecting(false)
@@ -146,7 +147,7 @@ function CalendarPage() {
     if (breakOn && breakStart >= breakEnd) { showToast('Break start must be before break end'); return }
     setBhSaving(true)
     try {
-      const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

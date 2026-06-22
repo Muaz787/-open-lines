@@ -8,6 +8,7 @@ import { urgBadgeClass, statusBadgeClass } from '../lib/badges'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -38,7 +39,7 @@ function LeadsPage() {
   const [updating, setUpdating]           = useState<string | null>(null)
 
   const loadLeads = useCallback(async () => {
-    const res = await fetch(`${API}/leads/${tenantId}?limit=200`)
+    const res = await authedFetch(`${API}/leads/${tenantId}?limit=200`)
     if (res.ok) setLeads(await res.json())
   }, [tenantId])
 
@@ -57,7 +58,7 @@ function LeadsPage() {
   const updateStatus = async (leadId: string, status: string) => {
     setUpdating(leadId)
     try {
-      const res = await fetch(`${API}/leads/${tenantId}/${leadId}`, {
+      const res = await authedFetch(`${API}/leads/${tenantId}/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),

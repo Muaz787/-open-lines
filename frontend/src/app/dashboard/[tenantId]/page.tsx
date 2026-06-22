@@ -12,6 +12,7 @@ import { TranscriptLines } from './components/TranscriptLines'
 import { Toast } from './components/Toast'
 import { LoadingState, EmptyState } from './components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -136,7 +137,7 @@ function DashboardPage() {
   const fetchInsights = useCallback(async () => {
     setInsightsLoading(true)
     try {
-      const res = await fetch(`${API}/leads/${tenantId}/insights`)
+      const res = await authedFetch(`${API}/leads/${tenantId}/insights`)
       if (res.ok) setInsights(await res.json())
     } catch {}
     finally { setInsightsLoading(false) }
@@ -194,7 +195,7 @@ function DashboardPage() {
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/leads/${tenantId}`)
+      const res = await authedFetch(`${API}/leads/${tenantId}`)
       if (res.ok) setLeads(await res.json())
     } catch {}
   }, [tenantId])
@@ -202,8 +203,8 @@ function DashboardPage() {
   const fetchCalendar = useCallback(async () => {
     try {
       const [sRes, aRes] = await Promise.all([
-        fetch(`${API}/calendar/status/${tenantId}`),
-        fetch(`${API}/calendar/appointments/${tenantId}`),
+        authedFetch(`${API}/calendar/status/${tenantId}`),
+        authedFetch(`${API}/calendar/appointments/${tenantId}`),
       ])
       if (sRes.ok) setCalStatus(await sRes.json())
       if (aRes.ok) setAppointments(await aRes.json())
@@ -214,9 +215,9 @@ function DashboardPage() {
     const init = async () => {
       try {
         const [tRes, lRes, sRes] = await Promise.all([
-          fetch(`${API}/onboarding/status/${tenantId}`),
-          fetch(`${API}/leads/${tenantId}`),
-          fetch(`${API}/leads/${tenantId}/stats`),
+          authedFetch(`${API}/onboarding/status/${tenantId}`),
+          authedFetch(`${API}/leads/${tenantId}`),
+          authedFetch(`${API}/leads/${tenantId}/stats`),
         ])
         if (tRes.ok) setTenant(await tRes.json())
         if (lRes.ok) setLeads(await lRes.json())
@@ -229,7 +230,7 @@ function DashboardPage() {
     fetchCalendar()
     const interval = setInterval(() => {
       fetchLeads()
-      fetch(`${API}/leads/${tenantId}/stats`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
+      authedFetch(`${API}/leads/${tenantId}/stats`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
     }, 30_000)
     return () => clearInterval(interval)
   }, [tenantId, fetchLeads, fetchCalendar])
@@ -249,7 +250,7 @@ function DashboardPage() {
       setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
       setTimeout(() => setCalToast(null), 6000)
       const pollTenant = (attemptsLeft: number) => {
-        fetch(`${API}/onboarding/status/${tenantId}`)
+        authedFetch(`${API}/onboarding/status/${tenantId}`)
           .then(r => r.ok ? r.json() : null)
           .then(d => {
             if (!d) return
@@ -270,7 +271,7 @@ function DashboardPage() {
     if (!confirm('Disconnect Google Calendar? The AI will no longer be able to book appointments in real time.')) return
     setCalDisconnecting(true)
     try {
-      await fetch(`${API}/calendar/disconnect/${tenantId}`, { method: 'POST' })
+      await authedFetch(`${API}/calendar/disconnect/${tenantId}`, { method: 'POST' })
       await fetchCalendar()
     } finally {
       setCalDisconnecting(false)
@@ -287,7 +288,7 @@ function DashboardPage() {
     setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
     setTimeout(() => setCalToast(null), 6000)
     try {
-      const res = await fetch(`${API}/onboarding/status/${tenantId}`)
+      const res = await authedFetch(`${API}/onboarding/status/${tenantId}`)
       if (res.ok) setTenant(await res.json())
     } catch {}
   }
@@ -295,7 +296,7 @@ function DashboardPage() {
   const saveDuration = async (minutes: number) => {
     setDurSaving(true)
     try {
-      await fetch(`${API}/calendar/settings/${tenantId}`, {
+      await authedFetch(`${API}/calendar/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointment_duration_minutes: minutes }),
@@ -321,7 +322,7 @@ function DashboardPage() {
     setExpandedCallId(null)
     if (!detailMap[leadId]) {
       try {
-        const res = await fetch(`${API}/leads/${tenantId}/${leadId}`)
+        const res = await authedFetch(`${API}/leads/${tenantId}/${leadId}`)
         if (res.ok) {
           const data: LeadDetail = await res.json()
           setDetailMap(prev => ({ ...prev, [leadId]: data }))
@@ -340,7 +341,7 @@ function DashboardPage() {
     setStatusMap(prev => ({ ...prev, [leadId]: status }))
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status } : l))
     try {
-      await fetch(`${API}/leads/${tenantId}/${leadId}`, {
+      await authedFetch(`${API}/leads/${tenantId}/${leadId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),

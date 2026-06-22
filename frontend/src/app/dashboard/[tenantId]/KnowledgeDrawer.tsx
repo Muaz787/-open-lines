@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -73,7 +74,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
 
   const loadEntries = useCallback(async () => {
     const ah = await authHeaders()
-    fetch(`${API}/knowledge/entries/${tenantId}`, { headers: ah })
+    authedFetch(`${API}/knowledge/entries/${tenantId}`, { headers: ah })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.entries) setEntries(d.entries) })
       .catch(() => {})
@@ -85,7 +86,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setDeletingId(id)
     try {
       const ah = await authHeaders()
-      await fetch(`${API}/knowledge/entries/${tenantId}/${id}`, { method: 'DELETE', headers: ah })
+      await authedFetch(`${API}/knowledge/entries/${tenantId}/${id}`, { method: 'DELETE', headers: ah })
       setEntries(prev => prev.filter(e => e.id !== id))
     } catch {}
     finally { setDeletingId(null) }
@@ -96,7 +97,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setRepairMsg(null)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/repair-prompt/${tenantId}`, { method: 'POST', headers: ah })
+      const res = await authedFetch(`${API}/knowledge/repair-prompt/${tenantId}`, { method: 'POST', headers: ah })
       const data = await res.json()
       setRepairMsg(res.ok ? 'AI prompt updated successfully.' : data.detail || 'Repair failed')
     } catch {
@@ -113,7 +114,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setUrlMsg(null)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/website/${tenantId}`, {
+      const res = await authedFetch(`${API}/knowledge/website/${tenantId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ website_url: url }),
@@ -131,9 +132,10 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setSyncLoading(true)
     setSyncMsg(null)
     try {
-      const res  = await fetch(`${API}/webhooks/sync-knowledge`, {
+      const ah = await authHeaders()
+      const res  = await authedFetch(`${API}/webhooks/sync-knowledge`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ tenant_id: tenantId }),
       })
       const data = await res.json()
@@ -157,7 +159,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     arr.forEach(f => form.append('files', f))
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/upload/${tenantId}`, {
+      const res = await authedFetch(`${API}/knowledge/upload/${tenantId}`, {
         method: 'POST', headers: { ...ah }, body: form,
       })
       const data = await res.json()
@@ -176,7 +178,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setTextMsg(null)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/text/${tenantId}`, {
+      const res = await authedFetch(`${API}/knowledge/text/${tenantId}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ text }),
@@ -197,7 +199,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
     setClearMsg(null)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST', headers: { ...ah } })
+      const res = await authedFetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST', headers: { ...ah } })
       setClearMsg(res.ok ? 'Knowledge base cleared.' : 'Clear failed — try again')
     } catch {
       setClearMsg('Network error')

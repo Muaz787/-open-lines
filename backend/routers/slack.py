@@ -2,9 +2,11 @@ import os
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
+from services.security import verify_tenant_owner
 from services import slack as slack_svc
 from db import supabase as db
 
@@ -69,7 +71,8 @@ async def slack_callback(
 
 
 @router.get("/status/{tenant_id}")
-async def slack_status(tenant_id: str):
+async def slack_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -87,7 +90,8 @@ async def slack_status(tenant_id: str):
 
 
 @router.post("/disconnect/{tenant_id}")
-async def slack_disconnect(tenant_id: str):
+async def slack_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         await db.update_tenant(tenant_id, {
             "slack_webhook_url":   None,

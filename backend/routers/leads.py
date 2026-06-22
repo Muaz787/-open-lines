@@ -3,15 +3,17 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from db import supabase as db
+from services.security import require_tenant_owner
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/leads", tags=["leads"])
+# Every route here exposes/edits tenant lead PII — require ownership.
+router = APIRouter(prefix="/leads", tags=["leads"], dependencies=[Depends(require_tenant_owner)])
 
 _openai: AsyncOpenAI | None = None
 

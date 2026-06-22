@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 // Zapier integration is paused — set to true to bring the API key UI back.
@@ -108,16 +109,16 @@ function IntegrationsPage() {
     const init = async () => {
       try {
         const [tRes, hRes, sRes] = await Promise.all([
-          fetch(`${API}/onboarding/status/${tenantId}`),
-          fetch(`${API}/hubspot/status/${tenantId}`),
-          fetch(`${API}/slack/status/${tenantId}`),
+          authedFetch(`${API}/onboarding/status/${tenantId}`),
+          authedFetch(`${API}/hubspot/status/${tenantId}`),
+          authedFetch(`${API}/slack/status/${tenantId}`),
         ])
         if (tRes.ok) setTenant(await tRes.json())
         if (hRes.ok) setHsStatus(await hRes.json())
         if (sRes.ok) setSlackStatus(await sRes.json())
         if (ZAPIER_ENABLED) {
           try {
-            const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
+            const kRes = await authedFetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
             if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
           } catch {}
         }
@@ -134,7 +135,7 @@ function IntegrationsPage() {
 
     if (hs === 'connected') {
       showToast('HubSpot connected!')
-      fetch(`${API}/hubspot/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setHsStatus(d))
+      authedFetch(`${API}/hubspot/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setHsStatus(d))
       window.history.replaceState({}, '', window.location.pathname)
     } else if (hs === 'error') {
       showToast('HubSpot connection failed. Please try again.')
@@ -143,7 +144,7 @@ function IntegrationsPage() {
 
     if (sl === 'connected') {
       showToast('Slack connected!')
-      fetch(`${API}/slack/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setSlackStatus(d))
+      authedFetch(`${API}/slack/status/${tenantId}`).then(r => r.ok && r.json()).then(d => d && setSlackStatus(d))
       window.history.replaceState({}, '', window.location.pathname)
     } else if (sl === 'error') {
       showToast('Slack connection failed. Please try again.')
@@ -155,7 +156,7 @@ function IntegrationsPage() {
     if (!confirm('Disconnect HubSpot? Call summaries will no longer sync to your CRM.')) return
     setHsDisconnecting(true)
     try {
-      const res = await fetch(`${API}/hubspot/disconnect/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/hubspot/disconnect/${tenantId}`, { method: 'POST' })
       if (res.ok) { setHsStatus({ connected: false }); showToast('HubSpot disconnected.') }
       else showToast('Disconnect failed — try again.')
     } catch { showToast('Network error — try again.') }
@@ -166,7 +167,7 @@ function IntegrationsPage() {
     if (!confirm('Disconnect Slack? Call notifications will stop being sent to your channel.')) return
     setSlDisconnecting(true)
     try {
-      const res = await fetch(`${API}/slack/disconnect/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/slack/disconnect/${tenantId}`, { method: 'POST' })
       if (res.ok) { setSlackStatus({ connected: false }); showToast('Slack disconnected.') }
       else showToast('Disconnect failed — try again.')
     } catch { showToast('Network error — try again.') }
@@ -177,7 +178,7 @@ function IntegrationsPage() {
     setCreatingKey(true)
     setNewKey(null)
     try {
-      const res = await fetch(`${API}/zapier/keys/${tenantId}`, {
+      const res = await authedFetch(`${API}/zapier/keys/${tenantId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ label: keyLabel.trim() || null }),
@@ -186,7 +187,7 @@ function IntegrationsPage() {
         const data = await res.json()
         setNewKey(data.api_key)
         setKeyLabel('')
-        const kRes = await fetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
+        const kRes = await authedFetch(`${API}/zapier/keys/${tenantId}`, { headers: await authHeaders() })
         if (kRes.ok) setApiKeys((await kRes.json()).keys || [])
       } else {
         showToast('Could not create API key.')
@@ -198,7 +199,7 @@ function IntegrationsPage() {
   const revokeApiKey = async (id: string) => {
     if (!confirm('Revoke this API key? Any Zap or app using it will stop working immediately.')) return
     try {
-      const res = await fetch(`${API}/zapier/keys/${tenantId}/${id}`, { method: 'DELETE', headers: await authHeaders() })
+      const res = await authedFetch(`${API}/zapier/keys/${tenantId}/${id}`, { method: 'DELETE', headers: await authHeaders() })
       if (res.ok) {
         setApiKeys(keys => keys.map(k => k.id === id ? { ...k, revoked_at: new Date().toISOString() } : k))
         showToast('API key revoked.')

@@ -8,6 +8,7 @@ import { urgBadgeClass } from '../lib/badges'
 import { TranscriptLines } from '../components/TranscriptLines'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CallLead {
@@ -57,8 +58,8 @@ export default function CallsPage() {
     setLoading(true)
     try {
       const [callsRes, analyticsRes] = await Promise.all([
-        fetch(`${API}/calls/${tenantId}?days=${period}`),
-        fetch(`${API}/calls/${tenantId}/analytics?days=${period}`),
+        authedFetch(`${API}/calls/${tenantId}?days=${period}`),
+        authedFetch(`${API}/calls/${tenantId}/analytics?days=${period}`),
       ])
       if (callsRes.ok) setCalls(await callsRes.json())
       if (analyticsRes.ok) setAnalytics(await analyticsRes.json())
@@ -77,7 +78,7 @@ export default function CallsPage() {
     if (!detailMap[callId]) {
       setDetailLoading(callId)
       try {
-        const res = await fetch(`${API}/calls/${tenantId}/${callId}`)
+        const res = await authedFetch(`${API}/calls/${tenantId}/${callId}`)
         if (res.ok) {
           const detail: CallDetail = await res.json()
           setDetailMap(m => ({ ...m, [callId]: detail }))

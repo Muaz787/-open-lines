@@ -2,10 +2,12 @@ import os
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from typing import Annotated
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
+from services.security import verify_tenant_owner
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
@@ -138,7 +140,8 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{tenant_id}")
-async def calendar_status(tenant_id: str):
+async def calendar_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -165,7 +168,8 @@ async def calendar_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/disconnect/{tenant_id}")
-async def calendar_disconnect(tenant_id: str):
+async def calendar_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -211,7 +215,8 @@ async def calendar_disconnect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.patch("/settings/{tenant_id}")
-async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest):
+async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     updates: dict = {}
     if body.appointment_duration_minutes is not None:
         updates["appointment_duration_minutes"] = body.appointment_duration_minutes
@@ -235,8 +240,9 @@ async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest
 # ---------------------------------------------------------------------------
 
 @router.post("/repair/{tenant_id}")
-async def calendar_repair(tenant_id: str):
+async def calendar_repair(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Force-update the Vapi assistant tool URLs to the current APP_BACKEND_URL."""
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -280,7 +286,8 @@ async def calendar_repair(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/appointments/{tenant_id}")
-async def get_appointments(tenant_id: str):
+async def get_appointments(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         appts = await db.get_appointments(tenant_id)
     except Exception as e:
@@ -391,7 +398,8 @@ async def microsoft_callback(code: str | None = None, state: str | None = None, 
 # ---------------------------------------------------------------------------
 
 @router.post("/microsoft/disconnect/{tenant_id}")
-async def microsoft_disconnect(tenant_id: str):
+async def microsoft_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -447,7 +455,8 @@ async def microsoft_disconnect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/debug/{tenant_id}")
-async def calendar_debug(tenant_id: str):
+async def calendar_debug(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     result: dict = {}
 
     # Step 1: tenant + token

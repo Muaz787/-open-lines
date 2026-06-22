@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -42,7 +43,7 @@ function SettingsPage() {
       if (!data.user) { router.replace('/login'); return }
       setEmail(data.user.email ?? '')
     })
-    fetch(`${API}/onboarding/status/${tenantId}`).then(async tRes => {
+    authedFetch(`${API}/onboarding/status/${tenantId}`).then(async tRes => {
       if (tRes.ok) {
         const d = await tRes.json()
         setTenant(d)
@@ -56,7 +57,7 @@ function SettingsPage() {
   const saveWhatsapp = async () => {
     setWhatsappState('saving')
     try {
-      const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ whatsapp_number: whatsapp.trim() }),
@@ -72,7 +73,7 @@ function SettingsPage() {
   const saveNotifEmail = async () => {
     setNotifEmailState('saving')
     try {
-      const res = await fetch(`${API}/onboarding/settings/${tenantId}`, {
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs }),
