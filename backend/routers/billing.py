@@ -2,11 +2,13 @@ import os
 import json
 import logging
 import stripe
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Request, Header
 from dotenv import load_dotenv
 
 from db import supabase as db
 from services import analytics
+from services.security import verify_tenant_owner
 
 load_dotenv()
 
@@ -124,13 +126,14 @@ def _extract_pi_secret(invoice) -> str | None:
 
 
 @router.post("/create-checkout")
-async def create_checkout(body: dict):
+async def create_checkout(body: dict, authorization: Annotated[str | None, Header()] = None):
     tenant_id: str = body.get("tenant_id", "")
     plan: str      = body.get("plan", "").lower()
     interval: str  = _norm_interval(body.get("interval"))
 
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
+    await verify_tenant_owner(tenant_id, authorization)
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="plan must be starter, pro, or business")
 
@@ -355,10 +358,12 @@ def _clean_address(raw) -> dict | None:
 
 
 @router.post("/create-subscription")
-async def create_subscription(body: dict):
+async def create_subscription(body: dict, authorization: Annotated[str | None, Header()] = None):
     tenant_id: str = body.get("tenant_id", "")
     plan: str      = body.get("plan", "").lower()
     interval: str  = _norm_interval(body.get("interval"))
+    if tenant_id:
+        await verify_tenant_owner(tenant_id, authorization)
     # Billing address from the Stripe AddressElement — persisted to the Customer
     # below so automatic_tax can compute GST/HST on the very first invoice.
     address: dict | None = _clean_address(body.get("address"))
@@ -541,13 +546,14 @@ async def create_subscription(body: dict):
 
 
 @router.post("/confirm-payment")
-async def confirm_payment(body: dict):
+async def confirm_payment(body: dict, authorization: Annotated[str | None, Header()] = None):
     """Called by the frontend after Payment Element confirms — syncs subscription status to DB."""
     tenant_id: str       = body.get("tenant_id", "")
     subscription_id: str = body.get("subscription_id", "")
 
     if not tenant_id or not subscription_id:
         raise HTTPException(status_code=400, detail="tenant_id and subscription_id are required")
+    await verify_tenant_owner(tenant_id, authorization)
 
     try:
         sub = stripe.Subscription.retrieve(subscription_id)
@@ -580,11 +586,12 @@ async def confirm_payment(body: dict):
 
 
 @router.post("/sync/{tenant_id}")
-async def sync_subscription(tenant_id: str):
+async def sync_subscription(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """
     Manually pull the tenant's Stripe subscription and sync status to DB.
     Useful when a webhook was missed or failed.
     """
+    await verify_tenant_owner(tenant_id, authorization)
     if not STRIPE_SECRET_KEY:
         raise HTTPException(status_code=500, detail="Stripe not configured")
 
@@ -650,7 +657,8 @@ async def sync_subscription(tenant_id: str):
 # ── Subscription management endpoints ───────────────────────────────────────
 
 @router.get("/subscription-details/{tenant_id}")
-async def subscription_details(tenant_id: str):
+async def subscription_details(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -740,7 +748,8 @@ async def subscription_details(tenant_id: str):
 
 
 @router.get("/invoices/{tenant_id}")
-async def list_invoices(tenant_id: str):
+async def list_invoices(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -771,7 +780,8 @@ async def list_invoices(tenant_id: str):
 
 
 @router.post("/portal/{tenant_id}")
-async def customer_portal(tenant_id: str):
+async def customer_portal(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -794,7 +804,8 @@ async def customer_portal(tenant_id: str):
 
 
 @router.post("/cancel/{tenant_id}")
-async def cancel_subscription(tenant_id: str):
+async def cancel_subscription(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -815,7 +826,8 @@ async def cancel_subscription(tenant_id: str):
 
 
 @router.post("/reactivate/{tenant_id}")
-async def reactivate_subscription(tenant_id: str):
+async def reactivate_subscription(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -836,9 +848,10 @@ async def reactivate_subscription(tenant_id: str):
 
 
 @router.post("/proration-preview")
-async def proration_preview(body: dict):
+async def proration_preview(body: dict, authorization: Annotated[str | None, Header()] = None):
     """Return the prorated amount the customer would pay to upgrade now."""
     tenant_id = body.get("tenant_id", "")
+    await verify_tenant_owner(tenant_id, authorization)
     plan      = body.get("plan", "").lower()
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
@@ -877,12 +890,13 @@ async def proration_preview(body: dict):
 
 
 @router.post("/upgrade-plan")
-async def upgrade_plan(body: dict):
+async def upgrade_plan(body: dict, authorization: Annotated[str | None, Header()] = None):
     """
     Immediately modify the subscription to the new (higher) plan with proration.
     Returns the PaymentIntent client_secret so the frontend can collect the charge.
     """
     tenant_id = body.get("tenant_id", "")
+    await verify_tenant_owner(tenant_id, authorization)
     plan      = body.get("plan", "").lower()
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
@@ -950,12 +964,13 @@ async def upgrade_plan(body: dict):
 
 
 @router.post("/downgrade-plan")
-async def downgrade_plan(body: dict):
+async def downgrade_plan(body: dict, authorization: Annotated[str | None, Header()] = None):
     """
     Schedule a downgrade to take effect at the next billing cycle.
     No proration charge — current plan continues until period end.
     """
     tenant_id = body.get("tenant_id", "")
+    await verify_tenant_owner(tenant_id, authorization)
     plan      = body.get("plan", "").lower()
     if plan not in PRICE_IDS:
         raise HTTPException(status_code=400, detail="Invalid plan")
@@ -996,9 +1011,10 @@ async def downgrade_plan(body: dict):
 
 
 @router.get("/billing-address/{tenant_id}")
-async def get_billing_address(tenant_id: str):
+async def get_billing_address(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Return whether the tenant's Stripe Customer has a tax-resolvable address.
     Used to prompt existing customers (created before address collection) to add one."""
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -1019,11 +1035,12 @@ async def get_billing_address(tenant_id: str):
 
 
 @router.post("/billing-address/{tenant_id}")
-async def save_billing_address(tenant_id: str, body: dict):
+async def save_billing_address(tenant_id: str, body: dict, authorization: Annotated[str | None, Header()] = None):
     """Persist a billing address onto the tenant's Stripe Customer so automatic_tax
     can resolve a GST/HST jurisdiction. Needed for customers created before the
     subscribe flow collected an address (otherwise upgrades fail with
     'customer's location isn't recognized')."""
+    await verify_tenant_owner(tenant_id, authorization)
     address = _clean_address(body.get("address"))
     name    = str(body.get("name") or "").strip()
     if not address:
@@ -1051,8 +1068,9 @@ async def save_billing_address(tenant_id: str, body: dict):
 
 
 @router.post("/setup-intent/{tenant_id}")
-async def create_setup_intent(tenant_id: str):
+async def create_setup_intent(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Create a Stripe SetupIntent so the customer can add/update a payment method in-app."""
+    await verify_tenant_owner(tenant_id, authorization)
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -1075,8 +1093,9 @@ async def create_setup_intent(tenant_id: str):
 
 
 @router.get("/usage/{tenant_id}")
-async def get_usage(tenant_id: str):
+async def get_usage(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Return current billing-period minute usage and overage for a tenant."""
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -1088,13 +1107,14 @@ async def get_usage(tenant_id: str):
 
 
 @router.post("/update-payment-method")
-async def update_payment_method(body: dict):
+async def update_payment_method(body: dict, authorization: Annotated[str | None, Header()] = None):
     """Attach a new PaymentMethod to the customer and set it as default on the subscription."""
     tenant_id = body.get("tenant_id", "")
     pm_id     = body.get("payment_method_id", "")
 
     if not tenant_id or not pm_id:
         raise HTTPException(status_code=400, detail="tenant_id and payment_method_id are required")
+    await verify_tenant_owner(tenant_id, authorization)
 
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:

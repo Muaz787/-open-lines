@@ -139,7 +139,7 @@ async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(
         await vapi.update_phone_number(stored_phone_id, {
             "assistantId": None,
             "squadId": None,
-            "serverUrl": f"{app_backend_url}/webhooks/vapi-call-ended",
+            **vapi.server_block(f"{app_backend_url}/webhooks/vapi-call-ended"),
         })
     except Exception as e:
         detail = str(e)
@@ -151,3 +151,52 @@ async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(
 
     logger.info("Smart routing enabled for tenant %s (phone number %s)", tenant_id, stored_phone_id)
     return {"status": "enabled", "vapi_phone_number_id": stored_phone_id}
+
+
+@router.post("/repatch-vapi-secret")
+async def repatch_vapi_secret(x_admin_key: str | None = Header(None)):
+    """Re-patch every tenant's Vapi phone-number server config so the inbound
+    `assistant-request` webhook carries the current X-Vapi-Secret.
+
+    Run this ONCE right after setting VAPI_SERVER_SECRET in the environment.
+    Per-call `assistant-request` originates from the phone-number server config
+    (before our override exists), so existing tenants need this; everything after
+    that (end-of-call-report, tool calls) inherits the secret from the per-call
+    override automatically. Idempotent and safe to re-run. When VAPI_SERVER_SECRET
+    is unset this simply rewrites the flat serverUrl (no-op in practice)."""
+    _check_admin_key(x_admin_key)
+
+    app_backend_url = os.getenv("APP_BACKEND_URL", "").strip().rstrip("/")
+    if not app_backend_url:
+        raise HTTPException(status_code=500, detail="APP_BACKEND_URL not set")
+    server_url = f"{app_backend_url}/webhooks/vapi-call-ended"
+
+    try:
+        res = (
+            db.get_client()
+            .table("tenants")
+            .select("id, vapi_phone_number_id, vapi_suborg_api_key")
+            .execute()
+        )
+        tenants = [t for t in (res.data or []) if t.get("vapi_phone_number_id")]
+    except Exception as e:
+        logger.error("repatch-vapi-secret: tenant fetch failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to list tenants")
+
+    enforced = bool(os.getenv("VAPI_SERVER_SECRET", ""))
+    results = {"ok": 0, "errors": 0, "skipped": 0}
+    for t in tenants:
+        phone_id = t.get("vapi_phone_number_id")
+        if not phone_id:
+            results["skipped"] += 1
+            continue
+        try:
+            key = vapi.get_tenant_vapi_key(t)
+            await vapi.update_phone_number(phone_id, vapi.server_block(server_url), api_key=key)
+            results["ok"] += 1
+        except Exception as e:
+            logger.error("repatch-vapi-secret: failed for tenant %s: %s", t.get("id"), e)
+            results["errors"] += 1
+
+    logger.info("repatch-vapi-secret done (enforced=%s): %s", enforced, results)
+    return {"secret_enforced": enforced, "phone_numbers": results, "total": len(tenants)}

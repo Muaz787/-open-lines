@@ -2,10 +2,13 @@ import os
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
-from services import slack as slack_svc
+from services.security import verify_tenant_owner
+from services import slack as slack_svc, oauth_state
+from services.oauth_state import OAuthStateError
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -17,12 +20,14 @@ FRONTEND_URL  = _raw_frontend if _raw_frontend.startswith("http") else f"https:/
 
 
 @router.get("/connect")
-async def slack_connect(tenant_id: str):
+async def slack_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
-        url = slack_svc.build_auth_url(tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "slack")
+        url = slack_svc.build_auth_url(state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 @router.get("/callback")
@@ -31,10 +36,15 @@ async def slack_callback(
     state: str | None = None,
     error: str | None = None,
 ):
-    tenant_id        = state or ""
+    try:
+        tenant_id = await oauth_state.consume_state(state, "slack")
+    except OAuthStateError as e:
+        logger.warning("Slack OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?slack=error")
+
     integrations_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/integrations"
 
-    if error or not code or not tenant_id:
+    if error or not code:
         logger.warning("Slack OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{integrations_page}?slack=error")
 
@@ -69,7 +79,8 @@ async def slack_callback(
 
 
 @router.get("/status/{tenant_id}")
-async def slack_status(tenant_id: str):
+async def slack_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -87,7 +98,8 @@ async def slack_status(tenant_id: str):
 
 
 @router.post("/disconnect/{tenant_id}")
-async def slack_disconnect(tenant_id: str):
+async def slack_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         await db.update_tenant(tenant_id, {
             "slack_webhook_url":   None,

@@ -8,6 +8,7 @@ import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
@@ -325,7 +326,7 @@ function SubscriptionPage() {
   const [needAddress, setNeedAddress] = useState(false)
 
   useEffect(() => {
-    fetch(`${API}/onboarding/status/${tenantId}`)
+    authedFetch(`${API}/onboarding/status/${tenantId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setSidebarTenant(d) })
       .catch(() => {})
@@ -338,8 +339,8 @@ function SubscriptionPage() {
 
   const fetchData = useCallback(async () => {
     const [dRes, iRes] = await Promise.all([
-      fetch(`${API}/billing/subscription-details/${tenantId}`),
-      fetch(`${API}/billing/invoices/${tenantId}`),
+      authedFetch(`${API}/billing/subscription-details/${tenantId}`),
+      authedFetch(`${API}/billing/invoices/${tenantId}`),
     ])
     if (dRes.ok) setSubDetails(await dRes.json())
     if (iRes.ok) setInvoices(await iRes.json())
@@ -357,7 +358,7 @@ function SubscriptionPage() {
     if (!isUp) { setProrationAmount(null); return }
 
     setProrationLoading(true)
-    fetch(`${API}/billing/proration-preview`, {
+    authedFetch(`${API}/billing/proration-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
@@ -400,7 +401,7 @@ function SubscriptionPage() {
     try {
       if (isUp) {
         // Upgrade — collect prorated payment
-        const res  = await fetch(`${API}/billing/upgrade-plan`, {
+        const res  = await authedFetch(`${API}/billing/upgrade-plan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
@@ -426,7 +427,7 @@ function SubscriptionPage() {
         }
       } else {
         // Downgrade — schedule for next cycle
-        const res  = await fetch(`${API}/billing/downgrade-plan`, {
+        const res  = await authedFetch(`${API}/billing/downgrade-plan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tenant_id: tenantId, plan: confirmPlan.id }),
@@ -455,7 +456,7 @@ function SubscriptionPage() {
   const handleCancelConfirm = async () => {
     setCanceling(true)
     try {
-      const res = await fetch(`${API}/billing/cancel/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/billing/cancel/${tenantId}`, { method: 'POST' })
       if (res.ok) {
         showToast('Subscription will cancel at the end of your billing period.')
         setShowCancel(false)
@@ -473,7 +474,7 @@ function SubscriptionPage() {
   const handleReactivate = async () => {
     setReactivating(true)
     try {
-      const res = await fetch(`${API}/billing/reactivate/${tenantId}`, { method: 'POST' })
+      const res = await authedFetch(`${API}/billing/reactivate/${tenantId}`, { method: 'POST' })
       if (res.ok) {
         showToast('✓ Subscription reactivated')
         await fetchData()

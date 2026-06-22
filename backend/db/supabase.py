@@ -638,3 +638,36 @@ async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
         "tenant_id": tenant_id, "type": "website", "label": label,
     }).execute()
     return res.data[0] if res.data else {}
+
+
+# ---------------------------------------------------------------------------
+# OAuth state nonces
+# ---------------------------------------------------------------------------
+
+async def insert_oauth_state(nonce: str, tenant_id: str, provider: str, expires_at_iso: str) -> None:
+    get_client().table("oauth_states").insert({
+        "nonce":      nonce,
+        "tenant_id":  tenant_id,
+        "provider":   provider,
+        "expires_at": expires_at_iso,
+    }).execute()
+
+
+async def consume_oauth_state(nonce: str) -> dict | None:
+    """Fetch and atomically delete an OAuth state row by nonce. Returns the row
+    (or None if not found). Deleting on read makes every state single-use."""
+    res = get_client().table("oauth_states").select("*").eq("nonce", nonce).limit(1).execute()
+    row = res.data[0] if res.data else None
+    if row:
+        try:
+            get_client().table("oauth_states").delete().eq("nonce", nonce).execute()
+        except Exception:
+            pass  # best-effort; expiry still bounds reuse
+    return row
+
+
+async def purge_expired_oauth_states() -> None:
+    """Housekeeping: delete states whose expiry has passed (safe to call anytime)."""
+    from datetime import datetime, timezone as _tz
+    now_iso = datetime.now(_tz.utc).isoformat()
+    get_client().table("oauth_states").delete().lt("expires_at", now_iso).execute()

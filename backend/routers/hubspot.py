@@ -2,11 +2,14 @@ import os
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
-from services import hubspot as hs
+from services.security import verify_tenant_owner
+from services import hubspot as hs, oauth_state
 from services.hubspot import HubSpotTokenError
+from services.oauth_state import OAuthStateError
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -22,12 +25,14 @@ FRONTEND_URL  = _raw_frontend if _raw_frontend.startswith("http") else f"https:/
 # ---------------------------------------------------------------------------
 
 @router.get("/connect")
-async def hubspot_connect(tenant_id: str):
+async def hubspot_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
-        url = hs.build_auth_url(tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "hubspot")
+        url = hs.build_auth_url(state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 # ---------------------------------------------------------------------------
@@ -40,10 +45,15 @@ async def hubspot_callback(
     state: str | None = None,
     error: str | None = None,
 ):
-    tenant_id = state or ""
+    try:
+        tenant_id = await oauth_state.consume_state(state, "hubspot")
+    except OAuthStateError as e:
+        logger.warning("HubSpot OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?hubspot=error")
+
     integrations_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/integrations"
 
-    if error or not code or not tenant_id:
+    if error or not code:
         logger.warning("HubSpot OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{integrations_page}?hubspot=error")
 
@@ -95,7 +105,8 @@ async def hubspot_callback(
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{tenant_id}")
-async def hubspot_status(tenant_id: str):
+async def hubspot_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -118,7 +129,8 @@ async def hubspot_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/disconnect/{tenant_id}")
-async def hubspot_disconnect(tenant_id: str):
+async def hubspot_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         await db.update_tenant(tenant_id, {
             "hubspot_access_token":     None,

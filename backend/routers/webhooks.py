@@ -4,12 +4,14 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from typing import Annotated
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 
 from db import supabase as db
+from services.security import verify_tenant_owner, verify_vapi_server_secret
 from services import analytics, knowledge, vapi as vapi_svc
-from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools
+from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools, ensure_safety_preamble
 from routers.calendar import _CALENDAR_NOTE
 
 load_dotenv()
@@ -28,6 +30,11 @@ _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 # before subscribing). Past the grace window without an active sub → calls are gated.
 GRACE_PERIOD_DAYS = int(os.getenv("SUBSCRIPTION_GRACE_DAYS", "7"))
 _ACTIVE_SUB_STATUSES = {"active", "trialing", "past_due", "canceling"}
+
+def _require_admin(x_admin_key: str | None) -> None:
+    admin_key = os.getenv("ADMIN_API_KEY", "")
+    if not admin_key or x_admin_key != admin_key:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _calls_allowed(tenant: dict) -> bool:
@@ -268,6 +275,9 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if tenant.get("google_refresh_token"):
         system_prompt += _CALENDAR_NOTE + schedule_note
     system_prompt += _CALLER_LOOKUP_NOTE
+    # Defense-in-depth: guarantee the non-overridable safety preamble is present
+    # even if this tenant's stored prompt predates it.
+    system_prompt = ensure_safety_preamble(system_prompt)
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
     has_calendar = bool(tenant.get("google_refresh_token"))
@@ -298,10 +308,11 @@ async def _handle_assistant_request(msg: dict) -> dict:
             "messages": [{"role": "system", "content": system_prompt}],
             "tools": tools,
         },
-        # Always inject the correct serverUrl so end-of-call-report and
-        # all post-call events reach our backend regardless of what stale
-        # URL (old ngrok, localhost) may be stored on the Vapi assistant.
-        "serverUrl": f"{vapi_svc.APP_BACKEND_URL}/webhooks/vapi-call-ended",
+        # Always inject the correct server config (URL + X-Vapi-Secret when set) so
+        # end-of-call-report and all post-call events reach our backend authenticated,
+        # regardless of what stale URL (old ngrok, localhost) may be stored on the
+        # assistant. This also gives OLD assistants the secret at call time.
+        **vapi_svc.server_block(f"{vapi_svc.APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
     if personalized_greeting:
         overrides["firstMessage"] = personalized_greeting
@@ -313,7 +324,11 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
 
 @router.post("/vapi-call-ended")
-async def vapi_call_ended(payload: dict):
+async def vapi_call_ended(
+    payload: dict,
+    x_vapi_secret: Annotated[str | None, Header()] = None,
+):
+    verify_vapi_server_secret(x_vapi_secret)
     from datetime import timezone
     msg = payload.get("message", payload)
     event_type = msg.get("type", "")
@@ -355,8 +370,10 @@ async def vapi_call_ended(payload: dict):
 
 
 @router.get("/queue-status")
-async def queue_status():
-    """Diagnostic: show queued webhook events + recent raw Vapi hits."""
+async def queue_status(x_admin_key: Annotated[str | None, Header()] = None):
+    """Diagnostic: show queued webhook events + recent raw Vapi hits. Admin-only —
+    exposes cross-tenant call IDs and error detail."""
+    _require_admin(x_admin_key)
     try:
         res = (
             db.get_client()
@@ -376,10 +393,16 @@ async def queue_status():
 
 
 @router.post("/sync-knowledge")
-async def sync_knowledge(body: dict):
+async def sync_knowledge(
+    body: dict,
+    authorization: Annotated[str | None, Header()] = None,
+):
     tenant_id: str = body.get("tenant_id", "")
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
+
+    # Owner-only: re-scraping + re-embedding is billable work tied to a tenant.
+    await verify_tenant_owner(tenant_id, authorization)
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)

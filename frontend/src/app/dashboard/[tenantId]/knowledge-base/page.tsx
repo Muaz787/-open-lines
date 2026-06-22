@@ -8,6 +8,7 @@ import { timeAgo } from '../lib/format'
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
+import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -64,7 +65,7 @@ function KnowledgeBasePage() {
 
   const loadEntries = useCallback(async () => {
     const ah = await authHeaders()
-    fetch(`${API}/knowledge/entries/${tenantId}`, { headers: ah })
+    authedFetch(`${API}/knowledge/entries/${tenantId}`, { headers: ah })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.entries) setEntries(d.entries) })
       .catch(() => {})
@@ -73,7 +74,7 @@ function KnowledgeBasePage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const tRes = await fetch(`${API}/onboarding/status/${tenantId}`)
+        const tRes = await authedFetch(`${API}/onboarding/status/${tenantId}`)
         if (tRes.ok) {
           const t = await tRes.json()
           setTenant(t)
@@ -96,7 +97,7 @@ function KnowledgeBasePage() {
     setDeletingId(id)
     try {
       const ah = await authHeaders()
-      await fetch(`${API}/knowledge/entries/${tenantId}/${id}`, { method: 'DELETE', headers: ah })
+      await authedFetch(`${API}/knowledge/entries/${tenantId}/${id}`, { method: 'DELETE', headers: ah })
       setEntries(prev => prev.filter(e => e.id !== id))
       showToast('Source removed')
     } catch {}
@@ -107,7 +108,7 @@ function KnowledgeBasePage() {
     setRepairLoading(true)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/repair-prompt/${tenantId}`, { method: 'POST', headers: ah })
+      const res = await authedFetch(`${API}/knowledge/repair-prompt/${tenantId}`, { method: 'POST', headers: ah })
       const data = await res.json()
       showToast(res.ok ? '✓ AI prompt updated' : data.detail || 'Update failed')
     } catch {
@@ -123,15 +124,16 @@ function KnowledgeBasePage() {
     try {
       if (urlInput.trim() !== tenant?.website_url) {
         const ah = await authHeaders()
-        await fetch(`${API}/knowledge/website/${tenantId}`, {
+        await authedFetch(`${API}/knowledge/website/${tenantId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...ah },
           body: JSON.stringify({ website_url: urlInput.trim() }),
         })
       }
-      const res  = await fetch(`${API}/webhooks/sync-knowledge`, {
+      const syncAh = await authHeaders()
+      const res  = await authedFetch(`${API}/webhooks/sync-knowledge`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...syncAh },
         body:    JSON.stringify({ tenant_id: tenantId }),
       })
       const data = await res.json()
@@ -153,7 +155,7 @@ function KnowledgeBasePage() {
     arr.forEach(f => form.append('files', f))
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/upload/${tenantId}`, {
+      const res = await authedFetch(`${API}/knowledge/upload/${tenantId}`, {
         method: 'POST', headers: { ...ah }, body: form,
       })
       const data = await res.json()
@@ -174,7 +176,7 @@ function KnowledgeBasePage() {
     setTextLoading(true)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/text/${tenantId}`, {
+      const res = await authedFetch(`${API}/knowledge/text/${tenantId}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', ...ah },
         body:    JSON.stringify({ text }),
@@ -194,7 +196,7 @@ function KnowledgeBasePage() {
     setClearLoading(true)
     try {
       const ah  = await authHeaders()
-      const res = await fetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST', headers: { ...ah } })
+      const res = await authedFetch(`${API}/knowledge/clear/${tenantId}`, { method: 'POST', headers: { ...ah } })
       if (res.ok) { loadEntries(); showToast('Knowledge base cleared') }
       else         showToast('Clear failed — try again')
     } catch {

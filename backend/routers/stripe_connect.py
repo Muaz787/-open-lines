@@ -1,7 +1,9 @@
 import logging
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
+from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi
 from db import supabase as db
 
@@ -21,8 +23,9 @@ def _payments_page(tenant_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 @router.post("/onboard/{tenant_id}")
-async def onboard(tenant_id: str):
+async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Create (or reuse) a Stripe Connect Express account and return the onboarding URL."""
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -53,8 +56,9 @@ async def onboard(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/verify/{tenant_id}")
-async def connect_verify(tenant_id: str, body: dict):
+async def connect_verify(tenant_id: str, body: dict, authorization: Annotated[str | None, Header()] = None):
     """Check account status, update DB, patch assistant. Called client-side after onboarding."""
+    await verify_tenant_owner(tenant_id, authorization)
     account_id = body.get("account_id") or ""
     if not account_id:
         raise HTTPException(status_code=400, detail="account_id required")
@@ -93,7 +97,8 @@ async def connect_verify(tenant_id: str, body: dict):
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{tenant_id}")
-async def connect_status(tenant_id: str):
+async def connect_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -126,7 +131,8 @@ async def connect_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/disconnect/{tenant_id}")
-async def connect_disconnect(tenant_id: str):
+async def connect_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         await db.update_tenant(tenant_id, {

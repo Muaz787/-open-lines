@@ -2,16 +2,19 @@ import os
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from typing import Annotated
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import RedirectResponse
 
+from services.security import verify_tenant_owner
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 import httpx
-from services import analytics, vapi
+from services import analytics, vapi, oauth_state
+from services.oauth_state import OAuthStateError
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -54,12 +57,16 @@ class CalendarSettingsRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/connect/{tenant_id}")
-async def calendar_connect(tenant_id: str):
+async def calendar_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    # Owner-only: only the verified tenant owner may mint an OAuth state and start
+    # a connection. Returns the URL as JSON; the frontend redirects to it.
+    await verify_tenant_owner(tenant_id, authorization)
     try:
-        url = cal_svc.build_oauth_url(state=tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "google_calendar")
+        url = cal_svc.build_oauth_url(state=state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 # ---------------------------------------------------------------------------
@@ -67,12 +74,17 @@ async def calendar_connect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/callback")
-async def calendar_callback(code: str, state: str, error: str | None = None):
-    tenant_id = state
+async def calendar_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    # Validate the state nonce first — it yields the tenant_id. Never trust raw input.
+    try:
+        tenant_id = await oauth_state.consume_state(state, "google_calendar")
+    except OAuthStateError as e:
+        logger.warning("Google OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=error")
 
     cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
 
-    if error:
+    if error or not code:
         logger.warning("Google OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{cal_page}?calendar=error")
 
@@ -138,7 +150,8 @@ async def calendar_callback(code: str, state: str, error: str | None = None):
 # ---------------------------------------------------------------------------
 
 @router.get("/status/{tenant_id}")
-async def calendar_status(tenant_id: str):
+async def calendar_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -165,7 +178,8 @@ async def calendar_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.post("/disconnect/{tenant_id}")
-async def calendar_disconnect(tenant_id: str):
+async def calendar_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -211,7 +225,8 @@ async def calendar_disconnect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.patch("/settings/{tenant_id}")
-async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest):
+async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     updates: dict = {}
     if body.appointment_duration_minutes is not None:
         updates["appointment_duration_minutes"] = body.appointment_duration_minutes
@@ -235,8 +250,9 @@ async def update_calendar_settings(tenant_id: str, body: CalendarSettingsRequest
 # ---------------------------------------------------------------------------
 
 @router.post("/repair/{tenant_id}")
-async def calendar_repair(tenant_id: str):
+async def calendar_repair(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     """Force-update the Vapi assistant tool URLs to the current APP_BACKEND_URL."""
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -280,7 +296,8 @@ async def calendar_repair(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/appointments/{tenant_id}")
-async def get_appointments(tenant_id: str):
+async def get_appointments(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         appts = await db.get_appointments(tenant_id)
     except Exception as e:
@@ -294,12 +311,14 @@ async def get_appointments(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/microsoft/connect")
-async def microsoft_connect(tenant_id: str):
+async def microsoft_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
-        url = ms_cal_svc.build_oauth_url(state=tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "microsoft_calendar")
+        url = ms_cal_svc.build_oauth_url(state=state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return RedirectResponse(url)
+    return {"url": url}
 
 
 # ---------------------------------------------------------------------------
@@ -308,10 +327,15 @@ async def microsoft_connect(tenant_id: str):
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(code: str | None = None, state: str | None = None, error: str | None = None):
-    tenant_id = state or ""
+    try:
+        tenant_id = await oauth_state.consume_state(state, "microsoft_calendar")
+    except OAuthStateError as e:
+        logger.warning("Microsoft OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=ms_error")
+
     cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
 
-    if error or not code or not tenant_id:
+    if error or not code:
         logger.warning("Microsoft OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{cal_page}?calendar=ms_error")
 
@@ -391,7 +415,8 @@ async def microsoft_callback(code: str | None = None, state: str | None = None, 
 # ---------------------------------------------------------------------------
 
 @router.post("/microsoft/disconnect/{tenant_id}")
-async def microsoft_disconnect(tenant_id: str):
+async def microsoft_disconnect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -447,7 +472,8 @@ async def microsoft_disconnect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/debug/{tenant_id}")
-async def calendar_debug(tenant_id: str):
+async def calendar_debug(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     result: dict = {}
 
     # Step 1: tenant + token

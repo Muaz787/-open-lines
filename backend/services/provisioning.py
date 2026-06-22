@@ -114,7 +114,7 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
         if pinecone_namespace:
             result = await knowledge.query_knowledge_base(pinecone_namespace, "overview", top_k=20)
             if result:
-                knowledge_context = result
+                knowledge_context = vapi.wrap_untrusted_kb(result)
     except Exception as e:
         logger.warning("KB fetch failed during reprompt for tenant %s (continuing): %s", tenant_id, e)
 
@@ -144,7 +144,7 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
         "provider": "openai",
         "model": "gpt-4.1-mini",
         "temperature": 0.7,
-        "messages": [{"role": "system", "content": system_prompt}],
+        "messages": [{"role": "system", "content": vapi.ensure_safety_preamble(system_prompt)}],
         "tools": tools,
     }
 
@@ -175,7 +175,7 @@ async def _generate_custom_content(
         raise RuntimeError("OPENAI_API_KEY must be set for custom industry provisioning")
 
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    kb_snippet = knowledge_context[:6000] if knowledge_context else "No website content available."
+    kb_snippet = vapi.wrap_untrusted_kb(knowledge_context[:6000]) if knowledge_context else "No website content available."
 
     user_prompt = f"""Write a complete AI phone receptionist script for this business:
 
@@ -401,7 +401,7 @@ async def _provision_after_twilio(
             qualification_questions = "\n".join(
                 f"- {q}" for q in qualification_fields.values()
             )
-            knowledge_context = scraped_text[:8000] if scraped_text else "No website content available."
+            knowledge_context = vapi.wrap_untrusted_kb(scraped_text[:8000]) if scraped_text else "No website content available."
             system_prompt = template.format(
                 business_name=business_name,
                 agent_name=agent_name,

@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 from db import supabase as db
 from services import analytics, provisioning, vapi, website_analysis
 from services.ratelimit import limiter
-from services.security import validate_public_url
+from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,21 @@ VALID_INDUSTRIES = {
     "custom",
 }
 
-# Sensitive fields stripped before returning tenant data publicly
-_SENSITIVE = {"twilio_auth_token", "twilio_subaccount_sid"}
+# Secret/credential fields stripped before returning tenant data over the API.
+# Service-role queries return the full row, so this is the last line of defence
+# against leaking tokens, refresh tokens, and the raw system prompt.
+_SENSITIVE = {
+    "twilio_auth_token", "twilio_subaccount_sid",
+    "google_refresh_token", "microsoft_refresh_token",
+    "hubspot_access_token", "hubspot_refresh_token",
+    "square_access_token", "square_refresh_token",
+    "vapi_suborg_api_key", "vapi_suborg_id",
+    "slack_webhook_url", "last_system_prompt",
+}
 
 
 def _sanitize_tenant(tenant: dict) -> dict:
-    return {k: v for k, v in tenant.items() if k not in _SENSITIVE}
+    return {k: v for k, v in (tenant or {}).items() if k not in _SENSITIVE}
 
 
 class ProvisionRequest(BaseModel):
@@ -102,6 +111,10 @@ async def analyze_website(request: Request, body: AnalyzeWebsiteRequest):
 @limiter.limit("3/hour")
 async def provision(request: Request, body: ProvisionRequest):
     import time
+    # Reject prompt-injection / unsafe-use directives in tenant free-text before they
+    # ever reach the assistant's system prompt.
+    validate_business_instructions(body.extra_instructions, field="extra instructions")
+    validate_business_instructions(body.business_description, field="business description")
     _started = time.monotonic()
     try:
         provision_data = body.model_dump(exclude={"email", "password"})
@@ -153,12 +166,20 @@ class SettingsUpdateRequest(BaseModel):
 
 
 @router.patch("/settings/{tenant_id}")
-async def update_settings(tenant_id: str, body: SettingsUpdateRequest):
+async def update_settings(
+    tenant_id: str,
+    body: SettingsUpdateRequest,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    await verify_tenant_owner(tenant_id, authorization)
     # exclude_unset (not exclude_none) so callers can explicitly clear a field by
     # sending null — needed to remove the daily break (break_start/break_end = null).
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided")
+    # Booking instructions are injected into the live system prompt — validate them.
+    if update_data.get("booking_instructions"):
+        validate_business_instructions(update_data["booking_instructions"], field="booking instructions")
     try:
         updated = await db.update_tenant(tenant_id, update_data)
         return _sanitize_tenant(updated)
@@ -168,7 +189,8 @@ async def update_settings(tenant_id: str, body: SettingsUpdateRequest):
 
 
 @router.get("/status/{tenant_id}")
-async def onboarding_status(tenant_id: str):
+async def onboarding_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -223,7 +245,10 @@ async def admin_reprompt(
 
 
 @router.post("/repair-phone-url/{tenant_id}")
-async def repair_phone_url(tenant_id: str):
+async def repair_phone_url(
+    tenant_id: str,
+    x_admin_key: Annotated[str | None, Header()] = None,
+):
     """Patch the Vapi phone number for this tenant to include the correct serverUrl.
 
     This enables smart routing (assistant-request webhook) so date injection,
@@ -231,6 +256,8 @@ async def repair_phone_url(tenant_id: str):
     Falls back to searching Vapi's phone list by E.164 number if the Vapi
     phone number ID isn't stored (covers tenants provisioned before this fix).
     """
+    if x_admin_key != os.getenv("ADMIN_API_KEY", "") or not os.getenv("ADMIN_API_KEY", ""):
+        raise HTTPException(status_code=403, detail="Forbidden")
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
@@ -257,7 +284,7 @@ async def repair_phone_url(tenant_id: str):
         raise HTTPException(status_code=404, detail=f"Could not find Vapi phone number for {twilio_phone}")
 
     try:
-        await vapi.update_phone_number(vapi_phone_id, {"serverUrl": server_url})
+        await vapi.update_phone_number(vapi_phone_id, vapi.server_block(server_url))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vapi PATCH failed: {e}")
 

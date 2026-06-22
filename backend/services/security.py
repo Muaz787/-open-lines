@@ -11,9 +11,10 @@ import re
 import base64
 import ipaddress
 import logging
+from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Header, Request
 
 # ---------------------------------------------------------------------------
 # 4. AES-256-GCM symmetric encryption
@@ -82,6 +83,50 @@ async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None
         raise HTTPException(status_code=403, detail="Access denied")
 
 
+async def require_tenant_owner(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """FastAPI dependency form of verify_tenant_owner for routes that carry the
+    tenant id as a `{tenant_id}` path parameter. Use as a router-level dependency
+    when EVERY route in the router is tenant-owner-scoped.
+
+    Never trusts the path tenant_id alone — it is only honoured after the bearer
+    token is verified to belong to that tenant.
+    """
+    tenant_id = request.path_params.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+    await verify_tenant_owner(tenant_id, authorization)
+
+
+# ---------------------------------------------------------------------------
+# 1b. Vapi shared-secret verification (server webhooks + mid-call tool calls)
+# ---------------------------------------------------------------------------
+
+_vapi_secret_warned = False
+
+
+def verify_vapi_server_secret(x_vapi_secret: str | None) -> None:
+    """Verify the shared secret Vapi sends (as X-Vapi-Secret) on server webhooks
+    and mid-call tool requests. Backward-compatible: when VAPI_SERVER_SECRET is
+    unset we log once and allow, so live calls keep working until it's configured
+    in both Vapi and the environment."""
+    global _vapi_secret_warned
+    secret = os.getenv("VAPI_SERVER_SECRET", "")
+    if not secret:
+        if not _vapi_secret_warned:
+            logger.warning(
+                "VAPI_SERVER_SECRET not set — Vapi webhook/tool authenticity is NOT "
+                "enforced. Set it in Vapi (server secret) and as an env var to close this."
+            )
+            _vapi_secret_warned = True
+        return
+    if x_vapi_secret != secret:
+        logger.warning("Vapi request rejected: missing/invalid X-Vapi-Secret")
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+
 # ---------------------------------------------------------------------------
 # 2. Prompt injection detection
 # ---------------------------------------------------------------------------
@@ -144,6 +189,43 @@ def scan_for_injection(text: str, source: str = "input") -> None:
             )
 
 
+# Tenant tries to configure the assistant for clearly disallowed behaviour.
+# Kept deliberately conservative to avoid blocking legitimate business instructions.
+_UNSAFE_USE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\b(pose|pretend|claim|act|say\s+you('?re|\s+are)|impersonat\w*)\b.{0,40}\b(police|officer|government|gov't|irs|cra|tax\s+(agency|authority)|bank|lawyer|attorney|doctor|physician|nurse|paramedic|federal\s+agent)\b", re.I),
+     "configuring the assistant to impersonate police, government, a bank, or a regulated professional"),
+    (re.compile(r"\b(tell|instruct|encourage|help|get)\b.{0,30}\b(caller|customer|client|them|people)\b.{0,45}\b(break\s+the\s+law|do(ing)?\s+something\s+illegal|commit\s+\w+|launder|evade\s+tax|lie\s+to)\b", re.I),
+     "instructing the assistant to encourage illegal activity"),
+    (re.compile(r"\b(ask\s+for|collect|request|take\s+down|read\s+back)\b.{0,40}\b(credit[-\s]?card|card\s+number|cvv|cvc|full\s+card|social\s+security|ssn|sin\s+number)\b", re.I),
+     "asking the assistant to collect full card numbers or government IDs over the phone (use the secure deposit link instead)"),
+    (re.compile(r"\b(don'?t|do\s+not|never)\b.{0,30}\b(tell|disclose|reveal|admit|say)\b.{0,25}\b(you('?re|\s+are)|it('?s|\s+is)|being)\b.{0,12}\b(an?\s+)?(ai|bot|robot|automated|machine|computer)\b", re.I),
+     "instructing the assistant to hide that it is an AI"),
+    (re.compile(r"\b(send|forward|email|text)\b.{0,30}\b(customer|caller|client|their|all)\b.{0,22}\b(data|info(rmation)?|details|records|numbers?)\b.{0,18}\bto\b", re.I),
+     "instructing the assistant to send customer data to an external destination"),
+]
+
+
+def validate_business_instructions(text: str, field: str = "instructions") -> None:
+    """Validate tenant-authored free-text (extra instructions, booking rules, FAQs).
+    Rejects prompt-injection and clearly unsafe configuration with an explanatory error
+    so the owner knows exactly which part is not allowed and how to fix it."""
+    if not text or not text.strip():
+        return
+    scan_for_injection(text, source=field)  # raises 400 on injection / over-length
+    for pattern, reason in _UNSAFE_USE_PATTERNS:
+        if pattern.search(text):
+            logger.warning("Unsafe business instruction blocked in %s: %s", field, reason)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"These {field} can't be saved because they appear to be {reason}. "
+                    "Open Lines assistants must stay lawful, identify as AI when asked, and never "
+                    "collect sensitive data over the phone. Please reword to cover only how the "
+                    "assistant should greet, qualify, schedule, and answer questions about your business."
+                ),
+            )
+
+
 # ---------------------------------------------------------------------------
 # 3. SSRF protection
 # ---------------------------------------------------------------------------
@@ -185,4 +267,22 @@ def validate_public_url(url: str) -> None:
             if addr in network:
                 raise HTTPException(status_code=400, detail="URL targets a private or internal network address")
     except ValueError:
-        pass  # hostname is a domain name, not a raw IP — that's fine
+        pass  # hostname is a domain name, not a raw IP — resolve it below
+
+    # Resolve the hostname and verify EVERY resolved IP is public. This blocks
+    # DNS-rebinding and domains that deliberately point at internal/cloud-metadata
+    # addresses (e.g. a hostname that resolves to 169.254.169.254 or 10.x).
+    import socket
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not resolve URL host")
+
+    for info in infos:
+        ip_str = info[4][0]
+        try:
+            resolved = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if (not resolved.is_global) or any(resolved in net for net in _PRIVATE_NETWORKS):
+            raise HTTPException(status_code=400, detail="URL resolves to a private or internal network address")
