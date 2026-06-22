@@ -38,20 +38,10 @@ def _require_admin(x_admin_key: str | None) -> None:
 
 
 def _calls_allowed(tenant: dict) -> bool:
-    """True if the tenant may take live AI calls (active sub or within grace period)."""
-    status = (tenant.get("subscription_status") or "").strip().lower()
-    if status in _ACTIVE_SUB_STATUSES:
-        return True
-    created = tenant.get("created_at")
-    if created:
-        try:
-            created_dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
-            if created_dt.tzinfo is None:
-                created_dt = created_dt.replace(tzinfo=timezone.utc)
-            return datetime.now(timezone.utc) < created_dt + timedelta(days=GRACE_PERIOD_DAYS)
-        except Exception:
-            pass
-    return False
+    """True if the tenant may take live AI calls: an active subscription, OR an
+    active free trial (within 7 days AND under the 30-minute trial cap)."""
+    from services import trial
+    return trial.trial_status(tenant)["line_active"]
 
 
 def _gated_assistant_response(assistant_id: str) -> dict:
@@ -167,12 +157,16 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if not assistant_id:
         return {"error": {"message": "No assistant configured"}}
 
-    # Subscription gate: past the grace window without an active subscription, play a
-    # short "line not active" message and hang up instead of engaging the receptionist.
-    if not _calls_allowed(tenant):
+    # Trial/subscription gate: allow active subscribers and active free trials
+    # (within 7 days AND under the 30-minute trial cap). Otherwise play a short
+    # "line not active" message and hang up instead of engaging the receptionist.
+    from services import trial as _trial
+    _ts = _trial.trial_status(tenant)
+    if not _ts["line_active"]:
         logger.info(
-            "assistant-request: tenant %s GATED (status=%s, created=%s) — playing inactive message",
-            tenant_id, tenant.get("subscription_status"), tenant.get("created_at"),
+            "assistant-request: tenant %s GATED reason=%s (status=%s, created=%s, trial_min_used=%s) — playing inactive message",
+            tenant_id, _trial.blocked_reason(tenant), tenant.get("subscription_status"),
+            tenant.get("created_at"), tenant.get("minutes_used_this_period"),
         )
         return _gated_assistant_response(assistant_id)
 

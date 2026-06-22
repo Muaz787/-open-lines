@@ -164,3 +164,10 @@ alter table tenants add column if not exists last_crawl_pages       int;
 alter table tenants add column if not exists last_crawl_source     text;     -- manual | scheduled | onboarding
 alter table tenants add column if not exists last_crawl_failures   int default 0;
 alter table tenants add column if not exists next_crawl_at         timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Free-trial reminder email dedup flags
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists trial_email_day3_sent  boolean default false;
+alter table tenants add column if not exists trial_email_day6_sent  boolean default false;
+alter table tenants add column if not exists trial_email_ended_sent boolean default false;

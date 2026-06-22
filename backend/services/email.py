@@ -11,6 +11,65 @@ logger = logging.getLogger(__name__)
 
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "notifications@openlines.ai")
+_raw_frontend = os.getenv("FRONTEND_URL", "https://openlines.ai")
+FRONTEND_URL = _raw_frontend if _raw_frontend.startswith("http") else f"https://{_raw_frontend}"
+
+
+async def send_trial_reminder_email(
+    to: str,
+    business_name: str,
+    kind: str,           # 'active' | 'ending' | 'ended'
+    tenant_id: str,
+    days_remaining: int,
+) -> None:
+    """Send a free-trial reminder. `kind` selects the message; all link to the
+    Subscription page so the owner can add a plan in one click."""
+    if not resend.api_key:
+        logger.warning("RESEND_API_KEY not set — skipping trial reminder email")
+        return
+
+    cta_url = f"{FRONTEND_URL}/dashboard/{tenant_id}/subscription"
+
+    if kind == "ended":
+        subject = f"Your Open Lines trial has ended — reactivate {business_name}"
+        heading = "Your free trial has ended"
+        body    = ("Your AI receptionist is paused until you choose a plan. Subscribe now "
+                   "to reactivate your phone line — your number, settings, and knowledge base are all still here.")
+        cta     = "Reactivate my line"
+    elif kind == "ending":
+        when    = "today" if days_remaining <= 0 else "tomorrow"
+        subject = f"Your Open Lines free trial ends {when}"
+        heading = f"Your free trial ends {when}"
+        body    = ("Add a plan now to avoid any interruption to your AI receptionist. "
+                   "It takes under a minute and your line stays live the whole time.")
+        cta     = "Choose a plan"
+    else:  # active (day-3 nudge)
+        subject = f"How's your Open Lines AI receptionist working out, {business_name}?"
+        heading = f"You have {days_remaining} days left in your free trial"
+        body    = ("Your AI receptionist is live and answering calls. When you're ready, pick a plan "
+                   "to keep it running past your trial — no interruption, cancel anytime.")
+        cta     = "View plans"
+
+    html = f"""\
+<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;color:#16161a">
+  <h2 style="font-size:20px;margin:0 0 12px">{heading}</h2>
+  <p style="font-size:14px;line-height:1.6;color:#3d4d5c;margin:0 0 20px">{body}</p>
+  <a href="{cta_url}" style="display:inline-block;background:#1A6BFF;color:#fff;text-decoration:none;
+     font-weight:600;font-size:14px;padding:11px 20px;border-radius:8px">{cta} →</a>
+  <p style="font-size:12px;color:#7A92AA;margin:24px 0 0">Open Lines · AI phone receptionist</p>
+</div>"""
+
+    try:
+        resend.Emails.send({
+            "from": f"Open Lines <{EMAIL_FROM}>",
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        })
+        logger.info("Trial reminder (%s) sent to %s for tenant %s", kind, to, tenant_id)
+    except Exception as e:
+        logger.error("Trial reminder email failed for tenant %s: %s", tenant_id, e)
+        raise
 
 
 def _build_html(business_name: str, analysis: dict, caller_number: str) -> str:

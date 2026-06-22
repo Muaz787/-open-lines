@@ -43,6 +43,15 @@ async def main() -> int:
             failed += 1
 
     logger.info("recrawl_cron done: considered=%d crawled=%d failed=%d", len(due), crawled, failed)
+
+    # Daily maintenance also sends due free-trial reminder emails (deduped per tenant).
+    try:
+        from services import trial
+        sent = await trial.process_trial_reminders()
+        logger.info("trial_reminders done: %s", sent)
+    except Exception as e:
+        logger.error("trial_reminders failed: %s", e)
+
     return 0
 
 

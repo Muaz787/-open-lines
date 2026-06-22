@@ -5,6 +5,7 @@ import { useParams, useRouter, usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
+import { TrialBanner, type TrialInfo } from './TrialBanner'
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
 
 import { authedFetch } from '@/lib/api'
@@ -33,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const base = `/dashboard/${tenantId}`
 
   const [tenant, setTenant]       = useState<SidebarTenant | null>(null)
+  const [trial, setTrial]         = useState<TrialInfo | null>(null)
   const [leadsCount, setLeads]    = useState(0)
   const [apptsCount, setAppts]    = useState(0)
   const [userName, setUserName]   = useState('')
@@ -62,7 +64,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       authedFetch(`${API}/leads/${tenantId}`),
       authedFetch(`${API}/calendar/appointments/${tenantId}`),
     ]).then(async ([tRes, lRes, aRes]) => {
-      if (tRes.ok) setTenant(await tRes.json())
+      if (tRes.ok) { const t = await tRes.json(); setTenant(t); setTrial(t.trial ?? null) }
       if (lRes.ok) { const d = await lRes.json(); setLeads(Array.isArray(d) ? d.length : 0) }
       if (aRes.ok) { const d = await aRes.json(); setAppts(Array.isArray(d) ? d.length : 0) }
     }).catch(() => {})
@@ -129,6 +131,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </motion.div>
           )}
         </AnimatePresence>
+
+        <TrialBanner trial={trial} tenantId={tenantId} />
 
         {children}
       </div>
