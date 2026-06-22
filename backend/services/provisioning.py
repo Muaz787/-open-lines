@@ -363,6 +363,8 @@ async def _provision_after_twilio(
                 namespace=pinecone_namespace,
                 text=scraped_text,
                 tenant_id=pinecone_namespace,
+                source_id="website-onboarding",
+                source_type="website",
             )
             logger.info("[Step %d] Stored %d vectors", step, vectors_stored)
         except Exception as e:
@@ -486,6 +488,12 @@ async def _provision_after_twilio(
             "last_system_prompt": system_prompt,
             "is_active": True,
         }
+        if scraped_text and website_url:
+            from datetime import datetime as _dt, timezone as _tz
+            tenant_data["last_crawl_at"]     = _dt.now(_tz.utc).isoformat()
+            tenant_data["last_crawl_status"] = "success"
+            tenant_data["last_crawl_source"] = "onboarding"
+            tenant_data["last_crawl_pages"]  = (scraped_text.count("\n\n") + 1)
         if suborg_id:
             tenant_data["vapi_suborg_id"] = suborg_id
         if suborg_key_encrypted:

@@ -77,7 +77,16 @@ async def scrape_website(url: str) -> str:
     return text
 
 
-async def embed_and_store(namespace: str, text: str, tenant_id: str, source_id: str | None = None) -> int:
+async def embed_and_store(
+    namespace: str,
+    text: str,
+    tenant_id: str,
+    source_id: str | None = None,
+    source_type: str | None = None,
+) -> int:
+    """Embed `text` and upsert into Pinecone. `source_type` ('website' | 'file' |
+    'text') tags every vector so website content can later be cleared without
+    touching uploaded documents."""
     chunks = _chunk_text(text)
     if not chunks:
         logger.warning("No chunks produced for tenant %s", tenant_id)
@@ -101,6 +110,7 @@ async def embed_and_store(namespace: str, text: str, tenant_id: str, source_id: 
                 "text": chunks[i],
                 "tenant_id": tenant_id,
                 **({"source_id": source_id} if source_id else {}),
+                **({"source_type": source_type} if source_type else {}),
             },
         }
         for i in range(len(chunks))
@@ -111,8 +121,8 @@ async def embed_and_store(namespace: str, text: str, tenant_id: str, source_id: 
         index.upsert(vectors=vectors[start : start + batch_size], namespace=namespace)
 
     logger.info(
-        "Stored %d vectors in Pinecone namespace '%s' for tenant %s (source=%s)",
-        len(vectors), namespace, tenant_id, source_id or "none",
+        "Stored %d vectors in Pinecone namespace '%s' for tenant %s (source=%s, type=%s)",
+        len(vectors), namespace, tenant_id, source_id or "none", source_type or "none",
     )
     return len(vectors)
 
@@ -121,6 +131,35 @@ def delete_by_source(namespace: str, source_id: str) -> None:
     index = _get_pinecone_index()
     index.delete(filter={"source_id": source_id}, namespace=namespace)
     logger.info("Deleted vectors for source %s in namespace '%s'", source_id, namespace)
+
+
+def delete_old_website_vectors(namespace: str, keep_source_id: str) -> None:
+    """Delete website vectors from EARLIER crawl generations, keeping only the
+    just-written generation (`keep_source_id`). Never touches file/text vectors
+    (different source_type). Safe failure mode: leaves duplicates, never empties."""
+    index = _get_pinecone_index()
+    index.delete(
+        filter={"source_type": "website", "source_id": {"$ne": keep_source_id}},
+        namespace=namespace,
+    )
+
+
+def delete_legacy_website_vectors(namespace: str, slug_or_tenant_ids: list[str]) -> None:
+    """One-time cleanup of pre-tagging website vectors. Those used ids of the form
+    `{tenant_id}-{i}` / `{slug}-{i}` with NO source_type, so they can't be reached
+    by a metadata filter. Uploaded-document vectors use a UUID source_id prefix, so
+    deleting these exact id ranges can never hit a document vector."""
+    index = _get_pinecone_index()
+    ids: list[str] = []
+    for base in slug_or_tenant_ids:
+        if base:
+            ids.extend(f"{base}-{i}" for i in range(0, 1500))
+    for start in range(0, len(ids), 1000):
+        try:
+            index.delete(ids=ids[start : start + 1000], namespace=namespace)
+        except Exception as e:
+            logger.warning("Legacy website vector cleanup batch failed for '%s': %s", namespace, e)
+            return
 
 
 def extract_text(filename: str, content: bytes) -> str:
@@ -203,15 +242,41 @@ def clear_namespace(namespace: str) -> None:
     logger.info("Cleared Pinecone namespace '%s'", namespace)
 
 
+MAX_SCRAPE_CHARS = 200_000  # cap embedding cost per crawl (scrape is single-page)
+
+
 async def refresh_tenant_knowledge(
     tenant_id: str, website_url: str, namespace: str
 ) -> dict:
+    """Two-phase, safe website refresh:
+      1. Scrape first — if it fails or returns nothing, raise, so the caller keeps
+         the existing knowledge base rather than emptying it.
+      2. Embed the NEW crawl generation, THEN delete older website generations
+         (and pre-tagging legacy website vectors). Cleanup runs only after the new
+         content is in place, so a failure leaves duplicates — never an empty KB —
+         and uploaded-document vectors are never touched.
+    """
+    import time
+
+    # Phase 1 — scrape (most likely failure point: network / Firecrawl).
     raw_text = await scrape_website(website_url)
+    if not raw_text or not raw_text.strip():
+        raise ValueError("Website scrape returned no content")
+    raw_text = raw_text[:MAX_SCRAPE_CHARS]
+    pages_scraped = raw_text.count("\n\n") + 1
 
-    # Count pages by splitting on the double-newline separator used in scrape_website
-    pages_scraped = raw_text.count("\n\n") + 1 if raw_text.strip() else 0
+    # Phase 2 — write the new generation under a unique website source id.
+    gen_source_id = f"website-{int(time.time())}"
+    vectors_stored = await embed_and_store(
+        namespace, raw_text, tenant_id, source_id=gen_source_id, source_type="website"
+    )
 
-    vectors_stored = await embed_and_store(namespace, raw_text, tenant_id)
+    # Remove previous website generations + legacy untagged website vectors.
+    try:
+        delete_old_website_vectors(namespace, keep_source_id=gen_source_id)
+        delete_legacy_website_vectors(namespace, list({namespace, tenant_id}))
+    except Exception as e:
+        logger.warning("Old website vector cleanup failed for tenant %s (non-fatal): %s", tenant_id, e)
 
     refreshed_at = datetime.now(timezone.utc)
     logger.info(
