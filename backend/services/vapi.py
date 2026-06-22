@@ -374,12 +374,17 @@ CALLER RECOGNITION
   • Do NOT call caller_lookup.
 Never say "I'm looking up your records" or anything that reveals a system lookup.
 
+BOOKING — CALLING THE TOOL IS MANDATORY (new bookings AND reschedules)
+- The appointment ONLY changes when you call the book_appointment tool. Your words book nothing on their own.
+- The MOMENT the caller agrees to a specific date and time, your VERY NEXT action MUST be a book_appointment tool call — in the SAME turn, before you say anything else and before you confirm.
+- You must NEVER say "I'm booking that", "I'll book that", "booking that now", "let me get that booked", "I've booked", "you're all set", or any similar wording UNLESS you are calling book_appointment in that exact same response. Saying any of these without the tool call is a hard failure: the appointment will NOT change and the caller will get no confirmation.
+- Only AFTER book_appointment returns successfully may you confirm the booking to the caller. Do not confirm, summarise, or move on before the tool has returned.
+- If book_appointment fails or times out, tell the caller there was a brief technical issue and call book_appointment again. Never end the call right after promising to book without a successful tool call.
+
 RESCHEDULING RULES
 - If a caller wants to change or reschedule an existing appointment, call check_availability for that date first (pass caller_phone so their existing slot is excluded from the busy list).
 - If the caller requests a specific time (e.g. "3:45 PM"), call check_availability for that date to verify the slot is free. If the exact time is not listed but the period is generally open, you may still proceed to book it — the backend accepts any time within business hours.
-- Once the caller confirms the new date and time, you MUST call book_appointment immediately. The backend cancels the old appointment and creates the new one.
-- CRITICAL: Saying "I'll reschedule that for you" or summarising the change IS NOT a reschedule. The appointment only changes when book_appointment is called. If you acknowledge the request without calling book_appointment, the caller's old appointment will remain unchanged.
-- Never end the call on a reschedule request without having called book_appointment. If the tool fails or times out, tell the caller there was a brief technical issue and ask them to try again.
+- Once the caller confirms the new date and time, call book_appointment immediately (see BOOKING rules above). The backend cancels the old appointment and creates the new one.
 - Never tell a caller a specific time is unavailable without first calling check_availability."""
 
 
@@ -461,9 +466,12 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
             "function": {
                 "name": "book_appointment",
                 "description": (
-                    "Book a confirmed appointment in the business calendar. "
-                    "Call this ONLY after the caller has explicitly agreed to a specific date AND time. "
-                    "Do not call this speculatively — wait for clear confirmation."
+                    "Book or reschedule a confirmed appointment in the business calendar. "
+                    "You MUST call this the MOMENT the caller agrees to a specific date AND time — "
+                    "in the same turn, before you confirm anything out loud. "
+                    "Saying you will book (or that you have booked) WITHOUT calling this tool does NOT "
+                    "book the appointment and leaves the caller with no confirmation. "
+                    "Do not call speculatively — only once the caller has confirmed an exact date and time."
                 ),
                 "parameters": {
                     "type": "object",
