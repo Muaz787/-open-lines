@@ -39,6 +39,9 @@ interface Tenant {
   twilio_phone_number?: string
   website_url?: string
   last_crawl_at?: string
+  last_crawl_status?: string
+  last_crawl_source?: string
+  auto_recrawl_enabled?: boolean
   subscription_plan?: string
   subscription_status?: string
 }
@@ -143,6 +146,28 @@ function KnowledgeBasePage() {
       showToast('Network error — try again')
     } finally {
       setSyncLoading(false)
+    }
+  }
+
+  const toggleAutoRecrawl = async () => {
+    const next = !(tenant?.auto_recrawl_enabled ?? true)
+    setTenant(prev => prev ? { ...prev, auto_recrawl_enabled: next } : prev)  // optimistic
+    try {
+      const ah = await authHeaders()
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...ah },
+        body: JSON.stringify({ auto_recrawl_enabled: next }),
+      })
+      if (!res.ok) {
+        setTenant(prev => prev ? { ...prev, auto_recrawl_enabled: !next } : prev)  // revert
+        showToast('Could not update auto-refresh')
+      } else {
+        showToast(next ? '✓ Auto-refresh on — website re-synced weekly' : 'Auto-refresh off')
+      }
+    } catch {
+      setTenant(prev => prev ? { ...prev, auto_recrawl_enabled: !next } : prev)
+      showToast('Network error — try again')
     }
   }
 
@@ -357,7 +382,36 @@ function KnowledgeBasePage() {
                   </button>
                 </div>
                 <div className="kb-hint">
-                  Crawls all public pages automatically. Re-sync after updating your website.
+                  Re-sync after updating your website. We replace the old website content — your uploaded files are kept.
+                </div>
+
+                {/* Sync status + auto-refresh */}
+                <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ fontSize: 12, color: 'var(--db-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {tenant?.last_crawl_status === 'error' ? (
+                      <span style={{ color: 'var(--db-warn-text, #c2410c)', fontWeight: 600 }}>⚠ Last sync failed</span>
+                    ) : tenant?.last_crawl_at ? (
+                      <span style={{ color: 'var(--db-accent-text)' }}>✓ Synced {timeAgo(tenant.last_crawl_at)}</span>
+                    ) : (
+                      <span>Not synced yet</span>
+                    )}
+                    {tenant?.last_crawl_source && (
+                      <span style={{ color: 'var(--db-faint)' }}>· {tenant.last_crawl_source}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleAutoRecrawl}
+                    style={{
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      padding: '4px 10px', borderRadius: 999, border: '1px solid var(--db-border)',
+                      background: (tenant?.auto_recrawl_enabled ?? true) ? 'var(--db-accent-dim, #e6f0ff)' : 'transparent',
+                      color: (tenant?.auto_recrawl_enabled ?? true) ? 'var(--db-accent-text)' : 'var(--db-muted)',
+                    }}
+                    title="When on, we automatically re-crawl your website about once a week to keep answers up to date."
+                  >
+                    Auto-refresh: {(tenant?.auto_recrawl_enabled ?? true) ? 'On' : 'Off'}
+                  </button>
                 </div>
               </div>
 

@@ -200,3 +200,39 @@ async def repatch_vapi_secret(x_admin_key: str | None = Header(None)):
 
     logger.info("repatch-vapi-secret done (enforced=%s): %s", enforced, results)
     return {"secret_enforced": enforced, "phone_numbers": results, "total": len(tenants)}
+
+
+@router.post("/recrawl-stale-websites")
+async def recrawl_stale_websites(x_admin_key: str | None = Header(None)):
+    """Re-crawl the websites of tenants whose knowledge base is stale (>7 days),
+    have auto-recrawl enabled, and are active/trialing. Budget-guarded: at most
+    MAX_TENANTS_PER_RUN per call, skips tenants that keep failing. Intended to be
+    hit by a daily Railway cron — the 7-day staleness check lives in the endpoint,
+    so running it daily only crawls what's actually due."""
+    _check_admin_key(x_admin_key)
+    from services import recrawl
+
+    try:
+        due = await recrawl.find_stale_tenants(limit=recrawl.MAX_TENANTS_PER_RUN)
+    except Exception as e:
+        logger.error("recrawl-stale-websites: could not list tenants: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to list tenants")
+
+    summary = {"considered": len(due), "crawled": 0, "failed": 0, "results": []}
+    for t in due:
+        try:
+            full = await db.get_tenant_by_id(t["id"])
+            r = await recrawl.recrawl_tenant(full, source="scheduled")
+            summary["crawled"] += 1
+            summary["results"].append({
+                "tenant_id": t["id"], "status": "success",
+                "pages": r.get("pages_scraped"), "vectors": r.get("vectors_stored"),
+            })
+        except Exception:
+            # recrawl_tenant already logged + recorded the sanitized error on the tenant.
+            summary["failed"] += 1
+            summary["results"].append({"tenant_id": t["id"], "status": "error"})
+
+    logger.info("recrawl-stale-websites done: considered=%d crawled=%d failed=%d",
+                summary["considered"], summary["crawled"], summary["failed"])
+    return summary

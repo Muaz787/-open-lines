@@ -153,3 +153,14 @@ create table if not exists oauth_states (
     expires_at  timestamptz not null
 );
 create index if not exists oauth_states_expires_idx on oauth_states (expires_at);
+
+-- ---------------------------------------------------------------------------
+-- Scheduled website re-crawl (knowledge base freshness)
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists auto_recrawl_enabled boolean default true;
+alter table tenants add column if not exists last_crawl_status     text;     -- success | error
+alter table tenants add column if not exists last_crawl_error      text;     -- sanitized
+alter table tenants add column if not exists last_crawl_pages       int;
+alter table tenants add column if not exists last_crawl_source     text;     -- manual | scheduled | onboarding
+alter table tenants add column if not exists last_crawl_failures   int default 0;
+alter table tenants add column if not exists next_crawl_at         timestamptz;

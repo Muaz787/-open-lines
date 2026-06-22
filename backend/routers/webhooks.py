@@ -413,41 +413,18 @@ async def sync_knowledge(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    website_url: str = tenant.get("website_url", "")
-    namespace: str = tenant.get("pinecone_namespace", "")
-
-    if not website_url:
+    if not tenant.get("website_url"):
         raise HTTPException(status_code=400, detail="Tenant has no website_url configured")
-    if not namespace:
-        raise HTTPException(status_code=400, detail="Tenant has no pinecone_namespace configured")
 
-    from services.security import validate_public_url
-    validate_public_url(website_url)
-
+    # Shared two-phase, clear-before-embed refresh (keeps old KB on failure,
+    # never deletes uploaded documents, records crawl metadata).
+    from services import recrawl
     try:
-        result = await knowledge.refresh_tenant_knowledge(tenant_id, website_url, namespace)
+        result = await recrawl.recrawl_tenant(tenant, source="manual")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error("Knowledge refresh failed for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Knowledge refresh failed")
+        raise HTTPException(status_code=500, detail="Knowledge refresh failed — your existing knowledge base is unchanged.")
 
-    try:
-        await db.update_tenant(tenant_id, {"last_crawl_at": result["refreshed_at"].isoformat()})
-    except Exception as e:
-        logger.error("Failed to update last_crawl_at for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to update tenant crawl timestamp")
-
-    try:
-        await db.upsert_kb_website_entry(tenant_id, website_url)
-    except Exception as e:
-        logger.warning("Failed to track website KB entry for tenant %s (non-fatal): %s", tenant_id, e)
-
-    # Refresh tenant record so reprompt sees the updated last_crawl_at
-    try:
-        tenant = await db.get_tenant_by_id(tenant_id)
-        from services.provisioning import rebuild_and_push_system_prompt
-        await rebuild_and_push_system_prompt(tenant)
-        logger.info("System prompt rebuilt after knowledge sync for tenant %s", tenant_id)
-    except Exception as e:
-        logger.warning("System prompt rebuild after sync failed for tenant %s (non-fatal): %s", tenant_id, e)
-
-    return {"status": "synced", "vectors_stored": result["vectors_stored"]}
+    return {"status": "synced", "vectors_stored": result.get("vectors_stored", 0)}

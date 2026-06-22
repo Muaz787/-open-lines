@@ -163,6 +163,7 @@ class SettingsUpdateRequest(BaseModel):
     break_start:          int | None = None
     break_end:            int | None = None
     booking_instructions: str | None = None
+    auto_recrawl_enabled: bool | None = None
 
 
 @router.patch("/settings/{tenant_id}")
