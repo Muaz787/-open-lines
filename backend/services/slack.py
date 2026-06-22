@@ -29,13 +29,14 @@ def _env() -> tuple[str, str, str]:
     return client_id, client_secret, redirect_uri
 
 
-def build_auth_url(tenant_id: str) -> str:
+def build_auth_url(state: str) -> str:
+    """`state` is the opaque OAuth state nonce (no longer the raw tenant_id)."""
     client_id, _, redirect_uri = _env()
     params = {
         "client_id":    client_id,
         "scope":        "incoming-webhook",
         "redirect_uri": redirect_uri,
-        "state":        tenant_id,
+        "state":        state,
     }
     return f"{_AUTHORIZE_URL}?{urlencode(params)}"
 

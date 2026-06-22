@@ -138,3 +138,18 @@ create table if not exists appointments (
     google_event_id      text,
     created_at           timestamptz default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- OAuth state nonces (CSRF / replay protection for provider connect flows)
+-- ---------------------------------------------------------------------------
+-- One row per outstanding OAuth "connect" attempt. The opaque `nonce` is sent
+-- to the provider as the `state` parameter and consumed (deleted) on callback,
+-- so a state is single-use, time-limited, and bound to a tenant + provider.
+create table if not exists oauth_states (
+    nonce       text primary key,
+    tenant_id   uuid not null references tenants(id) on delete cascade,
+    provider    text not null,              -- google_calendar | microsoft_calendar | hubspot | slack
+    created_at  timestamptz not null default now(),
+    expires_at  timestamptz not null
+);
+create index if not exists oauth_states_expires_idx on oauth_states (expires_at);

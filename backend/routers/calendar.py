@@ -13,7 +13,8 @@ from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 import httpx
-from services import analytics, vapi
+from services import analytics, vapi, oauth_state
+from services.oauth_state import OAuthStateError
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -57,9 +58,12 @@ class CalendarSettingsRequest(BaseModel):
 
 @router.get("/connect/{tenant_id}")
 async def calendar_connect(tenant_id: str):
+    # Public (full-page redirect) — but the OAuth state is now a single-use,
+    # time-limited server nonce bound to this tenant + provider, not the raw id.
     try:
-        url = cal_svc.build_oauth_url(state=tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "google_calendar")
+        url = cal_svc.build_oauth_url(state=state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
     return RedirectResponse(url)
 
@@ -69,12 +73,17 @@ async def calendar_connect(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/callback")
-async def calendar_callback(code: str, state: str, error: str | None = None):
-    tenant_id = state
+async def calendar_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    # Validate the state nonce first — it yields the tenant_id. Never trust raw input.
+    try:
+        tenant_id = await oauth_state.consume_state(state, "google_calendar")
+    except OAuthStateError as e:
+        logger.warning("Google OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=error")
 
     cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
 
-    if error:
+    if error or not code:
         logger.warning("Google OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{cal_page}?calendar=error")
 
@@ -303,8 +312,9 @@ async def get_appointments(tenant_id: str, authorization: Annotated[str | None, 
 @router.get("/microsoft/connect")
 async def microsoft_connect(tenant_id: str):
     try:
-        url = ms_cal_svc.build_oauth_url(state=tenant_id)
-    except RuntimeError as e:
+        state = await oauth_state.issue_state(tenant_id, "microsoft_calendar")
+        url = ms_cal_svc.build_oauth_url(state=state)
+    except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
     return RedirectResponse(url)
 
@@ -315,10 +325,15 @@ async def microsoft_connect(tenant_id: str):
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(code: str | None = None, state: str | None = None, error: str | None = None):
-    tenant_id = state or ""
+    try:
+        tenant_id = await oauth_state.consume_state(state, "microsoft_calendar")
+    except OAuthStateError as e:
+        logger.warning("Microsoft OAuth state rejected: %s", e)
+        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=ms_error")
+
     cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
 
-    if error or not code or not tenant_id:
+    if error or not code:
         logger.warning("Microsoft OAuth error for tenant %s: %s", tenant_id, error)
         return RedirectResponse(f"{cal_page}?calendar=ms_error")
 
