@@ -236,3 +236,13 @@ async def recrawl_stale_websites(x_admin_key: str | None = Header(None)):
     logger.info("recrawl-stale-websites done: considered=%d crawled=%d failed=%d",
                 summary["considered"], summary["crawled"], summary["failed"])
     return summary
+
+
+@router.post("/send-trial-reminders")
+async def send_trial_reminders(x_admin_key: str | None = Header(None)):
+    """Send any due free-trial reminder emails (active / ending / ended), once each.
+    Idempotent — deduped per tenant. Intended for a daily cron."""
+    _check_admin_key(x_admin_key)
+    from services import trial
+    sent = await trial.process_trial_reminders()
+    return {"sent": sent}

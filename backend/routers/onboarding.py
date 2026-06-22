@@ -201,7 +201,8 @@ async def onboarding_status(tenant_id: str, authorization: Annotated[str | None,
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    return _sanitize_tenant(tenant)
+    from services import trial
+    return {**_sanitize_tenant(tenant), "trial": trial.trial_status(tenant)}
 
 
 @router.post("/admin-reprompt/{tenant_id}")
