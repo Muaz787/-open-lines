@@ -284,7 +284,7 @@ async def repair_phone_url(
         raise HTTPException(status_code=404, detail=f"Could not find Vapi phone number for {twilio_phone}")
 
     try:
-        await vapi.update_phone_number(vapi_phone_id, {"serverUrl": server_url})
+        await vapi.update_phone_number(vapi_phone_id, vapi.server_block(server_url))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vapi PATCH failed: {e}")
 

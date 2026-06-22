@@ -13,6 +13,36 @@ APP_BACKEND_URL = _raw_backend if _raw_backend.startswith("http") else f"https:/
 VAPI_BASE_URL = "https://api.vapi.ai"
 
 
+def _server_secret() -> str:
+    """The shared secret Vapi should echo back as X-Vapi-Secret on every server
+    request. Read live so toggling the env var doesn't require a code change."""
+    return os.getenv("VAPI_SERVER_SECRET", "")
+
+
+def server_block(url: str) -> dict:
+    """Top-level (assistant / phone-number / assistant-request override) server
+    config for `url`.
+
+    When VAPI_SERVER_SECRET is set, emit the documented `server: {url, secret}`
+    object so Vapi sends `X-Vapi-Secret: <secret>`. When unset, preserve the exact
+    prior shape (flat `serverUrl`) so dev/local and current prod behaviour are
+    unchanged. Spread into a config dict with `**server_block(url)`.
+    """
+    secret = _server_secret()
+    if secret:
+        return {"server": {"url": url, "secret": secret}}
+    return {"serverUrl": url}
+
+
+def _tool_server(url: str, timeout_seconds: int) -> dict:
+    """A Vapi tool's `server` object, carrying the inline secret when configured."""
+    block: dict = {"url": url, "timeoutSeconds": timeout_seconds}
+    secret = _server_secret()
+    if secret:
+        block["secret"] = secret
+    return block
+
+
 def _headers(api_key: str | None = None) -> dict:
     """Return Authorization headers. Uses tenant sub-org key when provided,
     otherwise falls back to the parent org VAPI_API_KEY."""
@@ -171,7 +201,7 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
             "speed": 1.0,
             "fillerInjectionEnabled": True,
         },
-        "serverUrl": f"{APP_BACKEND_URL}/webhooks/vapi-call-ended",
+        **server_block(f"{APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
 
 
@@ -196,7 +226,7 @@ async def import_twilio_number(
     if assistant_id:
         body["assistantId"] = assistant_id
     if server_url:
-        body["serverUrl"] = server_url
+        body.update(server_block(server_url))
     try:
         async with httpx.AsyncClient() as client:
             res = await client.post(
@@ -367,10 +397,7 @@ def build_caller_lookup_tool(tenant_id: str) -> dict:
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
-        "server": {
-            "url": f"{APP_BACKEND_URL}/tools/{tenant_id}/caller-lookup",
-            "timeoutSeconds": 10,
-        },
+        "server": _tool_server(f"{APP_BACKEND_URL}/tools/{tenant_id}/caller-lookup", 10),
     }
 
 
@@ -427,7 +454,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                     "required": ["date"],
                 },
             },
-            "server": {"url": f"{base}/availability", "timeoutSeconds": 20},
+            "server": _tool_server(f"{base}/availability", 20),
         },
         {
             "type": "function",
@@ -468,7 +495,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                     "required": ["caller_name", "caller_phone", "service", "date", "time"],
                 },
             },
-            "server": {"url": f"{base}/book", "timeoutSeconds": 35},
+            "server": _tool_server(f"{base}/book", 35),
         },
         {
             "type": "function",
@@ -481,7 +508,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 ),
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
-            "server": {"url": f"{base}/cancel", "timeoutSeconds": 20},
+            "server": _tool_server(f"{base}/cancel", 20),
         },
     ]
 
@@ -549,10 +576,7 @@ def build_deposit_tool(tenant_id: str, amount_cents: int, mandatory: bool) -> di
                 "required": ["caller_phone", "caller_name", "service"],
             },
         },
-        "server": {
-            "url": f"{APP_BACKEND_URL}/tools/{tenant_id}/request-deposit",
-            "timeoutSeconds": 20,
-        },
+        "server": _tool_server(f"{APP_BACKEND_URL}/tools/{tenant_id}/request-deposit", 20),
     }
 
 
