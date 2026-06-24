@@ -125,7 +125,8 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="7. Data retention">
-          <P>We keep personal information only as long as it is needed for the purposes described in this policy. Call recordings, transcripts, and lead records are retained while the tenant&apos;s account is active and for up to <strong>12 months</strong> afterwards, unless a longer period is required by law or a shorter period is requested. After that, records are securely deleted.</P>
+          <P>We keep personal information only as long as it is needed for the purposes described in this policy. Call recordings, transcripts, and lead records are generally retained while the tenant&apos;s account is active and for up to <strong>12 months</strong> afterwards, unless a longer period is required by law or a shorter period is requested.</P>
+          <P>When the retention period ends, or on a valid deletion request, <strong>we delete or de-identify personal information from our active systems according to our retention policy, subject to legal, security, billing, and backup retention requirements.</strong> Some information may persist for a limited time in encrypted backups or in our service providers&apos; systems under their own retention terms before it is overwritten or removed.</P>
           <P>Tenants can request deletion of their data and associated caller records at any time by contacting <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. When a tenant disconnects Google or Microsoft Calendar, the OAuth token is deleted from our database immediately.</P>
         </Section>
 
