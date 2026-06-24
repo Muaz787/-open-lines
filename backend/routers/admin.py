@@ -272,10 +272,17 @@ async def delete_tenant_data_endpoint(
     """Permanently delete ALL of a tenant's data (offboarding / data-deletion
     request). Irreversible. Set drop_tenant=false to wipe data but keep the row."""
     _check_admin_key(x_admin_key)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found (check the tenant_id is a valid UUID)")
     from services import retention
-    deleted = await retention.delete_tenant_data(tenant_id, drop_tenant=drop_tenant)
+    result = await retention.delete_tenant_data(tenant_id, drop_tenant=drop_tenant)
     logger.info("ADMIN: deleted tenant data for %s (drop_tenant=%s)", tenant_id, drop_tenant)
-    return {"status": "deleted", "tenant_id": tenant_id, "deleted": deleted}
+    status = "partial_error" if result.get("errors") else "deleted"
+    return {"status": status, "tenant_id": tenant_id, **result}
 
 
 @router.post("/delete-caller")
@@ -287,6 +294,13 @@ async def delete_caller_endpoint(body: dict, x_admin_key: str | None = Header(No
     phone     = (body or {}).get("phone", "")
     if not tenant_id or not phone:
         raise HTTPException(status_code=400, detail="tenant_id and phone are required")
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found (check the tenant_id is a valid UUID)")
     from services import retention
-    counts = await retention.delete_caller_data(tenant_id, phone)
-    return {"status": "deleted", "deleted": counts}
+    result = await retention.delete_caller_data(tenant_id, phone)
+    status = "partial_error" if result.get("errors") else "deleted"
+    return {"status": status, **result}
