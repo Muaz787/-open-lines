@@ -59,11 +59,13 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
         except Exception as e:
             logger.warning("retention: pinecone clear failed for %s: %s", tenant_id, e)
 
+    errors: dict[str, str] = {}
     for table in _TENANT_PII_TABLES:
         try:
             res = client.table(table).delete().eq("tenant_id", tenant_id).execute()
             deleted[table] = len(res.data or [])
         except Exception as e:
+            errors[table] = str(e)[:200]
             logger.warning("retention: delete from %s failed for tenant %s: %s", table, tenant_id, e)
 
     if drop_tenant:
@@ -71,10 +73,11 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
             client.table("tenants").delete().eq("id", tenant_id).execute()
             deleted["tenant"] = 1
         except Exception as e:
+            errors["tenant"] = str(e)[:200]
             logger.error("retention: tenant row delete failed for %s: %s", tenant_id, e)
 
-    logger.info("retention: deleted tenant data for %s: %s", tenant_id, deleted)
-    return deleted
+    logger.info("retention: deleted tenant data for %s: %s (errors=%s)", tenant_id, deleted, errors or "none")
+    return {"deleted": deleted, "errors": errors}
 
 
 async def delete_caller_data(tenant_id: str, phone: str) -> dict:
@@ -85,16 +88,18 @@ async def delete_caller_data(tenant_id: str, phone: str) -> dict:
         raise ValueError("phone is required")
     client = db.get_client()
     counts: dict[str, int] = {}
+    errors: dict[str, str] = {}
 
     for table, col in (("appointments", "caller_phone"), ("payments", "caller_phone"), ("leads", "phone")):
         try:
             res = client.table(table).delete().eq("tenant_id", tenant_id).eq(col, phone).execute()
             counts[table] = len(res.data or [])
         except Exception as e:
+            errors[table] = str(e)[:200]
             logger.warning("retention: delete caller from %s failed (%s): %s", table, tenant_id, e)
 
-    logger.info("retention: deleted caller %s for tenant %s: %s", phone[-4:].rjust(len(phone), "*"), tenant_id, counts)
-    return counts
+    logger.info("retention: deleted caller for tenant %s: %s (errors=%s)", tenant_id, counts, errors or "none")
+    return {"deleted": counts, "errors": errors}
 
 
 async def purge_old_webhook_events() -> int:
