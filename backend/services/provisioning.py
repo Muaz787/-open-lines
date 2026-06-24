@@ -390,9 +390,11 @@ async def _provision_after_twilio(
     # Step 7 — Build greeting template
     step = 7
     try:
+        # The AI + recording disclosure is prepended at call time (see vapi.ensure_call_disclosure),
+        # so the greeting itself stays warm and uncluttered.
         greeting_template = (
-            f"Hi, thank you for calling {business_name}. "
-            f"I'm {agent_name}, your AI assistant. How can I help you today?"
+            f"Hi, thank you for calling {business_name}! "
+            f"I'm {agent_name}. How can I help you today?"
         )
         logger.info("[Step %d] Built greeting template", step)
     except Exception as e:

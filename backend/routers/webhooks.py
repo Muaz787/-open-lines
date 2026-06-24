@@ -308,8 +308,11 @@ async def _handle_assistant_request(msg: dict) -> dict:
         # assistant. This also gives OLD assistants the secret at call time.
         **vapi_svc.server_block(f"{vapi_svc.APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
-    if personalized_greeting:
-        overrides["firstMessage"] = personalized_greeting
+    # Always open with the AI + recording disclosure (PIPEDA knowledge/consent),
+    # covering new, returning, and pre-existing tenants on every call.
+    overrides["firstMessage"] = vapi_svc.ensure_call_disclosure(
+        personalized_greeting or tenant.get("greeting_template", "")
+    )
 
     return {
         "assistantId": assistant_id,
