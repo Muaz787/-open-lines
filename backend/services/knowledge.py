@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -77,16 +78,103 @@ async def scrape_website(url: str) -> str:
     return text
 
 
+# Pages we never want in the knowledge base (legal/auth/cart/noise).
+CRAWL_EXCLUDES = [
+    "privacy", "terms", "cookie", "wp-admin", "wp-login", "login", "signin",
+    "cart", "checkout", "account", "tag/", "/tag", "author/", "feed",
+]
+MAX_CRAWL_PAGES = 20
+
+
+def _page_text(page) -> str:
+    if isinstance(page, dict):
+        return page.get("markdown") or page.get("content") or ""
+    return getattr(page, "markdown", None) or getattr(page, "content", "") or ""
+
+
+def _page_meta(page) -> dict:
+    md = page.get("metadata") if isinstance(page, dict) else getattr(page, "metadata", None)
+    md = md or {}
+    get = (lambda k: md.get(k)) if isinstance(md, dict) else (lambda k: getattr(md, k, None))
+    return {
+        "source_url": str(get("sourceURL") or get("url") or "")[:400],
+        "title": str(get("title") or "")[:200],
+    }
+
+
+async def crawl_website(url: str, max_pages: int = MAX_CRAWL_PAGES) -> tuple[str, list[dict]]:
+    """Bounded, same-domain multi-page crawl via Firecrawl. Returns (combined
+    markdown with per-page source headers, list of page metadata).
+
+    Always safe: on ANY failure, empty result, or timeout it falls back to a
+    single-page homepage scrape, so ingestion never breaks. Run off the event
+    loop because the Firecrawl SDK is synchronous."""
+    if not FIRECRAWL_API_KEY:
+        raise RuntimeError("FIRECRAWL_API_KEY must be set")
+
+    def _do_crawl() -> list:
+        app = FirecrawlApp(api_key=FIRECRAWL_API_KEY)
+        params = {
+            "crawlerOptions": {
+                "limit": max_pages,
+                "maxDepth": 3,
+                "excludes": CRAWL_EXCLUDES,
+                "allowBackwardCrawling": False,
+            },
+            "pageOptions": {"onlyMainContent": True, "formats": ["markdown"]},
+        }
+        res = app.crawl_url(url, params=params, wait_until_done=True, timeout=120)
+        # Normalise: SDK may return a list, or a dict with 'data'/'pages'.
+        if isinstance(res, list):
+            return res
+        if isinstance(res, dict):
+            return res.get("data") or res.get("pages") or []
+        return getattr(res, "data", None) or []
+
+    try:
+        pages = await asyncio.to_thread(_do_crawl)
+    except Exception as e:
+        logger.warning("crawl_website: crawl failed for %s (%s) — falling back to single page", url, e)
+        pages = []
+
+    if not pages:
+        text = await scrape_website(url)
+        return text, [{"source_url": url, "title": ""}]
+
+    blocks: list[str] = []
+    meta: list[dict] = []
+    for page in pages[:max_pages]:
+        body = _page_text(page).strip()
+        if not body:
+            continue
+        m = _page_meta(page)
+        if not m["source_url"]:
+            m["source_url"] = url
+        meta.append(m)
+        header = f"## Source: {m['source_url']}" + (f" — {m['title']}" if m["title"] else "")
+        blocks.append(f"{header}\n\n{body}")
+
+    if not blocks:  # crawl returned pages but no usable text
+        text = await scrape_website(url)
+        return text, [{"source_url": url, "title": ""}]
+
+    combined = "\n\n---\n\n".join(blocks)
+    logger.info("crawl_website: %s → %d pages, %d chars", url, len(meta), len(combined))
+    return combined, meta
+
+
 async def embed_and_store(
     namespace: str,
     text: str,
     tenant_id: str,
     source_id: str | None = None,
     source_type: str | None = None,
+    extra_metadata: dict | None = None,
 ) -> int:
     """Embed `text` and upsert into Pinecone. `source_type` ('website' | 'file' |
     'text') tags every vector so website content can later be cleared without
-    touching uploaded documents."""
+    touching uploaded documents. `extra_metadata` (e.g. crawl_generation_id,
+    crawled_at, page_count) is merged into every vector's metadata."""
     chunks = _chunk_text(text)
     if not chunks:
         logger.warning("No chunks produced for tenant %s", tenant_id)
@@ -111,6 +199,7 @@ async def embed_and_store(
                 "tenant_id": tenant_id,
                 **({"source_id": source_id} if source_id else {}),
                 **({"source_type": source_type} if source_type else {}),
+                **(extra_metadata or {}),
             },
         }
         for i in range(len(chunks))
@@ -236,6 +325,48 @@ async def query_knowledge_base(namespace: str, query: str, top_k: int = 5) -> st
     return "\n\n".join(texts)
 
 
+# Structured queries that pull the SPECIFIC facts a receptionist needs, instead of
+# one generic "overview" query (which biased toward homepage copy and missed
+# pricing / hours / policies). Captures website AND uploaded-document chunks.
+_STRUCTURED_QUERIES: list[tuple[str, int]] = [
+    ("services offered and what the business does", 6),
+    ("pricing, fees, rates, and costs", 4),
+    ("business hours, opening times, and availability", 3),
+    ("service area, locations, and neighbourhoods served", 3),
+    ("frequently asked questions and answers", 5),
+    ("warranty, guarantee, cancellation, emergency, and payment policies", 4),
+]
+
+
+async def build_structured_knowledge(
+    namespace: str, business_brief: str = "", max_chars: int = 12000
+) -> str:
+    """Assemble the factual knowledge baked into the assistant prompt: the stored
+    Business Brief first, then de-duplicated chunks from several targeted Pinecone
+    queries (so specifics like pricing, hours, and policies surface — and uploaded
+    documents are included). Capped to keep the prompt lean (no call-time latency)."""
+    parts: list[str] = []
+    if business_brief and business_brief.strip():
+        parts.append(business_brief.strip())
+
+    seen: set[str] = set()
+    for query, k in _STRUCTURED_QUERIES:
+        try:
+            text = await query_knowledge_base(namespace, query, top_k=k)
+        except Exception as e:
+            logger.warning("Structured KB query '%s' failed for '%s': %s", query, namespace, e)
+            continue
+        for chunk in text.split("\n\n"):
+            c = chunk.strip()
+            key = c[:120]
+            if c and key not in seen:
+                seen.add(key)
+                parts.append(c)
+
+    combined = "\n\n".join(parts).strip()
+    return combined[:max_chars] if combined else ""
+
+
 def clear_namespace(namespace: str) -> None:
     index = _get_pinecone_index()
     index.delete(delete_all=True, namespace=namespace)
@@ -258,17 +389,30 @@ async def refresh_tenant_knowledge(
     """
     import time
 
-    # Phase 1 — scrape (most likely failure point: network / Firecrawl).
-    raw_text = await scrape_website(website_url)
+    # Phase 1 — bounded multi-page crawl (falls back to single page internally).
+    # Most likely failure point, so it runs first: if nothing comes back we raise
+    # and the caller keeps the existing KB.
+    raw_text, pages_meta = await crawl_website(website_url, max_pages=MAX_CRAWL_PAGES)
     if not raw_text or not raw_text.strip():
-        raise ValueError("Website scrape returned no content")
+        raise ValueError("Website crawl returned no content")
     raw_text = raw_text[:MAX_SCRAPE_CHARS]
-    pages_scraped = raw_text.count("\n\n") + 1
+    page_count = len(pages_meta) or (raw_text.count("\n\n") + 1)
+    crawled_at = datetime.now(timezone.utc)
+
+    # Regenerate the structured Business Brief from the full crawl (best-effort).
+    brief_data: dict = {}
+    try:
+        from services import website_analysis
+        brief_data = await website_analysis.classify_text(raw_text, website_url, max_chars=40000)
+    except Exception as e:
+        logger.warning("Brief regeneration failed for tenant %s (non-fatal): %s", tenant_id, e)
 
     # Phase 2 — write the new generation under a unique website source id.
     gen_source_id = f"website-{int(time.time())}"
     vectors_stored = await embed_and_store(
-        namespace, raw_text, tenant_id, source_id=gen_source_id, source_type="website"
+        namespace, raw_text, tenant_id,
+        source_id=gen_source_id, source_type="website",
+        extra_metadata={"crawl_generation_id": gen_source_id, "crawled_at": crawled_at.isoformat(), "page_count": page_count},
     )
 
     # Remove previous website generations + legacy untagged website vectors.
@@ -278,13 +422,14 @@ async def refresh_tenant_knowledge(
     except Exception as e:
         logger.warning("Old website vector cleanup failed for tenant %s (non-fatal): %s", tenant_id, e)
 
-    refreshed_at = datetime.now(timezone.utc)
     logger.info(
         "Knowledge refresh complete for tenant %s: %d pages, %d vectors",
-        tenant_id, pages_scraped, vectors_stored,
+        tenant_id, page_count, vectors_stored,
     )
     return {
-        "pages_scraped": pages_scraped,
+        "pages_scraped": page_count,
         "vectors_stored": vectors_stored,
-        "refreshed_at": refreshed_at,
+        "refreshed_at": crawled_at,
+        "brief": brief_data,
+        "pages_meta": pages_meta,
     }

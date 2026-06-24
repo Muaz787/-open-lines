@@ -83,6 +83,20 @@ async def analyze_website(url: str) -> dict:
     }
 
 
+# Larger input cap than before (was 6k) — richer extraction; still cost-reasonable
+# for gpt-4.1-mini (~4-5k input tokens).
+ANALYZE_INPUT_CHARS = 16000
+
+
+async def classify_text(text: str, url: str = "", max_chars: int = ANALYZE_INPUT_CHARS) -> dict:
+    """Public: run the structured Business Brief extraction on already-fetched
+    content (used by the multi-page re-crawl, which passes a larger window so the
+    brief reflects the whole site, not just the homepage)."""
+    if not text or not text.strip():
+        return _empty_detection()
+    return await _classify(text, url, max_chars=max_chars)
+
+
 def _empty_detection() -> dict:
     return {
         "business_name": "",
@@ -90,21 +104,26 @@ def _empty_detection() -> dict:
         "industry_confidence": 0.0,
         "country": "",
         "services": [],
+        "service_areas": [],
+        "faqs": [],
+        "policies": [],
         "faq_count": 0,
         "suggested_instructions": "",
+        "business_brief": "",
         "knowledge_preview": "",
     }
 
 
-async def _classify(text: str, url: str) -> dict:
+async def _classify(text: str, url: str, max_chars: int = ANALYZE_INPUT_CHARS) -> dict:
     if not OPENAI_API_KEY:
         logger.warning("Onboarding analyze: OPENAI_API_KEY unset — skipping classification")
         return _empty_detection()
 
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    snippet = text[:6000]
+    snippet = text[:max_chars]
 
-    user_prompt = f"""Analyse this business website and extract structured data.
+    user_prompt = f"""You are extracting knowledge for an AI phone receptionist from a business website.
+Use ONLY facts present in the content below — never invent prices, hours, guarantees, or services.
 
 Website URL: {url}
 Website content (markdown, truncated):
@@ -115,19 +134,22 @@ Return valid JSON only with these keys:
   "business_name": "the business's name, or empty string if unclear",
   "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, parliament, custom",
   "industry_confidence": 0.0-1.0,
-  "country": "ISO 3166-1 alpha-2 code (e.g. CA, US, GB, AU, IE, NZ) inferred from address/phone/domain, or empty string",
-  "services": ["up to 6 short service names the business offers"],
-  "faq_count": <integer estimate of distinct FAQs/questions answerable from the site>,
-  "suggested_instructions": "3-5 short newline-separated instruction lines for an AI phone receptionist for THIS business (e.g. 'Answer listing inquiries', 'Schedule property viewings'). Imperative, one per line."
+  "country": "ISO 3166-1 alpha-2 code inferred from address/phone/domain, or empty string",
+  "services": ["up to 12 specific services offered (e.g. 'Refrigerator repair', 'Career Pilot Program')"],
+  "service_areas": ["cities/regions/neighbourhoods served, if stated"],
+  "faqs": [{{"q": "question a caller might ask", "a": "the answer from the site"}}],
+  "policies": ["warranty/guarantee, labour/parts, cancellation, emergency/same-day, payment, or other notable policies, each as one line"],
+  "behavioral_instructions": "5-8 newline-separated lines telling the AI HOW TO BEHAVE on calls for THIS business (book/qualify, what details to collect, when to take a message, how to handle pricing-by-diagnosis). Imperative. Behaviour only — NOT facts.",
+  "business_brief": "A detailed, factual brief about the business written as plain text with short labelled sections. Include ONLY what the site supports, drawn from: Services (with brief descriptions), Service areas, Hours, Contact (phone/email), Booking process, Pricing, Warranty/guarantee, Emergency/same-day availability, Brands served, Special programs, Key policies, and Common caller questions with answers. Be specific and concise. This is FACTS the AI will answer from."
 }}
 
-industry mapping hints: HVAC/roofing/plumbing -> plumber; general contractor/renovation -> builder; medical/physio/health clinic -> clinic; dentist/orthodontist -> dental; lawyer/solicitor -> legal; salon/spa/barber -> beauty; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; if none fit -> custom."""
+industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contractor/renovation -> builder; medical/physio clinic -> clinic; dentist/orthodontist -> dental; lawyer -> legal; salon/spa/barber -> beauty; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; flight school / aviation / driving school / tutoring / other services -> custom; if none fit -> custom."""
 
     try:
         resp = await client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[
-                {"role": "system", "content": "You extract structured business data from website content. Always return valid JSON."},
+                {"role": "system", "content": "You extract structured, factual business data from website content for an AI receptionist. Never invent facts. Always return valid JSON."},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object"},
@@ -144,21 +166,26 @@ industry mapping hints: HVAC/roofing/plumbing -> plumber; general contractor/ren
 
     country = str(data.get("country", "") or "").upper().strip()[:2]
 
-    services = data.get("services") or []
-    if isinstance(services, list):
-        services = [str(s).strip() for s in services if str(s).strip()][:6]
-    else:
-        services = []
+    def _str_list(v, limit: int, maxlen: int = 80) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(x).strip()[:maxlen] for x in v if str(x).strip()][:limit]
+
+    services      = _str_list(data.get("services"), 12)
+    service_areas = _str_list(data.get("service_areas"), 20, 60)
+    policies      = _str_list(data.get("policies"), 12, 200)
+
+    faqs_raw = data.get("faqs") or []
+    faqs = []
+    if isinstance(faqs_raw, list):
+        for f in faqs_raw[:10]:
+            if isinstance(f, dict) and str(f.get("q", "")).strip():
+                faqs.append({"q": str(f["q"]).strip()[:200], "a": str(f.get("a", "")).strip()[:600]})
 
     try:
         confidence = float(data.get("industry_confidence", 0.0))
     except (TypeError, ValueError):
         confidence = 0.0
-
-    try:
-        faq_count = int(data.get("faq_count", 0))
-    except (TypeError, ValueError):
-        faq_count = 0
 
     return {
         "business_name": str(data.get("business_name", "") or "").strip()[:120],
@@ -166,7 +193,11 @@ industry mapping hints: HVAC/roofing/plumbing -> plumber; general contractor/ren
         "industry_confidence": round(max(0.0, min(1.0, confidence)), 2),
         "country": country,
         "services": services,
-        "faq_count": max(0, faq_count),
-        "suggested_instructions": str(data.get("suggested_instructions", "") or "").strip()[:1200],
+        "service_areas": service_areas,
+        "faqs": faqs,
+        "policies": policies,
+        "faq_count": len(faqs),
+        "suggested_instructions": str(data.get("behavioral_instructions", "") or "").strip()[:1500],
+        "business_brief": str(data.get("business_brief", "") or "").strip()[:8000],
         "knowledge_preview": snippet[:280],
     }
