@@ -241,20 +241,20 @@ function IntegrationsPage() {
       </div>
 
       <div className="db-content">
-        <div style={{ maxWidth: 600 }}>
+        <div className="db-form-grid">
 
           {/* Header */}
-          <div style={{ marginBottom: 24 }}>
+          <div className="db-form-wide">
             <div className="db-page-heading" style={{ marginBottom: 4 }}>App Integrations</div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 14, color: 'var(--db-muted)', lineHeight: 1.6 }}>
               Connect your business tools so Open Lines automatically syncs contacts and call summaries after every call.
             </div>
           </div>
 
           {/* Upgrade gate */}
           {!isPaidEligible && (
-            <div className="db-card" style={{
-              padding: '18px 20px', marginBottom: 20,
+            <div className="db-card db-form-wide" style={{
+              padding: '18px 20px',
               display: 'flex', alignItems: 'center', gap: 14,
               background: 'var(--db-bg-2)',
             }}>
@@ -298,7 +298,7 @@ function IntegrationsPage() {
           />
 
           {/* Slack card */}
-          <div style={{ marginTop: 16 }}>
+          <div>
             <IntegrationCard
               icon={<SlackIcon />}
               title="Slack"
@@ -325,7 +325,7 @@ function IntegrationsPage() {
 
           {/* Zapier / API keys — paused (hidden behind ZAPIER_ENABLED) */}
           {ZAPIER_ENABLED && (
-          <div style={{ marginTop: 16 }}>
+          <div className="db-form-wide">
             <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 4 }}>
@@ -476,21 +476,21 @@ function IntegrationCard({
   onConnect, connectLabel, onDisconnect, disconnecting,
 }: IntegrationCardProps) {
   return (
-    <div className="db-card" style={{ overflow: 'hidden' }}>
+    <div className="db-card" style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{
-        padding: '18px 20px',
+        padding: '20px 22px',
         borderBottom: '1px solid var(--db-border-lt)',
-        display: 'flex', alignItems: 'flex-start', gap: 14,
+        display: 'flex', alignItems: 'flex-start', gap: 14, flex: 1,
       }}>
         <div style={{ flexShrink: 0, marginTop: 2 }}>{icon}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 4 }}>{title}</div>
-          <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.6, marginBottom: 8 }}>{description}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--db-text)', marginBottom: 5 }}>{title}</div>
+          <div style={{ fontSize: 13, color: 'var(--db-muted)', lineHeight: 1.6, marginBottom: 10 }}>{description}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {features.map(f => (
               <div key={f} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                <span style={{ color: 'var(--db-accent-text)', fontSize: 11, flexShrink: 0 }}>✓</span>
-                <span style={{ fontSize: 12, color: 'var(--db-text-2)' }}>{f}</span>
+                <span style={{ color: 'var(--db-accent-text)', fontSize: 12, flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: 13, color: 'var(--db-text-2)' }}>{f}</span>
               </div>
             ))}
           </div>
@@ -498,7 +498,7 @@ function IntegrationCard({
       </div>
 
       <div style={{
-        padding: '14px 20px',
+        padding: '14px 22px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 12,
       }}>
