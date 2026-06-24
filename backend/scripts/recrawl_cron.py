@@ -52,6 +52,14 @@ async def main() -> int:
     except Exception as e:
         logger.error("trial_reminders failed: %s", e)
 
+    # ...and runs the data-retention purge (aged webhook payloads + closed accounts).
+    try:
+        from services import retention
+        result = await retention.run_retention()
+        logger.info("retention done: %s", result)
+    except Exception as e:
+        logger.error("retention failed: %s", e)
+
     return 0
 
 

@@ -180,3 +180,8 @@ alter table tenants add column if not exists extracted_services     jsonb;
 alter table tenants add column if not exists extracted_faqs         jsonb;
 alter table tenants add column if not exists extracted_service_areas jsonb;
 alter table tenants add column if not exists extracted_policies     jsonb;
+
+-- ---------------------------------------------------------------------------
+-- Data retention: track when a tenant account was closed (for delayed purge)
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists closed_at timestamptz;
