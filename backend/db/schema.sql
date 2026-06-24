@@ -171,3 +171,12 @@ alter table tenants add column if not exists next_crawl_at         timestamptz;
 alter table tenants add column if not exists trial_email_day3_sent  boolean default false;
 alter table tenants add column if not exists trial_email_day6_sent  boolean default false;
 alter table tenants add column if not exists trial_email_ended_sent boolean default false;
+
+-- ---------------------------------------------------------------------------
+-- Structured website knowledge extraction (Business Brief)
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists business_brief         text;
+alter table tenants add column if not exists extracted_services     jsonb;
+alter table tenants add column if not exists extracted_faqs         jsonb;
+alter table tenants add column if not exists extracted_service_areas jsonb;
+alter table tenants add column if not exists extracted_policies     jsonb;

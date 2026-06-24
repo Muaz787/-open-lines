@@ -62,7 +62,7 @@ async def recrawl_tenant(tenant: dict, source: str) -> dict:
                      tenant_id, source, failures, _sanitize_error(e))
         raise
 
-    await db.update_tenant(tenant_id, {
+    updates = {
         "last_crawl_at":       result["refreshed_at"].isoformat(),
         "last_crawl_status":   "success",
         "last_crawl_error":    None,
@@ -70,7 +70,16 @@ async def recrawl_tenant(tenant: dict, source: str) -> dict:
         "last_crawl_source":   source,
         "last_crawl_failures": 0,
         "next_crawl_at":       (now + timedelta(days=RECRAWL_INTERVAL_DAYS)).isoformat(),
-    })
+    }
+    # Persist the freshly-regenerated Business Brief from the full crawl.
+    brief = result.get("brief") or {}
+    if brief.get("business_brief"):
+        updates["business_brief"]          = brief.get("business_brief")
+        updates["extracted_services"]      = brief.get("services") or []
+        updates["extracted_faqs"]          = brief.get("faqs") or []
+        updates["extracted_service_areas"] = brief.get("service_areas") or []
+        updates["extracted_policies"]      = brief.get("policies") or []
+    await db.update_tenant(tenant_id, updates)
 
     try:
         await db.upsert_kb_website_entry(tenant_id, website_url)

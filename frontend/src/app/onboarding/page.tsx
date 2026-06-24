@@ -120,8 +120,12 @@ interface Detection {
   industry_confidence: number
   country: string
   services: string[]
+  service_areas: string[]
+  faqs: { q: string; a: string }[]
+  policies: string[]
   faq_count: number
   suggested_instructions: string
+  business_brief: string
   scrape_ok: boolean
   knowledge_chars: number
   analysis_token: string
@@ -534,21 +538,40 @@ export default function OnboardingPage() {
                   : 'Tell us a little about your business so your AI is set up correctly.'}
               </div>
 
-              {detected?.scrape_ok && detected.services.length > 0 && (
+              {detected?.scrape_ok && (detected.services.length > 0 || (detected.service_areas?.length ?? 0) > 0) && (
                 <div style={{
-                  margin: '0 0 18px', padding: '12px 14px', borderRadius: 10,
+                  margin: '0 0 18px', padding: '14px', borderRadius: 10,
                   background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)',
                 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2, var(--text))', marginBottom: 8 }}>
-                    Detected services
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>
+                    Here&rsquo;s what we learned about your business
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {detected.services.map(s => (
-                      <span key={s} style={{
-                        fontSize: 12, padding: '4px 10px', borderRadius: 999,
-                        background: 'var(--surface-2, rgba(127,127,127,0.08))', border: '1px solid var(--border)',
-                      }}>{s}</span>
-                    ))}
+
+                  {detected.services.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 5 }}>Services</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {detected.services.map(s => (
+                          <span key={s} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 999, background: 'var(--surface-2, rgba(127,127,127,0.08))', border: '1px solid var(--border)' }}>{s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(detected.service_areas?.length ?? 0) > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', marginBottom: 5 }}>Service areas</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {detected.service_areas.map(a => (
+                          <span key={a} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 999, background: 'var(--surface-2, rgba(127,127,127,0.08))', border: '1px solid var(--border)' }}>{a}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-2)' }}>
+                    {(detected.faqs?.length ?? 0) > 0 && <span>✓ {detected.faqs.length} FAQs captured</span>}
+                    {(detected.policies?.length ?? 0) > 0 && <span>✓ {detected.policies.length} policies found</span>}
                   </div>
                 </div>
               )}
@@ -667,8 +690,11 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-              {/* Instructions (prefilled) */}
+              {/* Behavioral instructions (prefilled) — how the AI acts, separate from the facts above */}
               <div className="form-group">
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', margin: '4px 0 8px' }}>
+                  Here&rsquo;s how your AI receptionist will behave
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <label className="form-label">
                     AI Instructions{' '}

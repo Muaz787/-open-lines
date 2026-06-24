@@ -112,9 +112,11 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
     try:
         pinecone_namespace = tenant.get("pinecone_namespace", "")
         if pinecone_namespace:
-            result = await knowledge.query_knowledge_base(pinecone_namespace, "overview", top_k=20)
-            if result:
-                knowledge_context = vapi.wrap_untrusted_kb(result)
+            structured = await knowledge.build_structured_knowledge(
+                pinecone_namespace, business_brief=tenant.get("business_brief") or ""
+            )
+            if structured:
+                knowledge_context = vapi.wrap_untrusted_kb(structured)
     except Exception as e:
         logger.warning("KB fetch failed during reprompt for tenant %s (continuing): %s", tenant_id, e)
 
@@ -329,6 +331,18 @@ async def _provision_after_twilio(
     website_url: str = payload.get("website_url", "")
     agent_name: str = payload.get("agent_name", "Alex")
 
+    # Reuse the onboarding analysis (Business Brief + structured extracts) when present.
+    predetected: dict = {}
+    _atok = payload.get("analysis_token", "")
+    if _atok:
+        try:
+            from services import website_analysis as _wa
+            _c = _wa.get_cached_scrape(_atok)
+            if _c and _c.get("detected"):
+                predetected = _c["detected"]
+        except Exception:
+            pass
+
     # Step 4 — Scrape website (non-fatal: provisioning continues without knowledge base).
     # Reuse the onboarding pre-scrape when present to avoid a second Firecrawl call.
     step = 4
@@ -390,20 +404,24 @@ async def _provision_after_twilio(
     try:
         extra_instructions: str = (payload.get("extra_instructions") or "").strip()
 
+        # Prefer the structured Business Brief from analysis; fall back to raw scrape.
+        brief_text = (predetected.get("business_brief") or "").strip()
+
         if industry == "custom":
             logger.info("[Step %d] Generating custom system prompt via GPT-4o", step)
             system_prompt, qualification_fields = await _generate_custom_content(
                 business_name=business_name,
                 agent_name=agent_name,
                 business_description=payload.get("business_description", ""),
-                knowledge_context=scraped_text,
+                knowledge_context=brief_text or scraped_text,
                 extra_instructions=extra_instructions,
             )
         else:
             qualification_questions = "\n".join(
                 f"- {q}" for q in qualification_fields.values()
             )
-            knowledge_context = vapi.wrap_untrusted_kb(scraped_text[:8000]) if scraped_text else "No website content available."
+            kb_text = brief_text or scraped_text[:8000]
+            knowledge_context = vapi.wrap_untrusted_kb(kb_text) if kb_text else "No website content available."
             system_prompt = template.format(
                 business_name=business_name,
                 agent_name=agent_name,
@@ -494,6 +512,14 @@ async def _provision_after_twilio(
             tenant_data["last_crawl_status"] = "success"
             tenant_data["last_crawl_source"] = "onboarding"
             tenant_data["last_crawl_pages"]  = (scraped_text.count("\n\n") + 1)
+        # Persist the onboarding Business Brief + structured extracts (homepage-level;
+        # the first scheduled re-crawl / Sync upgrades these from the full site crawl).
+        if predetected.get("business_brief"):
+            tenant_data["business_brief"]          = predetected.get("business_brief")
+            tenant_data["extracted_services"]      = predetected.get("services") or []
+            tenant_data["extracted_faqs"]          = predetected.get("faqs") or []
+            tenant_data["extracted_service_areas"] = predetected.get("service_areas") or []
+            tenant_data["extracted_policies"]      = predetected.get("policies") or []
         if suborg_id:
             tenant_data["vapi_suborg_id"] = suborg_id
         if suborg_key_encrypted:
