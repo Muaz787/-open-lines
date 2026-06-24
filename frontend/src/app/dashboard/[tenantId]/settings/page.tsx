@@ -111,16 +111,17 @@ function SettingsPage() {
 
         {/* Content */}
         <div className="db-content">
-          <div style={{ maxWidth: 520 }}>
+          <div className="db-form-grid">
 
             {/* ── Notifications ── */}
+            <section>
             <div className="db-page-heading">Notifications</div>
 
             {/* ── Email notifications ── */}
-            <div className="db-card" style={{ overflow: 'hidden', marginBottom: 24 }}>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
+                  <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
                     Email call summaries
                   </label>
                   {/* Toggle */}
@@ -148,10 +149,12 @@ function SettingsPage() {
                 {notifEmailState === 'error'  && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Save failed — try again</span>}
               </div>
             </div>
+            </section>
 
             {/* ── Email address ── */}
+            <section>
             <div className="db-page-heading">Email address</div>
-            <div className="db-card" style={{ overflow: 'hidden', marginBottom: 24 }}>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
                 <label className="db-field-label" style={{ marginBottom: 12 }}>
                   New email
@@ -170,10 +173,12 @@ function SettingsPage() {
                 )}
               </div>
             </div>
+            </section>
 
             {/* ── Password ── */}
+            <section>
             <div className="db-page-heading">Password</div>
-            <div className="db-card" style={{ overflow: 'hidden', marginBottom: 24 }}>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
                   <label className="db-field-label" style={{ marginBottom: 6 }}>Current password</label>
@@ -199,6 +204,7 @@ function SettingsPage() {
                 {pwMsg && <span style={{ fontSize: 12, color: pwState === 'error' ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{pwMsg}</span>}
               </div>
             </div>
+            </section>
 
           </div>
         </div>

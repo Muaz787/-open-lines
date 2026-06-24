@@ -578,7 +578,7 @@ function SubscriptionPage() {
 
       {/* ── Body ── */}
       <div className="db-content">
-        <div style={{ maxWidth: 920 }}>
+        <div style={{ maxWidth: 1080 }}>
 
         {/* ── Current plan card ── */}
         {subDetails?.has_subscription && subDetails.status !== 'canceled' ? (
@@ -822,9 +822,9 @@ function SubscriptionPage() {
                     {annual && (
                       <div style={{ fontSize: 11, color: 'var(--db-accent-text)', fontWeight: 600, marginBottom: 4 }}>Save {plan.saveYear}/yr</div>
                     )}
-                    <div style={{ fontSize: 11, color: 'var(--db-muted)', marginBottom: 10 }}>{plan.minutes}</div>
+                    <div style={{ fontSize: 12, color: 'var(--db-muted)', marginBottom: 10 }}>{plan.minutes}</div>
                     {plan.features.map(f => (
-                      <div key={f} style={{ fontSize: 11, color: 'var(--db-text-2)', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div key={f} style={{ fontSize: 12, color: 'var(--db-text-2)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ color: 'var(--db-accent-text)', fontSize: 10 }}>✓</span> {f}
                       </div>
                     ))}
