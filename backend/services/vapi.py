@@ -166,7 +166,7 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
     tools = [build_caller_lookup_tool(tenant_id)] if tenant_id else []
     return {
         "name": tenant["agent_name"],
-        "firstMessage": tenant["greeting_template"],
+        "firstMessage": ensure_call_disclosure(tenant["greeting_template"]),
         "endCallMessage": "",
         "backgroundSound": "off",
         "backchannelingEnabled": True,
@@ -346,6 +346,20 @@ def ensure_safety_preamble(prompt: str) -> str:
     if _SAFETY_MARKER in prompt:
         return prompt
     return SAFETY_PREAMBLE + prompt
+
+
+# Spoken at the very start of every call so callers are informed they're talking
+# to an AI and the call may be recorded — knowledge/consent for PIPEDA.
+CALL_DISCLOSURE = "Just so you know, you're speaking with an AI assistant and this call may be recorded."
+
+
+def ensure_call_disclosure(greeting: str) -> str:
+    """Prepend the AI + recording disclosure to the first message, unless the
+    greeting already discloses recording. Keeps it natural and non-duplicative."""
+    g = (greeting or "").strip()
+    if "record" in g.lower():
+        return g
+    return f"{CALL_DISCLOSURE} {g}".strip()
 
 
 def wrap_untrusted_kb(text: str) -> str:
