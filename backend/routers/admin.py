@@ -54,8 +54,13 @@ async def toggle_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
 
     new_state: bool = not tenant["is_active"]
 
+    # Track closure time so the retention purge can delete the account's data after
+    # the retention window. Clearing it on re-activation cancels any pending purge.
+    from datetime import datetime as _dt, timezone as _tz
+    updates: dict = {"is_active": new_state, "closed_at": None if new_state else _dt.now(_tz.utc).isoformat()}
+
     try:
-        updated = await db.update_tenant(tenant_id, {"is_active": new_state})
+        updated = await db.update_tenant(tenant_id, updates)
         logger.info(
             "Tenant %s (%s) toggled is_active → %s",
             tenant_id, tenant.get("business_name"), new_state,
@@ -246,3 +251,42 @@ async def send_trial_reminders(x_admin_key: str | None = Header(None)):
     from services import trial
     sent = await trial.process_trial_reminders()
     return {"sent": sent}
+
+
+@router.post("/purge-retention")
+async def purge_retention(x_admin_key: str | None = Header(None)):
+    """Run the data-retention purge: delete aged raw webhook payloads and fully
+    delete tenants closed past the retention window. Intended for the daily cron;
+    safe to run repeatedly."""
+    _check_admin_key(x_admin_key)
+    from services import retention
+    return await retention.run_retention()
+
+
+@router.post("/tenants/{tenant_id}/delete-data")
+async def delete_tenant_data_endpoint(
+    tenant_id: str,
+    drop_tenant: bool = True,
+    x_admin_key: str | None = Header(None),
+):
+    """Permanently delete ALL of a tenant's data (offboarding / data-deletion
+    request). Irreversible. Set drop_tenant=false to wipe data but keep the row."""
+    _check_admin_key(x_admin_key)
+    from services import retention
+    deleted = await retention.delete_tenant_data(tenant_id, drop_tenant=drop_tenant)
+    logger.info("ADMIN: deleted tenant data for %s (drop_tenant=%s)", tenant_id, drop_tenant)
+    return {"status": "deleted", "tenant_id": tenant_id, "deleted": deleted}
+
+
+@router.post("/delete-caller")
+async def delete_caller_endpoint(body: dict, x_admin_key: str | None = Header(None)):
+    """Delete one caller's records for a tenant (individual deletion request).
+    Body: {"tenant_id": "...", "phone": "+1..."}. Irreversible."""
+    _check_admin_key(x_admin_key)
+    tenant_id = (body or {}).get("tenant_id", "")
+    phone     = (body or {}).get("phone", "")
+    if not tenant_id or not phone:
+        raise HTTPException(status_code=400, detail="tenant_id and phone are required")
+    from services import retention
+    counts = await retention.delete_caller_data(tenant_id, phone)
+    return {"status": "deleted", "deleted": counts}
