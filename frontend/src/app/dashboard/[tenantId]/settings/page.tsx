@@ -28,6 +28,7 @@ function SettingsPage() {
   const [notifEmail, setNotifEmail]               = useState('')
   const [emailNotifs, setEmailNotifs]             = useState(false)
   const [notifChannel, setNotifChannel]           = useState<'email' | 'sms' | 'both'>('email')
+  const [smsNumber, setSmsNumber]                 = useState('')
   const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
   const [bizPhone, setBizPhone]                   = useState('')
   const [bizPhoneState, setBizPhoneState]         = useState<SaveState>('idle')
@@ -52,6 +53,7 @@ function SettingsPage() {
         if (d?.notification_email) setNotifEmail(d.notification_email)
         if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
         if (d?.notification_channel === 'email' || d?.notification_channel === 'sms' || d?.notification_channel === 'both') setNotifChannel(d.notification_channel)
+        if (d?.sms_alert_number) setSmsNumber(d.sms_alert_number)
         if (d?.business_phone) setBizPhone(d.business_phone)
       }
     })
@@ -63,7 +65,7 @@ function SettingsPage() {
       const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs, notification_channel: notifChannel }),
+        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs, notification_channel: notifChannel, sms_alert_number: smsNumber.trim() }),
       })
       setNotifEmailState(res.ok ? 'saved' : 'error')
       setTimeout(() => setNotifEmailState('idle'), 3000)
@@ -186,20 +188,23 @@ function SettingsPage() {
                   </div>
                 )}
 
-                {/* SMS destination — uses the business phone */}
+                {/* SMS destination — dedicated mobile for alerts */}
                 {(notifChannel === 'sms' || notifChannel === 'both') && (
                   <div>
-                    <label className="db-field-label" style={{ fontSize: 12 }}>Text message</label>
-                    {bizPhone.trim() ? (
-                      <div className="db-field-help" style={{ marginBottom: 0 }}>
-                        Sent by SMS to your business phone <strong>{bizPhone}</strong>. Make sure it&rsquo;s a
-                        mobile/SMS-capable number — update it under Business phone below.
-                      </div>
-                    ) : (
-                      <div className="db-field-help" style={{ marginBottom: 0, color: 'var(--db-danger-text)' }}>
-                        Add a business phone number (below) to receive SMS summaries.
-                      </div>
-                    )}
+                    <label className="db-field-label" style={{ fontSize: 12 }}>Mobile for SMS alerts</label>
+                    <input
+                      type="tel" value={smsNumber} onChange={e => setSmsNumber(e.target.value)}
+                      placeholder={bizPhone.trim() ? `Defaults to ${bizPhone}` : '+1 (647) 555-0123'}
+                      className="db-input" style={{ opacity: emailNotifs ? 1 : 0.5 }}
+                      disabled={!emailNotifs}
+                    />
+                    <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>
+                      Use a mobile/SMS-capable number — texts may not reach a landline.
+                      {bizPhone.trim() && ' Leave blank to use your business phone.'}
+                      {!smsNumber.trim() && !bizPhone.trim() && (
+                        <span style={{ color: 'var(--db-danger-text)' }}> Add a number here or a business phone below to receive SMS summaries.</span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
