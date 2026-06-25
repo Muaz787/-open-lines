@@ -192,3 +192,11 @@ alter table tenants add column if not exists closed_at timestamptz;
 -- Settings; not captured at onboarding today, so starts null.
 -- ---------------------------------------------------------------------------
 alter table tenants add column if not exists business_phone text;
+
+-- ---------------------------------------------------------------------------
+-- Call-summary notification channel preference: 'email' | 'sms' | 'both'
+-- (default email). SMS summaries are sent to business_phone. WhatsApp is a
+-- planned future channel. The existing email_notifications flag remains the
+-- master on/off switch for call-summary notifications.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists notification_channel text default 'email';

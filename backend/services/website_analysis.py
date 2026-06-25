@@ -9,6 +9,7 @@ subsequent /onboarding/provision call can reuse it instead of scraping twice.
 """
 import os
 import json
+import re
 import time
 import uuid
 import logging
@@ -103,6 +104,7 @@ def _empty_detection() -> dict:
         "industry": "custom",
         "industry_confidence": 0.0,
         "country": "",
+        "phone": "",
         "services": [],
         "service_areas": [],
         "faqs": [],
@@ -135,6 +137,7 @@ Return valid JSON only with these keys:
   "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, parliament, custom",
   "industry_confidence": 0.0-1.0,
   "country": "ISO 3166-1 alpha-2 code inferred from address/phone/domain, or empty string",
+  "phone": "the business's primary public phone number exactly as written on the site (digits/+/()-/spaces), or empty string if none is shown",
   "services": ["up to 12 specific services offered (e.g. 'Refrigerator repair', 'Career Pilot Program')"],
   "service_areas": ["cities/regions/neighbourhoods served, if stated"],
   "faqs": [{{"q": "question a caller might ask", "a": "the answer from the site"}}],
@@ -166,6 +169,11 @@ industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contr
 
     country = str(data.get("country", "") or "").upper().strip()[:2]
 
+    # Detected business phone — keep only phone-ish characters, drop if implausible.
+    phone = str(data.get("phone", "") or "").strip()[:32]
+    if phone and not re.fullmatch(r"[+]?[0-9 ()\-.]{6,32}", phone):
+        phone = ""
+
     def _str_list(v, limit: int, maxlen: int = 80) -> list[str]:
         if not isinstance(v, list):
             return []
@@ -192,6 +200,7 @@ industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contr
         "industry": industry,
         "industry_confidence": round(max(0.0, min(1.0, confidence)), 2),
         "country": country,
+        "phone": phone,
         "services": services,
         "service_areas": service_areas,
         "faqs": faqs,

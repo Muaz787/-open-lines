@@ -27,6 +27,7 @@ function SettingsPage() {
 
   const [notifEmail, setNotifEmail]               = useState('')
   const [emailNotifs, setEmailNotifs]             = useState(false)
+  const [notifChannel, setNotifChannel]           = useState<'email' | 'sms' | 'both'>('email')
   const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
   const [bizPhone, setBizPhone]                   = useState('')
   const [bizPhoneState, setBizPhoneState]         = useState<SaveState>('idle')
@@ -50,6 +51,7 @@ function SettingsPage() {
         setTenant(d)
         if (d?.notification_email) setNotifEmail(d.notification_email)
         if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
+        if (d?.notification_channel === 'email' || d?.notification_channel === 'sms' || d?.notification_channel === 'both') setNotifChannel(d.notification_channel)
         if (d?.business_phone) setBizPhone(d.business_phone)
       }
     })
@@ -61,7 +63,7 @@ function SettingsPage() {
       const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs }),
+        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs, notification_channel: notifChannel }),
       })
       setNotifEmailState(res.ok ? 'saved' : 'error')
       setTimeout(() => setNotifEmailState('idle'), 3000)
@@ -137,14 +139,14 @@ function SettingsPage() {
             <section>
             <div className="db-page-heading">Notifications</div>
 
-            {/* ── Email notifications ── */}
+            {/* ── Call summary notifications ── */}
             <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                   <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
-                    Email call summaries
+                    Call summary notifications
                   </label>
-                  {/* Toggle */}
+                  {/* Master on/off toggle */}
                   <button
                     type="button"
                     className={`db-switch${emailNotifs ? ' on' : ''}`}
@@ -153,16 +155,63 @@ function SettingsPage() {
                   />
                 </div>
                 <div className="db-field-help">
-                  Receive a call summary by email after every call. Can be a different address from your login email.
+                  Get a summary after every call. Choose how you&rsquo;d like to receive it.
                 </div>
-                <input
-                  type="email" value={notifEmail} onChange={e => setNotifEmail(e.target.value)}
-                  placeholder="you@example.com" className="db-input" style={{ opacity: emailNotifs ? 1 : 0.5 }}
-                  disabled={!emailNotifs}
-                />
+
+                {/* Channel selector */}
+                <div style={{ display: 'flex', gap: 6, opacity: emailNotifs ? 1 : 0.5, pointerEvents: emailNotifs ? 'auto' : 'none', marginBottom: 14 }}>
+                  {([['email', 'Email'], ['sms', 'SMS'], ['both', 'Both']] as const).map(([val, lbl]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setNotifChannel(val)}
+                      className={`db-pill${notifChannel === val ? ' active' : ''}`}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Email destination — shown when email is part of the channel */}
+                {(notifChannel === 'email' || notifChannel === 'both') && (
+                  <div style={{ marginBottom: (notifChannel === 'both') ? 12 : 0 }}>
+                    <label className="db-field-label" style={{ fontSize: 12 }}>Email address</label>
+                    <input
+                      type="email" value={notifEmail} onChange={e => setNotifEmail(e.target.value)}
+                      placeholder="you@example.com" className="db-input" style={{ opacity: emailNotifs ? 1 : 0.5 }}
+                      disabled={!emailNotifs}
+                    />
+                    <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>Can differ from your login email.</div>
+                  </div>
+                )}
+
+                {/* SMS destination — uses the business phone */}
+                {(notifChannel === 'sms' || notifChannel === 'both') && (
+                  <div>
+                    <label className="db-field-label" style={{ fontSize: 12 }}>Text message</label>
+                    {bizPhone.trim() ? (
+                      <div className="db-field-help" style={{ marginBottom: 0 }}>
+                        Sent by SMS to your business phone <strong>{bizPhone}</strong>. Make sure it&rsquo;s a
+                        mobile/SMS-capable number — update it under Business phone below.
+                      </div>
+                    ) : (
+                      <div className="db-field-help" style={{ marginBottom: 0, color: 'var(--db-danger-text)' }}>
+                        Add a business phone number (below) to receive SMS summaries.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button className="db-btn db-btn--accent-ghost" onClick={saveNotifEmail} disabled={notifEmailState === 'saving' || (emailNotifs && !notifEmail.trim())}>
+                <button
+                  className="db-btn db-btn--accent-ghost"
+                  onClick={saveNotifEmail}
+                  disabled={
+                    notifEmailState === 'saving' ||
+                    (emailNotifs && (notifChannel === 'email' || notifChannel === 'both') && !notifEmail.trim())
+                  }
+                >
                   {notifEmailState === 'saving' ? 'Saving…' : 'Save'}
                 </button>
                 {notifEmailState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
