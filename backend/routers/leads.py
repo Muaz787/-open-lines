@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from openai import AsyncOpenAI
@@ -46,42 +46,84 @@ async def list_leads(
         raise HTTPException(status_code=500, detail="Failed to fetch leads")
 
 
+def _period_window(period: str):
+    """Return (start_dt, bucket_count, index_fn) for the requested period.
+    'today' buckets by hour since midnight UTC; 7d/30d bucket by day."""
+    now = datetime.now(timezone.utc)
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        n = now.hour + 1
+        return start, n, (lambda dt: min(max(dt.hour, 0), n - 1))
+    days = 30 if period == "30d" else 7
+    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return start, days, (lambda dt: min(max((dt - start).days, 0), days - 1))
+
+
+def _parse_ts(ts: str) -> datetime:
+    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 @router.get("/{tenant_id}/stats")
-async def get_stats(tenant_id: str):
+async def get_stats(
+    tenant_id: str,
+    period: str = Query(default="7d", pattern="^(today|7d|30d)$"),
+):
+    """Period-scoped performance totals plus a per-bucket time series for each
+    metric, used to draw the dashboard trend charts."""
+    start, n_buckets, bucket_idx = _period_window(period)
+    start_iso = start.isoformat()
     try:
         client = db.get_client()
-
-        # Accurate counts — never capped by a row limit
-        calls_res = client.table("calls").select("id", count="exact").eq("tenant_id", tenant_id).execute()
-        leads_res = client.table("leads").select("id", count="exact").eq("tenant_id", tenant_id).execute()
-
-        # Appointments booked = confirmed + completed (excludes cancelled)
-        appts_res = (
-            client.table("appointments")
-            .select("id", count="exact")
-            .eq("tenant_id", tenant_id)
-            .neq("status", "cancelled")
-            .execute()
-        )
-
-        # Total call time — fetch only duration_secs column, high limit
-        dur_res = (
-            client.table("calls")
-            .select("duration_secs")
-            .eq("tenant_id", tenant_id)
-            .limit(100_000)
-            .execute()
-        )
+        calls = (client.table("calls").select("created_at,duration_secs")
+                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000).execute().data or [])
+        leads = (client.table("leads").select("created_at")
+                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000).execute().data or [])
+        appts = (client.table("appointments").select("created_at")
+                 .eq("tenant_id", tenant_id).neq("status", "cancelled")
+                 .gte("created_at", start_iso).limit(100_000).execute().data or [])
     except Exception as e:
         logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
-    total_secs = sum(r.get("duration_secs") or 0 for r in (dur_res.data or []))
+    calls_s = [0] * n_buckets
+    leads_s = [0] * n_buckets
+    appts_s = [0] * n_buckets
+    secs_s  = [0.0] * n_buckets
+
+    for r in calls:
+        try:
+            i = bucket_idx(_parse_ts(r["created_at"]))
+        except Exception:
+            continue
+        calls_s[i] += 1
+        secs_s[i]  += (r.get("duration_secs") or 0)
+    for r in leads:
+        try:
+            leads_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
+        except Exception:
+            continue
+    for r in appts:
+        try:
+            appts_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
+        except Exception:
+            continue
+
+    minutes_s   = [round(s / 60) for s in secs_s]
+    total_secs  = sum(secs_s)
+
     return {
-        "total_calls":         calls_res.count or 0,
-        "total_leads":         leads_res.count or 0,
+        "period":              period,
+        "total_calls":         sum(calls_s),
+        "total_leads":         sum(leads_s),
         "minutes_handled":     round(total_secs / 60),
-        "appointments_booked": appts_res.count or 0,
+        "appointments_booked": sum(appts_s),
+        "series": {
+            "calls":        calls_s,
+            "leads":        leads_s,
+            "minutes":      minutes_s,
+            "appointments": appts_s,
+        },
     }
 
 

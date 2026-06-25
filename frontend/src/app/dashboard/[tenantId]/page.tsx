@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useId, Suspense } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
@@ -63,6 +63,12 @@ interface Stats {
   total_leads: number
   minutes_handled: number
   appointments_booked: number
+  series?: {
+    calls: number[]
+    leads: number[]
+    minutes: number[]
+    appointments: number[]
+  }
 }
 
 interface Insight {
@@ -93,14 +99,30 @@ const BOOKING_INDUSTRIES = new Set([
   'builder', 'restaurant', 'beauty', 'custom',
 ])
 
-/* Inline sparkline SVG */
-function Sparkline({ value, active }: { value: number; active: boolean }) {
-  const pts = value > 0
-    ? '0,22 20,22 40,20 60,15 80,10 100,7'
-    : '0,22 20,22 40,22 60,22 80,22 100,22'
+/* Real trend chart — gradient-filled area from the period's daily series */
+function TrendChart({ data, active }: { data: number[]; active: boolean }) {
+  const uid = 'tc' + useId().replace(/:/g, '')
+  const W = 240, H = 52, padY = 5
+  // Need at least two points to draw a line; pad short/empty series with a leading zero.
+  const safe = !data || data.length === 0 ? [0, 0] : data.length === 1 ? [0, data[0]] : data
+  const n = safe.length
+  const max = Math.max(...safe, 1)
+  const xAt = (i: number) => (i / (n - 1)) * W
+  const yAt = (v: number) => H - padY - (v / max) * (H - padY * 2)
+  const line = safe.map((v, i) => `${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ')
+  const area = `0,${H} ${line} ${W},${H}`
+  const stroke = active ? 'var(--db-accent)' : 'var(--db-faint)'
   return (
-    <svg className="db-sparkline" viewBox="0 0 100 28" preserveAspectRatio="none">
-      <polyline points={pts} fill="none" stroke={active ? 'var(--db-accent)' : 'var(--db-border)'} strokeWidth="1.5" strokeLinejoin="round"/>
+    <svg className="db-trendchart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stopColor={stroke} stopOpacity={active ? 0.24 : 0.10} />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill={`url(#${uid})`} />
+      <polyline points={line} fill="none" stroke={stroke} strokeWidth="2.25"
+        strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
   )
 }
@@ -217,7 +239,7 @@ function DashboardPage() {
         const [tRes, lRes, sRes] = await Promise.all([
           authedFetch(`${API}/onboarding/status/${tenantId}`),
           authedFetch(`${API}/leads/${tenantId}`),
-          authedFetch(`${API}/leads/${tenantId}/stats`),
+          authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`),
         ])
         if (tRes.ok) setTenant(await tRes.json())
         if (lRes.ok) setLeads(await lRes.json())
@@ -230,10 +252,18 @@ function DashboardPage() {
     fetchCalendar()
     const interval = setInterval(() => {
       fetchLeads()
-      authedFetch(`${API}/leads/${tenantId}/stats`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
+      authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
     }, 30_000)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, fetchLeads, fetchCalendar])
+
+  // Re-fetch performance stats when the period toggle changes.
+  useEffect(() => {
+    authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setStats(d))
+  }, [period, tenantId])
 
   useEffect(() => {
     const calParam     = searchParams.get('calendar')
@@ -421,11 +451,11 @@ function DashboardPage() {
               </div>
               <div className="db-stats-v2">
                 {[
-                  { label: 'Calls handled',       value: stats.total_calls,         unit: '' },
-                  { label: 'Leads captured',       value: stats.total_leads,         unit: '' },
-                  { label: 'Minutes on phone',     value: stats.minutes_handled,     unit: 'min' },
-                  { label: 'Appointments booked',  value: stats.appointments_booked, unit: '' },
-                ].map(({ label, value, unit }) => {
+                  { label: 'Calls handled',       value: stats.total_calls,         unit: '',    series: stats.series?.calls },
+                  { label: 'Leads captured',       value: stats.total_leads,         unit: '',    series: stats.series?.leads },
+                  { label: 'Minutes on phone',     value: stats.minutes_handled,     unit: 'min', series: stats.series?.minutes },
+                  { label: 'Appointments booked',  value: stats.appointments_booked, unit: '',    series: stats.series?.appointments },
+                ].map(({ label, value, unit, series }) => {
                   const noData = unit === 'min' && value === 0 && stats.total_calls > 0
                   const periodLabel = period === 'today' ? 'Today' : period === '7d' ? '7d' : '30d'
                   return (
@@ -440,7 +470,7 @@ function DashboardPage() {
                         {noData ? <span style={{ color: 'var(--db-faint)' }}>—</span> : value.toLocaleString()}
                         {unit && !noData && <span className="db-stat-unit"> {unit}</span>}
                       </div>
-                      <Sparkline value={noData ? 0 : value} active={value > 0 && !noData} />
+                      <TrendChart data={series ?? []} active={value > 0 && !noData} />
                     </div>
                   )
                 })}
