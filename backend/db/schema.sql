@@ -185,3 +185,10 @@ alter table tenants add column if not exists extracted_policies     jsonb;
 -- Data retention: track when a tenant account was closed (for delayed purge)
 -- ---------------------------------------------------------------------------
 alter table tenants add column if not exists closed_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- Business contact phone number (the tenant's own published line, distinct
+-- from twilio_phone_number which is the AI receptionist line). Editable in
+-- Settings; not captured at onboarding today, so starts null.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists business_phone text;

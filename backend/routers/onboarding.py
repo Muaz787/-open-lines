@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Annotated, Literal
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
@@ -164,6 +165,7 @@ class SettingsUpdateRequest(BaseModel):
     whatsapp_number:      str | None = None
     notification_email:   str | None = None
     email_notifications:  bool | None = None
+    business_phone:       str | None = None
     business_hours_start: int | None = None
     business_hours_end:   int | None = None
     business_days:        list[int] | None = None
@@ -171,6 +173,20 @@ class SettingsUpdateRequest(BaseModel):
     break_end:            int | None = None
     booking_instructions: str | None = None
     auto_recrawl_enabled: bool | None = None
+
+    @field_validator("business_phone")
+    @classmethod
+    def _clean_business_phone(cls, v: str | None) -> str | None:
+        # Permissive: allow +, digits, spaces, dashes, parentheses. Empty -> null
+        # so the tenant can clear it. Reject anything obviously not a phone number.
+        if v is None:
+            return None
+        v = v.strip()
+        if v == "":
+            return None
+        if len(v) > 32 or not re.fullmatch(r"[+]?[0-9 ()\-.]{6,32}", v):
+            raise ValueError("Enter a valid phone number")
+        return v
 
 
 @router.patch("/settings/{tenant_id}")

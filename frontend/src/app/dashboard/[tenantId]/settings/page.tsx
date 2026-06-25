@@ -14,6 +14,7 @@ interface Tenant {
   business_name: string
   industry: string
   twilio_phone_number?: string
+  business_phone?: string
   subscription_plan?: string
   subscription_status?: string
 }
@@ -27,6 +28,8 @@ function SettingsPage() {
   const [notifEmail, setNotifEmail]               = useState('')
   const [emailNotifs, setEmailNotifs]             = useState(false)
   const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
+  const [bizPhone, setBizPhone]                   = useState('')
+  const [bizPhoneState, setBizPhoneState]         = useState<SaveState>('idle')
   const [email, setEmail]                         = useState('')
   const [emailState, setEmailState]               = useState<SaveState>('idle')
   const [emailMsg, setEmailMsg]                   = useState('')
@@ -47,6 +50,7 @@ function SettingsPage() {
         setTenant(d)
         if (d?.notification_email) setNotifEmail(d.notification_email)
         if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
+        if (d?.business_phone) setBizPhone(d.business_phone)
       }
     })
   }, [tenantId, router])
@@ -64,6 +68,22 @@ function SettingsPage() {
     } catch {
       setNotifEmailState('error')
       setTimeout(() => setNotifEmailState('idle'), 3000)
+    }
+  }
+
+  const saveBizPhone = async () => {
+    setBizPhoneState('saving')
+    try {
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_phone: bizPhone.trim() }),
+      })
+      setBizPhoneState(res.ok ? 'saved' : 'error')
+      setTimeout(() => setBizPhoneState('idle'), 3000)
+    } catch {
+      setBizPhoneState('error')
+      setTimeout(() => setBizPhoneState('idle'), 3000)
     }
   }
 
@@ -176,6 +196,34 @@ function SettingsPage() {
                     {emailMsg}
                   </span>
                 )}
+              </div>
+            </div>
+            </section>
+
+            {/* ── Business phone ── */}
+            <section>
+            <div className="db-page-heading">Business phone</div>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
+                <label className="db-field-label" style={{ marginBottom: 4 }}>
+                  Your business phone number
+                </label>
+                <div className="db-field-help">
+                  Your own published business line — separate from your AI receptionist number
+                  {tenant?.twilio_phone_number ? ` (${tenant.twilio_phone_number})` : ''}. Used as
+                  your contact number on the account; update it here if it changes.
+                </div>
+                <input
+                  type="tel" value={bizPhone} onChange={e => setBizPhone(e.target.value)}
+                  placeholder="+1 (647) 555-0123" className="db-input"
+                />
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button className="db-btn db-btn--accent-ghost" onClick={saveBizPhone} disabled={bizPhoneState === 'saving'}>
+                  {bizPhoneState === 'saving' ? 'Saving…' : 'Save'}
+                </button>
+                {bizPhoneState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
+                {bizPhoneState === 'error' && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Enter a valid phone number</span>}
               </div>
             </div>
             </section>
