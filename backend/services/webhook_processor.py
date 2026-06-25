@@ -297,7 +297,8 @@ async def process_end_of_call(payload: dict) -> None:
     notifications_on   = tenant.get("email_notifications", False)
     channel            = (tenant.get("notification_channel") or "email").lower()
     notification_email = tenant.get("notification_email", "")
-    business_phone     = tenant.get("business_phone", "")
+    # SMS alerts go to the dedicated mobile if set, else fall back to the business phone.
+    sms_to             = (tenant.get("sms_alert_number") or tenant.get("business_phone") or "").strip()
 
     # Email (non-fatal)
     if notifications_on and channel in ("email", "both") and notification_email:
@@ -315,8 +316,8 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
 
-    # SMS (non-fatal) — sent to the tenant's business phone from their Twilio line
-    if notifications_on and channel in ("sms", "both") and business_phone:
+    # SMS (non-fatal) — sent to the tenant's SMS alert number from their Twilio line
+    if notifications_on and channel in ("sms", "both") and sms_to:
         try:
             sub_sid  = tenant.get("twilio_subaccount_sid", "")
             sub_tok  = tenant.get("twilio_auth_token", "")
@@ -326,7 +327,7 @@ async def process_end_of_call(payload: dict) -> None:
                     subaccount_sid=sub_sid,
                     subaccount_token=sub_tok,
                     from_number=from_num,
-                    to_number=business_phone,
+                    to_number=sms_to,
                     body=_format_sms_summary(business_name, analysis, caller_number),
                 )
                 analytics.capture(_distinct, "owner_notification_sent", {

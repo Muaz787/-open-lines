@@ -168,6 +168,7 @@ class SettingsUpdateRequest(BaseModel):
     email_notifications:  bool | None = None
     notification_channel: str | None = None
     business_phone:       str | None = None
+    sms_alert_number:     str | None = None
     business_hours_start: int | None = None
     business_hours_end:   int | None = None
     business_days:        list[int] | None = None
@@ -186,9 +187,9 @@ class SettingsUpdateRequest(BaseModel):
             raise ValueError("notification_channel must be email, sms, or both")
         return v
 
-    @field_validator("business_phone")
+    @field_validator("business_phone", "sms_alert_number")
     @classmethod
-    def _clean_business_phone(cls, v: str | None) -> str | None:
+    def _clean_phone(cls, v: str | None) -> str | None:
         # Permissive: allow +, digits, spaces, dashes, parentheses. Empty -> null
         # so the tenant can clear it. Reject anything obviously not a phone number.
         if v is None:

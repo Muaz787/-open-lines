@@ -200,3 +200,10 @@ alter table tenants add column if not exists business_phone text;
 -- master on/off switch for call-summary notifications.
 -- ---------------------------------------------------------------------------
 alter table tenants add column if not exists notification_channel text default 'email';
+
+-- ---------------------------------------------------------------------------
+-- Dedicated mobile number for SMS call-summary alerts. Kept separate from
+-- business_phone (which may be a landline). Falls back to business_phone when
+-- blank.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists sms_alert_number text;
