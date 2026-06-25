@@ -71,6 +71,27 @@ def _format_whatsapp_message(business_name: str, analysis: dict, caller_number: 
     )
 
 
+def _format_sms_summary(business_name: str, analysis: dict, caller_number: str = "") -> str:
+    """Compact, plain-text call summary for SMS (no markdown, length-bounded)."""
+    analysis = analysis or {}
+    caller_name = analysis.get("caller_name") or "Unknown caller"
+    urgency = analysis.get("urgency", "")
+    summary = (analysis.get("summary") or "").strip()
+    next_step = (analysis.get("suggested_next_step") or "").strip()
+
+    lines = [f"New call — {business_name}", caller_name]
+    if caller_number:
+        lines.append(caller_number)
+    if urgency:
+        lines.append(f"Urgency: {urgency}")
+    if summary:
+        lines.append(summary[:300])
+    if next_step:
+        lines.append(f"Next: {next_step[:120]}")
+    # Keep within a couple of SMS segments.
+    return "\n".join(lines)[:600]
+
+
 async def process_end_of_call(payload: dict) -> None:
     """Process a single end-of-call-report payload. Raises on any fatal error."""
     msg = payload.get("message", payload)
@@ -271,9 +292,15 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
-    # Email notification (non-fatal)
+    # Call-summary notifications — channel preference (email / sms / both), with
+    # email_notifications as the master on/off switch. WhatsApp is planned later.
+    notifications_on   = tenant.get("email_notifications", False)
+    channel            = (tenant.get("notification_channel") or "email").lower()
     notification_email = tenant.get("notification_email", "")
-    if notification_email and tenant.get("email_notifications", False):
+    business_phone     = tenant.get("business_phone", "")
+
+    # Email (non-fatal)
+    if notifications_on and channel in ("email", "both") and notification_email:
         try:
             from services.email import send_call_summary_email
             await send_call_summary_email(
@@ -287,6 +314,28 @@ async def process_end_of_call(payload: dict) -> None:
             })
         except Exception as e:
             logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
+
+    # SMS (non-fatal) — sent to the tenant's business phone from their Twilio line
+    if notifications_on and channel in ("sms", "both") and business_phone:
+        try:
+            sub_sid  = tenant.get("twilio_subaccount_sid", "")
+            sub_tok  = tenant.get("twilio_auth_token", "")
+            from_num = tenant.get("twilio_phone_number", "")
+            if sub_sid and sub_tok and from_num:
+                await telephony.send_sms(
+                    subaccount_sid=sub_sid,
+                    subaccount_token=sub_tok,
+                    from_number=from_num,
+                    to_number=business_phone,
+                    body=_format_sms_summary(business_name, analysis, caller_number),
+                )
+                analytics.capture(_distinct, "owner_notification_sent", {
+                    "tenant_id": tenant_id, "channel": "sms",
+                })
+            else:
+                logger.warning("SMS notification skipped for tenant %s: missing Twilio creds", tenant_id)
+        except Exception as e:
+            logger.error("SMS notification failed for tenant %s: %s", tenant_id, e)
 
     # Record minutes for metered overage billing — cast to int (Vapi sends floats)
     if duration is not None and duration > 0:

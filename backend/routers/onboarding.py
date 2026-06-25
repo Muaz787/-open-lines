@@ -49,6 +49,7 @@ class ProvisionRequest(BaseModel):
     business_description: str = ""
     email: str = ""
     password: str = ""
+    business_phone: str = ""
     analysis_token: str = ""
 
     @field_validator("industry")
@@ -165,6 +166,7 @@ class SettingsUpdateRequest(BaseModel):
     whatsapp_number:      str | None = None
     notification_email:   str | None = None
     email_notifications:  bool | None = None
+    notification_channel: str | None = None
     business_phone:       str | None = None
     business_hours_start: int | None = None
     business_hours_end:   int | None = None
@@ -173,6 +175,16 @@ class SettingsUpdateRequest(BaseModel):
     break_end:            int | None = None
     booking_instructions: str | None = None
     auto_recrawl_enabled: bool | None = None
+
+    @field_validator("notification_channel")
+    @classmethod
+    def _valid_channel(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip().lower()
+        if v not in ("email", "sms", "both"):
+            raise ValueError("notification_channel must be email, sms, or both")
+        return v
 
     @field_validator("business_phone")
     @classmethod

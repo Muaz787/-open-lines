@@ -516,6 +516,11 @@ async def _provision_after_twilio(
             tenant_data["last_crawl_pages"]  = (scraped_text.count("\n\n") + 1)
         # Persist the onboarding Business Brief + structured extracts (homepage-level;
         # the first scheduled re-crawl / Sync upgrades these from the full site crawl).
+        # Business phone: prefer an explicit value from the form, else the number
+        # detected on the website. Editable later in Settings.
+        business_phone = (payload.get("business_phone") or predetected.get("phone") or "").strip()
+        if business_phone:
+            tenant_data["business_phone"] = business_phone[:32]
         if predetected.get("business_brief"):
             tenant_data["business_brief"]          = predetected.get("business_brief")
             tenant_data["extracted_services"]      = predetected.get("services") or []
