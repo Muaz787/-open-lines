@@ -137,3 +137,48 @@ CALL_ENRICHMENT_KEYS = (
 def call_enrichment(analysis: dict) -> dict:
     """Pick just the call-row enrichment columns from a full analysis dict."""
     return {k: analysis.get(k) for k in CALL_ENRICHMENT_KEYS}
+
+
+async def backfill_missing_intents(limit: int = 200, tenant_id: str | None = None) -> dict:
+    """Enrich existing calls that don't have intent yet (intent IS NULL).
+
+    Batched and idempotent: only touches un-enriched calls, marks too-short
+    transcripts as 'other' so they aren't reconsidered, and never reprocesses a
+    call that already has an intent. Safe to run repeatedly / on a schedule.
+    Returns {considered, enriched, skipped, failed}.
+    """
+    from db import supabase as db
+
+    limit = max(1, min(int(limit), 1000))
+    client = db.get_client()
+    q = client.table("calls").select("id,tenant_id,transcript").is_("intent", "null").limit(limit)
+    if tenant_id:
+        q = q.eq("tenant_id", tenant_id)
+    rows = q.execute().data or []
+
+    tenants: dict = {}
+    enriched = skipped = failed = 0
+    for r in rows:
+        tx = (r.get("transcript") or "").strip()
+        if len(tx) < 20:
+            try:
+                await db.update_call(r["id"], {"intent": "other"})
+            except Exception:
+                pass
+            skipped += 1
+            continue
+        tid = r["tenant_id"]
+        if tid not in tenants:
+            try:
+                tenants[tid] = await db.get_tenant_by_id(tid)
+            except Exception:
+                tenants[tid] = {}
+        try:
+            analysis = await analyze_transcript(tx, tenants[tid] or {})
+            await db.update_call(r["id"], call_enrichment(analysis))
+            enriched += 1
+        except Exception as e:
+            failed += 1
+            logger.warning("backfill_missing_intents: call %s failed: %s", r.get("id"), e)
+
+    return {"considered": len(rows), "enriched": enriched, "skipped": skipped, "failed": failed}
