@@ -321,7 +321,7 @@ export default function PaymentsPage() {
       <Toast message={toast} />
 
       <div className="db-topbar">
-        <span className="db-topbar-title">Payments</span>
+        <span className="db-topbar-title">Deposit Collection</span>
       </div>
 
       <div className="db-content">
@@ -333,7 +333,7 @@ export default function PaymentsPage() {
               <div style={{ color: 'var(--db-muted)', flexShrink: 0 }}><LockIcon /></div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', marginBottom: 3 }}>
-                  Payments require a Pro or Business plan
+                  Deposit collection requires a Pro or Business plan
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>
                   Collect deposits from callers during booking. Upgrade to unlock.
@@ -350,7 +350,7 @@ export default function PaymentsPage() {
             <div className="db-form-wide" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               {[
                 { label: 'Total collected', value: `$${(totalRevenue / 100).toFixed(2)}` },
-                { label: 'Payments',        value: payments.filter(p => p.status === 'succeeded').length },
+                { label: 'Deposits',        value: payments.filter(p => p.status === 'succeeded').length },
                 { label: 'Awaiting payment', value: pendingCount },
               ].map(({ label, value }) => (
                 <div key={label} className="db-card" style={{ padding: '16px 18px' }}>
@@ -624,14 +624,14 @@ export default function PaymentsPage() {
           {payments.length === 0 ? (
             <div className="db-card db-form-wide" style={{ padding: '32px 20px', textAlign: 'center' }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>💳</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No payments yet</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No deposits yet</div>
               <div style={{ fontSize: 13, color: 'var(--db-muted)', lineHeight: 1.6 }}>
                 Deposits will appear here after your first booking with payment enabled.
               </div>
             </div>
           ) : (
             <div className="db-form-wide">
-              <div className="db-page-heading" style={{ marginBottom: 12, fontSize: 14 }}>Payment history</div>
+              <div className="db-page-heading" style={{ marginBottom: 12, fontSize: 14 }}>Deposit history</div>
 
               {/* Mobile card list — shown below ~600 px */}
               <div className="db-card" style={{ overflow: 'hidden' }} id="payments-mobile">
