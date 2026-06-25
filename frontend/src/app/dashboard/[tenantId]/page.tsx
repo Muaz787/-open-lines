@@ -719,7 +719,7 @@ function DashboardPage() {
           </div>{/* /db-two-col */}
 
           {/* AI Insights — full width */}
-          <AiInsights tenantId={tenantId} />
+          <AiInsights tenantId={tenantId} businessName={tenant?.business_name} />
 
         </div>{/* /db-content */}
     </>

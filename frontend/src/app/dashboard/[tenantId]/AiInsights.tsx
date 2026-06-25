@@ -122,7 +122,7 @@ function SectionTitle({ children, count }: { children: React.ReactNode; count?: 
   )
 }
 
-export default function AiInsights({ tenantId }: { tenantId: string }) {
+export default function AiInsights({ tenantId, businessName }: { tenantId: string; businessName?: string }) {
   const [data, setData]       = useState<Payload | null>(null)
   const [loading, setLoading] = useState(false)
   const [booted, setBooted]   = useState(false)
@@ -142,6 +142,16 @@ export default function AiInsights({ tenantId }: { tenantId: string }) {
   const p = data?.performance
   const hasContent = !!data?.has_data
 
+  const printReport = () => {
+    if (!data?.has_data || !data.performance) return
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(buildReportHtml(data, businessName))
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 350)
+  }
+
   return (
     <div className="db-section-card" style={{ marginTop: 14 }}>
       <div className="db-section-hdr">
@@ -153,10 +163,13 @@ export default function AiInsights({ tenantId }: { tenantId: string }) {
           )}
         </div>
         {hasContent && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {data?.generated_at && (
-              <span style={{ fontSize: 11, color: 'var(--db-faint)' }}>Updated {timeAgo(data.generated_at)}</span>
+              <span style={{ fontSize: 11, color: 'var(--db-faint)', marginRight: 2 }}>Updated {timeAgo(data.generated_at)}</span>
             )}
+            <button className="db-btn db-btn--ghost db-btn--sm" onClick={printReport} title="Download or print this report">
+              ↓ PDF / Print
+            </button>
             <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => load(true)} disabled={loading}>
               {loading ? 'Analyzing…' : 'Refresh'}
             </button>
@@ -318,4 +331,114 @@ function ActionRow({ label, value, strong }: { label: string; value: string; str
       <span style={{ color: strong ? 'var(--db-text)' : 'var(--db-text-2)', fontWeight: strong ? 600 : 400 }}>{value}</span>
     </div>
   )
+}
+
+// --------------------------------------------------------------------------- //
+// Printable / downloadable report
+// --------------------------------------------------------------------------- //
+function esc(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+}
+
+function buildReportHtml(data: Payload, businessName?: string): string {
+  const p = data.performance!
+  const gen = data.generated_at ? new Date(data.generated_at).toLocaleString() : 'recently'
+  const conf = (n: number, pct: number, level: string) =>
+    `${level[0].toUpperCase() + level.slice(1)} confidence · ${pct}% · based on ${n} ${n === 1 ? 'conversation' : 'conversations'}`
+
+  const metricsHtml = ([
+    ['Calls answered', p.calls_answered],
+    ['Sales opportunities', p.sales_opportunities],
+    ['New leads', p.new_leads],
+    ['Appointments booked', p.appointments_booked],
+    ['Booking conversion', p.booking_conversion_rate != null ? `${p.booking_conversion_rate}%` : '—'],
+    ['Returning customers', p.returning_customers],
+    ['Avg call duration', fmtDuration(p.avg_call_duration_secs)],
+    ['Hot leads', p.hot_leads],
+    ['Follow-up required', p.follow_up_required],
+    ['AI confidence', p.ai_confidence_score != null ? `${p.ai_confidence_score}%` : '—'],
+    ['Knowledge gaps', p.knowledge_gaps_detected],
+  ] as [string, React.ReactNode][]).map(([label, value]) => `
+    <div class="metric"><div class="metric-val">${esc(value)}</div><div class="metric-lbl">${esc(label)}</div></div>`).join('')
+
+  const card = (sev: Severity, head: string, chip: string, bodyHtml: string) => {
+    const c = SEV[sev]
+    return `<div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="dot" style="background:${c.color}"></span>${head}
+          <span class="sevtag" style="color:${c.color};background:${c.bg}">${esc(c.label)}</span></div>
+        <div class="chip">${esc(chip)}</div>
+      </div>${bodyHtml}</div>`
+  }
+
+  const insightsHtml = (data.insights || []).map(it =>
+    card(it.severity, esc(it.title), conf(it.sample_size, it.confidence_pct, it.confidence),
+      `<div class="body">${esc(it.body)}</div>`)).join('')
+
+  const actionsHtml = (data.action_items || []).map(it => {
+    const rows = [
+      it.what_happened && ['What happened', it.what_happened],
+      it.why && ['Why it matters', it.why],
+      it.recommendation && ['Recommended', it.recommendation],
+      it.expected_benefit && ['Expected benefit', it.expected_benefit],
+    ].filter(Boolean) as [string, string][]
+    const body = `<div class="rows">${rows.map(([l, v]) =>
+      `<div><span class="rlbl">${esc(l)}</span> ${esc(v)}</div>`).join('')}</div>`
+    return card(it.severity, esc(it.title), conf(it.sample_size, it.confidence_pct, it.confidence), body)
+  }).join('')
+
+  const knowledgeHtml = (data.knowledge_improvements || []).map(it =>
+    card(it.severity, esc(it.title), conf(it.sample_size, it.confidence_pct, it.confidence),
+      `<div class="body">${esc(it.recommendation)}</div>`)).join('')
+
+  const section = (title: string, html: string) =>
+    html ? `<h2>${esc(title)}</h2>${html}` : ''
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>AI Insights${businessName ? ' — ' + esc(businessName) : ''}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;max-width:780px;margin:0 auto;padding:44px 48px;}
+    .head{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0B2343;padding-bottom:18px;margin-bottom:24px;}
+    .head img{height:34px}
+    .head .meta{text-align:right;font-size:12px;color:#64748b;line-height:1.6}
+    h1{font-size:22px;margin:0 0 4px}
+    .sub{font-size:13px;color:#475569;margin:0 0 26px}
+    h2{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;margin:30px 0 12px;}
+    .metrics{display:flex;flex-wrap:wrap;gap:14px}
+    .metric{flex:1 1 120px;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px}
+    .metric-val{font-size:22px;font-weight:700;letter-spacing:-0.5px}
+    .metric-lbl{font-size:11.5px;color:#64748b;margin-top:3px}
+    .note{font-size:12px;color:#94a3b8;margin-top:10px}
+    .card{border:1px solid #e2e8f0;border-radius:10px;padding:13px 15px;margin-bottom:10px;}
+    .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px}
+    .card-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+    .sevtag{font-size:9.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;border-radius:4px;padding:2px 7px}
+    .chip{font-size:10.5px;font-weight:600;color:#64748b;white-space:nowrap;border:1px solid #e2e8f0;border-radius:20px;padding:2px 9px;}
+    .body{font-size:13px;color:#475569;line-height:1.6;padding-left:17px}
+    .rows{padding-left:17px;font-size:13px;line-height:1.55;display:flex;flex-direction:column;gap:5px}
+    .rlbl{font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#94a3b8;margin-right:6px}
+    .foot{margin-top:34px;border-top:1px solid #e2e8f0;padding-top:14px;font-size:11px;color:#94a3b8}
+    @media print{body{padding:24px}.card,.metric{break-inside:avoid}}
+  </style></head><body>
+    <div class="head">
+      <img src="https://www.openlines.ai/logo.png" alt="Open Lines">
+      <div class="meta">AI Insights report<br>Generated ${esc(gen)}</div>
+    </div>
+    <h1>AI Insights${businessName ? ' — ' + esc(businessName) : ''}</h1>
+    <p class="sub">An operations review of your AI receptionist over the ${esc(data.window_label || 'recent period')}.</p>
+    ${data.headline ? `<p style="font-size:15px;font-weight:600;line-height:1.55;margin:0 0 8px">${esc(data.headline)}</p>` : ''}
+
+    <h2>Business Performance</h2>
+    <div class="metrics">${metricsHtml}</div>
+    ${p.conversion_note ? `<div class="note">ⓘ ${esc(p.conversion_note)}</div>` : ''}
+
+    ${section('Insights', insightsHtml)}
+    ${section('Action Items', actionsHtml)}
+    ${section('Knowledge Improvements', knowledgeHtml)}
+
+    <div class="foot">Generated by Open Lines · AI receptionist analytics${businessName ? ' · ' + esc(businessName) : ''}</div>
+  </body></html>`
 }
