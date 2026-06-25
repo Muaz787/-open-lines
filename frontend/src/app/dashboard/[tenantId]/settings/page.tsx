@@ -153,12 +153,17 @@ function SettingsPage() {
 
             {/* ── Email address ── */}
             <section>
-            <div className="db-page-heading">Email address</div>
+            <div className="db-page-heading">Login email</div>
             <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
-                <label className="db-field-label" style={{ marginBottom: 12 }}>
-                  New email
+                <label className="db-field-label" style={{ marginBottom: 4 }}>
+                  Account login email
                 </label>
+                <div className="db-field-help">
+                  The address you use to sign in and receive password resets. This is separate
+                  from your call-summary email above. Changing it sends a verification link to
+                  the new address — the change only applies once you confirm it.
+                </div>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com" className="db-input" />
               </div>
