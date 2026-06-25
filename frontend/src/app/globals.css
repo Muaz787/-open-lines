@@ -1389,19 +1389,20 @@ footer {
 }
 .db-stat-card {
   background: var(--db-card); border: 1px solid var(--db-border);
-  border-radius: var(--db-r-md); padding: 13px 14px;
-  box-shadow: var(--db-shadow-xs);
-  transition: border-color 0.12s, box-shadow 0.12s;
+  border-radius: var(--db-r-md); padding: 14px 14px 0;
+  box-shadow: var(--db-shadow-xs); overflow: hidden;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.12s;
 }
-.db-stat-card:hover { border-color: #c8c6c0; box-shadow: var(--db-shadow-sm); }
+.db-stat-card:hover { border-color: #c8c6c0; box-shadow: var(--db-shadow-sm); transform: translateY(-1px); }
 .db-stat-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .db-stat-label { font-size: 11px; color: var(--db-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .db-stat-delta { font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono), monospace; }
 .db-delta-up  { background: var(--db-accent-bg); color: var(--db-accent-text); }
 .db-delta-neu { background: var(--db-bg); color: var(--db-muted); }
-.db-stat-num  { font-size: 24px; font-weight: 600; color: var(--db-text); letter-spacing: -0.5px; line-height: 1; margin-bottom: 10px; font-family: var(--font-mono), monospace; }
+.db-stat-num  { font-size: 27px; font-weight: 600; color: var(--db-text); letter-spacing: -0.5px; line-height: 1; margin-bottom: 8px; font-family: var(--font-mono), monospace; }
 .db-stat-unit { font-size: 12px; font-weight: 400; color: var(--db-faint); font-family: var(--font-dm), sans-serif; }
-.db-sparkline { display: block; width: 100%; height: 28px; }
+/* Trend chart bleeds to the card's bottom + side edges for a modern look */
+.db-trendchart { display: block; width: calc(100% + 28px); height: 56px; margin: 6px -14px 0; }
 
 /* ── Two-column ── */
 .db-two-col {
