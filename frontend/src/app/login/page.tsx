@@ -94,6 +94,11 @@ export default function LoginPage() {
               placeholder="••••••••"
               required
             />
+            <div style={{ marginTop: 8, textAlign: 'right' }}>
+              <Link href="/forgot-password" style={{ fontSize: 12.5, color: 'var(--text-3)', textDecoration: 'none' }}>
+                Forgot your password?
+              </Link>
+            </div>
           </div>
 
           {error && <div className="error-msg">{error}</div>}
