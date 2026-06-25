@@ -158,7 +158,7 @@ export default function Sidebar({
           navItem(`${base}/calendar`, <IconCalendar />, 'Calendar', apptsCount > 0 ? <span className="db-nav-badge db-badge-green">{apptsCount}</span> : undefined)}
         <div className="db-nav-label">Account</div>
         {navItem(`${base}/integrations`, <IconIntegrations />, 'Integrations')}
-        {navItem(`${base}/payments`, <IconPayments />, 'Payments')}
+        {navItem(`${base}/payments`, <IconPayments />, 'Deposit Collection')}
         {navItem(`${base}/settings`, <IconSettings />, 'Settings')}
         {navItem(`${base}/subscription`, <IconBilling />, <>Billing &amp; Payments</>, planBadge())}
         {navItem(`${base}/usage`, <IconUsage />, 'Usage')}
