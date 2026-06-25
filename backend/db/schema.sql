@@ -207,3 +207,25 @@ alter table tenants add column if not exists notification_channel text default '
 -- blank.
 -- ---------------------------------------------------------------------------
 alter table tenants add column if not exists sms_alert_number text;
+
+-- ---------------------------------------------------------------------------
+-- AI Insights v2: per-call enrichment (intent + signals) used to compute
+-- evidence-based, sample-size-aware insights. Populated by the per-call
+-- analysis (webhook) and a one-time backfill over existing transcripts.
+-- ---------------------------------------------------------------------------
+alter table calls add column if not exists intent           text;    -- sales_opportunity | existing_customer | booking_confirmation | reschedule_or_cancel | support_question | spam_or_robocall | wrong_number | delivery_or_courier | other
+alter table calls add column if not exists service_topic    text;    -- short label of the main service/topic requested
+alter table calls add column if not exists sentiment        text;    -- positive | neutral | negative
+alter table calls add column if not exists pricing_question boolean;  -- caller asked about price/cost/fees
+alter table calls add column if not exists ai_confident     boolean; -- assistant answered confidently / completed the request
+alter table calls add column if not exists knowledge_gap    boolean; -- assistant could not answer something confidently
+alter table calls add column if not exists gap_topic        text;    -- short label of what the assistant couldn't answer
+
+-- Cached AI Insights payload per tenant (regenerated on demand; cache is
+-- considered stale when new calls have arrived since source_call_count).
+create table if not exists ai_insights (
+    tenant_id         uuid primary key references tenants(id) on delete cascade,
+    payload           jsonb not null,
+    generated_at      timestamptz not null default now(),
+    source_call_count int not null default 0
+);

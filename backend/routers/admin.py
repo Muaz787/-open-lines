@@ -304,3 +304,55 @@ async def delete_caller_endpoint(body: dict, x_admin_key: str | None = Header(No
     result = await retention.delete_caller_data(tenant_id, phone)
     status = "partial_error" if result.get("errors") else "deleted"
     return {"status": status, **result}
+
+
+@router.post("/backfill-call-intents")
+async def backfill_call_intents(body: dict | None = None, x_admin_key: str | None = Header(None)):
+    """One-time/repeatable enrichment of existing calls for AI Insights v2.
+    Classifies intent + signals for calls that don't have them yet. Batched —
+    re-run until `considered` < `limit`. Body: {"tenant_id"?: str, "limit"?: int}."""
+    _check_admin_key(x_admin_key)
+    body = body or {}
+    tenant_id = body.get("tenant_id")
+    limit = min(int(body.get("limit", 200)), 1000)
+
+    client = db.get_client()
+    q = client.table("calls").select("id,tenant_id,transcript").is_("intent", "null").limit(limit)
+    if tenant_id:
+        q = q.eq("tenant_id", tenant_id)
+    rows = q.execute().data or []
+
+    from services import call_enrichment
+    tenants: dict = {}
+    enriched = skipped = failed = 0
+    for r in rows:
+        tx = (r.get("transcript") or "").strip()
+        if len(tx) < 20:
+            # Mark so it isn't reconsidered each run.
+            try:
+                await db.update_call(r["id"], {"intent": "other"})
+            except Exception:
+                pass
+            skipped += 1
+            continue
+        tid = r["tenant_id"]
+        if tid not in tenants:
+            try:
+                tenants[tid] = await db.get_tenant_by_id(tid)
+            except Exception:
+                tenants[tid] = {}
+        try:
+            analysis = await call_enrichment.analyze_transcript(tx, tenants[tid] or {})
+            await db.update_call(r["id"], call_enrichment.call_enrichment(analysis))
+            enriched += 1
+        except Exception as e:
+            failed += 1
+            logger.warning("backfill-call-intents: call %s failed: %s", r.get("id"), e)
+
+    return {
+        "considered": len(rows),
+        "enriched": enriched,
+        "skipped": skipped,
+        "failed": failed,
+        "note": "re-run while considered == limit to finish the backlog",
+    }

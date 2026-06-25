@@ -151,8 +151,9 @@ async def process_end_of_call(payload: dict) -> None:
     if duration is not None:
         # Cast to int — Vapi may return float (e.g. 60.5) which would fail the int column
         call_data["duration_secs"] = int(duration)
+    inserted_call: dict = {}
     try:
-        await db.insert_call(tenant_id, lead_id, call_data)
+        inserted_call = await db.insert_call(tenant_id, lead_id, call_data)
     except Exception as e:
         logger.error(
             "Failed to save call record for call %s tenant %s (lead update will still run): %s",
@@ -167,31 +168,21 @@ async def process_end_of_call(payload: dict) -> None:
         "duration_seconds": int(duration) if duration else None,
     })
 
-    # GPT-4o analysis
+    # Combined per-call analysis: lead fields + AI Insights enrichment signals.
     analysis: dict = {}
     if transcript and len(transcript.strip()) > 20:
         try:
-            qualification_fields = tenant.get("qualification_fields") or {}
-            user_prompt = (
-                f"Transcript: {transcript}\n\n"
-                f"Qualification fields: {json.dumps(qualification_fields)}\n\n"
-                "Extract: caller_name, key_details (dict matching qualification_fields), "
-                "urgency (hot/warm/cold), summary (2 sentences max), suggested_next_step. "
-                "Return JSON only."
-            )
-            response = await _get_openai().chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "You extract structured data from call transcripts."},
-                    {"role": "user", "content": user_prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
-            )
-            analysis = json.loads(response.choices[0].message.content)
-            logger.info("GPT-4o analysis complete for call %s", call_id)
+            from services import call_enrichment
+            analysis = await call_enrichment.analyze_transcript(transcript, tenant)
+            logger.info("Call analysis complete for call %s (intent=%s)", call_id, analysis.get("intent"))
+            # Persist enrichment signals on the call row (non-fatal).
+            if inserted_call.get("id"):
+                try:
+                    await db.update_call(inserted_call["id"], call_enrichment.call_enrichment(analysis))
+                except Exception as e:
+                    logger.warning("Call enrichment store failed for call %s (continuing): %s", call_id, e)
         except Exception as e:
-            logger.warning("GPT-4o analysis failed for call %s (continuing): %s", call_id, e)
+            logger.warning("Call analysis failed for call %s (continuing): %s", call_id, e)
 
     # Update lead
     lead_update: dict = {

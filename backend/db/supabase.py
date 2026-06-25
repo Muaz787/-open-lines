@@ -152,6 +152,17 @@ async def insert_call(tenant_id: str, lead_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def update_call(call_id: str, data: dict) -> dict:
+    res = (
+        get_client()
+        .table("calls")
+        .update(data)
+        .eq("id", call_id)
+        .execute()
+    )
+    return res.data[0] if res.data else {}
+
+
 async def get_calls(tenant_id: str, limit: int = 50) -> list:
     res = (
         get_client()
