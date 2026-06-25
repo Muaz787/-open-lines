@@ -52,25 +52,31 @@ interface SlackStatus {
 }
 
 function HubSpotIcon() {
+  // Official HubSpot "sprocket" mark, white on the brand orange.
   return (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
       <rect width="32" height="32" rx="8" fill="#FF7A59"/>
-      <path
-        d="M20.5 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM20.5 10.5v3.08M14.5 13.58A5.5 5.5 0 1 0 20 19m0 0H14.5m5.5 0 2.5 2.5M20 19l2.5-2.5"
-        stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-      />
+      <g transform="translate(6 6) scale(0.8333)">
+        <path
+          fill="#fff"
+          d="M18.164 7.93V5.084a2.198 2.198 0 0 0 1.267-1.978v-.067A2.2 2.2 0 0 0 17.238.846h-.067a2.2 2.2 0 0 0-2.193 2.193v.067a2.196 2.196 0 0 0 1.252 1.973l.013.006v2.852a6.22 6.22 0 0 0-2.969 1.31l.012-.01-7.86-6.117A2.495 2.495 0 1 0 2.18 5.629l-.012.006 7.726 6.012a6.215 6.215 0 0 0-1.04 3.446c0 1.273.382 2.456 1.038 3.441l-.015-.024-2.35 2.35a2.005 2.005 0 0 0-.582-.093h-.001a2.026 2.026 0 1 0 2.026 2.026c0-.207-.032-.406-.09-.594l.004.014 2.327-2.327a6.247 6.247 0 1 0 4.957-11.196l-.058-.024.001.001zm-1.063 9.339a3.204 3.204 0 1 1 .001-6.408 3.204 3.204 0 0 1-.001 6.408z"
+        />
+      </g>
     </svg>
   )
 }
 
 function SlackIcon() {
+  // Official multicolour Slack mark on a white tile.
   return (
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" rx="8" fill="#4A154B"/>
-      <path d="M11 17.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 0H20" stroke="#E01E5A" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M14.5 21a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 0V12" stroke="#ECB22E" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M21 14.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm0 0H12" stroke="#2EB67D" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M17.5 11a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 0V20" stroke="#36C5F0" strokeWidth="2" strokeLinecap="round"/>
+      <rect x="0.5" y="0.5" width="31" height="31" rx="7.5" fill="#fff" stroke="#e8e5df"/>
+      <g transform="translate(6 6) scale(0.16287)">
+        <path d="M25.8 77.6c0 7.1-5.8 12.9-12.9 12.9S0 84.7 0 77.6s5.8-12.9 12.9-12.9h12.9v12.9zm6.5 0c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9v32.3c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V77.6z" fill="#E01E5A"/>
+        <path d="M45.2 25.8c-7.1 0-12.9-5.8-12.9-12.9S38.1 0 45.2 0s12.9 5.8 12.9 12.9v12.9H45.2zm0 6.5c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H12.9C5.8 58.1 0 52.3 0 45.2s5.8-12.9 12.9-12.9h32.3z" fill="#36C5F0"/>
+        <path d="M97 45.2c0-7.1 5.8-12.9 12.9-12.9s12.9 5.8 12.9 12.9-5.8 12.9-12.9 12.9H97V45.2zm-6.5 0c0 7.1-5.8 12.9-12.9 12.9s-12.9-5.8-12.9-12.9V12.9C64.7 5.8 70.5 0 77.6 0s12.9 5.8 12.9 12.9v32.3z" fill="#2EB67D"/>
+        <path d="M77.6 97c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9-12.9-5.8-12.9-12.9V97h12.9zm0-6.5c-7.1 0-12.9-5.8-12.9-12.9s5.8-12.9 12.9-12.9h32.3c7.1 0 12.9 5.8 12.9 12.9s-5.8 12.9-12.9 12.9H77.6z" fill="#ECB22E"/>
+      </g>
     </svg>
   )
 }
