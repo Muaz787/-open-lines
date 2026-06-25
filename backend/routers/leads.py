@@ -128,60 +128,24 @@ async def get_stats(
 
 
 @router.get("/{tenant_id}/insights")
-async def get_insights(tenant_id: str):
+async def get_insights(tenant_id: str, refresh: bool = Query(default=False)):
+    """AI Insights v2 — evidence-based, sample-size-aware operations analysis.
+    Returns cached results (fast); regenerates only when `refresh=1` or no cache
+    exists yet. See services/insights.py."""
     try:
-        leads = await db.get_leads(tenant_id, limit=500)
-        calls = await db.get_calls(tenant_id, limit=500)
+        tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
-        logger.error("Failed to fetch data for insights tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to fetch data")
-
-    if len(calls) < 3:
-        return {"insights": [], "generated_at": None}
-
-    hot  = sum(1 for l in leads if l.get("urgency") == "hot")
-    warm = sum(1 for l in leads if l.get("urgency") == "warm")
-    cold = sum(1 for l in leads if l.get("urgency") == "cold")
-
-    recent_summaries = [
-        {
-            "urgency": l.get("urgency", ""),
-            "summary": l.get("summary", ""),
-            "status": l.get("status", ""),
-        }
-        for l in leads[:60]
-        if l.get("summary")
-    ]
-
-    prompt = (
-        f"Total calls: {len(calls)}\n"
-        f"Total leads: {len(leads)}\n"
-        f"Urgency breakdown: hot={hot}, warm={warm}, cold={cold}\n\n"
-        f"Recent lead summaries:\n{json.dumps(recent_summaries, indent=2)}\n\n"
-        "Generate 3-4 concise, actionable business insights from this call and lead data.\n"
-        "Focus on patterns, missed opportunities, and specific follow-up recommendations.\n"
-        "Return JSON: {\"insights\": [{\"title\": str, \"body\": str, \"type\": \"opportunity|warning|trend|success\"}]}"
-    )
+        logger.error("Insights: tenant lookup failed for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Tenant lookup failed")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
 
     try:
-        resp = await _get_openai().chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You are a concise business intelligence analyst for an AI voice receptionist. Be specific and actionable."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.6,
-        )
-        result = json.loads(resp.choices[0].message.content)
+        from services import insights as insights_svc
+        return await insights_svc.get_insights(tenant, refresh=refresh)
     except Exception as e:
-        logger.error("GPT-4o insights failed for tenant %s: %s", tenant_id, e)
+        logger.error("Insights generation failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Insights generation failed")
-
-    return {
-        "insights": result.get("insights", []),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
 
 
 @router.get("/{tenant_id}/{lead_id}")

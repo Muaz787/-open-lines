@@ -1498,6 +1498,22 @@ footer {
 .db-insight-line { height: 8px; background: var(--db-border); border-radius: 4px; margin-bottom: 5px; }
 .db-insight-copy { font-size: 11px; color: var(--db-faint); margin-bottom: 10px; line-height: 1.5; }
 
+/* ── AI Insights v2 ── */
+.ai-metric-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 16px 20px;
+}
+.ai-metric { min-width: 0; }
+.ai-card {
+  background: var(--db-card); border: 1px solid var(--db-border);
+  border-radius: var(--db-r-md); padding: 13px 15px; box-shadow: var(--db-shadow-xs);
+}
+.ai-card-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; margin-bottom: 6px;
+}
+.db-insight-teaser .db-insight-copy { font-size: 13px; max-width: 520px; margin: 0 auto 14px; }
+
 /* empty state v2 */
 .db-empty-v2 { padding: 32px 14px; text-align: center; }
 .db-empty-v2-title { font-size: 12px; color: var(--db-faint); }

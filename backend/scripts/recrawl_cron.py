@@ -60,6 +60,15 @@ async def main() -> int:
     except Exception as e:
         logger.error("retention failed: %s", e)
 
+    # ...and backfills AI-Insights call enrichment for a small batch of calls that
+    # don't have an intent yet (idempotent; only touches intent IS NULL). Non-fatal.
+    try:
+        from services import call_enrichment
+        bf = await call_enrichment.backfill_missing_intents(limit=150)
+        logger.info("call-intent backfill done: %s", bf)
+    except Exception as e:
+        logger.error("call-intent backfill failed: %s", e)
+
     return 0
 
 

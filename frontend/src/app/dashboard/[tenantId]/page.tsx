@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { PaymentForm } from './PaymentForm'
+import AiInsights from './AiInsights'
 import { trackEvent } from '@/lib/analytics'
 import { timeAgo, formatCallDate, formatApptDate, formatDuration, initials, capitalize } from './lib/format'
 import { urgBadgeClass } from './lib/badges'
@@ -71,17 +72,6 @@ interface Stats {
   }
 }
 
-interface Insight {
-  title: string
-  body: string
-  type: 'opportunity' | 'warning' | 'trend' | 'success'
-}
-
-interface InsightsData {
-  insights: Insight[]
-  generated_at: string | null
-}
-
 interface Appointment {
   id: string
   caller_name?: string
@@ -143,9 +133,6 @@ function DashboardPage() {
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
 
   const [stats, setStats] = useState<Stats | null>(null)
-  const [insights, setInsights]         = useState<InsightsData | null>(null)
-  const [insightsLoading, setInsightsLoading] = useState(false)
-  const [insightsCopied, setInsightsCopied]   = useState(false)
 
   const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
@@ -155,65 +142,6 @@ function DashboardPage() {
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
   const [period, setPeriod]                 = useState<'today' | '7d' | '30d'>('7d')
-
-  const fetchInsights = useCallback(async () => {
-    setInsightsLoading(true)
-    try {
-      const res = await authedFetch(`${API}/leads/${tenantId}/insights`)
-      if (res.ok) setInsights(await res.json())
-    } catch {}
-    finally { setInsightsLoading(false) }
-  }, [tenantId])
-
-  const copyInsights = () => {
-    if (!insights) return
-    const text = insights.insights
-      .map(ins => `${ins.title} [${ins.type.toUpperCase()}]\n${ins.body}`)
-      .join('\n\n')
-    navigator.clipboard.writeText(text)
-    setInsightsCopied(true)
-    setTimeout(() => setInsightsCopied(false), 2000)
-  }
-
-  const downloadInsightsPDF = () => {
-    if (!insights) return
-    const typeColors: Record<string, string> = {
-      opportunity: '#16a34a', success: '#16a34a', warning: '#d97706', trend: '#3B7EF6',
-    }
-    const rows = insights.insights.map(ins => `
-      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid #e5e7eb;">
-        <div style="font-size:14px;font-weight:700;color:#111;margin-bottom:6px;">
-          ${ins.title}
-          <span style="margin-left:8px;font-size:10px;font-weight:700;text-transform:uppercase;
-            letter-spacing:0.06em;color:${typeColors[ins.type] ?? '#3B7EF6'};
-            background:${typeColors[ins.type] ?? '#3B7EF6'}1a;padding:2px 7px;border-radius:4px;">
-            ${ins.type}
-          </span>
-        </div>
-        <div style="font-size:13px;color:#555;line-height:1.65;">${ins.body}</div>
-      </div>`).join('')
-    const generatedStr = insights.generated_at
-      ? new Date(insights.generated_at).toLocaleString()
-      : 'recently'
-    const html = `<!DOCTYPE html><html><head><title>AI Insights — Open Lines</title>
-      <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-        padding:48px 52px;color:#111;max-width:720px;margin:0 auto;}
-        @media print{body{padding:32px;}}</style>
-      </head><body>
-      <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
-        color:#16a34a;margin-bottom:10px;">✦ AI Insights</div>
-      <h1 style="font-size:22px;font-weight:700;margin:0 0 28px;">Call & Lead Analysis</h1>
-      ${rows}
-      <div style="font-size:11px;color:#999;margin-top:8px;">
-        Generated ${generatedStr} · Open Lines AI
-      </div></body></html>`
-    const w = window.open('', '_blank')
-    if (!w) return
-    w.document.write(html)
-    w.document.close()
-    w.focus()
-    setTimeout(() => { w.print() }, 250)
-  }
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -787,93 +715,13 @@ function DashboardPage() {
                 </div>
               )}
 
-              {/* AI Insights */}
-              <div className="db-section-card">
-                <div className="db-section-hdr">
-                  <div className="db-section-title-row">
-                    <div className="db-section-icon" style={{ background: '#f5f0fe' }}>✦</div>
-                    <span className="db-section-name">AI Insights</span>
-                  </div>
-                  {insights && (
-                    <button
-                      className="db-btn db-btn--ghost db-btn--sm"
-                      onClick={fetchInsights}
-                      disabled={insightsLoading}
-                    >
-                      {insightsLoading ? 'Thinking…' : 'Refresh'}
-                    </button>
-                  )}
-                </div>
+            </div>{/* /db-right-col */}
+          </div>{/* /db-two-col */}
 
-                {!insights && !insightsLoading ? (
-                  <div className="db-insight-teaser">
-                    <div className="db-insight-blur">
-                      <div className="db-insight-line" style={{ width: '80%' }} />
-                      <div className="db-insight-line" style={{ width: '60%' }} />
-                      <div className="db-insight-line" style={{ width: '70%' }} />
-                    </div>
-                    <div className="db-insight-copy">After 5+ calls, your AI surfaces caller intent patterns, opportunities, and peak hours.</div>
-                    <button
-                      className="db-btn db-btn--dark"
-                      onClick={fetchInsights}
-                    >
-                      ✦ Generate insights
-                    </button>
-                  </div>
-                ) : insightsLoading && !insights?.insights.length ? (
-                  <div style={{ padding: '18px 14px', fontSize: 12, color: 'var(--db-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ animation: 'spin 1.2s linear infinite', display: 'inline-block' }}>◌</span>
-                    Analyzing calls and leads…
-                  </div>
-                ) : insights?.insights.length === 0 ? (
-                  <div style={{ padding: '14px', fontSize: 12, color: 'var(--db-faint)' }}>
-                    Not enough data yet — insights appear after a few calls.
-                  </div>
-                ) : (
-                  <div>
-                    {(insights?.insights ?? []).map((ins, i) => {
-                      const typeColors: Record<string, { bg: string; dot: string }> = {
-                        opportunity: { bg: 'var(--db-accent-bg)', dot: 'var(--db-accent-text)' },
-                        success:     { bg: 'var(--db-accent-bg)', dot: 'var(--db-accent-text)' },
-                        warning:     { bg: 'var(--db-warn-bg)', dot: 'var(--db-warn-text)' },
-                        trend:       { bg: 'var(--db-info-bg)', dot: 'var(--db-info)' },
-                      }
-                      const colors = typeColors[ins.type] ?? typeColors.trend
-                      return (
-                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '8px 1fr', gap: 12, padding: '12px 14px', borderTop: i > 0 ? '1px solid var(--db-border-lt)' : 'none', alignItems: 'start' }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors.dot, marginTop: 4 }} />
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text)', marginBottom: 3 }}>
-                              {ins.title}
-                              <span style={{ marginLeft: 7, fontSize: 9, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', background: colors.bg, color: colors.dot, padding: '1px 6px', borderRadius: 4 }}>
-                                {ins.type}
-                              </span>
-                            </div>
-                            <div style={{ fontSize: 11, color: 'var(--db-text-2)', lineHeight: 1.6 }}>{ins.body}</div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {insights?.generated_at && (
-                      <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--db-faint)', borderTop: '1px solid var(--db-border-lt)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <span>Generated {timeAgo(insights.generated_at)}</span>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={copyInsights} style={{ fontSize: 10, color: insightsCopied ? 'var(--db-accent-text)' : 'var(--db-faint)', background: 'none', border: '1px solid var(--db-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif', transition: 'color 0.2s' }}>
-                            {insightsCopied ? '✓ Copied' : 'Copy'}
-                          </button>
-                          <button onClick={downloadInsightsPDF} style={{ fontSize: 10, color: 'var(--db-faint)', background: 'none', border: '1px solid var(--db-border)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontFamily: 'var(--font-dm), sans-serif' }}>
-                            PDF
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+          {/* AI Insights — full width */}
+          <AiInsights tenantId={tenantId} />
 
-            </div>
-          </div>
-        </div>
+        </div>{/* /db-content */}
     </>
   )
 }

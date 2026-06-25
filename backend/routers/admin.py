@@ -304,3 +304,18 @@ async def delete_caller_endpoint(body: dict, x_admin_key: str | None = Header(No
     result = await retention.delete_caller_data(tenant_id, phone)
     status = "partial_error" if result.get("errors") else "deleted"
     return {"status": status, **result}
+
+
+@router.post("/backfill-call-intents")
+async def backfill_call_intents(body: dict | None = None, x_admin_key: str | None = Header(None)):
+    """One-time/repeatable enrichment of existing calls for AI Insights v2.
+    Classifies intent + signals for calls that don't have them yet. Batched —
+    re-run until `considered` < `limit`. Body: {"tenant_id"?: str, "limit"?: int}."""
+    _check_admin_key(x_admin_key)
+    body = body or {}
+    from services import call_enrichment
+    result = await call_enrichment.backfill_missing_intents(
+        limit=int(body.get("limit", 200)),
+        tenant_id=body.get("tenant_id"),
+    )
+    return {**result, "note": "re-run while considered == limit to finish the backlog"}
