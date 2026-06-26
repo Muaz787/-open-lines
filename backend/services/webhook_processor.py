@@ -57,9 +57,9 @@ def _whatsapp_summary_vars(business_name: str, analysis: dict, caller_number: st
 
     Expected template body (Utility category), placeholders {{1}}..{{6}}:
         New call for {{1}}
-        From: {{2}} ({{3}})
+        Caller: {{2}} ({{3}})
         Urgency: {{4}}
-        {{5}}
+        Summary: {{5}}
         Next step: {{6}}
     """
     analysis = analysis or {}
