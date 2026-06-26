@@ -46,22 +46,22 @@ and submit for WhatsApp approval. Body with six variables:
 
 ```
 New call for {{1}}
-Caller: {{2}} ({{3}})
-Urgency: {{4}}
-Summary: {{5}}
-Next step: {{6}}
+Caller: {{2}}
+Priority: {{3}}
+Summary: {{4}}
+Recommended next step: {{5}}
 ```
 
-Variable mapping (set in `_whatsapp_summary_vars`):
+Five variables (WhatsApp rejects two variables on one line, so caller name +
+number are combined into {{2}}). Mapping (set in `_whatsapp_summary_vars`):
 
 | # | Value |
 |---|-------|
 | 1 | Business name |
-| 2 | Caller name |
-| 3 | Caller number |
-| 4 | Urgency (hot/warm/cold) |
-| 5 | Call summary |
-| 6 | Suggested next step |
+| 2 | Caller name • number |
+| 3 | Priority / urgency (Hot/Warm/Cold) |
+| 4 | Call summary |
+| 5 | Suggested next step |
 
 After approval, copy the **Content SID** (`HX…`) → `TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID`.
 

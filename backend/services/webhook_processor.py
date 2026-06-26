@@ -55,21 +55,23 @@ def _wa_clean(s: str, maxlen: int) -> str:
 def _whatsapp_summary_vars(business_name: str, analysis: dict, caller_number: str = "") -> dict:
     """Ordered variables for the approved call-summary WhatsApp Content Template.
 
-    Expected template body (Utility category), placeholders {{1}}..{{6}}:
+    The template uses FIVE variables (WhatsApp won't accept two variables on one
+    line, so caller name + number are combined into {{2}}):
         New call for {{1}}
-        Caller: {{2}} ({{3}})
-        Urgency: {{4}}
-        Summary: {{5}}
-        Next step: {{6}}
+        Caller: {{2}}
+        Priority: {{3}}
+        Summary: {{4}}
+        Recommended next step: {{5}}
     """
     analysis = analysis or {}
+    caller_name = analysis.get("caller_name") or "Unknown caller"
+    number = caller_number or "no caller ID"
     return {
         "1": _wa_clean(business_name, 60),
-        "2": _wa_clean(analysis.get("caller_name") or "Unknown caller", 60),
-        "3": _wa_clean(caller_number or "no caller ID", 32),
-        "4": _wa_clean((analysis.get("urgency") or "unknown").capitalize(), 20),
-        "5": _wa_clean(analysis.get("summary"), 300),
-        "6": _wa_clean(analysis.get("suggested_next_step"), 120),
+        "2": _wa_clean(f"{caller_name} • {number}", 90),
+        "3": _wa_clean((analysis.get("urgency") or "unknown").capitalize(), 20),
+        "4": _wa_clean(analysis.get("summary"), 300),
+        "5": _wa_clean(analysis.get("suggested_next_step"), 120),
     }
 
 
