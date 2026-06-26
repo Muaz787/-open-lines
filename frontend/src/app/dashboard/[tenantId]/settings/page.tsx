@@ -34,6 +34,8 @@ function SettingsPage() {
   const [bizPhone, setBizPhone]                   = useState('')
   const [bizPhoneState, setBizPhoneState]         = useState<SaveState>('idle')
   const [email, setEmail]                         = useState('')
+  const [loginEmail, setLoginEmail]               = useState('')
+  const [emailPw, setEmailPw]                     = useState('')
   const [emailState, setEmailState]               = useState<SaveState>('idle')
   const [emailMsg, setEmailMsg]                   = useState('')
   const [currentPw, setCurrentPw]         = useState('')
@@ -46,6 +48,7 @@ function SettingsPage() {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/login'); return }
       setEmail(data.user.email ?? '')
+      setLoginEmail(data.user.email ?? '')
     })
     authedFetch(`${API}/onboarding/status/${tenantId}`).then(async tRes => {
       if (tRes.ok) {
@@ -94,17 +97,34 @@ function SettingsPage() {
   }
 
   const saveEmail = async () => {
-    setEmailState('saving')
     setEmailMsg('')
-    const { error } = await supabase.auth.updateUser({ email: email.trim() })
+    const fail = (msg: string) => {
+      setEmailState('error'); setEmailMsg(msg)
+      setTimeout(() => { setEmailState('idle'); setEmailMsg('') }, 6000)
+    }
+    const newEmail = email.trim()
+    if (!newEmail) return fail('Enter a new email address.')
+    if (newEmail.toLowerCase() === loginEmail.toLowerCase()) return fail('That is already your login email.')
+    if (!emailPw) return fail('Enter your current password to confirm.')
+
+    setEmailState('saving')
+    // Step-up: re-authenticate with the current password before this sensitive
+    // change (consistent with the password-change flow). Blocks an idle/borrowed
+    // session from changing the account email. Supabase "Secure email change"
+    // then requires confirmation from BOTH the old and new inbox.
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: loginEmail, password: emailPw })
+    if (signInError) return fail('Current password is incorrect.')
+
+    const { error } = await supabase.auth.updateUser({ email: newEmail })
     if (error) {
       setEmailState('error')
       setEmailMsg(error.message)
     } else {
       setEmailState('saved')
-      setEmailMsg('Verification link sent — check your new inbox to confirm.')
+      setEmailPw('')
+      setEmailMsg('Confirm from BOTH your current and new inbox to complete the change.')
     }
-    setTimeout(() => { setEmailState('idle'); setEmailMsg('') }, 6000)
+    setTimeout(() => { setEmailState('idle'); setEmailMsg('') }, 8000)
   }
 
   const savePassword = async () => {
@@ -230,14 +250,19 @@ function SettingsPage() {
                 </label>
                 <div className="db-field-help">
                   The address you use to sign in and receive password resets. This is separate
-                  from your call-summary email above. Changing it sends a verification link to
-                  the new address — the change only applies once you confirm it.
+                  from your call-summary email above. For your security, changing it requires
+                  your current password, and you must then confirm from <strong>both</strong> your
+                  current and new inbox before it takes effect.
                 </div>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                  placeholder="you@example.com" className="db-input" />
+                  placeholder="you@example.com" className="db-input" autoComplete="email" />
+                <label className="db-field-label" style={{ fontSize: 12, marginTop: 12 }}>Current password</label>
+                <input type="password" value={emailPw} onChange={e => setEmailPw(e.target.value)}
+                  placeholder="Confirm it's you" className="db-input" autoComplete="current-password" />
               </div>
               <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button className="db-btn db-btn--accent-ghost" onClick={saveEmail} disabled={emailState === 'saving'}>
+                <button className="db-btn db-btn--accent-ghost" onClick={saveEmail}
+                  disabled={emailState === 'saving' || !email.trim() || !emailPw}>
                   {emailState === 'saving' ? 'Sending…' : 'Update email'}
                 </button>
                 {emailMsg && (
