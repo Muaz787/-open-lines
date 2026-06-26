@@ -47,28 +47,30 @@ def _parse_duration(started_at: str | None, ended_at: str | None) -> int | None:
         return None
 
 
-def _format_whatsapp_message(business_name: str, analysis: dict, caller_number: str = "") -> str:
-    caller_name = analysis.get("caller_name", "Unknown")
-    key_details: dict = analysis.get("key_details") or {}
-    urgency = analysis.get("urgency", "unknown")
-    summary = analysis.get("summary", "")
-    next_step = analysis.get("suggested_next_step", "")
+def _wa_clean(s: str, maxlen: int) -> str:
+    """WhatsApp template variables must be single-line and bounded."""
+    return " ".join(str(s or "").split())[:maxlen] or "—"
 
-    detail_lines = "\n".join(
-        f"• *{k.replace('_', ' ').title()}:* {v}"
-        for k, v in key_details.items()
-    )
-    phone_line = f"📱 *Phone:* {caller_number}\n" if caller_number else ""
 
-    return (
-        f"📞 *New Call — {business_name}*\n\n"
-        f"👤 *{caller_name}*\n"
-        f"{phone_line}"
-        f"{detail_lines}\n\n"
-        f"⚡ Urgency: *{urgency}*\n"
-        f"📝 {summary}\n\n"
-        f"➡️ {next_step}"
-    )
+def _whatsapp_summary_vars(business_name: str, analysis: dict, caller_number: str = "") -> dict:
+    """Ordered variables for the approved call-summary WhatsApp Content Template.
+
+    Expected template body (Utility category), placeholders {{1}}..{{6}}:
+        New call for {{1}}
+        From: {{2}} ({{3}})
+        Urgency: {{4}}
+        {{5}}
+        Next step: {{6}}
+    """
+    analysis = analysis or {}
+    return {
+        "1": _wa_clean(business_name, 60),
+        "2": _wa_clean(analysis.get("caller_name") or "Unknown caller", 60),
+        "3": _wa_clean(caller_number or "no caller ID", 32),
+        "4": _wa_clean(analysis.get("urgency") or "n/a", 20),
+        "5": _wa_clean(analysis.get("summary"), 300),
+        "6": _wa_clean(analysis.get("suggested_next_step"), 120),
+    }
 
 
 def _format_sms_summary(business_name: str, analysis: dict, caller_number: str = "") -> str:
@@ -270,29 +272,13 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("Slack notification failed for tenant %s: %s", tenant_id, e)
 
-    # WhatsApp notification (non-fatal)
-    whatsapp_number = tenant.get("whatsapp_number", "")
-    if whatsapp_number:
-        try:
-            message = _format_whatsapp_message(business_name, analysis, caller_number)
-            await telephony.send_whatsapp(to_number=whatsapp_number, body=message)
-            logger.info("WhatsApp notification sent for tenant %s call %s", tenant_id, call_id)
-            analytics.capture(_distinct, "owner_notification_sent", {
-                "tenant_id": tenant_id, "channel": "whatsapp",
-            })
-        except Exception as e:
-            logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
-
-    # Call-summary notifications — channel preference (email / sms / both), with
-    # email_notifications as the master on/off switch. WhatsApp is planned later.
-    notifications_on   = tenant.get("email_notifications", False)
-    channel            = (tenant.get("notification_channel") or "email").lower()
+    # ── Call-summary notifications — independent per-channel toggles ──
     notification_email = tenant.get("notification_email", "")
-    # SMS alerts go to the dedicated mobile if set, else fall back to the business phone.
-    sms_to             = (tenant.get("sms_alert_number") or tenant.get("business_phone") or "").strip()
+    # SMS + WhatsApp both go to the dedicated mobile (else the business phone).
+    mobile_to = (tenant.get("sms_alert_number") or tenant.get("business_phone") or "").strip()
 
     # Email (non-fatal)
-    if notifications_on and channel in ("email", "both") and notification_email:
+    if tenant.get("email_enabled", True) and notification_email:
         try:
             from services.email import send_call_summary_email
             await send_call_summary_email(
@@ -307,8 +293,8 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
 
-    # SMS (non-fatal) — sent to the tenant's SMS alert number from their Twilio line
-    if notifications_on and channel in ("sms", "both") and sms_to:
+    # SMS (non-fatal) — from the tenant's own Twilio line
+    if tenant.get("sms_enabled", False) and mobile_to:
         try:
             sub_sid  = tenant.get("twilio_subaccount_sid", "")
             sub_tok  = tenant.get("twilio_auth_token", "")
@@ -318,7 +304,7 @@ async def process_end_of_call(payload: dict) -> None:
                     subaccount_sid=sub_sid,
                     subaccount_token=sub_tok,
                     from_number=from_num,
-                    to_number=sms_to,
+                    to_number=mobile_to,
                     body=_format_sms_summary(business_name, analysis, caller_number),
                 )
                 analytics.capture(_distinct, "owner_notification_sent", {
@@ -328,6 +314,22 @@ async def process_end_of_call(payload: dict) -> None:
                 logger.warning("SMS notification skipped for tenant %s: missing Twilio creds", tenant_id)
         except Exception as e:
             logger.error("SMS notification failed for tenant %s: %s", tenant_id, e)
+
+    # WhatsApp (non-fatal) — PRODUCTION ONLY, via an approved Twilio Content
+    # Template from the central OpenLines WhatsApp sender. Never freeform. Skips
+    # silently if the sender/template env vars aren't configured.
+    if tenant.get("whatsapp_enabled", False) and mobile_to:
+        try:
+            sent = await telephony.send_whatsapp_template(
+                to_number=mobile_to,
+                variables=_whatsapp_summary_vars(business_name, analysis, caller_number),
+            )
+            if sent:
+                analytics.capture(_distinct, "owner_notification_sent", {
+                    "tenant_id": tenant_id, "channel": "whatsapp",
+                })
+        except Exception as e:
+            logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
     # Record minutes for metered overage billing — cast to int (Vapi sends floats)
     if duration is not None and duration > 0:

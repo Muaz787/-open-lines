@@ -26,8 +26,9 @@ function SettingsPage() {
   const [tenant, setTenant]               = useState<Tenant | null>(null)
 
   const [notifEmail, setNotifEmail]               = useState('')
-  const [emailNotifs, setEmailNotifs]             = useState(false)
-  const [notifChannel, setNotifChannel]           = useState<'email' | 'sms' | 'both'>('email')
+  const [emailEnabled, setEmailEnabled]           = useState(true)
+  const [smsEnabled, setSmsEnabled]               = useState(false)
+  const [whatsappEnabled, setWhatsappEnabled]     = useState(false)
   const [smsNumber, setSmsNumber]                 = useState('')
   const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
   const [bizPhone, setBizPhone]                   = useState('')
@@ -51,8 +52,9 @@ function SettingsPage() {
         const d = await tRes.json()
         setTenant(d)
         if (d?.notification_email) setNotifEmail(d.notification_email)
-        if (d?.email_notifications != null) setEmailNotifs(!!d.email_notifications)
-        if (d?.notification_channel === 'email' || d?.notification_channel === 'sms' || d?.notification_channel === 'both') setNotifChannel(d.notification_channel)
+        if (d?.email_enabled != null) setEmailEnabled(!!d.email_enabled)
+        if (d?.sms_enabled != null) setSmsEnabled(!!d.sms_enabled)
+        if (d?.whatsapp_enabled != null) setWhatsappEnabled(!!d.whatsapp_enabled)
         if (d?.sms_alert_number) setSmsNumber(d.sms_alert_number)
         if (d?.business_phone) setBizPhone(d.business_phone)
       }
@@ -65,7 +67,7 @@ function SettingsPage() {
       const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notification_email: notifEmail.trim(), email_notifications: emailNotifs, notification_channel: notifChannel, sms_alert_number: smsNumber.trim() }),
+        body: JSON.stringify({ notification_email: notifEmail.trim(), email_enabled: emailEnabled, sms_enabled: smsEnabled, whatsapp_enabled: whatsappEnabled, sms_alert_number: smsNumber.trim() }),
       })
       setNotifEmailState(res.ok ? 'saved' : 'error')
       setTimeout(() => setNotifEmailState('idle'), 3000)
@@ -144,65 +146,61 @@ function SettingsPage() {
             {/* ── Call summary notifications ── */}
             <div className="db-card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
-                    Call summary notifications
-                  </label>
-                  {/* Master on/off toggle */}
-                  <button
-                    type="button"
-                    className={`db-switch${emailNotifs ? ' on' : ''}`}
-                    onClick={() => setEmailNotifs(v => !v)}
-                    aria-pressed={emailNotifs}
-                  />
-                </div>
+                <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
+                  Call summary notifications
+                </label>
                 <div className="db-field-help">
-                  Get a summary after every call. Choose how you&rsquo;d like to receive it.
+                  Get a summary after every call. Turn on each channel you&rsquo;d like.
                 </div>
 
-                {/* Channel selector */}
-                <div style={{ display: 'flex', gap: 6, opacity: emailNotifs ? 1 : 0.5, pointerEvents: emailNotifs ? 'auto' : 'none', marginBottom: 14 }}>
-                  {([['email', 'Email'], ['sms', 'SMS'], ['both', 'Both']] as const).map(([val, lbl]) => (
+                {/* Per-channel toggles */}
+                {([
+                  ['Email', 'A summary email after every call.', emailEnabled, setEmailEnabled],
+                  ['SMS', 'A text message to your mobile.', smsEnabled, setSmsEnabled],
+                  ['WhatsApp', 'A WhatsApp message to your mobile.', whatsappEnabled, setWhatsappEnabled],
+                ] as const).map(([label, desc, on, setOn]) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderTop: '1px solid var(--db-border-lt)' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>{label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>{desc}</div>
+                    </div>
                     <button
-                      key={val}
                       type="button"
-                      onClick={() => setNotifChannel(val)}
-                      className={`db-pill${notifChannel === val ? ' active' : ''}`}
-                      style={{ flex: 1, justifyContent: 'center' }}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
+                      className={`db-switch${on ? ' on' : ''}`}
+                      onClick={() => setOn(v => !v)}
+                      aria-pressed={on}
+                      aria-label={`Toggle ${label} notifications`}
+                    />
+                  </div>
+                ))}
 
-                {/* Email destination — shown when email is part of the channel */}
-                {(notifChannel === 'email' || notifChannel === 'both') && (
-                  <div style={{ marginBottom: (notifChannel === 'both') ? 12 : 0 }}>
+                {/* Email destination */}
+                {emailEnabled && (
+                  <div style={{ marginTop: 14 }}>
                     <label className="db-field-label" style={{ fontSize: 12 }}>Email address</label>
                     <input
                       type="email" value={notifEmail} onChange={e => setNotifEmail(e.target.value)}
-                      placeholder="you@example.com" className="db-input" style={{ opacity: emailNotifs ? 1 : 0.5 }}
-                      disabled={!emailNotifs}
+                      placeholder="you@example.com" className="db-input"
                     />
                     <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>Can differ from your login email.</div>
                   </div>
                 )}
 
-                {/* SMS destination — dedicated mobile for alerts */}
-                {(notifChannel === 'sms' || notifChannel === 'both') && (
-                  <div>
-                    <label className="db-field-label" style={{ fontSize: 12 }}>Mobile for SMS alerts</label>
+                {/* Shared mobile destination — for SMS and/or WhatsApp */}
+                {(smsEnabled || whatsappEnabled) && (
+                  <div style={{ marginTop: 14 }}>
+                    <label className="db-field-label" style={{ fontSize: 12 }}>Mobile number</label>
                     <input
                       type="tel" value={smsNumber} onChange={e => setSmsNumber(e.target.value)}
                       placeholder={bizPhone.trim() ? `Defaults to ${bizPhone}` : '+1 (647) 555-0123'}
-                      className="db-input" style={{ opacity: emailNotifs ? 1 : 0.5 }}
-                      disabled={!emailNotifs}
+                      className="db-input"
                     />
                     <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>
-                      Use a mobile/SMS-capable number — texts may not reach a landline.
+                      Used for {smsEnabled && whatsappEnabled ? 'SMS and WhatsApp' : smsEnabled ? 'SMS' : 'WhatsApp'} alerts — use a mobile/SMS-capable number.
                       {bizPhone.trim() && ' Leave blank to use your business phone.'}
+                      {whatsappEnabled && ' WhatsApp alerts use an approved message template and require this number to be on WhatsApp.'}
                       {!smsNumber.trim() && !bizPhone.trim() && (
-                        <span style={{ color: 'var(--db-danger-text)' }}> Add a number here or a business phone below to receive SMS summaries.</span>
+                        <span style={{ color: 'var(--db-danger-text)' }}> Add a number here or a business phone below.</span>
                       )}
                     </div>
                   </div>
@@ -212,10 +210,7 @@ function SettingsPage() {
                 <button
                   className="db-btn db-btn--accent-ghost"
                   onClick={saveNotifEmail}
-                  disabled={
-                    notifEmailState === 'saving' ||
-                    (emailNotifs && (notifChannel === 'email' || notifChannel === 'both') && !notifEmail.trim())
-                  }
+                  disabled={notifEmailState === 'saving' || (emailEnabled && !notifEmail.trim())}
                 >
                   {notifEmailState === 'saving' ? 'Saving…' : 'Save'}
                 </button>

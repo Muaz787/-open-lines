@@ -9,7 +9,6 @@ from pydantic import BaseModel
 
 from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi, telephony
-from services.webhook_processor import _format_whatsapp_message
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -613,7 +612,7 @@ async def _notify_payment(tenant: dict, payment: dict) -> None:
 
     # Email
     notification_email = tenant.get("notification_email", "")
-    if notification_email and tenant.get("email_notifications", False):
+    if notification_email and tenant.get("email_enabled", True):
         try:
             from services.email import send_call_summary_email
             fake_analysis = {

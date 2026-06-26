@@ -209,6 +209,21 @@ alter table tenants add column if not exists notification_channel text default '
 alter table tenants add column if not exists sms_alert_number text;
 
 -- ---------------------------------------------------------------------------
+-- Per-channel call-summary notification toggles (replace the email_notifications
+-- master switch + notification_channel enum). WhatsApp is production-only and
+-- goes to sms_alert_number via an approved Twilio Content Template.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists email_enabled    boolean default true;
+alter table tenants add column if not exists sms_enabled       boolean default false;
+alter table tenants add column if not exists whatsapp_enabled  boolean default false;
+
+-- Backfill the new toggles from the old settings so existing tenants keep their
+-- current behaviour (whatsapp stays off). Safe to re-run.
+update tenants set
+  email_enabled = (coalesce(email_notifications, false) and coalesce(notification_channel, 'email') in ('email', 'both')),
+  sms_enabled   = (coalesce(email_notifications, false) and coalesce(notification_channel, 'email') in ('sms', 'both'));
+
+-- ---------------------------------------------------------------------------
 -- AI Insights v2: per-call enrichment (intent + signals) used to compute
 -- evidence-based, sample-size-aware insights. Populated by the per-call
 -- analysis (webhook) and a one-time backfill over existing transcripts.

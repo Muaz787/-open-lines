@@ -101,7 +101,8 @@ export default function PrivacyPolicy() {
         <Section title="5. Third-party services">
           <P>We use the following services to operate the platform. Each processes data only as necessary to provide their function:</P>
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Li><strong>Twilio</strong> — phone number provisioning and SMS delivery.</Li>
+            <Li><strong>Twilio</strong> — phone number provisioning, SMS, and WhatsApp message delivery.</Li>
+            <Li><strong>WhatsApp (Meta)</strong> — delivery of opt-in call-summary notifications to the business, where WhatsApp alerts are enabled.</Li>
             <Li><strong>Vapi</strong> — AI voice call processing and transcription.</Li>
             <Li><strong>OpenAI</strong> — natural language processing for call summaries and lead extraction.</Li>
             <Li><strong>Supabase</strong> — secure database storage for tenant and caller data.</Li>
