@@ -67,7 +67,7 @@ def _whatsapp_summary_vars(business_name: str, analysis: dict, caller_number: st
         "1": _wa_clean(business_name, 60),
         "2": _wa_clean(analysis.get("caller_name") or "Unknown caller", 60),
         "3": _wa_clean(caller_number or "no caller ID", 32),
-        "4": _wa_clean(analysis.get("urgency") or "n/a", 20),
+        "4": _wa_clean((analysis.get("urgency") or "unknown").capitalize(), 20),
         "5": _wa_clean(analysis.get("summary"), 300),
         "6": _wa_clean(analysis.get("suggested_next_step"), 120),
     }
