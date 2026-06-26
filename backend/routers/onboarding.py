@@ -134,7 +134,7 @@ async def provision(request: Request, body: ProvisionRequest):
                     "user_id":             user_id,
                     "email":               body.email,
                     "notification_email":  body.email,
-                    "email_notifications": True,
+                    "email_enabled":       True,
                 })
                 logger.info("Created auth user for tenant %s", result["tenant_id"])
                 distinct_id = user_id
@@ -163,10 +163,10 @@ async def provision(request: Request, body: ProvisionRequest):
 
 
 class SettingsUpdateRequest(BaseModel):
-    whatsapp_number:      str | None = None
     notification_email:   str | None = None
-    email_notifications:  bool | None = None
-    notification_channel: str | None = None
+    email_enabled:        bool | None = None
+    sms_enabled:          bool | None = None
+    whatsapp_enabled:     bool | None = None
     business_phone:       str | None = None
     sms_alert_number:     str | None = None
     business_hours_start: int | None = None
@@ -176,16 +176,6 @@ class SettingsUpdateRequest(BaseModel):
     break_end:            int | None = None
     booking_instructions: str | None = None
     auto_recrawl_enabled: bool | None = None
-
-    @field_validator("notification_channel")
-    @classmethod
-    def _valid_channel(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        v = v.strip().lower()
-        if v not in ("email", "sms", "both"):
-            raise ValueError("notification_channel must be email, sms, or both")
-        return v
 
     @field_validator("business_phone", "sms_alert_number")
     @classmethod

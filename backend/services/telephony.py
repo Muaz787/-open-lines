@@ -129,19 +129,44 @@ async def release_number(
         logger.error("Failed to release number %s on rollback: %s", phone_number, e)
 
 
-TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+# Production WhatsApp: a single central OpenLines sender + approved Content
+# Templates. No sandbox default — if either is unset, WhatsApp sends are skipped.
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
+TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID = os.getenv("TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID", "")
 
 
-async def send_whatsapp(to_number: str, body: str) -> bool:
-    """Send a WhatsApp message via the main Twilio account (sandbox or Business API)."""
+def _wa_from() -> str:
+    """Normalize the sender to the `whatsapp:+E164` form Twilio expects."""
+    f = (TWILIO_WHATSAPP_FROM or "").strip()
+    if not f:
+        return ""
+    return f if f.startswith("whatsapp:") else f"whatsapp:{f}"
+
+
+def whatsapp_configured() -> bool:
+    return bool(_wa_from() and TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID)
+
+
+async def send_whatsapp_template(to_number: str, variables: dict) -> bool:
+    """Send the call-summary WhatsApp via an APPROVED Twilio Content Template
+    from the central OpenLines sender. Production only; never freeform. Returns
+    False (and logs) if not configured or on error — callers treat as non-fatal."""
+    import json
+
+    if not whatsapp_configured():
+        logger.warning("WhatsApp skipped: TWILIO_WHATSAPP_FROM / TEMPLATE_SID not configured")
+        return False
+    if not to_number:
+        return False
     try:
         client = _master_client()
         msg = client.messages.create(
-            body=body,
-            from_=TWILIO_WHATSAPP_FROM,
+            from_=_wa_from(),
             to=f"whatsapp:{to_number}",
+            content_sid=TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID,
+            content_variables=json.dumps(variables),
         )
-        logger.info("WhatsApp sent to %s (SID %s)", to_number, msg.sid)
+        logger.info("WhatsApp template sent to %s (SID %s)", to_number, msg.sid)
         return True
     except TwilioRestException as e:
         logger.error("Failed to send WhatsApp to %s: %s", to_number, e)

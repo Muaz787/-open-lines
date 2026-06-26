@@ -189,7 +189,7 @@ async def notify_business(tenant: dict, payment: dict | None, *, refunded: bool,
 
     # Email
     notification_email = tenant.get("notification_email", "")
-    if notification_email and tenant.get("email_notifications", False):
+    if notification_email and tenant.get("email_enabled", True):
         try:
             from services.email import send_call_summary_email
             summary = (
