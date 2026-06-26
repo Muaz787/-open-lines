@@ -46,9 +46,9 @@ and submit for WhatsApp approval. Body with six variables:
 
 ```
 New call for {{1}}
-From: {{2}} ({{3}})
+Caller: {{2}} ({{3}})
 Urgency: {{4}}
-{{5}}
+Summary: {{5}}
 Next step: {{6}}
 ```
 
