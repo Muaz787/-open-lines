@@ -260,7 +260,7 @@ async def _handle_checkout_completed(session: dict) -> None:
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         if tenant:
-            await _notify_payment(tenant, payment)
+            await _notify_payment(tenant, payment, appointment)
             await _sms_caller_confirmation(tenant, payment, appointment)
     except Exception as e:
         logger.error("Payment notification failed for tenant %s: %s", tenant_id, e)
@@ -443,7 +443,7 @@ async def _handle_square_payment_completed(event: dict) -> None:
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         if tenant:
-            await _notify_payment(tenant, payment)
+            await _notify_payment(tenant, payment, appointment)
             await _sms_caller_confirmation(tenant, payment, appointment)
     except Exception as e:
         logger.error("Square payment notification failed for tenant %s: %s", tenant_id, e)
@@ -581,13 +581,32 @@ async def _notify_refund(tenant: dict, payment: dict) -> None:
     await refund_svc.notify_business(tenant, payment, refunded=True)
 
 
-async def _notify_payment(tenant: dict, payment: dict) -> None:
-    """Fire Slack and/or email notification for a received deposit."""
+def _appt_str(appointment: dict | None, service: str) -> str:
+    """'Monday, Jun 12 · Service' when a datetime is known, else just the service."""
+    if appointment and appointment.get("appointment_datetime"):
+        try:
+            dt = datetime.fromisoformat(str(appointment["appointment_datetime"]).replace("Z", "+00:00"))
+            return f"{dt.strftime('%A, %b %d')} · {service}"
+        except Exception:
+            pass
+    return service
+
+
+def _one_line(s: str, maxlen: int = 120) -> str:
+    return " ".join(str(s or "").split())[:maxlen] or "—"
+
+
+async def _notify_payment(tenant: dict, payment: dict, appointment: dict | None = None) -> None:
+    """Fire owner notifications for a received deposit — Slack, plus email / SMS /
+    WhatsApp per the tenant's channel toggles."""
     caller_name  = payment.get("caller_name") or "Customer"
     caller_phone = payment.get("caller_phone") or ""
     service      = payment.get("service") or "Appointment"
-    amount       = f"${payment.get('amount_cents', 0) / 100:.2f}"
+    amount_str   = f"${(payment.get('amount_cents') or 0) / 100:.2f}"
+    amount       = f"{amount_str} {(payment.get('currency') or 'usd').upper()}"
     business_name = tenant.get("business_name", "")
+    appt_when    = _appt_str(appointment, service)
+    caller_line  = f"{caller_name} • {caller_phone}" if caller_phone else caller_name
 
     # Slack
     if tenant.get("slack_webhook_url"):
@@ -630,3 +649,19 @@ async def _notify_payment(tenant: dict, payment: dict) -> None:
             )
         except Exception as e:
             logger.error("Payment email notification failed for tenant %s: %s", tenant.get("id"), e)
+
+    # SMS + WhatsApp (per the tenant's channel toggles) — deposit template
+    from services import telephony
+    from services.owner_notify import send_owner_sms_whatsapp
+    await send_owner_sms_whatsapp(
+        tenant,
+        sms_body=f"💰 Deposit received — {amount} from {caller_name} for {service}. Appointment confirmed for {appt_when}. — {business_name}",
+        wa_template_sid=telephony.TWILIO_WHATSAPP_DEPOSIT_TEMPLATE_SID,
+        wa_vars={
+            "1": _one_line(business_name, 60),
+            "2": _one_line(caller_line, 90),
+            "3": _one_line(amount, 24),
+            "4": _one_line(appt_when, 90),
+        },
+        event="deposit_received",
+    )

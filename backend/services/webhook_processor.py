@@ -323,8 +323,9 @@ async def process_end_of_call(payload: dict) -> None:
     if tenant.get("whatsapp_enabled", False) and mobile_to:
         try:
             sent = await telephony.send_whatsapp_template(
-                to_number=mobile_to,
-                variables=_whatsapp_summary_vars(business_name, analysis, caller_number),
+                mobile_to,
+                telephony.TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID,
+                _whatsapp_summary_vars(business_name, analysis, caller_number),
             )
             if sent:
                 analytics.capture(_distinct, "owner_notification_sent", {

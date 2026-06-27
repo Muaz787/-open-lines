@@ -72,11 +72,46 @@ After approval, copy the **Content SID** (`HX…`) → `TWILIO_WHATSAPP_SUMMARY_
 | Var | Example | Notes |
 |-----|---------|-------|
 | `TWILIO_WHATSAPP_FROM` | `whatsapp:+1XXXXXXXXXX` | The central WhatsApp sender. `whatsapp:` prefix added automatically if omitted. |
-| `TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID` | `HXxxxxxxxx…` | Approved call-summary Content SID. |
+| `TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID` | `HXxxxxxxxx…` | Approved **call-summary** Content SID. |
+| `TWILIO_WHATSAPP_DEPOSIT_TEMPLATE_SID` | `HXxxxxxxxx…` | Approved **deposit-received** Content SID. |
+| `TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID` | `HXxxxxxxxx…` | Approved **cancellation/refund** Content SID. |
 
 Uses the existing master Twilio credentials (the same account used for
-provisioning). **If either var is unset, WhatsApp sends are skipped** (email/SMS
-unaffected). Do not commit these values.
+provisioning). **Each WhatsApp send is skipped if the sender or that specific
+template SID is unset** (email/SMS unaffected). Do not commit these values.
+
+### Deposit-received template (4 variables)
+```
+Deposit received for {{1}}
+{{2}} paid {{3}}.
+Appointment:
+{{4}}
+Status: Confirmed
+```
+| # | Value | Sample |
+|---|-------|--------|
+| 1 | Business name | Sam Real Estate |
+| 2 | Caller name • number | John Doe • +1 416-555-0123 |
+| 3 | Amount paid + currency | $50.00 CAD |
+| 4 | Appointment (date · service) | Monday, Jun 12 · Apartment viewing |
+
+### Cancellation / refund template (4 variables)
+```
+Appointment cancelled — {{1}}
+{{2}}
+Service: {{3}}
+{{4}}
+```
+| # | Value | Sample |
+|---|-------|--------|
+| 1 | Business name | Sam Real Estate |
+| 2 | Caller name • number | John Doe • +1 416-555-0123 |
+| 3 | Service | Apartment viewing |
+| 4 | Deposit outcome | Deposit of $50.00 CAD refunded. |
+
+One cancellation template covers all cases — {{4}} is "Deposit of … refunded.",
+"Deposit of … forfeited (cancelled inside the refund window).", or "No deposit
+was on file." depending on the booking.
 
 ---
 
