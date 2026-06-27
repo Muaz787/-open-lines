@@ -130,9 +130,12 @@ async def release_number(
 
 
 # Production WhatsApp: a single central OpenLines sender + approved Content
-# Templates. No sandbox default — if either is unset, WhatsApp sends are skipped.
+# Templates (one per owner event). No sandbox default — if the sender or the
+# given template SID is unset, that WhatsApp send is skipped.
 TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
 TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID = os.getenv("TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID", "")
+TWILIO_WHATSAPP_DEPOSIT_TEMPLATE_SID = os.getenv("TWILIO_WHATSAPP_DEPOSIT_TEMPLATE_SID", "")
+TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID  = os.getenv("TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID", "")
 
 
 def _wa_from() -> str:
@@ -143,18 +146,19 @@ def _wa_from() -> str:
     return f if f.startswith("whatsapp:") else f"whatsapp:{f}"
 
 
-def whatsapp_configured() -> bool:
-    return bool(_wa_from() and TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID)
+def whatsapp_sender_configured() -> bool:
+    return bool(_wa_from())
 
 
-async def send_whatsapp_template(to_number: str, variables: dict) -> bool:
-    """Send the call-summary WhatsApp via an APPROVED Twilio Content Template
-    from the central OpenLines sender. Production only; never freeform. Returns
-    False (and logs) if not configured or on error — callers treat as non-fatal."""
+async def send_whatsapp_template(to_number: str, template_sid: str, variables: dict) -> bool:
+    """Send a WhatsApp message via an APPROVED Twilio Content Template from the
+    central OpenLines sender. Production only; never freeform. Returns False (and
+    logs) if the sender or template SID isn't configured, or on error — callers
+    treat as non-fatal."""
     import json
 
-    if not whatsapp_configured():
-        logger.warning("WhatsApp skipped: TWILIO_WHATSAPP_FROM / TEMPLATE_SID not configured")
+    if not (_wa_from() and template_sid):
+        logger.warning("WhatsApp skipped: sender or template SID not configured")
         return False
     if not to_number:
         return False
@@ -163,7 +167,7 @@ async def send_whatsapp_template(to_number: str, variables: dict) -> bool:
         msg = client.messages.create(
             from_=_wa_from(),
             to=f"whatsapp:{to_number}",
-            content_sid=TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID,
+            content_sid=template_sid,
             content_variables=json.dumps(variables),
         )
         logger.info("WhatsApp template sent to %s (SID %s)", to_number, msg.sid)

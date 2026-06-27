@@ -15,6 +15,11 @@ from services.short_links import format_currency
 logger = logging.getLogger(__name__)
 
 
+def _one_line(s: str, maxlen: int = 120) -> str:
+    """Single-line, length-bounded value for WhatsApp template variables."""
+    return " ".join(str(s or "").split())[:maxlen] or "—"
+
+
 def _amount_display(amount_cents: int) -> str:
     return f"{amount_cents // 100}" if amount_cents % 100 == 0 else f"{amount_cents / 100:.2f}"
 
@@ -149,7 +154,7 @@ async def notify_business(tenant: dict, payment: dict | None, *, refunded: bool,
         caller_name  = caller_name or payment.get("caller_name") or "Customer"
         caller_phone = caller_phone or payment.get("caller_phone") or ""
         service      = service or payment.get("service") or "Appointment"
-        amount       = f"${(payment.get('amount_cents') or 0) / 100:.2f}"
+        amount       = f"${(payment.get('amount_cents') or 0) / 100:.2f} {(payment.get('currency') or 'usd').upper()}"
     else:
         caller_name  = caller_name or "Customer"
         service      = service or "Appointment"
@@ -213,3 +218,25 @@ async def notify_business(tenant: dict, payment: dict | None, *, refunded: bool,
             )
         except Exception as e:
             logger.error("Cancellation email notification failed for tenant %s: %s", tenant.get("id"), e)
+
+    # SMS + WhatsApp (per the tenant's channel toggles) — cancellation template
+    deposit_line = (
+        f"Deposit of {amount} refunded." if refunded
+        else (f"Deposit of {amount} forfeited (cancelled inside the refund window)." if amount is not None
+              else "No deposit was on file.")
+    )
+    caller_line = f"{caller_name} • {caller_phone}" if caller_phone else caller_name
+    from services import telephony
+    from services.owner_notify import send_owner_sms_whatsapp
+    await send_owner_sms_whatsapp(
+        tenant,
+        sms_body=f"❌ Appointment cancelled — {caller_name} ({service}). {deposit_line} — {business_name}",
+        wa_template_sid=telephony.TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID,
+        wa_vars={
+            "1": _one_line(business_name, 60),
+            "2": _one_line(caller_line, 90),
+            "3": _one_line(service, 90),
+            "4": _one_line(deposit_line, 120),
+        },
+        event="appointment_cancelled",
+    )
