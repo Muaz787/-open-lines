@@ -135,6 +135,9 @@ async def list_free_slots(
     business_days: list[int] | None = None,
     break_start: int | None = None,
     break_end: int | None = None,
+    slot_capacity: int = 1,
+    booked_ranges: list[tuple[datetime, datetime]] | None = None,
+    our_event_ids: set[str] | None = None,
 ) -> list[str]:
     """Return available slot strings (e.g. '2:00 PM') for the given date.
 
@@ -217,6 +220,10 @@ async def list_free_slots(
             continue
         # Primary exclusion: match by Google event ID (exact, never fails on tz rounding)
         event_id = event.get("id", "")
+        # Pooled capacity: our own bookings are counted as seats (booked_ranges),
+        # not treated as a full block — so they don't block remaining seats.
+        if our_event_ids and event_id and event_id in our_event_ids:
+            continue
         if exclude_event_id and event_id and event_id == exclude_event_id:
             logger.debug("Excluding reschedule event by ID %s: %s–%s", event_id, b_start, b_end)
             continue
@@ -244,10 +251,17 @@ async def list_free_slots(
             cursor += timedelta(minutes=_SLOT_STEP)
             continue
 
-        # Skip if overlaps any busy period
+        # Skip if overlaps any hard block (external event / break)
         if any(cursor < b_end and slot_end > b_start for b_start, b_end in busy):
             cursor += timedelta(minutes=_SLOT_STEP)
             continue
+
+        # Pooled capacity: skip only once our own bookings fill all the seats
+        if booked_ranges:
+            taken = sum(1 for s, e in booked_ranges if cursor < e and slot_end > s)
+            if taken >= slot_capacity:
+                cursor += timedelta(minutes=_SLOT_STEP)
+                continue
 
         slots.append(_fmt_slot(cursor))
         cursor += timedelta(minutes=_SLOT_STEP)

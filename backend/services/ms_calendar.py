@@ -196,6 +196,9 @@ async def list_free_slots(
     business_days: list[int] | None = None,
     break_start: int | None = None,
     break_end: int | None = None,
+    slot_capacity: int = 1,
+    booked_ranges: list[tuple[datetime, datetime]] | None = None,
+    our_event_ids: set[str] | None = None,
 ) -> list[str]:
     tz = ZoneInfo(timezone)
     appt_date = date_type.fromisoformat(date_str)
@@ -241,6 +244,8 @@ async def list_free_slots(
         show_as = event.get("showAs", "")
         if show_as in ("free", "workingElsewhere", "unknown"):
             continue
+        if our_event_ids and event.get("id") and event.get("id") in our_event_ids:
+            continue
         if exclude_event_id and event.get("id") == exclude_event_id:
             continue
         start_str = (event.get("start") or {}).get("dateTime", "")
@@ -271,6 +276,11 @@ async def list_free_slots(
         if any(cursor < b_end and slot_end > b_start for b_start, b_end in busy):
             cursor += timedelta(minutes=_SLOT_STEP)
             continue
+        if booked_ranges:
+            taken = sum(1 for s, e in booked_ranges if cursor < e and slot_end > s)
+            if taken >= slot_capacity:
+                cursor += timedelta(minutes=_SLOT_STEP)
+                continue
         slots.append(_fmt_slot(cursor))
         cursor += timedelta(minutes=_SLOT_STEP)
 

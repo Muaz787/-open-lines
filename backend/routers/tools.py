@@ -282,6 +282,37 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/availability: existing-appt check failed: %s", e)
 
+    # Pooled capacity (e.g. a barbershop with 4 chairs): when > 1, count our own
+    # bookings as seats instead of full blocks so the slot stays offerable until
+    # all seats are taken. Default 1 keeps the single-resource behavior unchanged.
+    slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
+    booked_ranges = None
+    our_event_ids = None
+    if slot_capacity > 1:
+        try:
+            _tz = ZoneInfo(timezone)
+            _d = date_type.fromisoformat(date_str)
+            _day_start = datetime(_d.year, _d.month, _d.day, tzinfo=_tz)
+            _appts = await db.get_active_appointments_between(
+                tenant_id, _day_start.isoformat(), (_day_start + timedelta(days=1)).isoformat())
+            our_event_ids = set()
+            booked_ranges = []
+            for _a in _appts:
+                _eid = _a.get("google_event_id")
+                if _eid:
+                    our_event_ids.add(_eid)
+                # Free the seat of the appointment being rescheduled.
+                if exclude_event_id and _eid and _eid == exclude_event_id:
+                    continue
+                _s = datetime.fromisoformat(_a["appointment_datetime"])
+                if _s.tzinfo is None:
+                    _s = _s.replace(tzinfo=_tz)
+                _s = _s.astimezone(_tz)
+                booked_ranges.append((_s, _s + timedelta(minutes=_a.get("duration_minutes") or duration_minutes)))
+        except Exception as e:
+            logger.warning("tools/availability: capacity fetch failed for tenant %s: %s", tenant_id, e)
+            booked_ranges = our_event_ids = None
+
     _slot_kwargs = dict(
         refresh_token=refresh_token,
         date_str=date_str,
@@ -295,6 +326,9 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         business_days=business_days,
         break_start=break_start,
         break_end=break_end,
+        slot_capacity=slot_capacity,
+        booked_ranges=booked_ranges,
+        our_event_ids=our_event_ids,
     )
     try:
         if cal_provider == "microsoft":
@@ -426,8 +460,8 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 "Could we pick a time outside of that?"
             )
 
-    # Cancel existing appointment for this caller (reschedule flow).
-    # Look back 24h so same-day reschedules are caught even if the slot has passed.
+    # Look up the caller's existing appointment (reschedule flow) — needed both
+    # for the capacity guard and to cancel the old calendar event.
     existing_appt = None
     if caller_phone:
         try:
@@ -435,25 +469,53 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/book: appointment lookup failed for tenant %s: %s", tenant_id, e)
 
-        if existing_appt:
-            old_event_id = existing_appt.get("google_event_id", "")
-            if old_event_id:
+    # Capacity guard — count our active overlapping appointments (excluding the
+    # one being rescheduled) against slot_capacity. Runs BEFORE we cancel the old
+    # event so a full target slot never costs the caller their existing booking.
+    slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
+    try:
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        _day_start = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        _day_appts = await db.get_active_appointments_between(
+            tenant_id, _day_start.isoformat(), (_day_start + timedelta(days=1)).isoformat())
+        taken = 0
+        for _a in _day_appts:
+            if existing_appt and _a.get("id") == existing_appt.get("id"):
+                continue
+            _s = datetime.fromisoformat(_a["appointment_datetime"])
+            if _s.tzinfo is None:
+                _s = _s.replace(tzinfo=tz)
+            _s = _s.astimezone(tz)
+            _e = _s + timedelta(minutes=_a.get("duration_minutes") or duration_minutes)
+            if start_dt < _e and end_dt > _s:
+                taken += 1
+        if taken >= slot_capacity:
+            logger.info("tools/book: slot full for tenant %s at %s (taken=%d cap=%d)",
+                        tenant_id, start_dt.isoformat(), taken, slot_capacity)
+            return _result(tc_id, "I'm sorry — that time just filled up. Could we find another time that works for you?")
+    except Exception as e:
+        logger.warning("tools/book: capacity check failed for tenant %s (allowing booking): %s", tenant_id, e)
+
+    # Reschedule: cancel the old calendar event now that the new slot has room.
+    if existing_appt:
+        old_event_id = existing_appt.get("google_event_id", "")
+        if old_event_id:
+            try:
+                if cal_provider == "microsoft":
+                    await ms_cal_svc.cancel_event(refresh_token, old_event_id)
+                else:
+                    await cal_svc.cancel_event(refresh_token, old_event_id)
+                logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
+            except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
+                logger.error("tools/book: calendar token expired during reschedule for tenant %s — auto-disconnecting", tenant_id)
+                clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
                 try:
-                    if cal_provider == "microsoft":
-                        await ms_cal_svc.cancel_event(refresh_token, old_event_id)
-                    else:
-                        await cal_svc.cancel_event(refresh_token, old_event_id)
-                    logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
-                except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
-                    logger.error("tools/book: calendar token expired during reschedule for tenant %s — auto-disconnecting", tenant_id)
-                    clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
-                    try:
-                        await db.update_tenant(tenant_id, {clear_field: None})
-                    except Exception:
-                        pass
-                    return _result(tc_id, _CALENDAR_ERROR_MSG)
-                except Exception as e:
-                    logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
+                    await db.update_tenant(tenant_id, {clear_field: None})
+                except Exception:
+                    pass
+                return _result(tc_id, _CALENDAR_ERROR_MSG)
+            except Exception as e:
+                logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
 
     try:
         description = (
