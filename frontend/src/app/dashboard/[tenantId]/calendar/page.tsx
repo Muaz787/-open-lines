@@ -17,6 +17,7 @@ interface CalendarStatus {
   microsoft_user_email?: string | null
   appointment_duration_minutes: number
   calendar_timezone: string
+  slot_capacity?: number
 }
 
 interface Appointment {
@@ -72,6 +73,7 @@ function CalendarPage() {
   const [breakStart, setBreakStart] = useState<number>(12)
   const [breakEnd, setBreakEnd]     = useState<number>(13)
   const [bookingInstructions, setBookingInstructions] = useState<string>('')
+  const [slotCapacity, setSlotCapacity] = useState<number>(1)
   const [bhSaving, setBhSaving] = useState(false)
 
   useEffect(() => {
@@ -92,6 +94,7 @@ function CalendarPage() {
             setBreakOn(true); setBreakStart(t.break_start); setBreakEnd(t.break_end)
           }
           if (t.booking_instructions) setBookingInstructions(t.booking_instructions)
+          if (t.slot_capacity != null) setSlotCapacity(t.slot_capacity)
         }
         if (aRes.ok) {
           const data = await aRes.json()
@@ -168,6 +171,7 @@ function CalendarPage() {
           break_start:          breakOn ? breakStart : null,
           break_end:            breakOn ? breakEnd : null,
           booking_instructions: bookingInstructions.trim(),
+          slot_capacity:        Math.max(1, Math.min(50, Math.round(slotCapacity) || 1)),
         }),
       })
       if (res.ok) showToast('Availability settings saved')
@@ -391,6 +395,23 @@ function CalendarPage() {
                   <span style={{ fontSize: 11, color: 'var(--db-faint)' }}>No appointments during this window</span>
                 </div>
               )}
+            </div>
+
+            {/* Capacity */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 4 }}>
+                How many can you serve at the same time?
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--db-faint)', marginBottom: 8 }}>
+                Number of appointments you can run in the same slot — e.g. a barbershop with 4 chairs = 4. Leave at 1 if you handle one at a time.
+              </div>
+              <input
+                type="number" min={1} max={50} step={1}
+                value={slotCapacity}
+                onChange={e => setSlotCapacity(Math.max(1, Math.min(50, Math.round(Number(e.target.value)) || 1)))}
+                className="db-input"
+                style={{ width: 120 }}
+              />
             </div>
 
             {/* Booking instructions */}

@@ -209,6 +209,13 @@ alter table tenants add column if not exists notification_channel text default '
 alter table tenants add column if not exists sms_alert_number text;
 
 -- ---------------------------------------------------------------------------
+-- Pooled booking capacity: how many appointments can run at the same time
+-- (e.g. a barbershop with 4 chairs = 4). Default 1 preserves single-resource
+-- behavior for every existing tenant.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists slot_capacity int default 1;
+
+-- ---------------------------------------------------------------------------
 -- Per-channel call-summary notification toggles (replace the email_notifications
 -- master switch + notification_channel enum). WhatsApp is production-only and
 -- goes to sms_alert_number via an approved Twilio Content Template.

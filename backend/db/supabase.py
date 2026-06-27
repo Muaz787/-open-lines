@@ -185,6 +185,22 @@ async def insert_appointment(data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def get_active_appointments_between(tenant_id: str, start_iso: str, end_iso: str) -> list:
+    """Active (non-cancelled) appointments starting in [start_iso, end_iso).
+    Used for pooled-capacity overlap counting."""
+    res = (
+        get_client()
+        .table("appointments")
+        .select("id, appointment_datetime, duration_minutes, status, google_event_id")
+        .eq("tenant_id", tenant_id)
+        .gte("appointment_datetime", start_iso)
+        .lt("appointment_datetime", end_iso)
+        .neq("status", "cancelled")
+        .execute()
+    )
+    return res.data or []
+
+
 async def get_appointments(tenant_id: str, limit: int = 50) -> list:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (

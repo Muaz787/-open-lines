@@ -176,6 +176,16 @@ class SettingsUpdateRequest(BaseModel):
     break_end:            int | None = None
     booking_instructions: str | None = None
     auto_recrawl_enabled: bool | None = None
+    slot_capacity:        int | None = None
+
+    @field_validator("slot_capacity")
+    @classmethod
+    def _valid_capacity(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 1 or v > 50:
+            raise ValueError("slot_capacity must be between 1 and 50")
+        return v
 
     @field_validator("business_phone", "sms_alert_number")
     @classmethod
