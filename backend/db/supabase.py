@@ -255,8 +255,12 @@ async def get_tenants_with_calendar() -> list:
 
 
 async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
-    """Return the most recent confirmed appointment for this caller (up to 24h in the past
-    and any future date) so same-day reschedules are caught even after the slot has passed."""
+    """Return the most recent active appointment for this caller (up to 24h in the past
+    and any future date) so same-day reschedules are caught even after the slot has passed.
+
+    Includes 'pending_payment' as well as 'confirmed' — a deposit-held booking still
+    occupies the calendar slot and must be findable to cancel or reschedule before the
+    deposit is paid."""
     from datetime import timedelta
     window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     res = (
@@ -265,7 +269,7 @@ async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | 
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("caller_phone", phone)
-        .eq("status", "confirmed")
+        .in_("status", ["confirmed", "pending_payment"])
         .gte("appointment_datetime", window_start)
         .order("appointment_datetime", desc=False)
         .limit(1)
