@@ -74,16 +74,24 @@ function CalendarPage() {
   const [breakEnd, setBreakEnd]     = useState<number>(13)
   const [bookingInstructions, setBookingInstructions] = useState<string>('')
   const [slotCapacity, setSlotCapacity] = useState<number>(1)
+  const [staff, setStaff] = useState<{ id: string; name: string }[]>([])
+  const [newStaff, setNewStaff] = useState('')
+  const [staffBusy, setStaffBusy] = useState(false)
   const [bhSaving, setBhSaving] = useState(false)
 
   useEffect(() => {
     const init = async () => {
       try {
-        const [tRes, aRes, cRes] = await Promise.all([
+        const [tRes, aRes, cRes, sRes] = await Promise.all([
           authedFetch(`${API}/onboarding/status/${tenantId}`),
           authedFetch(`${API}/calendar/appointments/${tenantId}`),
           authedFetch(`${API}/calendar/status/${tenantId}`),
+          authedFetch(`${API}/staff/${tenantId}`),
         ])
+        if (sRes.ok) {
+          const sd = await sRes.json()
+          setStaff(Array.isArray(sd.staff) ? sd.staff : [])
+        }
         if (tRes.ok) {
           const t = await tRes.json()
           setTenant(t)
@@ -185,6 +193,35 @@ function CalendarPage() {
 
   const toggleDay = (d: number) => {
     setBizDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+  }
+
+  const addStaff = async () => {
+    const name = newStaff.trim()
+    if (!name) return
+    setStaffBusy(true)
+    try {
+      const res = await authedFetch(`${API}/staff/${tenantId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        const s = await res.json()
+        setStaff(prev => [...prev, { id: s.id, name: s.name }])
+        setNewStaff('')
+      } else showToast('Failed to add — try again')
+    } catch { showToast('Failed to add — try again') }
+    finally { setStaffBusy(false) }
+  }
+
+  const removeStaff = async (id: string) => {
+    setStaffBusy(true)
+    try {
+      const res = await authedFetch(`${API}/staff/${tenantId}/${id}`, { method: 'DELETE' })
+      if (res.ok) setStaff(prev => prev.filter(s => s.id !== id))
+      else showToast('Failed to remove — try again')
+    } catch { showToast('Failed to remove — try again') }
+    finally { setStaffBusy(false) }
   }
 
   const showToast = (msg: string) => {
@@ -397,21 +434,60 @@ function CalendarPage() {
               )}
             </div>
 
-            {/* Capacity */}
+            {/* Team & capacity */}
             <div style={{ marginBottom: 18 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 4 }}>
-                How many can you serve at the same time?
+                Team &amp; capacity
               </div>
-              <div style={{ fontSize: 11, color: 'var(--db-faint)', marginBottom: 8 }}>
-                Number of appointments you can run in the same slot — e.g. a barbershop with 4 chairs = 4. Leave at 1 if you handle one at a time.
+              <div style={{ fontSize: 11, color: 'var(--db-faint)', marginBottom: 10, lineHeight: 1.5 }}>
+                {staff.length > 0
+                  ? `Bookings are spread across your ${staff.length} team member${staff.length === 1 ? '' : 's'} — each takes one appointment per slot, and the AI can book a caller with whoever they ask for.`
+                  : 'Set how many you can serve at once, or add named team members to track who handles each booking and let callers request someone by name.'}
               </div>
-              <input
-                type="number" min={1} max={50} step={1}
-                value={slotCapacity}
-                onChange={e => setSlotCapacity(Math.max(1, Math.min(50, Math.round(Number(e.target.value)) || 1)))}
-                className="db-input"
-                style={{ width: 120 }}
-              />
+
+              {/* Pooled capacity — only when no named staff */}
+              {staff.length === 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11, color: 'var(--db-faint)', display: 'block', marginBottom: 4 }}>
+                    How many can you serve at the same time? (e.g. 4 chairs = 4)
+                  </label>
+                  <input
+                    type="number" min={1} max={50} step={1}
+                    value={slotCapacity}
+                    onChange={e => setSlotCapacity(Math.max(1, Math.min(50, Math.round(Number(e.target.value)) || 1)))}
+                    className="db-input"
+                    style={{ width: 120 }}
+                  />
+                </div>
+              )}
+
+              {/* Named staff list */}
+              {staff.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                  {staff.map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', border: '1px solid var(--db-border)', borderRadius: 8 }}>
+                      <span style={{ fontSize: 13, color: 'var(--db-text)' }}>{s.name}</span>
+                      <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => removeStaff(s.id)} disabled={staffBusy}>Remove</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add team member */}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="db-input"
+                  placeholder="Add a team member (e.g. Sam)"
+                  value={newStaff}
+                  onChange={e => setNewStaff(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addStaff()}
+                  maxLength={60}
+                  style={{ flex: 1 }}
+                />
+                <button className="db-btn db-btn--dark db-btn--sm" onClick={addStaff} disabled={staffBusy || !newStaff.trim()}>
+                  Add
+                </button>
+              </div>
             </div>
 
             {/* Booking instructions */}

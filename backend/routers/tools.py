@@ -282,10 +282,18 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/availability: existing-appt check failed: %s", e)
 
-    # Pooled capacity (e.g. a barbershop with 4 chairs): when > 1, count our own
+    # Capacity per slot. Named-staff mode (tenant has active staff) sets it to the
+    # staff count; otherwise it's the pooled slot_capacity. > 1 counts our own
     # bookings as seats instead of full blocks so the slot stays offerable until
-    # all seats are taken. Default 1 keeps the single-resource behavior unchanged.
-    slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
+    # all seats are taken. 1 keeps the single-resource behavior unchanged.
+    try:
+        _active_staff = await db.get_active_staff(tenant_id)
+    except Exception:
+        _active_staff = []
+    if _active_staff:
+        slot_capacity = len(_active_staff)
+    else:
+        slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
     booked_ranges = None
     our_event_ids = None
     if slot_capacity > 1:
@@ -469,16 +477,28 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/book: appointment lookup failed for tenant %s: %s", tenant_id, e)
 
-    # Capacity guard — count our active overlapping appointments (excluding the
-    # one being rescheduled) against slot_capacity. Runs BEFORE we cancel the old
-    # event so a full target slot never costs the caller their existing booking.
-    slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
+    # Capacity + staff guard. Named-staff mode (tenant has active staff) sets the
+    # slot capacity to the staff count and assigns the booking to a staff member
+    # (caller-requested name if free, else first-available). Pooled mode uses
+    # slot_capacity. Runs BEFORE we cancel the old event so a full target slot
+    # never costs the caller their existing booking.
+    try:
+        active_staff = await db.get_active_staff(tenant_id)
+    except Exception as e:
+        logger.warning("tools/book: staff fetch failed for tenant %s: %s", tenant_id, e)
+        active_staff = []
+    staff_mode = len(active_staff) >= 1
+    slot_capacity = len(active_staff) if staff_mode else max(1, int(tenant.get("slot_capacity") or 1))
+
+    chosen_staff = None
+    _slot_full_msg = "I'm sorry — that time just filled up. Could we find another time that works for you?"
     try:
         end_dt = start_dt + timedelta(minutes=duration_minutes)
         _day_start = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         _day_appts = await db.get_active_appointments_between(
             tenant_id, _day_start.isoformat(), (_day_start + timedelta(days=1)).isoformat())
         taken = 0
+        busy_staff_ids: set[str] = set()
         for _a in _day_appts:
             if existing_appt and _a.get("id") == existing_appt.get("id"):
                 continue
@@ -489,12 +509,35 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             _e = _s + timedelta(minutes=_a.get("duration_minutes") or duration_minutes)
             if start_dt < _e and end_dt > _s:
                 taken += 1
+                if _a.get("staff_id"):
+                    busy_staff_ids.add(_a["staff_id"])
         if taken >= slot_capacity:
             logger.info("tools/book: slot full for tenant %s at %s (taken=%d cap=%d)",
                         tenant_id, start_dt.isoformat(), taken, slot_capacity)
-            return _result(tc_id, "I'm sorry — that time just filled up. Could we find another time that works for you?")
+            return _result(tc_id, _slot_full_msg)
+
+        if staff_mode:
+            # Honor a caller-requested name (set once the AI passes `staff`); else
+            # assign the first staff member free at this time.
+            requested = (args.get("staff") or "").strip().lower()
+            if requested:
+                for s in active_staff:
+                    nm = (s.get("name") or "").lower()
+                    if nm and (requested in nm or nm in requested):
+                        chosen_staff = s
+                        break
+                if chosen_staff and chosen_staff["id"] in busy_staff_ids:
+                    return _result(
+                        tc_id,
+                        f"I'm sorry, {chosen_staff['name']} is booked at that time. "
+                        "Would another time work, or shall I book you with whoever's available?"
+                    )
+            if not chosen_staff:
+                chosen_staff = next((s for s in active_staff if s["id"] not in busy_staff_ids), None)
+            if not chosen_staff:
+                return _result(tc_id, _slot_full_msg)
     except Exception as e:
-        logger.warning("tools/book: capacity check failed for tenant %s (allowing booking): %s", tenant_id, e)
+        logger.warning("tools/book: capacity/staff check failed for tenant %s (allowing booking): %s", tenant_id, e)
 
     # Reschedule: cancel the old calendar event now that the new slot has room.
     if existing_appt:
@@ -593,6 +636,9 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             "vapi_call_id":          call_id,
             "google_event_id":       event.get("id", ""),
         }
+        if chosen_staff:
+            appt_data["staff_id"]   = chosen_staff["id"]
+            appt_data["staff_name"] = chosen_staff.get("name", "")
         if existing_appt:
             await db.update_appointment(existing_appt["id"], appt_data)
         else:
@@ -625,10 +671,12 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/book: failed to save appointment for tenant %s: %s", tenant_id, e)
         # Don't fail the whole response — event was created in Google, just log the DB miss
 
-    # Friendly confirmation string for the AI
+    # Friendly confirmation string for the AI (includes the assigned staff member
+    # in named-staff mode, e.g. "… at 2:00 PM with Sam").
     h = start_dt.hour % 12 or 12
     ampm = "AM" if start_dt.hour < 12 else "PM"
-    friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}"
+    _staff_suffix = f" with {chosen_staff['name']}" if chosen_staff else ""
+    friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}{_staff_suffix}"
 
     # Send SMS confirmation — but only when no mandatory deposit is still owed.
     # When a deposit is mandatory AND not already paid, the confirmation SMS is

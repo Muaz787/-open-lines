@@ -152,6 +152,32 @@ async def insert_call(tenant_id: str, lead_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+# ---------------------------------------------------------------------------
+# Staff (named resources)
+# ---------------------------------------------------------------------------
+async def list_staff(tenant_id: str, active_only: bool = False) -> list:
+    q = (get_client().table("staff").select("id, name, is_active, created_at")
+         .eq("tenant_id", tenant_id).order("created_at", desc=False))
+    if active_only:
+        q = q.eq("is_active", True)
+    return q.execute().data or []
+
+
+async def get_active_staff(tenant_id: str) -> list:
+    return await list_staff(tenant_id, active_only=True)
+
+
+async def create_staff(tenant_id: str, name: str) -> dict:
+    res = get_client().table("staff").insert({"tenant_id": tenant_id, "name": name}).execute()
+    return res.data[0] if res.data else {}
+
+
+async def update_staff(tenant_id: str, staff_id: str, data: dict) -> dict:
+    res = (get_client().table("staff").update(data)
+           .eq("id", staff_id).eq("tenant_id", tenant_id).execute())
+    return res.data[0] if res.data else {}
+
+
 async def update_call(call_id: str, data: dict) -> dict:
     res = (
         get_client()
@@ -191,7 +217,7 @@ async def get_active_appointments_between(tenant_id: str, start_iso: str, end_is
     res = (
         get_client()
         .table("appointments")
-        .select("id, appointment_datetime, duration_minutes, status, google_event_id")
+        .select("id, appointment_datetime, duration_minutes, status, google_event_id, staff_id")
         .eq("tenant_id", tenant_id)
         .gte("appointment_datetime", start_iso)
         .lt("appointment_datetime", end_iso)
