@@ -78,6 +78,8 @@ function CalendarPage() {
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([])
   const [newStaff, setNewStaff] = useState('')
   const [staffBusy, setStaffBusy] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
   const [bhSaving, setBhSaving] = useState(false)
 
   useEffect(() => {
@@ -222,6 +224,24 @@ function CalendarPage() {
       if (res.ok) setStaff(prev => prev.filter(s => s.id !== id))
       else showToast('Failed to remove — try again')
     } catch { showToast('Failed to remove — try again') }
+    finally { setStaffBusy(false) }
+  }
+
+  const renameStaff = async (id: string) => {
+    const name = editName.trim()
+    if (!name) return
+    setStaffBusy(true)
+    try {
+      const res = await authedFetch(`${API}/staff/${tenantId}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        setStaff(prev => prev.map(s => (s.id === id ? { ...s, name } : s)))
+        setEditingId(null)
+      } else showToast('Failed to rename — try again')
+    } catch { showToast('Failed to rename — try again') }
     finally { setStaffBusy(false) }
   }
 
@@ -466,9 +486,30 @@ function CalendarPage() {
               {staff.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                   {staff.map(s => (
-                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', border: '1px solid var(--db-border)', borderRadius: 8 }}>
-                      <span style={{ fontSize: 13, color: 'var(--db-text)' }}>{s.name}</span>
-                      <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => removeStaff(s.id)} disabled={staffBusy}>Remove</button>
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', border: '1px solid var(--db-border)', borderRadius: 8 }}>
+                      {editingId === s.id ? (
+                        <>
+                          <input
+                            className="db-input"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') renameStaff(s.id); if (e.key === 'Escape') setEditingId(null) }}
+                            maxLength={60}
+                            autoFocus
+                            style={{ flex: 1, height: 30, fontSize: 13 }}
+                          />
+                          <button className="db-btn db-btn--dark db-btn--sm" onClick={() => renameStaff(s.id)} disabled={staffBusy || !editName.trim()}>Save</button>
+                          <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => setEditingId(null)} disabled={staffBusy}>Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 13, color: 'var(--db-text)' }}>{s.name}</span>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => { setEditingId(s.id); setEditName(s.name) }} disabled={staffBusy}>Rename</button>
+                            <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => removeStaff(s.id)} disabled={staffBusy}>Remove</button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
