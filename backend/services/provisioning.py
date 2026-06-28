@@ -137,6 +137,28 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
     if tenant.get("google_refresh_token"):
         system_prompt += _CALENDAR_NOTE
 
+    # Named-staff roster — tell the AI how to capture, match, and CONFIRM a
+    # caller-requested team member (avoids mis-spelled / wrong assignments).
+    try:
+        _staff = await db.get_active_staff(tenant_id)
+    except Exception:
+        _staff = []
+    if _staff:
+        _roster = ", ".join(s["name"] for s in _staff)
+        _example = _staff[0]["name"]
+        system_prompt += (
+            f"\n\nTEAM MEMBERS\n"
+            f"This business has multiple team members: {_roster}.\n"
+            f"- If the caller asks to book with a specific person, pass that name in the `staff` "
+            f"argument of check_availability and book_appointment (exactly as the caller said it — the "
+            f"backend matches it to the roster above, correcting minor mis-hearings).\n"
+            f"- ALWAYS confirm the team member's name back to the caller before booking, e.g. "
+            f"\"Just to confirm, that's with {_example}?\".\n"
+            f"- If you're unsure who they mean, ask and offer the names above. Do NOT guess.\n"
+            f"- Never put a person's name in the `service` field.\n"
+            f"- If the caller has no preference, omit `staff` and the system assigns whoever is free."
+        )
+
     tools = (
         build_calendar_tools(tenant_id)
         if tenant.get("google_refresh_token")

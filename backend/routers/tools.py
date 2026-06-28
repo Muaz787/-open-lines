@@ -6,6 +6,7 @@ POST with the tool-call arguments and must return a { "results": [...] } JSON
 response that the AI uses to continue the conversation.
 """
 
+import difflib
 import json
 import logging
 from datetime import date as date_type, datetime, timedelta, timezone
@@ -34,6 +35,32 @@ async def _require_vapi_secret(x_vapi_secret: Annotated[str | None, Header()] = 
 
 
 router = APIRouter(prefix="/tools", tags=["tools"], dependencies=[Depends(_require_vapi_secret)])
+
+
+def _match_staff(requested: str, active_staff: list) -> dict | None:
+    """Resolve a caller-requested team member name to a roster member, tolerant of
+    AI mis-transcriptions (e.g. 'Shayd' -> 'Shahid'). Returns the canonical staff
+    row, or None if there's no confident match (caller should be asked to clarify)."""
+    requested = (requested or "").strip().lower()
+    if not requested or not active_staff:
+        return None
+    by_name = {(s.get("name") or "").strip().lower(): s for s in active_staff if s.get("name")}
+    # 1) exact match
+    if requested in by_name:
+        return by_name[requested]
+    # 2) first-name / containment match
+    req_first = requested.split()[0]
+    for nm, s in by_name.items():
+        if requested in nm or nm in requested or req_first == nm.split()[0]:
+            return s
+    # 3) fuzzy (handles mis-hearings); cutoff tuned to accept Shayd->Shahid, reject far names
+    close = difflib.get_close_matches(requested, list(by_name.keys()), n=1, cutoff=0.6)
+    if close:
+        return by_name[close[0]]
+    # 4) fuzzy on first names only
+    first_map = {nm.split()[0]: s for nm, s in by_name.items()}
+    close = difflib.get_close_matches(req_first, list(first_map.keys()), n=1, cutoff=0.6)
+    return first_map[close[0]] if close else None
 
 _CALENDAR_ERROR_MSG = (
     "I'm having a little trouble accessing the calendar right now. "
@@ -290,13 +317,19 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         _active_staff = await db.get_active_staff(tenant_id)
     except Exception:
         _active_staff = []
+    # If the caller asked for a specific team member, show THAT person's schedule
+    # (capacity 1, counting only their bookings); otherwise capacity = staff count.
+    requested_staff = None
     if _active_staff:
-        slot_capacity = len(_active_staff)
+        _req = (args.get("staff") or "").strip()
+        if _req:
+            requested_staff = _match_staff(_req, _active_staff)
+        slot_capacity = 1 if requested_staff else len(_active_staff)
     else:
         slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
     booked_ranges = None
     our_event_ids = None
-    if slot_capacity > 1:
+    if slot_capacity > 1 or requested_staff:
         try:
             _tz = ZoneInfo(timezone)
             _d = date_type.fromisoformat(date_str)
@@ -311,6 +344,9 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
                     our_event_ids.add(_eid)
                 # Free the seat of the appointment being rescheduled.
                 if exclude_event_id and _eid and _eid == exclude_event_id:
+                    continue
+                # For a specific requested staff member, only THEIR bookings count.
+                if requested_staff and _a.get("staff_id") != requested_staff["id"]:
                     continue
                 _s = datetime.fromisoformat(_a["appointment_datetime"])
                 if _s.tzinfo is None:
@@ -517,19 +553,23 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             return _result(tc_id, _slot_full_msg)
 
         if staff_mode:
-            # Honor a caller-requested name (set once the AI passes `staff`); else
-            # assign the first staff member free at this time.
-            requested = (args.get("staff") or "").strip().lower()
+            # Honor a caller-requested name: fuzzy-match it to the roster (tolerant
+            # of mis-hearings) and store the CANONICAL name. If no confident match,
+            # ask rather than guess. Otherwise assign the first staff member free.
+            requested = (args.get("staff") or "").strip()
             if requested:
-                for s in active_staff:
-                    nm = (s.get("name") or "").lower()
-                    if nm and (requested in nm or nm in requested):
-                        chosen_staff = s
-                        break
-                if chosen_staff and chosen_staff["id"] in busy_staff_ids:
+                chosen_staff = _match_staff(requested, active_staff)
+                if not chosen_staff:
+                    roster = ", ".join(s["name"] for s in active_staff)
                     return _result(
                         tc_id,
-                        f"I'm sorry, {chosen_staff['name']} is booked at that time. "
+                        f"I'm not sure which team member you meant by '{requested}'. "
+                        f"We have {roster}. Who would you like to book with?"
+                    )
+                if chosen_staff["id"] in busy_staff_ids:
+                    return _result(
+                        tc_id,
+                        f"I'm sorry, {chosen_staff['name']} is already booked at that time. "
                         "Would another time work, or shall I book you with whoever's available?"
                     )
             if not chosen_staff:

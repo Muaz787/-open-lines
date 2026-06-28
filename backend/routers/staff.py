@@ -5,10 +5,10 @@ A tenant is in "staff mode" whenever it has >= 1 active staff member — then
 booking capacity per slot = the active-staff count and each appointment is
 attributed to a staff member. Managed from the dashboard Calendar page.
 """
+import asyncio
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
@@ -17,6 +17,20 @@ from services.security import require_tenant_owner
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/staff", tags=["staff"], dependencies=[Depends(require_tenant_owner)])
+
+
+async def _repatch_assistant(tenant_id: str) -> None:
+    """Rebuild the assistant prompt + tools so the staff roster the AI sees stays
+    in sync after a staff change. Non-fatal, runs in the background."""
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        if not tenant or not tenant.get("vapi_assistant_id") or tenant.get("industry") == "custom":
+            return
+        from services.provisioning import rebuild_and_push_system_prompt
+        await rebuild_and_push_system_prompt(tenant)
+        logger.info("Re-patched assistant after staff change for tenant %s", tenant_id)
+    except Exception as e:
+        logger.error("Staff re-patch failed for tenant %s: %s", tenant_id, e)
 
 
 class StaffCreate(BaseModel):
@@ -58,7 +72,9 @@ async def list_staff(tenant_id: str):
 @router.post("/{tenant_id}")
 async def add_staff(tenant_id: str, body: StaffCreate):
     try:
-        return await db.create_staff(tenant_id, body.name)
+        created = await db.create_staff(tenant_id, body.name)
+        asyncio.create_task(_repatch_assistant(tenant_id))
+        return created
     except Exception as e:
         logger.error("staff create failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to add staff")
@@ -70,7 +86,9 @@ async def edit_staff(tenant_id: str, staff_id: str, body: StaffUpdate):
     if not data:
         raise HTTPException(status_code=400, detail="No fields provided")
     try:
-        return await db.update_staff(tenant_id, staff_id, data)
+        updated = await db.update_staff(tenant_id, staff_id, data)
+        asyncio.create_task(_repatch_assistant(tenant_id))
+        return updated
     except Exception as e:
         logger.error("staff update failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to update staff")
@@ -81,6 +99,7 @@ async def remove_staff(tenant_id: str, staff_id: str):
     """Soft-delete (deactivate) so existing appointment attribution is preserved."""
     try:
         await db.update_staff(tenant_id, staff_id, {"is_active": False})
+        asyncio.create_task(_repatch_assistant(tenant_id))
         return {"status": "deactivated"}
     except Exception as e:
         logger.error("staff delete failed for tenant %s: %s", tenant_id, e)
