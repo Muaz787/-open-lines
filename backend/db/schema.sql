@@ -216,6 +216,25 @@ alter table tenants add column if not exists sms_alert_number text;
 alter table tenants add column if not exists slot_capacity int default 1;
 
 -- ---------------------------------------------------------------------------
+-- Named staff / resources (Phase 2). A tenant is in "staff mode" when it has
+-- >= 1 active staff row — then capacity per slot = the number of active staff,
+-- and each appointment is attributed to one of them (first-available, or a
+-- caller-requested name). In-app schedules: staff share the shop's hours;
+-- availability = those hours minus that staff member's own bookings.
+-- ---------------------------------------------------------------------------
+create table if not exists staff (
+    id          uuid primary key default gen_random_uuid(),
+    tenant_id   uuid not null references tenants(id) on delete cascade,
+    name        text not null,
+    is_active   boolean default true,
+    created_at  timestamptz default now()
+);
+create index if not exists idx_staff_tenant on staff (tenant_id);
+
+alter table appointments add column if not exists staff_id   uuid;
+alter table appointments add column if not exists staff_name text;
+
+-- ---------------------------------------------------------------------------
 -- Per-channel call-summary notification toggles (replace the email_notifications
 -- master switch + notification_channel enum). WhatsApp is production-only and
 -- goes to sms_alert_number via an approved Twilio Content Template.
