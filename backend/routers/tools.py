@@ -623,7 +623,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     # isn't already covered by the original appointment's paid deposit.
     needs_deposit = bool(_dep_provider) and not already_paid
     appt_status = "pending_payment" if (deposits_mandatory and not already_paid) else "confirmed"
+    logger.info("tools/book: tenant %s provider=%s needs_deposit=%s already_paid=%s status=%s",
+                tenant_id, _dep_provider, needs_deposit, already_paid, appt_status)
 
+    appt_id = existing_appt["id"] if existing_appt else None
     try:
         appt_data = {
             "tenant_id":             tenant_id,
@@ -642,7 +645,8 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         if existing_appt:
             await db.update_appointment(existing_appt["id"], appt_data)
         else:
-            await db.insert_appointment(appt_data)
+            _inserted = await db.insert_appointment(appt_data)
+            appt_id = (_inserted or {}).get("id")
         # PRIVACY: no caller name/phone/datetime — service type + duration only
         analytics.capture(
             analytics.distinct_id_for(tenant, tenant_id),
@@ -728,27 +732,36 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             f"Tell the caller their deposit is already on file, so no further payment is needed, "
             f"and they'll get a confirmation text shortly. Do NOT call request_deposit."
         )
-    # When a deposit is still owed (provider active and not already paid),
-    # let the AI know to call request_deposit next.
+    # When a deposit is owed (provider active, not already paid), SEND THE LINK
+    # NOW from the server — never rely on the AI to call request_deposit. This
+    # guarantees the caller gets the payment link the instant they book.
     elif needs_deposit:
-        from routers.payments import _currency_for
-        from services.short_links import format_currency_voice
-        _dep_cents = int(tenant.get("stripe_deposit_cents") or 2500)
-        if _dep_provider == "square":
-            _currency = (tenant.get("square_currency") or "usd").lower()
-        else:
-            _currency = _currency_for(tenant)
-        _voice_word   = format_currency_voice(_currency)
-        _dep_display  = f"{_dep_cents // 100} {_voice_word}" if _dep_cents % 100 == 0 else f"{_dep_cents / 100:.2f} {_voice_word}"
-        _expiry_hours = int(tenant.get("stripe_deposit_expiry_min") or 120) // 60
-        mandatory     = bool(tenant.get("stripe_deposit_mandatory", True))
-        requirement   = "required to confirm this booking" if mandatory else "optional"
-        confirmation  = (
-            f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
-            f"DEPOSIT: A {_dep_display} deposit is {requirement}. "
-            f"Tell the caller their slot is held and you are sending them a payment link now. "
-            f"IMMEDIATELY call request_deposit — do NOT end the call first."
+        dep = await _create_and_send_deposit(
+            tenant, caller_phone=caller_phone, caller_name=caller_name,
+            service=service, appointment_id=appt_id,
         )
+        amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
+        if dep["already_paid"]:
+            confirmation = (
+                f"Done! Your {service} at {business_name} is set for {friendly}. "
+                f"Tell the caller their deposit is already on file, so no further payment is needed. "
+                f"Do NOT call request_deposit."
+            )
+        elif dep["sms_sent"]:
+            confirmation = (
+                f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
+                f"A {amt} deposit link has ALREADY been texted to the caller. "
+                f"Tell them: 'I've just sent a secure payment link to your phone — once you pay the "
+                f"{amt} deposit your booking is fully confirmed and you'll get a confirmation text. "
+                f"The link expires in {dep['expiry_hours']} hours.' "
+                f"Do NOT call request_deposit — it has already been sent."
+            )
+        else:
+            confirmation = (
+                f"The {service} on {friendly} is held, but I couldn't text the payment link just now. "
+                f"Tell the caller: 'I'm having trouble sending the link right now — our team will follow "
+                f"up shortly to arrange the {amt} deposit.' Then close warmly. Do NOT call request_deposit."
+            )
     return _result(tc_id, confirmation)
 
 
@@ -780,47 +793,87 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         logger.error("tools/request-deposit: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, "I wasn't able to send the payment link right now. Our team will follow up to arrange the deposit.")
 
-    from routers.payments import _deposit_provider, _currency_for
-    _provider = _deposit_provider(tenant)
-    if not tenant or not _provider:
-        return _result(tc_id, "Payment collection is not set up for this business.")
-
-    deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
-    expiry_minutes = int(tenant.get("stripe_deposit_expiry_min") or 120)
+    appointment    = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
+    appointment_id = appointment["id"] if appointment else None
     business_name  = tenant.get("business_name", "the business")
-    expiry_hours   = expiry_minutes // 60
 
-    if _provider == "square":
-        currency = (tenant.get("square_currency") or "usd").lower()
-    else:
-        currency = _currency_for(tenant)
+    dep = await _create_and_send_deposit(
+        tenant, caller_phone=caller_phone, caller_name=caller_name,
+        service=service, appointment_id=appointment_id,
+    )
+    if dep["error"] == "no_provider":
+        return _result(tc_id, "Payment collection is not set up for this business.")
+    if dep["already_paid"]:
+        return _result(
+            tc_id,
+            "The deposit for this appointment has already been paid, so no further payment is "
+            "needed. Reassure the caller their booking is confirmed and close the call warmly. "
+            "Do not send a payment link.",
+        )
+    if not dep["sms_sent"]:
+        return _result(
+            tc_id,
+            "I'm sorry, there was an issue sending the payment link by text. Please tell the caller: "
+            "'I'm having a little trouble sending the link right now. Our team will follow up with you "
+            "shortly to arrange the payment.' Then close the call warmly.",
+        )
+    _amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
+    return _result(
+        tc_id,
+        f"SMS_SENT. Now close the call professionally. Say: 'I've just sent a secure payment link to "
+        f"your phone. Once you complete the {_amt} deposit, your {service} at {business_name} will be "
+        f"fully confirmed — you'll receive a confirmation text straight away. The link expires in "
+        f"{dep['expiry_hours']} hours, so please check your messages. Is there anything else I can help "
+        f"you with?' Listen for the caller's reply, then close warmly: 'Thank you for choosing "
+        f"{business_name}. Have a wonderful day!' Then end the call.",
+    )
 
+
+async def _create_and_send_deposit(
+    tenant: dict, *, caller_phone: str, caller_name: str, service: str,
+    appointment_id: str | None,
+) -> dict:
+    """Create a deposit payment + branded short link and SMS it to the caller.
+    Shared by book_appointment (auto-send the instant a deposit is owed) and the
+    request_deposit tool (resend). Never raises; returns a status dict so the
+    caller can craft the right voice response."""
+    out = {"sms_sent": False, "already_paid": False, "amount_display": "",
+           "currency_voice": "", "expiry_hours": 0, "error": None}
     try:
-        import uuid
-        payment_id  = str(uuid.uuid4())
-        description = f"Deposit — {service} at {business_name}"
+        from routers.payments import _deposit_provider, _currency_for
+        _provider = _deposit_provider(tenant)
+        if not _provider:
+            out["error"] = "no_provider"
+            return out
 
-        appointment = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
-        appointment_id = appointment["id"] if appointment else None
+        tenant_id      = tenant["id"]
+        deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
+        expiry_minutes = int(tenant.get("stripe_deposit_expiry_min") or 120)
+        business_name  = tenant.get("business_name", "the business")
+        out["expiry_hours"] = expiry_minutes // 60
+        currency = (tenant.get("square_currency") or "usd").lower() if _provider == "square" else _currency_for(tenant)
 
-        # Defense-in-depth: never collect a second deposit for an appointment
-        # whose deposit was already paid (e.g. a reschedule). The deposit stays
-        # linked to the same appointment row.
+        from services.short_links import (
+            generate_short_code, build_branded_url, format_currency, format_currency_voice,
+        )
+        out["amount_display"] = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
+        out["currency_voice"] = format_currency_voice(currency)
+        currency_display = format_currency(currency)
+
+        # Never collect a second deposit for an already-paid appointment.
         if appointment_id:
             try:
                 if await db.get_payment_by_appointment_id(appointment_id):
-                    logger.info("request_deposit: appointment %s already has a paid deposit — skipping", appointment_id)
-                    return _result(
-                        tc_id,
-                        "The deposit for this appointment has already been paid, so no further "
-                        "payment is needed. Reassure the caller their booking is confirmed and "
-                        "close the call warmly. Do not send a payment link.",
-                    )
+                    out["already_paid"] = True
+                    return out
             except Exception as e:
-                logger.warning("request_deposit: paid-deposit check failed for tenant %s: %s", tenant_id, e)
+                logger.warning("_create_and_send_deposit: paid-check failed for tenant %s: %s", tenant_id, e)
 
+        import uuid
         from datetime import datetime, timezone, timedelta
-        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
+        payment_id  = str(uuid.uuid4())
+        description = f"Deposit — {service} at {business_name}"
+        expires_at  = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
 
         if _provider == "square":
             from services.square_service import create_payment_link, list_locations
@@ -828,7 +881,6 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             access_token = decrypt(tenant["square_access_token"])
             location_id  = tenant.get("square_location_id") or ""
             if not location_id:
-                # location_id may not have been saved during OAuth — fetch and cache it now
                 try:
                     locs = await list_locations(access_token)
                     if locs:
@@ -839,167 +891,88 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             if not location_id:
                 raise RuntimeError("No Square location found — re-connect your Square account")
             link_id, order_id, checkout_url = await create_payment_link(
-                access_token=access_token,
-                location_id=location_id,
-                amount_cents=deposit_cents,
-                currency=currency,
-                name=f"Deposit — {service}",
+                access_token=access_token, location_id=location_id, amount_cents=deposit_cents,
+                currency=currency, name=f"Deposit — {service}",
                 note=f"Refundable deposit for {service} at {business_name}",
-                tenant_id=tenant_id,
-                payment_id=payment_id,
-                expiry_minutes=expiry_minutes,
+                tenant_id=tenant_id, payment_id=payment_id, expiry_minutes=expiry_minutes,
             )
             await db.insert_payment({
-                "id": payment_id,
-                "tenant_id": tenant_id,
-                "appointment_id": appointment_id,
-                "checkout_session_id": order_id,
-                "payment_intent_id":   link_id,
-                "amount_cents": deposit_cents,
-                "currency": currency,
-                "status": "pending",
-                "provider": "square",
-                "caller_phone": caller_phone,
-                "caller_name": caller_name,
-                "service": service,
-                "description": description,
-                "expires_at": expires_at,
+                "id": payment_id, "tenant_id": tenant_id, "appointment_id": appointment_id,
+                "checkout_session_id": order_id, "payment_intent_id": link_id,
+                "amount_cents": deposit_cents, "currency": currency, "status": "pending",
+                "provider": "square", "caller_phone": caller_phone, "caller_name": caller_name,
+                "service": service, "description": description, "expires_at": expires_at,
             })
             session_id = link_id
         else:
             from services.stripe_service import create_checkout_session
             session_id, checkout_url = await create_checkout_session(
-                stripe_account_id=tenant["stripe_account_id"],
-                amount_cents=deposit_cents,
-                description=description,
-                tenant_id=tenant_id,
-                payment_id=payment_id,
-                caller_name=caller_name or "Customer",
-                expiry_minutes=expiry_minutes,
-                currency=currency,
+                stripe_account_id=tenant["stripe_account_id"], amount_cents=deposit_cents,
+                description=description, tenant_id=tenant_id, payment_id=payment_id,
+                caller_name=caller_name or "Customer", expiry_minutes=expiry_minutes, currency=currency,
             )
             await db.insert_payment({
-                "id": payment_id,
-                "tenant_id": tenant_id,
-                "appointment_id": appointment_id,
-                "stripe_account_id": tenant["stripe_account_id"],
-                "checkout_session_id": session_id,
-                "amount_cents": deposit_cents,
-                "currency": currency,
-                "status": "pending",
-                "provider": "stripe",
-                "caller_phone": caller_phone,
-                "caller_name": caller_name,
-                "service": service,
-                "description": description,
-                "expires_at": expires_at,
+                "id": payment_id, "tenant_id": tenant_id, "appointment_id": appointment_id,
+                "stripe_account_id": tenant["stripe_account_id"], "checkout_session_id": session_id,
+                "amount_cents": deposit_cents, "currency": currency, "status": "pending",
+                "provider": "stripe", "caller_phone": caller_phone, "caller_name": caller_name,
+                "service": service, "description": description, "expires_at": expires_at,
             })
 
         logger.info("Created deposit payment %s via %s for tenant %s caller %s",
                     payment_id, _provider, tenant_id, caller_phone)
 
-    except Exception as e:
-        logger.error("tools/request-deposit: payment link creation failed for tenant %s: %s", tenant_id, e)
-        return _result(
-            tc_id,
-            "I'm sorry, there was an issue generating the payment link. "
-            "Please apologise to the caller and let them know the team will follow up shortly to arrange payment.",
-        )
-
-    # Create branded short payment link
-    from services.short_links import generate_short_code, build_branded_url, format_currency, format_currency_voice
-    currency_display = format_currency(currency)
-    currency_voice   = format_currency_voice(currency)
-    branded_url = checkout_url  # fallback if short link creation fails
-    try:
-        short_code = generate_short_code()
-        for _ in range(4):
-            if not await db.get_payment_short_link_by_code(short_code):
-                break
+        # Branded short link
+        branded_url = checkout_url
+        try:
             short_code = generate_short_code()
+            for _ in range(4):
+                if not await db.get_payment_short_link_by_code(short_code):
+                    break
+                short_code = generate_short_code()
+            await db.create_payment_short_link({
+                "tenant_id": tenant_id, "appointment_id": appointment_id, "short_code": short_code,
+                "stripe_checkout_url": checkout_url, "stripe_session_id": session_id,
+                "amount_cents": deposit_cents, "currency": currency,
+                "purpose": "appointment_deposit", "expires_at": expires_at,
+            })
+            branded_url = build_branded_url(short_code)
+        except Exception as e:
+            logger.error("_create_and_send_deposit: short link failed for tenant %s: %s", tenant_id, e)
 
-        await db.create_payment_short_link({
-            "tenant_id":           tenant_id,
-            "appointment_id":      appointment_id,
-            "short_code":          short_code,
-            "stripe_checkout_url": checkout_url,
-            "stripe_session_id":   session_id,
-            "amount_cents":        deposit_cents,
-            "currency":            currency,
-            "purpose":             "appointment_deposit",
-            "expires_at":          expires_at,
-        })
-        branded_url = build_branded_url(short_code)
-        logger.info("Created short payment link %s for tenant %s caller %s", short_code, tenant_id, caller_phone)
-    except Exception as e:
-        logger.error("tools/request-deposit: short link creation failed for tenant %s: %s", tenant_id, e)
-
-    # Send branded SMS
-    provider_label = "Square" if _provider == "square" else "Stripe"
-    sms_sent = False
-    try:
+        # SMS the link to the caller
+        provider_label = "Square" if _provider == "square" else "Stripe"
         sid    = tenant.get("twilio_subaccount_sid", "")
         tok    = tenant.get("twilio_auth_token", "")
         from_n = tenant.get("twilio_phone_number", "")
         if not caller_phone:
-            logger.warning(
-                "Deposit SMS skipped for tenant %s — caller_phone is empty "
-                "(web/test call with no real number injected by Vapi)",
-                tenant_id,
-            )
+            logger.warning("Deposit SMS skipped for tenant %s — caller_phone empty", tenant_id)
         elif not (sid and tok and from_n):
-            missing = [k for k, v in {"sid": sid, "token": tok, "from_number": from_n}.items() if not v]
-            logger.warning("Deposit SMS skipped for tenant %s — Twilio creds missing: %s", tenant_id, missing)
-        if sid and tok and from_n and caller_phone:
+            logger.warning("Deposit SMS skipped for tenant %s — Twilio creds missing", tenant_id)
+        else:
             caller_display  = caller_name or "there"
             service_display = service or "appointment"
-            amount_display  = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
             sms_body = (
                 f"Hi {caller_display}!\n\n"
                 f"To confirm your {service_display} at {business_name}, please pay the refundable "
-                f"{currency_display} {amount_display} deposit:\n\n"
-                f"{branded_url}\n\n"
+                f"{currency_display} {out['amount_display']} deposit:\n\n{branded_url}\n\n"
                 f"Secure payment powered by {provider_label}.\n"
-                f"Expires in {expiry_hours} hrs."
+                f"Expires in {out['expiry_hours']} hrs."
             )
-            sms_sent = await telephony.send_sms(
-                subaccount_sid=sid,
-                subaccount_token=tok,
-                from_number=from_n,
-                to_number=caller_phone,
-                body=sms_body,
+            out["sms_sent"] = await telephony.send_sms(
+                subaccount_sid=sid, subaccount_token=tok, from_number=from_n,
+                to_number=caller_phone, body=sms_body,
             )
-            if sms_sent:
+            if out["sms_sent"]:
                 logger.info("Deposit SMS sent to %s for tenant %s", caller_phone, tenant_id)
             else:
                 logger.warning("Deposit SMS send returned False for tenant %s", tenant_id)
+        return out
     except Exception as e:
-        logger.error("tools/request-deposit: SMS failed for tenant %s: %s", tenant_id, e)
+        logger.error("_create_and_send_deposit failed for tenant %s: %s", tenant.get("id"), e)
+        out["error"] = "exception"
+        return out
 
-    if not sms_sent:
-        return _result(
-            tc_id,
-            "I'm sorry, there was an issue sending the payment link by text. "
-            "Please tell the caller: 'I'm having a little trouble sending the link right now. "
-            "Our team will follow up with you shortly to arrange the payment.' "
-            "Then close the call warmly.",
-        )
-
-    service_display = service or "appointment"
-    amount_display  = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
-    return _result(
-        tc_id,
-        f"SMS_SENT. Now close the call professionally. Say: "
-        f"'I've just sent a secure payment link to your phone. "
-        f"Once you complete the {amount_display} {currency_voice} deposit, "
-        f"your {service_display} at {business_name} will be fully confirmed — "
-        f"you'll receive a confirmation text straight away. "
-        f"The link expires in {expiry_hours} hours, so please check your messages when you get a chance. "
-        f"Is there anything else I can help you with?' "
-        f"Listen for the caller's reply, then close warmly: "
-        f"'Thank you for choosing {business_name}. Have a wonderful day!' "
-        f"Then end the call.",
-    )
 
 
 # ---------------------------------------------------------------------------
