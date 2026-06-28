@@ -601,15 +601,20 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
 
     try:
+        _staff_line = f"\nTeam member: {chosen_staff['name']}" if chosen_staff else ""
         description = (
             f"Booked via Open Lines AI receptionist.\n"
             f"Service: {service}\n"
             f"Caller: {caller_name}\n"
             f"Phone: {caller_phone}"
+            f"{_staff_line}"
         )
+        _title = f"{service} — {caller_name}" if caller_name else service
+        if chosen_staff:
+            _title += f" (with {chosen_staff['name']})"
         _event_kwargs = dict(
             refresh_token=refresh_token,
-            title=f"{service} — {caller_name}" if caller_name else service,
+            title=_title,
             start_dt=start_dt,
             duration_minutes=duration_minutes,
             timezone=timezone,
