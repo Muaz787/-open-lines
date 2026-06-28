@@ -6,11 +6,7 @@ interface HealthCheck { name: string; status: CheckStatus; message: string }
 
 function envCheck(name: string, label: string): HealthCheck {
   const val = process.env[name]
-  return {
-    name: label,
-    status: val ? 'ok' : 'error',
-    message: val ? 'Configured' : 'Missing — set ' + name,
-  }
+  return { name: label, status: val ? 'ok' : 'error', message: val ? 'Configured' : 'Missing — set ' + name }
 }
 
 export async function GET(req: NextRequest) {
@@ -20,41 +16,44 @@ export async function GET(req: NextRequest) {
   const { supabase } = auth
   const checks: HealthCheck[] = []
 
-  // Supabase connection
-  try {
-    const { error } = await supabase.from('admin_users').select('user_id').limit(1)
+  // Railway / backend API + all backend service checks (Twilio, Stripe, Square,
+  // Resend, Pinecone, Firecrawl, website crawl, daily cron, WhatsApp, …) come
+  // from the backend health endpoint — those secrets live in the backend env.
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const adminKey = process.env.ADMIN_API_KEY
+  if (apiUrl && adminKey) {
+    try {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 12000)
+      const res = await fetch(apiUrl.replace(/\/$/, '') + '/admin/health', {
+        headers: { 'X-Admin-Key': adminKey },
+        signal: ctrl.signal,
+      })
+      clearTimeout(t)
+      if (res.ok) {
+        const body = await res.json()
+        checks.push({ name: 'Railway (backend API)', status: 'ok', message: 'Reachable' })
+        for (const c of (body.checks ?? []) as HealthCheck[]) checks.push(c)
+      } else {
+        checks.push({ name: 'Railway (backend API)', status: 'error', message: `Health endpoint HTTP ${res.status}` })
+      }
+    } catch {
+      checks.push({ name: 'Railway (backend API)', status: 'error', message: 'Unreachable' })
+    }
+  } else {
     checks.push({
-      name: 'Supabase',
-      status: error ? 'error' : 'ok',
-      message: error ? error.message : 'Connected',
+      name: 'Railway (backend API)',
+      status: 'warning',
+      message: !apiUrl ? 'NEXT_PUBLIC_API_URL not set' : 'ADMIN_API_KEY not set (backend checks hidden)',
     })
-  } catch (e) {
-    checks.push({ name: 'Supabase', status: 'error', message: String(e) })
   }
 
-  // Env var checks
-  checks.push(envCheck('SUPABASE_SERVICE_ROLE_KEY', 'Supabase service role key'))
-  checks.push(envCheck('ADMIN_API_KEY', 'Admin API key'))
+  // Frontend / Vercel env
+  checks.push(envCheck('SUPABASE_SERVICE_ROLE_KEY', 'Supabase service role key (Vercel)'))
   checks.push(envCheck('NEXT_PUBLIC_POSTHOG_KEY', 'PostHog'))
   checks.push(envCheck('NEXT_PUBLIC_VAPI_PUBLIC_KEY', 'Vapi public key'))
 
-  // Backend reachability
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
-  if (apiUrl) {
-    try {
-      const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 5000)
-      const res = await fetch(apiUrl.replace(/\/$/, '') + '/docs', { signal: ctrl.signal })
-      clearTimeout(t)
-      checks.push({ name: 'Backend API', status: res.ok ? 'ok' : 'warning', message: res.ok ? 'Reachable' : `HTTP ${res.status}` })
-    } catch {
-      checks.push({ name: 'Backend API', status: 'error', message: 'Unreachable' })
-    }
-  } else {
-    checks.push({ name: 'Backend API', status: 'warning', message: 'NEXT_PUBLIC_API_URL not set' })
-  }
-
-  // Recent webhook failures (last 24h)
+  // Webhook queue health (read directly from Supabase)
   const since = new Date(Date.now() - 86400000).toISOString()
   const { data: failedWebhooks, count: failCount } = await supabase
     .from('webhook_events')
@@ -64,7 +63,7 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(5)
 
-  const { data: pendingWebhooks, count: pendingCount } = await supabase
+  const { count: pendingCount } = await supabase
     .from('webhook_events')
     .select('id', { count: 'exact' })
     .eq('status', 'pending')
@@ -74,11 +73,7 @@ export async function GET(req: NextRequest) {
   return Response.json({
     checks,
     webhook_failures_24h: failCount ?? 0,
-    recent_failures: (failedWebhooks ?? []).map(w => ({
-      id: w.id,
-      error: w.last_error,
-      at: w.created_at,
-    })),
+    recent_failures: (failedWebhooks ?? []).map(w => ({ id: w.id, error: w.last_error, at: w.created_at })),
     stuck_webhooks: pendingCount ?? 0,
   })
 }
