@@ -216,6 +216,15 @@ alter table tenants add column if not exists sms_alert_number text;
 alter table tenants add column if not exists slot_capacity int default 1;
 
 -- ---------------------------------------------------------------------------
+-- System metadata KV (e.g. daily-cron heartbeat for the admin health page).
+-- ---------------------------------------------------------------------------
+create table if not exists system_meta (
+    key        text primary key,
+    value      text,
+    updated_at timestamptz default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Named staff / resources (Phase 2). A tenant is in "staff mode" when it has
 -- >= 1 active staff row — then capacity per slot = the number of active staff,
 -- and each appointment is attributed to one of them (first-available, or a

@@ -69,6 +69,13 @@ async def main() -> int:
     except Exception as e:
         logger.error("call-intent backfill failed: %s", e)
 
+    # Heartbeat for the admin health page — proves the daily cron is running.
+    try:
+        from datetime import datetime, timezone
+        await db.set_system_meta("cron_last_run", datetime.now(timezone.utc).isoformat())
+    except Exception as e:
+        logger.error("cron heartbeat write failed: %s", e)
+
     return 0
 
 

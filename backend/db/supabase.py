@@ -167,6 +167,21 @@ async def get_active_staff(tenant_id: str) -> list:
     return await list_staff(tenant_id, active_only=True)
 
 
+# ---------------------------------------------------------------------------
+# System metadata (small KV — cron heartbeat, etc.)
+# ---------------------------------------------------------------------------
+async def get_system_meta(key: str) -> dict | None:
+    res = get_client().table("system_meta").select("*").eq("key", key).limit(1).execute()
+    return (res.data or [None])[0]
+
+
+async def set_system_meta(key: str, value: str) -> None:
+    get_client().table("system_meta").upsert({
+        "key": key, "value": value,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
+
 async def create_staff(tenant_id: str, name: str) -> dict:
     res = get_client().table("staff").insert({"tenant_id": tenant_id, "name": name}).execute()
     return res.data[0] if res.data else {}

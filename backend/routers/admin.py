@@ -319,3 +319,127 @@ async def backfill_call_intents(body: dict | None = None, x_admin_key: str | Non
         tenant_id=body.get("tenant_id"),
     )
     return {**result, "note": "re-run while considered == limit to finish the backlog"}
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/health — service health for the admin System Health page
+# ---------------------------------------------------------------------------
+@router.get("/health")
+async def system_health(x_admin_key: str | None = Header(None)):
+    """Live health of backend dependencies (env + lightweight pings). Each check
+    is isolated so one slow/failing service can't break the page."""
+    _check_admin_key(x_admin_key)
+    import httpx
+    import asyncio
+    from datetime import datetime, timezone
+
+    def _env(name: str, keys: list[str]) -> tuple:
+        missing = [k for k in keys if not os.getenv(k)]
+        return (name, "error" if missing else "ok",
+                ("Not configured: " + ", ".join(missing)) if missing else "Configured")
+
+    async def _ping(name: str, url: str, *, headers=None, auth=None, ok_codes=(200,)) -> tuple:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.get(url, headers=headers, auth=auth)
+            if r.status_code in ok_codes:
+                return (name, "ok", "Connected")
+            if r.status_code in (401, 403):
+                return (name, "error", f"Auth failed (HTTP {r.status_code}) — check key")
+            return (name, "warning", f"HTTP {r.status_code}")
+        except Exception as e:
+            return (name, "error", f"Unreachable: {str(e)[:60]}")
+
+    async def _chk_supabase() -> tuple:
+        try:
+            db.get_client().table("tenants").select("id").limit(1).execute()
+            return ("Supabase", "ok", "Connected")
+        except Exception as e:
+            return ("Supabase", "error", str(e)[:80])
+
+    async def _chk_twilio() -> tuple:
+        sid, tok = os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN")
+        if not (sid and tok):
+            return ("Twilio", "error", "Not configured")
+        return await _ping("Twilio", f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json", auth=(sid, tok))
+
+    async def _chk_stripe() -> tuple:
+        key = os.getenv("STRIPE_SECRET_KEY")
+        if not key:
+            return ("Stripe", "error", "Not configured")
+        return await _ping("Stripe", "https://api.stripe.com/v1/balance", headers={"Authorization": f"Bearer {key}"})
+
+    async def _chk_resend() -> tuple:
+        key = os.getenv("RESEND_API_KEY")
+        if not key:
+            return ("Resend", "error", "Not configured")
+        return await _ping("Resend", "https://api.resend.com/domains", headers={"Authorization": f"Bearer {key}"})
+
+    async def _chk_pinecone() -> tuple:
+        key = os.getenv("PINECONE_API_KEY")
+        if not key:
+            return ("Pinecone", "error", "Not configured")
+        return await _ping("Pinecone", "https://api.pinecone.io/indexes",
+                           headers={"Api-Key": key, "X-Pinecone-API-Version": "2024-07"})
+
+    async def _chk_crawl() -> tuple:
+        try:
+            res = (db.get_client().table("tenants")
+                   .select("last_crawl_at").not_.is_("last_crawl_at", "null")
+                   .order("last_crawl_at", desc=True).limit(1).execute())
+            rows = res.data or []
+            if not rows:
+                return ("Website crawl", "warning", "No crawls recorded yet")
+            last = datetime.fromisoformat(str(rows[0]["last_crawl_at"]).replace("Z", "+00:00"))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            age_d = (datetime.now(timezone.utc) - last).total_seconds() / 86400
+            status = "ok" if age_d <= 8 else "warning"
+            return ("Website crawl", status, f"Last successful crawl {int(age_d * 24)}h ago")
+        except Exception as e:
+            return ("Website crawl", "warning", str(e)[:60])
+
+    async def _chk_cron() -> tuple:
+        try:
+            meta = await db.get_system_meta("cron_last_run")
+            if not meta or not meta.get("value"):
+                return ("Daily cron", "error", "No heartbeat — cron may not be scheduled")
+            last = datetime.fromisoformat(str(meta["value"]).replace("Z", "+00:00"))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            age_h = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+            if age_h <= 26:
+                return ("Daily cron", "ok", f"Ran {int(age_h)}h ago")
+            return ("Daily cron", "error", f"Stale — last ran {int(age_h)}h ago")
+        except Exception as e:
+            return ("Daily cron", "warning", str(e)[:60])
+
+    def _chk_whatsapp() -> tuple:
+        frm = os.getenv("TWILIO_WHATSAPP_FROM")
+        tmpls = {
+            "summary": os.getenv("TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID"),
+            "deposit": os.getenv("TWILIO_WHATSAPP_DEPOSIT_TEMPLATE_SID"),
+            "cancel":  os.getenv("TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID"),
+        }
+        if not frm:
+            return ("WhatsApp", "warning", "Sender not configured (notifications off)")
+        have = [k for k, v in tmpls.items() if v]
+        if len(have) == 3:
+            return ("WhatsApp", "ok", "Sender + 3 templates configured")
+        return ("WhatsApp", "warning", f"Sender set; templates ready: {', '.join(have) or 'none'} (pending approval)")
+
+    pinged = await asyncio.gather(
+        _chk_supabase(), _chk_twilio(), _chk_stripe(), _chk_resend(),
+        _chk_pinecone(), _chk_crawl(), _chk_cron(),
+    )
+    checks = [{"name": n, "status": s, "message": m} for (n, s, m) in pinged]
+    for n, s, m in [
+        _env("OpenAI", ["OPENAI_API_KEY"]),
+        _env("Vapi", ["VAPI_API_KEY"]),
+        _env("Square", ["SQUARE_APP_ID", "SQUARE_APP_SECRET"]),
+        _env("Firecrawl", ["FIRECRAWL_API_KEY"]),
+        _chk_whatsapp(),
+    ]:
+        checks.append({"name": n, "status": s, "message": m})
+
+    return {"checks": checks, "generated_at": datetime.now(timezone.utc).isoformat()}
