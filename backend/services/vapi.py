@@ -469,6 +469,14 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                                 "their current slot as available. Omit for new bookings."
                             ),
                         },
+                        "staff": {
+                            "type": "string",
+                            "description": (
+                                "If the caller asks for a specific team member by name, pass that name "
+                                "here so availability reflects that person's schedule. Omit when the "
+                                "caller has no preference."
+                            ),
+                        },
                     },
                     "required": ["date"],
                 },
@@ -512,6 +520,14 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                         "time": {
                             "type": "string",
                             "description": "Confirmed appointment time in HH:MM 24-hour format (e.g. '14:00' for 2 PM).",
+                        },
+                        "staff": {
+                            "type": "string",
+                            "description": (
+                                "If the caller asked to be booked with a specific team member, pass that "
+                                "team member's name here (as the caller said it — the system matches it to "
+                                "the roster). Keep the service field free of names. Omit if no preference."
+                            ),
                         },
                     },
                     "required": ["caller_name", "caller_phone", "service", "date", "time"],

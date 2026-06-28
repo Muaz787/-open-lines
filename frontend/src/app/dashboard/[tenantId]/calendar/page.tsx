@@ -25,6 +25,7 @@ interface Appointment {
   caller_name?: string
   caller_phone?: string
   service?: string
+  staff_name?: string
   appointment_datetime: string
   duration_minutes?: number
   status?: string
@@ -587,6 +588,11 @@ function CalendarPage() {
                           </span>
                           {appt.service && (
                             <span className="db-chip">{appt.service}</span>
+                          )}
+                          {appt.staff_name && (
+                            <span className="db-chip" style={{ background: 'var(--db-accent-bg)', color: 'var(--db-accent-text)' }}>
+                              with {appt.staff_name}
+                            </span>
                           )}
                           <span
                             className={`cal-appt-status db-badge ${cancelled ? 'db-badge--danger' : upcoming ? 'db-badge--success' : 'db-badge--neutral'}`}
