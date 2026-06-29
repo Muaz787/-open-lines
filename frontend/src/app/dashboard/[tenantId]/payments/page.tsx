@@ -115,8 +115,8 @@ export default function PaymentsPage() {
   const [toast, setToast]               = useState<string | null>(null)
 
   // Editable form state
-  const [depositEnabled, setDepositEnabled]         = useState(false)
-  const [squareDepositsEnabled, setSquareDepositsEnabled] = useState(false)
+  const [collectDeposits, setCollectDeposits]       = useState(false)
+  const [provider, setProvider]                     = useState<'stripe' | 'square'>('stripe')
   const [depositCents, setDepositCents]             = useState(2500)
   const [amountStr, setAmountStr]                   = useState('25.00')
   const [currency, setCurrency]                     = useState('CAD')
@@ -144,8 +144,8 @@ export default function PaymentsPage() {
       if (sRes.ok) {
         const s: Settings = await sRes.json()
         setSettings(s)
-        setDepositEnabled(s.deposits_enabled)
-        setSquareDepositsEnabled(s.square_deposits_enabled || false)
+        setCollectDeposits(s.deposits_enabled || s.square_deposits_enabled || false)
+        setProvider(s.square_deposits_enabled ? 'square' : 'stripe')
         setDepositCents(s.deposit_cents)
         setAmountStr((s.deposit_cents / 100).toFixed(2))
         setCurrency(s.currency || 'CAD')
@@ -290,13 +290,18 @@ export default function PaymentsPage() {
 
   const handleSave = async () => {
     setSaving(true)
+    // Derive provider booleans from the master toggle + connected providers.
+    const sqConnected = !!squareStatus?.connected
+    const stConnected = !!(stripeStatus?.connected && stripeStatus?.charges_enabled)
+    const useSquare = collectDeposits && sqConnected && (provider === 'square' || !stConnected)
+    const useStripe = collectDeposits && !useSquare
     try {
       const res = await authedFetch(`${API}/payments/settings/${tenantId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          deposits_enabled:        depositEnabled,
-          square_deposits_enabled: squareDepositsEnabled,
+          deposits_enabled:        useStripe,
+          square_deposits_enabled: useSquare,
           deposit_cents:           depositCents,
           deposit_mandatory:       mandatory,
           deposit_expiry_min:      expiryMin,
@@ -324,6 +329,10 @@ export default function PaymentsPage() {
   if (loading) return <LoadingState />
 
   const isConnected   = stripeStatus?.connected && stripeStatus?.charges_enabled
+  const stripeConnected = !!(stripeStatus?.connected && stripeStatus?.charges_enabled)
+  const squareConnected = !!squareStatus?.connected
+  const anyConnected    = stripeConnected || squareConnected
+  const bothConnected   = stripeConnected && squareConnected
   const isEligible    = settings?.eligible ?? false
   const totalRevenue  = payments.filter(p => p.status === 'succeeded').reduce((s, p) => s + p.amount_cents, 0)
   const pendingCount  = payments.filter(p => p.status === 'pending').length
@@ -459,58 +468,58 @@ export default function PaymentsPage() {
             </div>
             <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* Enable toggle */}
+              {/* Master toggle — collect deposits or not */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Enable Stripe deposits</div>
-                  <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>Use Stripe as the payment provider for deposit collection</div>
+                <div style={{ paddingRight: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Collect a deposit during booking</div>
+                  <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>
+                    {!anyConnected
+                      ? 'Connect Stripe or Square above to start collecting deposits'
+                      : collectDeposits
+                        ? 'Your AI asks callers for a deposit to secure their booking'
+                        : 'Your AI books appointments without asking for a deposit'}
+                  </div>
                 </div>
                 <button
                   role="switch"
-                  aria-checked={depositEnabled}
-                  onClick={() => setDepositEnabled(v => !v)}
-                  disabled={!isConnected}
+                  aria-checked={collectDeposits}
+                  onClick={() => setCollectDeposits(v => !v)}
+                  disabled={!anyConnected}
                   style={{
-                    width: 40, height: 22, borderRadius: 11, border: 'none', cursor: isConnected ? 'pointer' : 'not-allowed',
-                    background: depositEnabled ? 'var(--db-accent-text)' : 'var(--db-border)',
-                    position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    width: 40, height: 22, borderRadius: 11, border: 'none', cursor: anyConnected ? 'pointer' : 'not-allowed',
+                    background: collectDeposits ? 'var(--db-accent-text)' : 'var(--db-border)',
+                    position: 'relative', transition: 'background 0.2s', flexShrink: 0, opacity: anyConnected ? 1 : 0.5,
                   }}
                 >
                   <span style={{
-                    position: 'absolute', top: 3, left: depositEnabled ? 21 : 3,
+                    position: 'absolute', top: 3, left: collectDeposits ? 21 : 3,
                     width: 16, height: 16, borderRadius: '50%', background: '#fff',
                     transition: 'left 0.2s',
                   }} />
                 </button>
               </div>
 
-              {/* Square deposits toggle — only shown when Square is connected */}
-              {squareStatus?.connected && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--db-text)' }}>Enable Square deposits</div>
-                    <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>
-                      {squareDepositsEnabled
-                        ? 'Square is active — takes priority over Stripe when both are enabled'
-                        : 'Use Square as the payment provider for deposit collection'}
-                    </div>
+              {collectDeposits && (<>
+
+              {/* Provider picker — only when both providers are connected */}
+              {bothConnected && (
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
+                    Collect via
+                  </label>
+                  <div style={{ display: 'flex', gap: 6, maxWidth: 360 }}>
+                    {([['stripe', 'Stripe'], ['square', 'Square']] as const).map(([val, lbl]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setProvider(val)}
+                        className={`db-pill${provider === val ? ' active' : ''}`}
+                        style={{ flex: 1, justifyContent: 'center' }}
+                      >
+                        {lbl}
+                      </button>
+                    ))}
                   </div>
-                  <button
-                    role="switch"
-                    aria-checked={squareDepositsEnabled}
-                    onClick={() => setSquareDepositsEnabled(v => !v)}
-                    style={{
-                      width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
-                      background: squareDepositsEnabled ? 'var(--db-accent-text)' : 'var(--db-border)',
-                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                    }}
-                  >
-                    <span style={{
-                      position: 'absolute', top: 3, left: squareDepositsEnabled ? 21 : 3,
-                      width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                      transition: 'left 0.2s',
-                    }} />
-                  </button>
                 </div>
               )}
 
@@ -663,6 +672,8 @@ export default function PaymentsPage() {
                   cancel early enough. Later cancellations forfeit the deposit.
                 </div>
               </div>
+
+              </>)}
 
               <button
                 className="db-btn db-btn--dark"
