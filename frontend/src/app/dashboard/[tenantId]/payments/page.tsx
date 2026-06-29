@@ -24,6 +24,9 @@ interface Settings {
   cancellation_refund_hours: number
   currency: string
   active_provider?: string | null
+  deposit_applies?: string
+  deposit_group_min_size?: number
+  deposit_per_person?: boolean
 }
 
 interface SquareStatus {
@@ -121,6 +124,9 @@ export default function PaymentsPage() {
   const [expiryMin, setExpiryMin]                   = useState(120)
   const [label, setLabel]                           = useState('Appointment Deposit')
   const [refundHours, setRefundHours]               = useState(24)
+  const [depositApplies, setDepositApplies]         = useState<'all' | 'group'>('all')
+  const [groupMinSize, setGroupMinSize]             = useState(2)
+  const [perPerson, setPerPerson]                   = useState(false)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -147,6 +153,9 @@ export default function PaymentsPage() {
         setExpiryMin(s.deposit_expiry_min)
         setLabel(s.deposit_label || 'Appointment Deposit')
         setRefundHours(s.cancellation_refund_hours ?? 24)
+        setDepositApplies(s.deposit_applies === 'group' ? 'group' : 'all')
+        setGroupMinSize(s.deposit_group_min_size ?? 2)
+        setPerPerson(!!s.deposit_per_person)
       }
       if (stRes.ok) setStripeStatus(await stRes.json())
       if (sqRes.ok) setSquareStatus(await sqRes.json())
@@ -293,6 +302,9 @@ export default function PaymentsPage() {
           deposit_expiry_min:      expiryMin,
           deposit_label:           label,
           cancellation_refund_hours: refundHours,
+          deposit_applies:         depositApplies,
+          deposit_group_min_size:  groupMinSize,
+          deposit_per_person:      perPerson,
         }),
       })
       if (res.ok) {
@@ -505,7 +517,7 @@ export default function PaymentsPage() {
               {/* Deposit amount */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
-                  Deposit amount ({currency})
+                  Deposit amount{depositApplies === 'group' && perPerson ? ' (per person)' : ''} ({currency})
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 200 }}>
                   <span style={{
@@ -536,6 +548,49 @@ export default function PaymentsPage() {
                     style={{ flex: 1, fontSize: 16, height: 48, textAlign: 'right', letterSpacing: '0.02em' }}
                   />
                 </div>
+              </div>
+
+              {/* Collect a deposit for: all bookings / group only */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--db-text-2)', marginBottom: 6 }}>
+                  Collect a deposit for
+                </label>
+                <div style={{ display: 'flex', gap: 6, maxWidth: 360 }}>
+                  {([['all', 'All bookings'], ['group', 'Group bookings only']] as const).map(([val, lbl]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setDepositApplies(val)}
+                      className={`db-pill${depositApplies === val ? ' active' : ''}`}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                {depositApplies === 'group' && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, color: 'var(--db-text-2)' }}>A deposit applies for</span>
+                      <select className="db-input" value={groupMinSize} onChange={e => setGroupMinSize(Number(e.target.value))} style={{ width: 72 }}>
+                        {[2, 3, 4, 5, 6, 8, 10].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <span style={{ fontSize: 13, color: 'var(--db-text-2)' }}>or more guests.</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--db-text-2)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={perPerson} onChange={e => setPerPerson(e.target.checked)} />
+                      Charge the deposit per person
+                    </label>
+                    <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.5 }}>
+                      {(() => {
+                        const each = depositCents / 100
+                        const total = perPerson ? each * groupMinSize : each
+                        return `Example: a party of ${groupMinSize} pays a ${currency} ${total.toFixed(2)} deposit${perPerson ? ` (${currency} ${each.toFixed(2)} × ${groupMinSize})` : ''}. Solo bookings pay no deposit.`
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Mandatory toggle */}

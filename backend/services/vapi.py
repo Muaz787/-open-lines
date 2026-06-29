@@ -529,6 +529,14 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                                 "the roster). Keep the service field free of names. Omit if no preference."
                             ),
                         },
+                        "party_size": {
+                            "type": "integer",
+                            "description": (
+                                "Number of people the booking is for. Set this whenever the caller is "
+                                "booking for more than one person (e.g. 'a group of 4', 'me and my friend'). "
+                                "Defaults to 1 if omitted."
+                            ),
+                        },
                     },
                     "required": ["caller_name", "caller_phone", "service", "date", "time"],
                 },
