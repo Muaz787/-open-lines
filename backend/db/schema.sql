@@ -225,6 +225,15 @@ create table if not exists system_meta (
 );
 
 -- ---------------------------------------------------------------------------
+-- Conditional / group deposits: collect a deposit for all bookings (default) or
+-- only group bookings of N+ people, optionally charged per person.
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists deposit_applies        text default 'all';   -- 'all' | 'group'
+alter table tenants add column if not exists deposit_group_min_size int default 2;
+alter table tenants add column if not exists deposit_per_person     boolean default false;
+alter table appointments add column if not exists party_size int default 1;
+
+-- ---------------------------------------------------------------------------
 -- Named staff / resources (Phase 2). A tenant is in "staff mode" when it has
 -- >= 1 active staff row — then capacity per slot = the number of active staff,
 -- and each appointment is attributed to one of them (first-available, or a

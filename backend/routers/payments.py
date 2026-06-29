@@ -84,6 +84,9 @@ async def get_settings(tenant_id: str, authorization: Annotated[str | None, Head
         "deposit_expiry_min":      int(tenant.get("stripe_deposit_expiry_min") or 120),
         "deposit_label":           tenant.get("stripe_deposit_label") or "Appointment Deposit",
         "cancellation_refund_hours": int(tenant.get("cancellation_refund_hours") if tenant.get("cancellation_refund_hours") is not None else 24),
+        "deposit_applies":         (tenant.get("deposit_applies") or "all"),
+        "deposit_group_min_size":  int(tenant.get("deposit_group_min_size") or 2),
+        "deposit_per_person":      bool(tenant.get("deposit_per_person")),
         "currency":                _effective_currency(tenant),
         "active_provider":         _deposit_provider(tenant) or None,
     }
@@ -101,6 +104,9 @@ class DepositSettingsRequest(BaseModel):
     deposit_expiry_min:      int
     deposit_label:           str | None = None
     cancellation_refund_hours: int = 24
+    deposit_applies:         str = "all"          # 'all' | 'group'
+    deposit_group_min_size:  int = 2
+    deposit_per_person:      bool = False
 
 
 @router.post("/settings/{tenant_id}")
@@ -139,6 +145,9 @@ async def save_settings(tenant_id: str, body: DepositSettingsRequest, authorizat
         "stripe_deposit_mandatory": body.deposit_mandatory,
         "stripe_deposit_expiry_min": body.deposit_expiry_min,
         "cancellation_refund_hours": max(0, body.cancellation_refund_hours),
+        "deposit_applies":         "group" if body.deposit_applies == "group" else "all",
+        "deposit_group_min_size":  max(2, min(20, body.deposit_group_min_size)),
+        "deposit_per_person":      bool(body.deposit_per_person),
     }
     if body.deposit_label:
         update["stripe_deposit_label"] = body.deposit_label

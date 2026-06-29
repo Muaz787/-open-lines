@@ -441,6 +441,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     service      = args.get("service", "Appointment")
     date_str     = args.get("date", "")
     time_str     = args.get("time", "")  # HH:MM 24-hour
+    try:
+        party_size = max(1, min(20, int(args.get("party_size") or 1)))
+    except (TypeError, ValueError):
+        party_size = 1
 
     if not date_str or not time_str:
         return _result(tc_id, "I need both a date and a time to complete the booking. Could you confirm those?")
@@ -660,13 +664,17 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         except Exception as e:
             logger.warning("tools/book: deposit lookup failed for tenant %s (assuming unpaid): %s", tenant_id, e)
 
-    deposits_mandatory = (
-        bool(_dep_provider)
-        and bool(tenant.get("stripe_deposit_mandatory", True))
+    # Conditional/group deposits: a deposit is due for ALL bookings, or only for
+    # group bookings of N+ people. (Provider must be active and not already paid.)
+    _applies   = (tenant.get("deposit_applies") or "all").lower()
+    _group_min = int(tenant.get("deposit_group_min_size") or 2)
+    _deposit_due = bool(_dep_provider) and (
+        _applies != "group" or party_size >= _group_min
     )
-    # A deposit is only requested when the provider is active AND this booking
-    # isn't already covered by the original appointment's paid deposit.
-    needs_deposit = bool(_dep_provider) and not already_paid
+    deposits_mandatory = _deposit_due and bool(tenant.get("stripe_deposit_mandatory", True))
+    # A deposit is only requested when due AND this booking isn't already covered
+    # by the original appointment's paid deposit.
+    needs_deposit = _deposit_due and not already_paid
     appt_status = "pending_payment" if (deposits_mandatory and not already_paid) else "confirmed"
     logger.info("tools/book: tenant %s provider=%s needs_deposit=%s already_paid=%s status=%s",
                 tenant_id, _dep_provider, needs_deposit, already_paid, appt_status)
@@ -680,6 +688,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
             "service":               service,
             "appointment_datetime":  start_dt.isoformat(),
             "duration_minutes":      duration_minutes,
+            "party_size":            party_size,
             "status":                appt_status,
             "vapi_call_id":          call_id,
             "google_event_id":       event.get("id", ""),
@@ -784,6 +793,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         dep = await _create_and_send_deposit(
             tenant, caller_phone=caller_phone, caller_name=caller_name,
             service=service, appointment_id=appt_id,
+            amount_cents=_deposit_amount_cents(tenant, party_size),
         )
         amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
         if dep["already_paid"]:
@@ -841,10 +851,12 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     appointment    = await db.get_latest_appointment_by_phone(tenant_id, caller_phone)
     appointment_id = appointment["id"] if appointment else None
     business_name  = tenant.get("business_name", "the business")
+    _party_size    = int((appointment or {}).get("party_size") or 1)
 
     dep = await _create_and_send_deposit(
         tenant, caller_phone=caller_phone, caller_name=caller_name,
         service=service, appointment_id=appointment_id,
+        amount_cents=_deposit_amount_cents(tenant, _party_size),
     )
     if dep["error"] == "no_provider":
         return _result(tc_id, "Payment collection is not set up for this business.")
@@ -874,14 +886,23 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     )
 
 
+def _deposit_amount_cents(tenant: dict, party_size: int = 1) -> int:
+    """Deposit amount: per-person × party size when configured, else the flat base."""
+    base = int(tenant.get("stripe_deposit_cents") or 2500)
+    if tenant.get("deposit_per_person"):
+        return base * max(1, int(party_size or 1))
+    return base
+
+
 async def _create_and_send_deposit(
     tenant: dict, *, caller_phone: str, caller_name: str, service: str,
-    appointment_id: str | None,
+    appointment_id: str | None, amount_cents: int | None = None,
 ) -> dict:
     """Create a deposit payment + branded short link and SMS it to the caller.
     Shared by book_appointment (auto-send the instant a deposit is owed) and the
-    request_deposit tool (resend). Never raises; returns a status dict so the
-    caller can craft the right voice response."""
+    request_deposit tool (resend). `amount_cents` overrides the tenant base (e.g.
+    per-person group deposits). Never raises; returns a status dict so the caller
+    can craft the right voice response."""
     out = {"sms_sent": False, "already_paid": False, "amount_display": "",
            "currency_voice": "", "expiry_hours": 0, "error": None}
     try:
@@ -892,7 +913,7 @@ async def _create_and_send_deposit(
             return out
 
         tenant_id      = tenant["id"]
-        deposit_cents  = int(tenant.get("stripe_deposit_cents") or 2500)
+        deposit_cents  = int(amount_cents if amount_cents is not None else (tenant.get("stripe_deposit_cents") or 2500))
         expiry_minutes = int(tenant.get("stripe_deposit_expiry_min") or 120)
         business_name  = tenant.get("business_name", "the business")
         out["expiry_hours"] = expiry_minutes // 60
