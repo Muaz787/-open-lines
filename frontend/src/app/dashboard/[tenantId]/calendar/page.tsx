@@ -6,6 +6,7 @@ import MicButton from '@/app/components/MicButton'
 import { trackEvent } from '@/lib/analytics'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
+import SquareAppointmentsCard from './SquareAppointmentsCard'
 
 import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -377,6 +378,9 @@ function CalendarPage() {
               )}
             </div>
           </div>
+
+          {/* Square Appointments — book into the merchant's own Square calendar */}
+          <SquareAppointmentsCard tenantId={tenantId} />
 
           {/* Availability settings */}
           <div className="db-card" style={{ padding: '18px 20px', marginBottom: 16 }}>

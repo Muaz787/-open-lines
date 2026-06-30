@@ -222,6 +222,35 @@ async def appointments_sync(tenant_id: str, authorization: Annotated[str | None,
     return result
 
 
+@router.post("/appointments/enable/{tenant_id}")
+async def appointments_enable(tenant_id: str, body: dict, authorization: Annotated[str | None, Header()] = None):
+    """Turn the Square Appointments booking provider on/off for live calls."""
+    await verify_tenant_owner(tenant_id, authorization)
+    enabled = bool(body.get("enabled"))
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if enabled and not tenant.get("square_access_token"):
+        raise HTTPException(status_code=400, detail="Connect Square first")
+    if enabled and not (await db.get_square_services(tenant_id, bookable_only=True)):
+        raise HTTPException(status_code=400, detail="Sync your Square services first")
+
+    await db.update_tenant(tenant_id, {"square_appointments_enabled": enabled})
+
+    # Re-patch the assistant so the booking tools + service menu appear/disappear.
+    try:
+        updated = await db.get_tenant_by_id(tenant_id)
+        from services import provisioning
+        await provisioning.rebuild_and_push_system_prompt(updated)
+    except Exception as e:
+        logger.warning("Square Appointments enable: reprompt failed for %s: %s", tenant_id, e)
+
+    return {"enabled": enabled}
+
+
 @router.get("/appointments/{tenant_id}")
 async def appointments_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     await verify_tenant_owner(tenant_id, authorization)
