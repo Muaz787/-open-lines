@@ -44,6 +44,18 @@ _SCOPES = [
     "ORDERS_READ",
     "ORDERS_WRITE",
     "PAYMENTS_WRITE",
+    # Square Appointments (Bookings API). Includes WRITE/ALL_WRITE now so a single
+    # reconnect covers P1 (read availability) and P2 (create/cancel bookings).
+    # ALL_* lets us manage bookings across every team member (multi-staff shops);
+    # the connecting Square user must be an owner/admin to grant ALL_*.
+    "APPOINTMENTS_READ",
+    "APPOINTMENTS_WRITE",
+    "APPOINTMENTS_ALL_READ",
+    "APPOINTMENTS_ALL_WRITE",
+    "APPOINTMENTS_BUSINESS_SETTINGS_READ",
+    "ITEMS_READ",
+    "CUSTOMERS_READ",
+    "CUSTOMERS_WRITE",
 ]
 
 

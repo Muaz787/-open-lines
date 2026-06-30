@@ -631,6 +631,7 @@ def build_all_tools(tenant: dict) -> list[dict]:
     tenant_id     = tenant.get("id", "")
     has_calendar  = bool(
         tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
+        or tenant.get("square_appointments_enabled")
     )
     has_deposits  = bool(
         (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))

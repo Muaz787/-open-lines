@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 from typing import Annotated
@@ -5,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
-from services import square_service as sq_svc, vapi
+from services import square_service as sq_svc, square_booking, vapi
 from services.security import encrypt, verify_tenant_owner
 from db import supabase as db
 
@@ -140,6 +141,13 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
     except Exception as e:
         logger.warning("Square OAuth: assistant patch failed for tenant %s: %s", tenant_id, e)
 
+    # Best-effort Appointments sync (no-op if the merchant hasn't granted the
+    # appointments scopes / doesn't use Square Appointments).
+    try:
+        asyncio.create_task(square_booking.sync(tenant_id))
+    except Exception as e:
+        logger.warning("Square OAuth: appointments sync kickoff failed for %s: %s", tenant_id, e)
+
     logger.info("Square Connect completed for tenant %s merchant %s", tenant_id, merchant_id)
     return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=connected")
 
@@ -197,3 +205,39 @@ async def connect_disconnect(tenant_id: str, authorization: Annotated[str | None
 
     logger.info("Square Connect disconnected for tenant %s", tenant_id)
     return {"status": "disconnected"}
+
+
+# ---------------------------------------------------------------------------
+# Square Appointments — sync catalog/team and read the mapping (frontend review)
+# ---------------------------------------------------------------------------
+
+@router.post("/appointments/sync/{tenant_id}")
+async def appointments_sync(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
+    result = await square_booking.sync(tenant_id)
+    if not result.get("ok"):
+        detail = {"not_connected": "Connect Square first",
+                  "tenant_not_found": "Tenant not found"}.get(result.get("error"), "Sync failed")
+        raise HTTPException(status_code=400, detail=detail)
+    return result
+
+
+@router.get("/appointments/{tenant_id}")
+async def appointments_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    await verify_tenant_owner(tenant_id, authorization)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    return {
+        "connected":   bool(tenant.get("square_access_token")),
+        "enabled":     bool(tenant.get("square_appointments_enabled")),
+        "bookable":    bool(tenant.get("square_appointments_bookable")),
+        "synced_at":   tenant.get("square_booking_synced_at"),
+        "location_timezone": tenant.get("square_location_timezone"),
+        "services":    await db.get_square_services(tenant_id, bookable_only=False),
+        "staff":       await db.get_square_staff(tenant_id),
+    }

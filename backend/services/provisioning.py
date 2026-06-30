@@ -134,7 +134,11 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
     base_system_prompt = system_prompt
 
     system_prompt += _CALLER_LOOKUP_NOTE
-    if tenant.get("google_refresh_token"):
+    _has_booking = bool(
+        tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
+        or tenant.get("square_appointments_enabled")
+    )
+    if _has_booking:
         system_prompt += _CALENDAR_NOTE
 
     # Named-staff roster — tell the AI how to capture, match, and CONFIRM a
@@ -159,9 +163,26 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
             f"- If the caller has no preference, omit `staff` and the system assigns whoever is free."
         )
 
+    # Square Appointments — offer exactly the services synced from the merchant's
+    # Square catalog so the AI uses names that map cleanly to a bookable service.
+    if tenant.get("square_appointments_enabled"):
+        try:
+            _sq_services = await db.get_square_services(tenant_id, bookable_only=True)
+        except Exception:
+            _sq_services = []
+        if _sq_services:
+            _names = ", ".join(s["name"] for s in _sq_services if s.get("name"))
+            system_prompt += (
+                f"\n\nSERVICES (Square Appointments)\n"
+                f"Offer only these bookable services: {_names}.\n"
+                f"- Pass the caller's chosen service in the `service` argument exactly; the backend "
+                f"matches it to the list above.\n"
+                f"- Availability is read live from the business's Square calendar."
+            )
+
     tools = (
         build_calendar_tools(tenant_id)
-        if tenant.get("google_refresh_token")
+        if _has_booking
         else [build_caller_lookup_tool(tenant_id)]
     )
     model_payload: dict = {
