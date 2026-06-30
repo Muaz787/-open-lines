@@ -333,3 +333,8 @@ create table if not exists square_staff (
     unique (tenant_id, square_team_member_id)
 );
 create index if not exists idx_square_staff_tenant on square_staff(tenant_id);
+
+-- Square Appointments P3 (two-way sync): distinguish phone-booked appointments
+-- ('openlines') from bookings synced in from Square's webhook ('square' — made on
+-- the merchant's website / walk-in / Square dashboard).
+alter table appointments add column if not exists source text default 'openlines';

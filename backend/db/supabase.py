@@ -225,6 +225,22 @@ async def get_square_staff(tenant_id: str) -> list:
             .eq("tenant_id", tenant_id).eq("active", True).execute().data or [])
 
 
+async def get_tenant_by_square_merchant_id(merchant_id: str) -> dict | None:
+    if not merchant_id:
+        return None
+    res = (get_client().table("tenants").select("*")
+           .eq("square_merchant_id", merchant_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def get_appointment_by_event_id(tenant_id: str, event_id: str) -> dict | None:
+    if not event_id:
+        return None
+    res = (get_client().table("appointments").select("*")
+           .eq("tenant_id", tenant_id).eq("google_event_id", event_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
 async def update_call(call_id: str, data: dict) -> dict:
     res = (
         get_client()
