@@ -128,6 +128,98 @@ async def list_team_members(token: str) -> list[dict]:
         return members
 
 
+async def find_or_create_customer(token: str, *, given_name: str, phone: str) -> str | None:
+    """Return a Square customer id for the caller, searching by phone first."""
+    async with httpx.AsyncClient() as client:
+        if phone:
+            res = await client.post(
+                f"{sq_svc._api_base()}/v2/customers/search",
+                json={"query": {"filter": {"phone_number": {"exact": phone}}}},
+                headers=sq_svc._sq_headers(token), timeout=15.0,
+            )
+            if res.is_success:
+                found = res.json().get("customers") or []
+                if found:
+                    return found[0]["id"]
+        payload: dict = {"given_name": given_name or "Caller"}
+        if phone:
+            payload["phone_number"] = phone
+        res = await client.post(
+            f"{sq_svc._api_base()}/v2/customers",
+            json=payload, headers=sq_svc._sq_headers(token), timeout=15.0,
+        )
+        if not res.is_success:
+            logger.warning("Square create customer %s: %s", res.status_code, res.text[:300])
+            return None
+        return (res.json().get("customer") or {}).get("id")
+
+
+async def create_booking(
+    token: str, *, location_id: str, start_at_iso: str, customer_id: str,
+    team_member_id: str, service_variation_id: str, service_variation_version,
+    duration_minutes: int | None, note: str = "",
+) -> dict:
+    """CreateBooking. Returns the booking object (id, status, ...). Raises on HTTP error."""
+    import uuid
+    seg: dict = {
+        "team_member_id": team_member_id,
+        "service_variation_id": service_variation_id,
+    }
+    if service_variation_version is not None:
+        seg["service_variation_version"] = int(service_variation_version)
+    if duration_minutes:
+        seg["duration_minutes"] = int(duration_minutes)
+    body = {
+        "idempotency_key": str(uuid.uuid4()),
+        "booking": {
+            "location_id": location_id,
+            "start_at": start_at_iso,
+            "customer_id": customer_id,
+            "appointment_segments": [seg],
+        },
+    }
+    if note:
+        body["booking"]["customer_note"] = note
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{sq_svc._api_base()}/v2/bookings",
+            json=body, headers=sq_svc._sq_headers(token), timeout=20.0,
+        )
+        if not res.is_success:
+            logger.warning("Square create_booking %s: %s", res.status_code, res.text[:400])
+            res.raise_for_status()
+        return res.json().get("booking", {})
+
+
+async def get_booking(token: str, booking_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"{sq_svc._api_base()}/v2/bookings/{booking_id}",
+            headers=sq_svc._sq_headers(token), timeout=15.0,
+        )
+        if not res.is_success:
+            return {}
+        return res.json().get("booking", {})
+
+
+async def cancel_booking(token: str, booking_id: str) -> bool:
+    """Cancel a Square booking (retrieves current version first). Returns True on success."""
+    import uuid
+    booking = await get_booking(token, booking_id)
+    version = booking.get("version")
+    body: dict = {"idempotency_key": str(uuid.uuid4())}
+    if version is not None:
+        body["booking_version"] = version
+    async with httpx.AsyncClient() as client:
+        res = await client.post(
+            f"{sq_svc._api_base()}/v2/bookings/{booking_id}/cancel",
+            json=body, headers=sq_svc._sq_headers(token), timeout=15.0,
+        )
+        if not res.is_success:
+            logger.warning("Square cancel_booking %s: %s", res.status_code, res.text[:300])
+        return res.is_success
+
+
 async def search_availability(
     token: str, location_id: str, service_variation_id: str,
     team_member_ids: list[str], start_at_iso: str, end_at_iso: str,
@@ -161,6 +253,41 @@ def _fmt_slot(dt: datetime) -> str:
     h = dt.hour % 12 or 12
     ampm = "AM" if dt.hour < 12 else "PM"
     return f"{h}:{dt.minute:02d} {ampm}"
+
+
+async def resolve_slot(
+    token: str, location_id: str, service_variation_id: str,
+    team_member_ids: list[str], start_dt: datetime,
+) -> dict | None:
+    """Confirm the exact requested time is bookable and return the segment to book
+    {team_member_id, service_variation_version, duration_minutes, start_at}. Square is
+    the source of truth — this also picks a free team member when several are eligible."""
+    start_utc = start_dt.astimezone(dt_timezone.utc)
+    end_utc = start_utc + timedelta(minutes=2)
+
+    def _z(dt: datetime) -> str:
+        return dt.isoformat().replace("+00:00", "Z")
+
+    try:
+        avails = await search_availability(
+            token, location_id, service_variation_id, team_member_ids, _z(start_utc), _z(end_utc))
+    except Exception as e:
+        logger.warning("resolve_slot: availability search failed: %s", e)
+        return None
+    for a in avails:
+        try:
+            sdt = datetime.fromisoformat(a["start_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if abs((sdt - start_utc).total_seconds()) < 60:
+            seg = (a.get("appointment_segments") or [{}])[0]
+            return {
+                "team_member_id": seg.get("team_member_id"),
+                "service_variation_version": seg.get("service_variation_version"),
+                "duration_minutes": seg.get("duration_minutes"),
+                "start_at": a["start_at"],
+            }
+    return None
 
 
 async def sync(tenant_id: str) -> dict:

@@ -263,6 +263,146 @@ async def _square_availability_response(
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list.")
 
 
+async def _square_book_appointment(
+    tc_id: str, call_id: str, tenant: dict, tenant_id: str, args: dict, *,
+    caller_name: str, caller_phone: str, service: str, date_str: str,
+    time_str: str, party_size: int,
+):
+    """Square Appointments booking path — writes into the merchant's Square calendar
+    via CreateBooking. Square owns availability/slot allocation; we resolve the spoken
+    service/staff to Square IDs, confirm the slot, and persist a mirror appointment row.
+    Deposits are left to Square's native prepayment policy (not our deposit-link flow)."""
+    token = await square_booking.get_access_token(tenant)
+    location_id = tenant.get("square_location_id") or ""
+    if not token or not location_id:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    timezone = tenant.get("square_location_timezone") or tenant.get("calendar_timezone") or "America/Toronto"
+    business_name = tenant["business_name"]
+    try:
+        tz = ZoneInfo(timezone)
+        start_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+    except Exception as e:
+        logger.error("tools/book[square]: datetime parse failed for %s: %s", tenant_id, e)
+        return _result(tc_id, "I couldn't parse that date and time. Could you say it again?")
+
+    services = await db.get_square_services(tenant_id, bookable_only=True)
+    if not services:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+    chosen = _match_square_service(service, services)
+    duration = chosen.get("duration_minutes") or tenant.get("appointment_duration_minutes") or 60
+
+    staff_rows = await db.get_square_staff(tenant_id)
+    staff_by_id = {s["square_team_member_id"]: s.get("display_name") for s in staff_rows}
+    team_ids = list(chosen.get("team_member_ids") or [])
+    requested_name = None
+    if args.get("staff") and staff_rows:
+        roster = [{"name": s.get("display_name"), "id": s.get("square_team_member_id")} for s in staff_rows]
+        matched = _match_staff(args.get("staff", ""), roster)
+        if not matched:
+            names = ", ".join(r["name"] for r in roster if r["name"])
+            return _result(tc_id,
+                f"I'm not sure which team member you meant by '{args.get('staff')}'. "
+                f"We have {names}. Who would you like to book with?")
+        team_ids = [matched["id"]]
+        requested_name = matched["name"]
+    if not team_ids:
+        team_ids = [s["square_team_member_id"] for s in staff_rows]
+    if not team_ids:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # Confirm the exact slot is bookable and pick the free team member + version.
+    seg = await square_booking.resolve_slot(token, location_id, chosen["square_variation_id"], team_ids, start_dt)
+    if not seg or not seg.get("team_member_id"):
+        if requested_name:
+            return _result(tc_id,
+                f"I'm sorry, {requested_name} isn't available at that time. "
+                "Would another time work, or shall I check who else is free?")
+        return _result(tc_id,
+            "I'm sorry — that time just filled up. Could we find another time that works for you?")
+    team_member_id = seg["team_member_id"]
+    staff_name = requested_name or staff_by_id.get(team_member_id)
+
+    # Reschedule: cancel the caller's existing Square booking first.
+    existing_appt = None
+    if caller_phone:
+        try:
+            existing_appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
+        except Exception as e:
+            logger.warning("tools/book[square]: existing-appt lookup failed for %s: %s", tenant_id, e)
+    if existing_appt and existing_appt.get("google_event_id"):
+        try:
+            await square_booking.cancel_booking(token, existing_appt["google_event_id"])
+        except Exception as e:
+            logger.warning("tools/book[square]: could not cancel old booking for %s: %s", tenant_id, e)
+
+    customer_id = await square_booking.find_or_create_customer(token, given_name=caller_name, phone=caller_phone)
+    if not customer_id:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    try:
+        booking = await square_booking.create_booking(
+            token, location_id=location_id, start_at_iso=seg["start_at"], customer_id=customer_id,
+            team_member_id=team_member_id, service_variation_id=chosen["square_variation_id"],
+            service_variation_version=seg.get("service_variation_version") or chosen.get("variation_version"),
+            duration_minutes=seg.get("duration_minutes") or duration,
+            note=f"Booked via Open Lines AI receptionist — {service}",
+        )
+    except Exception as e:
+        logger.error("tools/book[square]: create_booking failed for %s: %s", tenant_id, e)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    booking_id = booking.get("id", "")
+    pending = (booking.get("status") or "").upper() == "PENDING"
+    logger.info("tools/book[square]: booked %s for tenant %s (booking %s, status %s)",
+                service, tenant_id, booking_id, booking.get("status"))
+
+    appt_data = {
+        "tenant_id": tenant_id, "caller_name": caller_name, "caller_phone": caller_phone,
+        "service": service, "appointment_datetime": start_dt.isoformat(),
+        "duration_minutes": seg.get("duration_minutes") or duration, "party_size": party_size,
+        "status": "confirmed", "vapi_call_id": call_id, "google_event_id": booking_id,
+    }
+    if staff_name:
+        appt_data["staff_name"] = staff_name
+    try:
+        if existing_appt:
+            await db.update_appointment(existing_appt["id"], appt_data)
+        else:
+            await db.insert_appointment(appt_data)
+    except Exception as e:
+        logger.error("tools/book[square]: failed to save appointment mirror for %s: %s", tenant_id, e)
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "appointment_booked",
+                      {"tenant_id": tenant_id, "service": service, "provider": "square_appointments",
+                       "is_reschedule": bool(existing_appt)})
+
+    h = start_dt.hour % 12 or 12
+    ampm = "AM" if start_dt.hour < 12 else "PM"
+    suffix = f" with {staff_name}" if staff_name else ""
+    friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}{suffix}"
+
+    # SMS confirmation (mirrors the Google/MS path).
+    try:
+        sid, tok, biz = (tenant.get("twilio_subaccount_sid", ""), tenant.get("twilio_auth_token", ""),
+                         tenant.get("twilio_phone_number", ""))
+        if sid and tok and biz and caller_phone:
+            greeting = f"Hi {caller_name}! " if caller_name else ""
+            await telephony.send_sms(subaccount_sid=sid, subaccount_token=tok, from_number=biz,
+                to_number=caller_phone,
+                body=f"{greeting}Your {service} at {business_name} is confirmed for {friendly}. "
+                     f"See you then! — {business_name}")
+    except Exception as e:
+        logger.error("tools/book[square]: SMS failed for %s: %s", tenant_id, e)
+
+    if pending:
+        return _result(tc_id,
+            f"Your {service} at {business_name} is requested for {friendly}. Tell the caller the shop "
+            f"will confirm the appointment shortly and they'll get a text once it's accepted.")
+    return _result(tc_id,
+        f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
+        "You'll receive a text confirmation shortly.")
+
+
 @router.post("/{tenant_id}/availability")
 @limiter.limit("30/minute", key_func=tenant_key)
 async def check_availability(request: Request, tenant_id: str, body: dict):
@@ -539,12 +679,12 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/book: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
-    # Square Appointments: P1 reads availability only — CreateBooking lands in P2.
-    # Defensive guard so flipping the flag early can't write to the wrong calendar.
+    # Square Appointments: write the booking into the merchant's Square calendar.
     if tenant.get("square_appointments_enabled"):
-        logger.warning("tools/book: square_appointments_enabled but CreateBooking is P2 (tenant %s)", tenant_id)
-        return _result(tc_id,
-            "I've found that time for you. I'll have the team confirm and finalize your booking shortly.")
+        return await _square_book_appointment(
+            tc_id, call_id, tenant, tenant_id, args, caller_name=caller_name,
+            caller_phone=caller_phone, service=service, date_str=date_str,
+            time_str=time_str, party_size=party_size)
 
     refresh_token, cal_provider = _calendar_provider(tenant)
     duration_minutes = tenant.get("appointment_duration_minutes") or 60
@@ -1157,7 +1297,15 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     refresh_token, cal_provider = _calendar_provider(tenant or {})
     event_id = appt.get("google_event_id", "")
 
-    if refresh_token and event_id:
+    # Square Appointments: cancel the booking in the merchant's Square calendar.
+    if (tenant or {}).get("square_appointments_enabled") and event_id:
+        try:
+            _sq_tok = await square_booking.get_access_token(tenant)
+            if _sq_tok:
+                await square_booking.cancel_booking(_sq_tok, event_id)
+        except Exception as e:
+            logger.warning("tools/cancel[square]: could not cancel booking %s: %s", event_id, e)
+    elif refresh_token and event_id:
         try:
             if cal_provider == "microsoft":
                 await ms_cal_svc.cancel_event(refresh_token, event_id)
