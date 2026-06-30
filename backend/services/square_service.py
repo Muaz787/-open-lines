@@ -56,6 +56,8 @@ _SCOPES = [
     "ITEMS_READ",
     "CUSTOMERS_READ",
     "CUSTOMERS_WRITE",
+    # Team API (SearchTeamMembers) — Square kept the legacy "Employees" permission name.
+    "EMPLOYEES_READ",
 ]
 
 
