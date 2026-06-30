@@ -19,6 +19,7 @@ from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
+from services import square_booking
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
@@ -198,6 +199,70 @@ async def caller_lookup(request: Request, tenant_id: str, body: dict):
 # POST /tools/{tenant_id}/availability
 # ---------------------------------------------------------------------------
 
+def _match_square_service(requested: str, services: list) -> dict | None:
+    """Resolve a spoken service name to a cached Square service variation."""
+    requested = (requested or "").strip().lower()
+    if not services:
+        return None
+    if not requested:
+        return services[0]
+    names = {(s.get("name") or "").strip().lower(): s for s in services if s.get("name")}
+    for nm, s in names.items():
+        if requested in nm or nm in requested:
+            return s
+    close = difflib.get_close_matches(requested, list(names.keys()), n=1, cutoff=0.5)
+    return names[close[0]] if close else services[0]
+
+
+async def _square_availability_response(
+    tc_id: str, tenant: dict, tenant_id: str, args: dict, date_str: str, prefix: str,
+):
+    """Square Appointments availability path — Square computes the slots; we map a
+    spoken service/staff to Square IDs and pass through SearchAvailability."""
+    services = await db.get_square_services(tenant_id, bookable_only=True)
+    if not services:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    chosen = _match_square_service(args.get("service", ""), services)
+    team_ids = list(chosen.get("team_member_ids") or [])
+
+    # Optional "with <name>" — restrict to that team member's calendar.
+    staff_rows = await db.get_square_staff(tenant_id)
+    if args.get("staff") and staff_rows:
+        roster = [{"name": s.get("display_name"), "id": s.get("square_team_member_id")} for s in staff_rows]
+        matched = _match_staff(args.get("staff", ""), roster)
+        if matched:
+            team_ids = [matched["id"]]
+    if not team_ids:  # service has no explicit assignees → search across all active staff
+        team_ids = [s["square_team_member_id"] for s in staff_rows]
+    if not team_ids:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    timezone = tenant.get("square_location_timezone") or tenant.get("calendar_timezone") or "America/Toronto"
+    try:
+        slots = await square_booking.available_slot_strings(
+            tenant, date_str=date_str, timezone=timezone,
+            service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
+        )
+    except Exception as e:
+        logger.error("tools/availability: Square availability failed for %s: %s", tenant_id, e)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    try:
+        _fmt_date = date_type.fromisoformat(date_str).strftime("%B %d, %Y")
+    except ValueError:
+        _fmt_date = date_str
+    if not slots:
+        return _result(tc_id, prefix +
+            f"Unfortunately there are no available slots on {_fmt_date}. Would you like to try a different day?")
+    times_text = ", ".join(slots)
+    return _result(tc_id, prefix +
+        f"Available times on {_fmt_date} (full list — {slots[0]} through {slots[-1]}): {times_text}. "
+        "If the caller asked for a specific time, check this exact list: confirm it if present, "
+        "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
+        "it is genuinely absent from this list. Only read a few options aloud, not the whole list.")
+
+
 @router.post("/{tenant_id}/availability")
 @limiter.limit("30/minute", key_func=tenant_key)
 async def check_availability(request: Request, tenant_id: str, body: dict):
@@ -253,6 +318,12 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     except Exception as e:
         logger.error("tools/availability: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # Square Appointments provider — Square owns availability (pass-through).
+    # Gated on square_appointments_enabled, which stays OFF until P2 wires booking.
+    if tenant.get("square_appointments_enabled"):
+        return await _square_availability_response(
+            tc_id, tenant, tenant_id, args, date_str, _year_correction_prefix)
 
     refresh_token, cal_provider = _calendar_provider(tenant)
     if not refresh_token:
@@ -467,6 +538,13 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     except Exception as e:
         logger.error("tools/book: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # Square Appointments: P1 reads availability only — CreateBooking lands in P2.
+    # Defensive guard so flipping the flag early can't write to the wrong calendar.
+    if tenant.get("square_appointments_enabled"):
+        logger.warning("tools/book: square_appointments_enabled but CreateBooking is P2 (tenant %s)", tenant_id)
+        return _result(tc_id,
+            "I've found that time for you. I'll have the team confirm and finalize your booking shortly.")
 
     refresh_token, cal_provider = _calendar_provider(tenant)
     duration_minutes = tenant.get("appointment_duration_minutes") or 60

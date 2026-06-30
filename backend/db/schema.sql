@@ -288,3 +288,48 @@ create table if not exists ai_insights (
     generated_at      timestamptz not null default now(),
     source_call_count int not null default 0
 );
+
+-- ---------------------------------------------------------------------------
+-- Square Appointments (Bookings API) — P1: read availability from the
+-- merchant's own Square calendar and (P2) book into it. We cache the Square
+-- service catalog + team roster per tenant so the tool layer can map a spoken
+-- service/staff name to the Square IDs that SearchAvailability/CreateBooking need.
+--   square_appointments_enabled  -> live dispatch switch (stays OFF until P2 wires booking)
+--   square_appointments_bookable -> booking_enabled from the Square booking profile (advisory)
+--   square_location_timezone     -> location tz for slot display
+--   square_booking_synced_at     -> last catalog/team sync
+-- (square_location_id / square_currency already exist from the deposits integration.)
+-- ---------------------------------------------------------------------------
+alter table tenants add column if not exists square_appointments_enabled  boolean default false;
+alter table tenants add column if not exists square_appointments_bookable boolean default false;
+alter table tenants add column if not exists square_location_timezone     text;
+alter table tenants add column if not exists square_booking_synced_at      timestamptz;
+
+create table if not exists square_services (
+    id                    uuid primary key default gen_random_uuid(),
+    tenant_id             uuid not null references tenants(id) on delete cascade,
+    square_variation_id   text not null,
+    square_item_id        text,
+    name                  text not null,
+    duration_minutes      int,
+    price_cents           int,
+    currency              text,
+    variation_version     bigint,                  -- required by CreateBooking; refresh on catalog change
+    team_member_ids       text[] default '{}',
+    available_for_booking boolean default true,
+    active                boolean default true,
+    synced_at             timestamptz default now(),
+    unique (tenant_id, square_variation_id)
+);
+create index if not exists idx_square_services_tenant on square_services(tenant_id);
+
+create table if not exists square_staff (
+    id                    uuid primary key default gen_random_uuid(),
+    tenant_id             uuid not null references tenants(id) on delete cascade,
+    square_team_member_id text not null,
+    display_name          text,
+    active                boolean default true,
+    synced_at             timestamptz default now(),
+    unique (tenant_id, square_team_member_id)
+);
+create index if not exists idx_square_staff_tenant on square_staff(tenant_id);

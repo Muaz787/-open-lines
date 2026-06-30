@@ -193,6 +193,38 @@ async def update_staff(tenant_id: str, staff_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+# ---------------------------------------------------------------------------
+# Square Appointments — cached service catalog + team roster per tenant.
+# Clear-before-write so a resync reflects exactly what's in Square now.
+# ---------------------------------------------------------------------------
+async def replace_square_services(tenant_id: str, rows: list[dict]) -> None:
+    client = get_client()
+    client.table("square_services").delete().eq("tenant_id", tenant_id).execute()
+    if rows:
+        client.table("square_services").insert(
+            [{**r, "tenant_id": tenant_id} for r in rows]).execute()
+
+
+async def replace_square_staff(tenant_id: str, rows: list[dict]) -> None:
+    client = get_client()
+    client.table("square_staff").delete().eq("tenant_id", tenant_id).execute()
+    if rows:
+        client.table("square_staff").insert(
+            [{**r, "tenant_id": tenant_id} for r in rows]).execute()
+
+
+async def get_square_services(tenant_id: str, bookable_only: bool = True) -> list:
+    q = get_client().table("square_services").select("*").eq("tenant_id", tenant_id)
+    if bookable_only:
+        q = q.eq("available_for_booking", True)
+    return q.execute().data or []
+
+
+async def get_square_staff(tenant_id: str) -> list:
+    return (get_client().table("square_staff").select("*")
+            .eq("tenant_id", tenant_id).eq("active", True).execute().data or [])
+
+
 async def update_call(call_id: str, data: dict) -> dict:
     res = (
         get_client()
