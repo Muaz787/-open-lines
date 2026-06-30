@@ -392,6 +392,12 @@ async def square_webhook(request: Request):
         match event_type:
             case "payment.updated" | "payment.created":
                 await _handle_square_payment_completed(event)
+            case "booking.created" | "booking.updated":
+                from services import square_booking
+                await square_booking.handle_booking_event(event)
+            case "catalog.version.updated":
+                from services import square_booking
+                await square_booking.handle_catalog_update(event)
     except Exception as e:
         logger.error("Square webhook processing failed for event %s: %s", event_id, e)
         raise HTTPException(status_code=500, detail="Processing failed")

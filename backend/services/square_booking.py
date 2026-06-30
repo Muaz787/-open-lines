@@ -154,6 +154,17 @@ async def find_or_create_customer(token: str, *, given_name: str, phone: str) ->
         return (res.json().get("customer") or {}).get("id")
 
 
+async def get_customer(token: str, customer_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        res = await client.get(
+            f"{sq_svc._api_base()}/v2/customers/{customer_id}",
+            headers=sq_svc._sq_headers(token), timeout=15.0,
+        )
+        if not res.is_success:
+            return {}
+        return res.json().get("customer", {})
+
+
 async def create_booking(
     token: str, *, location_id: str, start_at_iso: str, customer_id: str,
     team_member_id: str, service_variation_id: str, service_variation_version,
@@ -367,3 +378,80 @@ async def available_slot_strings(
     # de-dupe (multiple team members can yield the same slot time) while preserving order
     seen: set[str] = set()
     return [t for t in times if not (t in seen or seen.add(t))]
+
+
+# ---------------------------------------------------------------------------
+# P3 — two-way sync from Square webhooks (booking.* / catalog.version.updated)
+# ---------------------------------------------------------------------------
+
+async def handle_catalog_update(event: dict) -> None:
+    """A service was added/edited/removed in Square → refresh our cached menu."""
+    tenant = await db.get_tenant_by_square_merchant_id(event.get("merchant_id", ""))
+    if tenant and tenant.get("square_access_token"):
+        await sync(tenant["id"])
+        logger.info("Square sync: catalog refreshed for tenant %s", tenant["id"])
+
+
+async def handle_booking_event(event: dict) -> None:
+    """Mirror a Square booking into our appointments table so the dashboard reflects
+    web/walk-in bookings too. Idempotent; skips the echo of our own phone bookings."""
+    tenant = await db.get_tenant_by_square_merchant_id(event.get("merchant_id", ""))
+    if not tenant or not tenant.get("square_appointments_enabled"):
+        return
+    tid = tenant["id"]
+    data = event.get("data") or {}
+    booking = (data.get("object") or {}).get("booking") or {}
+    booking_id = booking.get("id") or data.get("id", "")
+    if not booking_id:
+        return
+
+    status = (booking.get("status") or "").upper()
+    existing = await db.get_appointment_by_event_id(tid, booking_id)
+
+    # Cancellation / decline made in Square → cancel our mirror.
+    if "CANCELLED" in status or status == "DECLINED":
+        if existing and existing.get("status") != "cancelled":
+            await db.update_appointment(existing["id"], {**existing, "status": "cancelled"})
+            logger.info("Square sync: cancelled mirror appt %s (booking %s)", existing["id"], booking_id)
+        return
+
+    seg = (booking.get("appointment_segments") or [{}])[0]
+    start_at = booking.get("start_at", "")
+
+    # Existing mirror (ours or previously synced) → update time on reschedule.
+    if existing:
+        if start_at and existing.get("appointment_datetime") != start_at:
+            await db.update_appointment(existing["id"], {**existing, "appointment_datetime": start_at})
+            logger.info("Square sync: rescheduled mirror appt %s (booking %s)", existing["id"], booking_id)
+        return
+
+    # Echo of our own just-created phone booking — the tool path owns that row.
+    if "Open Lines" in (booking.get("customer_note") or ""):
+        return
+
+    # External booking (website / walk-in / Square dashboard) → create a mirror row.
+    services = {s["square_variation_id"]: s for s in await db.get_square_services(tid, bookable_only=False)}
+    staff = {s["square_team_member_id"]: s.get("display_name") for s in await db.get_square_staff(tid)}
+    svc = services.get(seg.get("service_variation_id"), {})
+
+    name, phone = "", ""
+    token = await get_access_token(tenant)
+    if token and booking.get("customer_id"):
+        try:
+            c = await get_customer(token, booking["customer_id"])
+            name = f"{c.get('given_name', '')} {c.get('family_name', '')}".strip()
+            phone = c.get("phone_number", "") or ""
+        except Exception as e:
+            logger.warning("Square sync: customer fetch failed for %s: %s", booking_id, e)
+
+    appt = {
+        "tenant_id": tid, "caller_name": name, "caller_phone": phone,
+        "service": svc.get("name") or "Appointment", "appointment_datetime": start_at,
+        "duration_minutes": seg.get("duration_minutes") or svc.get("duration_minutes") or 60,
+        "status": "confirmed", "google_event_id": booking_id, "source": "square",
+    }
+    sm = staff.get(seg.get("team_member_id"))
+    if sm:
+        appt["staff_name"] = sm
+    await db.insert_appointment(appt)
+    logger.info("Square sync: mirrored external booking %s for tenant %s", booking_id, tid)
