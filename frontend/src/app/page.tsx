@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
+import CapabilityCarousel from './components/CapabilityCarousel'
 
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
@@ -825,6 +826,11 @@ export default function Home() {
 
         </div>
       </div>
+
+      <div className="div-line" />
+
+      {/* CAPABILITIES — what the AI can do on every call */}
+      <CapabilityCarousel />
 
       {/* INTERACTIVE DEMO */}
       <div className="demo-section" id="interactive-demo">

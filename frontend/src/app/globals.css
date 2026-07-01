@@ -2014,3 +2014,61 @@ footer {
   .kb-danger-body { flex-direction: column; align-items: flex-start; }
   .kb-source-actions { flex-wrap: wrap; gap: 5px; }
 }
+
+/* ── Capability carousel (landing) ───────────────────────────────── */
+.cap-section { padding: 88px 0; }
+.cap-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; margin-bottom: 40px;
+}
+.cap-title {
+  font-size: clamp(28px, 4vw, 46px); line-height: 1.08; letter-spacing: -0.02em;
+  color: var(--text); margin: 0;
+}
+.cap-nav { display: flex; gap: 10px; flex-shrink: 0; }
+.cap-arrow {
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 1px solid var(--border-2); background: transparent;
+  color: var(--text); display: grid; place-items: center; cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+.cap-arrow:hover:not(:disabled) { background: var(--bg-3); border-color: var(--text-2); }
+.cap-arrow:disabled { opacity: 0.32; cursor: default; }
+
+.cap-track {
+  display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory;
+  scroll-padding-left: 2px; padding: 4px 2px 8px; margin: 0 -2px;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.cap-track::-webkit-scrollbar { display: none; }
+.cap-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 12px; }
+
+.cap-card {
+  flex: 0 0 320px; scroll-snap-align: start;
+  background: var(--bg-2); border: 1px solid var(--border-2); border-radius: 16px;
+  padding: 26px 24px 28px; min-height: 250px;
+  display: flex; flex-direction: column;
+}
+.cap-num {
+  font-family: var(--font-syne), sans-serif; font-size: 30px; font-weight: 700;
+  color: var(--accent-text); line-height: 1; margin-bottom: auto;
+}
+.cap-card-title {
+  font-size: 19px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em; margin: 34px 0 8px;
+}
+.cap-card-body { font-size: 14px; font-weight: 300; line-height: 1.6; color: var(--text-2); margin: 0; }
+
+.cap-dots { display: flex; gap: 8px; justify-content: center; margin-top: 28px; }
+.cap-dot {
+  width: 8px; height: 8px; border-radius: 50%; padding: 0; cursor: pointer;
+  border: none; background: var(--border-2); transition: background 0.2s, width 0.2s;
+}
+.cap-dot.active { background: var(--accent); width: 22px; border-radius: 4px; }
+
+@media (max-width: 820px) {
+  .cap-section { padding: 64px 0; }
+  .cap-head { flex-direction: column; align-items: flex-start; gap: 18px; margin-bottom: 28px; }
+  .cap-nav { display: none; }
+  .cap-card { flex-basis: 80vw; min-height: 210px; }
+}
