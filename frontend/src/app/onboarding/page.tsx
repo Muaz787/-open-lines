@@ -680,10 +680,10 @@ export default function OnboardingPage() {
                 >
                   <div className="upload-zone-icon">📎</div>
                   <div className="upload-zone-text">Drop files here or click to browse</div>
-                  <div className="upload-zone-hint">PDF · Word · Excel · Plain text</div>
+                  <div className="upload-zone-hint">PDF · Word · Excel · Images · Text — scanned files OK</div>
                 </div>
                 <input ref={fileInputRef} type="file" multiple
-                  accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md,.csv"
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md,.csv,.png,.jpg,.jpeg,.webp"
                   style={{ display: 'none' }} onChange={e => addFiles(e.target.files)} />
                 {files.length > 0 && (
                   <div className="file-list">

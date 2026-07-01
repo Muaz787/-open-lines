@@ -427,7 +427,7 @@ function KnowledgeBasePage() {
                 >
                   <input
                     ref={fileInputRef} type="file" multiple
-                    accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv"
+                    accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv,.png,.jpg,.jpeg,.webp"
                     style={{ display: 'none' }}
                     onChange={e => e.target.files && handleFiles(e.target.files)}
                   />
@@ -439,7 +439,7 @@ function KnowledgeBasePage() {
                     {uploadLoading ? 'Uploading…' : 'Drop files or click to browse'}
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--db-muted)', marginTop: 4 }}>
-                    PDF, Word, Excel, TXT, CSV · max 10 MB each
+                    PDF, Word, Excel, images, TXT, CSV · scanned files supported
                   </div>
                 </div>
                 {uploadResults.length > 0 && (

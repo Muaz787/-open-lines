@@ -251,14 +251,68 @@ def delete_legacy_website_vectors(namespace: str, slug_or_tenant_ids: list[str])
             return
 
 
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+CHARS_PER_PAGE_EST = 2500  # rough per-page text budget for non-paged formats
+
+
+async def extract_document(
+    filename: str, content: bytes, *, max_pages: int, ocr_pages: int,
+) -> dict:
+    """Extract text with per-plan page/OCR caps. Returns
+    {text, pages, truncated, ocr_used}. Scanned PDFs and images route to Mistral OCR."""
+    from services import ocr
+    name = (filename or "").lower()
+    truncated = False
+    ocr_used = False
+    pages_total: int | None = None
+
+    if name.endswith(".pdf"):
+        text, pages_total, truncated = _extract_pdf_capped(content, max_pages)
+        if len(text.strip()) < 40:  # no usable text layer → likely scanned → OCR
+            ocr_text = await ocr.ocr_document(content, filename, max_pages=ocr_pages)
+            if ocr_text.strip():
+                text = ocr_text
+                ocr_used = True
+                truncated = bool(pages_total and pages_total > ocr_pages)
+    elif name.endswith(IMAGE_EXTS):
+        text = await ocr.ocr_document(content, filename, max_pages=1)
+        ocr_used = True
+        pages_total = 1
+    elif name.endswith(".docx"):
+        text = _extract_docx(content)
+    elif name.endswith(".xlsx"):
+        text = _extract_xlsx(content)
+    elif name.endswith(".xls"):
+        text = _extract_xls(content)
+    elif name.endswith((".txt", ".md", ".csv")):
+        text = content.decode("utf-8", errors="ignore")
+    else:
+        ext = name.rsplit(".", 1)[-1] if "." in name else "unknown"
+        raise ValueError(
+            f"Unsupported file type .{ext}. Accepted: PDF, Word (.docx), "
+            f"Excel (.xlsx/.xls), images (.png/.jpg), plain text (.txt/.csv/.md)"
+        )
+
+    # Char safety cap for non-paged / very long text (scales with the plan's page cap).
+    char_cap = max_pages * CHARS_PER_PAGE_EST
+    if len(text) > char_cap:
+        text = text[:char_cap]
+        truncated = True
+
+    return {"text": text, "pages": pages_total, "truncated": truncated, "ocr_used": ocr_used}
+
+
 def extract_text(filename: str, content: bytes) -> str:
+    """Sync text extraction (no OCR, no page cap) — kept for non-upload callers."""
     name = filename.lower()
     if name.endswith(".pdf"):
         return _extract_pdf(content)
     elif name.endswith(".docx"):
         return _extract_docx(content)
-    elif name.endswith(".xlsx") or name.endswith(".xls"):
+    elif name.endswith(".xlsx"):
         return _extract_xlsx(content)
+    elif name.endswith(".xls"):
+        return _extract_xls(content)
     elif name.endswith((".txt", ".md", ".csv")):
         return content.decode("utf-8", errors="ignore")
     else:
@@ -272,6 +326,33 @@ def _extract_pdf(content: bytes) -> str:
     reader = PdfReader(io.BytesIO(content))
     pages = [page.extract_text() or "" for page in reader.pages]
     return "\n\n".join(p for p in pages if p.strip())
+
+
+def _extract_pdf_capped(content: bytes, max_pages: int) -> tuple[str, int, bool]:
+    """Extract the text layer from the first `max_pages` pages.
+    Returns (text, total_pages, truncated)."""
+    import io
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(content))
+    total = len(reader.pages)
+    use = min(total, max(1, max_pages))
+    pages = [reader.pages[i].extract_text() or "" for i in range(use)]
+    return "\n\n".join(p for p in pages if p.strip()), total, total > max_pages
+
+
+def _extract_xls(content: bytes) -> str:
+    """Legacy .xls (BIFF) via xlrd — openpyxl only reads .xlsx."""
+    import xlrd
+    book = xlrd.open_workbook(file_contents=content)
+    rows: list[str] = []
+    for sheet in book.sheets():
+        rows.append(f"[Sheet: {sheet.name}]")
+        for r in range(sheet.nrows):
+            cells = [str(sheet.cell_value(r, ci)).strip() for ci in range(sheet.ncols)]
+            cells = [c for c in cells if c]
+            if cells:
+                rows.append(" | ".join(cells))
+    return "\n".join(rows)
 
 
 def _extract_docx(content: bytes) -> str:

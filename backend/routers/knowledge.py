@@ -5,7 +5,7 @@ from typing import Annotated
 from pydantic import BaseModel
 
 from db import supabase as db
-from services import knowledge
+from services import knowledge, kb_limits
 from services.provisioning import rebuild_and_push_system_prompt
 from services.security import verify_tenant_owner, scan_for_injection, validate_public_url
 
@@ -22,8 +22,7 @@ async def _reprompt_after_change(tenant: dict) -> None:
     except Exception as e:
         logger.warning("Reprompt after KB change failed for tenant %s (non-fatal): %s", tenant["id"], e)
 
-MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB per file
-MAX_FILES = 10
+MAX_FILES = kb_limits.MAX_FILES_PER_UPLOAD  # per upload request (file size/pages are per-plan)
 
 
 class TextRequest(BaseModel):
@@ -76,6 +75,7 @@ async def upload_documents(
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     namespace: str = tenant["pinecone_namespace"]
+    limits = kb_limits.kb_limits(tenant)
 
     if len(files) > MAX_FILES:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} files per upload")
@@ -85,18 +85,22 @@ async def upload_documents(
         fname = file.filename or "unknown"
         content = await file.read()
 
-        if len(content) > MAX_FILE_BYTES:
-            results.append({"file": fname, "status": "skipped", "reason": "exceeds 10 MB limit"})
+        if len(content) > limits["max_bytes"]:
+            results.append({"file": fname, "status": "skipped",
+                            "reason": f"exceeds your plan's {limits['max_file_mb']} MB per-file limit"})
             continue
 
         try:
-            text = knowledge.extract_text(fname, content)
+            doc = await knowledge.extract_document(
+                fname, content, max_pages=limits["max_pages"], ocr_pages=limits["ocr_pages"])
         except ValueError as e:
             results.append({"file": fname, "status": "error", "reason": str(e)})
             continue
 
+        text = doc["text"]
         if not text.strip():
-            results.append({"file": fname, "status": "skipped", "reason": "no readable text found"})
+            results.append({"file": fname, "status": "skipped",
+                            "reason": "no readable text found (scanned files need OCR)"})
             continue
 
         try:
@@ -108,8 +112,15 @@ async def upload_documents(
         try:
             entry = await db.insert_kb_entry(tenant_id, "file", fname)
             vectors = await knowledge.embed_and_store(namespace, text, tenant_id, source_id=entry["id"])
-            results.append({"file": fname, "status": "ok", "vectors_stored": vectors})
-            logger.info("Uploaded %s for tenant %s → %d vectors", fname, tenant_id, vectors)
+            r: dict = {"file": fname, "status": "ok", "vectors_stored": vectors}
+            if doc.get("ocr_used"):
+                r["ocr_used"] = True
+            if doc.get("truncated"):
+                n = limits["ocr_pages"] if doc.get("ocr_used") else limits["max_pages"]
+                r["warning"] = f"Only the first {n} pages were added — upgrade for larger documents."
+            results.append(r)
+            logger.info("Uploaded %s for tenant %s → %d vectors (ocr=%s truncated=%s)",
+                        fname, tenant_id, vectors, doc.get("ocr_used"), doc.get("truncated"))
         except Exception as e:
             logger.error("Failed to embed %s for tenant %s: %s", fname, tenant_id, e)
             results.append({"file": fname, "status": "error", "reason": "embedding failed"})
