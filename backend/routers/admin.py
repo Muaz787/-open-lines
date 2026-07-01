@@ -428,9 +428,17 @@ async def system_health(x_admin_key: str | None = Header(None)):
             return ("WhatsApp", "ok", "Sender + 3 templates configured")
         return ("WhatsApp", "warning", f"Sender set; templates ready: {', '.join(have) or 'none'} (pending approval)")
 
+    async def _chk_mistral() -> tuple:
+        # OCR is optional (scanned-doc KB parsing) — unset is a warning, not an error.
+        key = os.getenv("MISTRAL_API_KEY")
+        if not key:
+            return ("Mistral OCR", "warning", "Not configured — scanned-doc OCR disabled")
+        return await _ping("Mistral OCR", "https://api.mistral.ai/v1/models",
+                           headers={"Authorization": f"Bearer {key}"})
+
     pinged = await asyncio.gather(
         _chk_supabase(), _chk_twilio(), _chk_stripe(), _chk_resend(),
-        _chk_pinecone(), _chk_crawl(), _chk_cron(),
+        _chk_pinecone(), _chk_crawl(), _chk_cron(), _chk_mistral(),
     )
     checks = [{"name": n, "status": s, "message": m} for (n, s, m) in pinged]
     for n, s, m in [
