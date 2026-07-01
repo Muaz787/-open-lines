@@ -597,15 +597,21 @@ export default function Home() {
                 )}
               </button>
 
-              <div style={{ textAlign: 'center', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Want to hear it live? Call our AI agent directly:</p>
-                <a href="tel:+16475581427" style={{
-                  fontSize: 15, fontWeight: 600, color: 'var(--text)',
-                  letterSpacing: '0.02em', textDecoration: 'none',
-                }}>
-                  +1 (647) 558-1427
-                </a>
-              </div>
+              {DEMO_PHONE && (
+                <div style={{ textAlign: 'center', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+                  <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Want to hear it live? Call our AI agent directly:</p>
+                  <a
+                    href={`tel:${DEMO_PHONE}`}
+                    onClick={() => trackEvent('demo_call_clicked', { location: 'interactive_demo', ...getUtmParams() })}
+                    style={{
+                      fontSize: 15, fontWeight: 600, color: 'var(--text)',
+                      letterSpacing: '0.02em', textDecoration: 'none',
+                    }}
+                  >
+                    {formatPhone(DEMO_PHONE)}
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
