@@ -263,10 +263,20 @@ async def _handle_assistant_request(msg: dict) -> dict:
         except Exception as e:
             logger.warning("assistant-request: caller lookup failed for tenant %s: %s", tenant_id, e)
 
+    # Booking is available via ANY connected provider — Google, Microsoft Outlook,
+    # or Square Appointments. (Previously only Google was checked here, so Outlook /
+    # Square-only tenants silently lost their booking tools + calendar note on the
+    # per-call override.) Mirrors vapi.build_all_tools / provisioning._has_booking.
+    has_calendar = bool(
+        tenant.get("google_refresh_token")
+        or tenant.get("microsoft_refresh_token")
+        or tenant.get("square_appointments_enabled")
+    )
+
     # Assemble system prompt — always include _CALLER_LOOKUP_NOTE so returning-caller
     # and rescheduling instructions are present even when the static Vapi config is stale.
     system_prompt = base_prompt + date_note + caller_context
-    if tenant.get("google_refresh_token"):
+    if has_calendar:
         system_prompt += _CALENDAR_NOTE + schedule_note
     system_prompt += _CALLER_LOOKUP_NOTE
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
@@ -275,7 +285,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
     system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
-    has_calendar = bool(tenant.get("google_refresh_token"))
     tools = build_calendar_tools(tenant_id) if has_calendar else [build_caller_lookup_tool(tenant_id)]
 
     logger.info(
