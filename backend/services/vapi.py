@@ -171,36 +171,27 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
         "backgroundSound": "off",
         "backchannelingEnabled": True,
         "responseDelaySeconds": 0,
-        "numWordsToInterruptAssistant": 2,
         "silenceTimeoutSeconds": 10,
+        "startSpeakingPlan": START_SPEAKING_PLAN,
+        "stopSpeakingPlan": STOP_SPEAKING_PLAN,
         "endCallFunctionEnabled": True,
         "endCallPhrases": [
             "goodbye",
             "bye bye",
             "bye for now",
         ],
-        "transcriber": {
-            "provider": "deepgram",
-            "model": "nova-2",
-            "language": "en",
-            "smartFormat": True,
-            "endpointing": 400,
-        },
+        "transcriber": dict(RECEPTIONIST_TRANSCRIBER),
         "model": {
             "provider": "openai",
             "model": "gpt-4.1-mini",
-            "temperature": 0.7,
+            "temperature": 0.8,
             "tools": tools,
             "messages": [
-                {"role": "system", "content": ensure_safety_preamble(system_prompt + _CALLER_LOOKUP_NOTE)},
+                {"role": "system", "content": ensure_receptionist_style(
+                    ensure_safety_preamble(system_prompt + _CALLER_LOOKUP_NOTE))},
             ],
         },
-        "voice": {
-            "provider": "openai",
-            "voiceId": "nova",
-            "speed": 1.0,
-            "fillerInjectionEnabled": True,
-        },
+        "voice": {**RECEPTIONIST_VOICE, "fillerInjectionEnabled": True},
         **server_block(f"{APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
 
@@ -348,6 +339,74 @@ def ensure_safety_preamble(prompt: str) -> str:
     return SAFETY_PREAMBLE + prompt
 
 
+# ── How the assistant SOUNDS ────────────────────────────────────────────────
+# Appended to every system prompt so the AI behaves like a warm, experienced
+# human receptionist rather than an assistant reading responses. Kept concise —
+# models follow tight guidance better than a wall of rules. Behaviour/voice only;
+# never changes booking, payment, calendar, or business logic.
+RECEPTIONIST_STYLE = """
+
+HOW YOU SPEAK — talk like a real receptionist
+You're a warm, experienced human receptionist for this business — calm, friendly and genuinely helpful. Never sound scripted or like you're reading responses.
+- Speak like a person: short, natural sentences, everyday words, and contractions ("I'll", "we're", "that's", "you're", "no problem").
+- Keep replies brief — usually one sentence, two at most. Don't over-explain, don't repeat yourself, and don't restate the caller's name or the booking details more than once.
+- Vary your wording every single time. Rotate acknowledgements naturally — "Sure", "Of course", "No problem", "Perfect", "Got it", "Sounds good", "Great", "One sec" — and never lean on stiff repeats like "Certainly." or "Absolutely." call after call.
+- Ask ONE thing at a time and react to the answer before the next question, the way a real conversation flows. Never fire off a list of questions at once.
+- Before you look something up or book, bridge the pause naturally and briefly — "Let me take a quick look", "One moment", "Let me pull that up". Never mention tools, systems, software, databases, APIs, or "processing".
+- Ask for details conversationally: "Can I get your name?" / "What's the best number to reach you on?" — not "Please provide your phone number."
+- Confirm naturally and just once, then move on: "Perfect, you're all booked — that's Tuesday at 2 for four, under Emily."
+- Close warmly and vary it: "Thanks for calling", "See you soon", "Take care", "Enjoy your day" — not a robotic "Have a nice day" every time.
+- Use light fillers occasionally ("Alright", "Okay", "Got it") — sparingly, not every line.
+- Match the caller's energy: upbeat if they're excited, quick and efficient if they're in a hurry; if they're frustrated, acknowledge it briefly ("I'm sorry about that — let's get it sorted") without overdoing the empathy.
+- If the caller starts talking, stop immediately and listen, then pick up from where they took the conversation — never talk over them or restart your sentence."""
+
+_STYLE_MARKER = "HOW YOU SPEAK — talk like a real receptionist"
+
+
+def ensure_receptionist_style(prompt: str) -> str:
+    """Append the receptionist voice/manner guidance (idempotent). Placed last so
+    it's the freshest guidance the model sees; safety preamble stays first."""
+    if prompt and _STYLE_MARKER in prompt:
+        return prompt
+    return (prompt or "") + RECEPTIONIST_STYLE
+
+
+# ── Voice / speech configuration (tuned for natural receptionist cadence) ────
+# ElevenLabs Turbo v2.5: warm, expressive, low-latency — the closest to a real
+# receptionist among Vapi's providers. Swap `provider`/`voiceId`/`model` to
+# Cartesia ("cartesia", sonic-2) for lower cost/latency if margins require it.
+RECEPTIONIST_VOICE = {
+    "provider": "11labs",
+    "voiceId": "EXAVITQu4vr4xnSDxMaL",   # ElevenLabs "Sarah" — warm, professional
+    "model": "eleven_turbo_v2_5",
+    "stability": 0.5,          # natural expressiveness without wobble
+    "similarityBoost": 0.75,
+    "style": 0.35,             # a touch of warmth/inflection
+    "useSpeakerBoost": True,
+    "speed": 1.0,
+}
+RECEPTIONIST_TRANSCRIBER = {
+    "provider": "deepgram",
+    "model": "nova-3",          # newer than nova-2 — better accuracy on names/numbers
+    "language": "en",
+    "smartFormat": True,
+    "endpointing": 300,
+}
+# Smart turn-detection: waits a beat and uses a model to tell when the caller has
+# actually finished, so the AI stops cutting people off and replies faster.
+START_SPEAKING_PLAN = {
+    "waitSeconds": 0.4,
+    "smartEndpointingPlan": {"provider": "livekit"},
+}
+# Barge-in: the AI stops the instant the caller speaks, then waits a beat before
+# resuming — so callers can interrupt naturally.
+STOP_SPEAKING_PLAN = {
+    "numWords": 2,
+    "voiceSeconds": 0.2,
+    "backoffSeconds": 1.0,
+}
+
+
 # Spoken at the very start of every call so callers know they've reached an
 # automated assistant (not a specific human) and the call may be recorded —
 # knowledge/consent for PIPEDA. Says "virtual receptionist" rather than "AI":
@@ -484,6 +543,10 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 },
             },
             "server": _tool_server(f"{base}/availability", 20),
+            "messages": [
+                {"type": "request-start", "content": "Let me take a quick look at the calendar for you."},
+                {"type": "request-response-delayed", "content": "Still checking — just one moment.", "timingMilliseconds": 2500},
+            ],
         },
         {
             "type": "function",
@@ -544,6 +607,10 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 },
             },
             "server": _tool_server(f"{base}/book", 35),
+            "messages": [
+                {"type": "request-start", "content": "Perfect — let me lock that in for you."},
+                {"type": "request-response-delayed", "content": "Just finishing that up.", "timingMilliseconds": 3000},
+            ],
         },
         {
             "type": "function",
@@ -694,7 +761,7 @@ async def patch_assistant_tools(tenant: dict) -> None:
             base += _CALENDAR_NOTE
         if has_deposits:
             base += _DEPOSIT_NOTE
-        messages[0]["content"] = base
+        messages[0]["content"] = ensure_receptionist_style(base)
 
     await update_assistant(
         assistant_id,
@@ -702,7 +769,7 @@ async def patch_assistant_tools(tenant: dict) -> None:
             "model": {
                 "provider": "openai",
                 "model": "gpt-4.1-mini",
-                "temperature": 0.7,
+                "temperature": 0.8,
                 "tools": tools,
                 "messages": messages,
             }

@@ -270,8 +270,9 @@ async def _handle_assistant_request(msg: dict) -> dict:
         system_prompt += _CALENDAR_NOTE + schedule_note
     system_prompt += _CALLER_LOOKUP_NOTE
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
-    # even if this tenant's stored prompt predates it.
-    system_prompt = ensure_safety_preamble(system_prompt)
+    # even if this tenant's stored prompt predates it. The receptionist voice/manner
+    # guidance is applied on every call so ALL tenants (incl. pre-existing) get it.
+    system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
     has_calendar = bool(tenant.get("google_refresh_token"))
@@ -298,10 +299,18 @@ async def _handle_assistant_request(msg: dict) -> dict:
         "model": {
             "provider": "openai",
             "model": "gpt-4.1-mini",
-            "temperature": 0.7,
+            "temperature": 0.8,
             "messages": [{"role": "system", "content": system_prompt}],
             "tools": tools,
         },
+        # Natural voice + turn-taking pushed on EVERY call so all tenants (incl.
+        # pre-existing assistants provisioned with the old OpenAI voice) get the
+        # upgraded receptionist voice and human-like interruption/endpointing live.
+        "voice": {**vapi_svc.RECEPTIONIST_VOICE, "fillerInjectionEnabled": True},
+        "transcriber": dict(vapi_svc.RECEPTIONIST_TRANSCRIBER),
+        "startSpeakingPlan": vapi_svc.START_SPEAKING_PLAN,
+        "stopSpeakingPlan": vapi_svc.STOP_SPEAKING_PLAN,
+        "backchannelingEnabled": True,
         # Always inject the correct server config (URL + X-Vapi-Secret when set) so
         # end-of-call-report and all post-call events reach our backend authenticated,
         # regardless of what stale URL (old ngrok, localhost) may be stored on the

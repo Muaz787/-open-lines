@@ -188,8 +188,9 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
     model_payload: dict = {
         "provider": "openai",
         "model": "gpt-4.1-mini",
-        "temperature": 0.7,
-        "messages": [{"role": "system", "content": vapi.ensure_safety_preamble(system_prompt)}],
+        "temperature": 0.8,
+        "messages": [{"role": "system", "content": vapi.ensure_receptionist_style(
+            vapi.ensure_safety_preamble(system_prompt))}],
         "tools": tools,
     }
 
