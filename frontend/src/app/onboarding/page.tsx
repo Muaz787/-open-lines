@@ -178,7 +178,6 @@ export default function OnboardingPage() {
   const [analyzeIndex, setAnalyzeIndex] = useState(0)
   const [result, setResult]         = useState<ProvisionResult | null>(null)
   const [error, setError]           = useState<string | null>(null)
-  const [sampleAvailable, setSampleAvailable] = useState(true)
   const fileInputRef                = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -878,20 +877,6 @@ export default function OnboardingPage() {
                   📞 Call My AI Now
                 </button>
               </a>
-
-              {sampleAvailable && (
-                <div style={{ margin: '12px 0' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>
-                    Or hear a sample conversation:
-                  </div>
-                  {/* Drop a file at frontend/public/sample-call.mp3 to enable this player */}
-                  <audio controls preload="none" style={{ width: '100%', height: 36 }}
-                    onPlay={() => trackEvent('first_test_call_started', { method: 'sample', tenant_id: result.tenant_id })}
-                    onError={() => setSampleAvailable(false)}>
-                    <source src="/sample-call.mp3" type="audio/mpeg" />
-                  </audio>
-                </div>
-              )}
 
               <Link href={`/dashboard/${result.tenant_id}`}>
                 <button className="btn-dashboard" style={{ marginTop: 8 }}>View your dashboard →</button>
