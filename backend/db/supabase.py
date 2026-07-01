@@ -1,9 +1,12 @@
 import os
+import logging
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 _client: Client | None = None
 
@@ -23,14 +26,53 @@ def get_client() -> Client:
 # Auth
 # ---------------------------------------------------------------------------
 
+def _find_auth_user_by_email(client, email: str):
+    """Best-effort lookup of an existing auth user by email (paginated)."""
+    target = (email or "").strip().lower()
+    if not target:
+        return None
+    try:
+        page = 1
+        while page <= 25:  # safety bound
+            resp = client.auth.admin.list_users(page=page, per_page=200)
+            users = resp if isinstance(resp, list) else getattr(resp, "users", []) or []
+            for u in users:
+                if (getattr(u, "email", "") or "").lower() == target:
+                    return u
+            if len(users) < 200:
+                break
+            page += 1
+    except Exception as e:
+        logger.warning("auth user lookup by email failed: %s", e)
+    return None
+
+
 async def create_auth_user(email: str, password: str, tenant_id: str) -> str:
-    res = get_client().auth.admin.create_user({
-        "email": email,
-        "password": password,
-        "email_confirm": True,
-        "user_metadata": {"tenant_id": tenant_id},
-    })
-    return res.user.id
+    """Create the tenant's owner account. If the email already exists as an
+    ORPHAN account (no tenant_id — e.g. an admin-only or abandoned signup), link
+    it to this tenant instead of failing. Never resets an existing password, and
+    never re-points an account that already owns a tenant."""
+    client = get_client()
+    try:
+        res = client.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {"tenant_id": tenant_id},
+        })
+        return res.user.id
+    except Exception as create_err:
+        existing = _find_auth_user_by_email(client, email)
+        if not existing:
+            raise
+        meta = dict(getattr(existing, "user_metadata", None) or {})
+        if meta.get("tenant_id"):
+            # Already owns a tenant — refuse to hijack it.
+            raise RuntimeError(f"Email already registered to another account: {email}") from create_err
+        meta["tenant_id"] = tenant_id
+        client.auth.admin.update_user_by_id(existing.id, {"user_metadata": meta})
+        logger.info("Linked existing orphan auth user to tenant %s", tenant_id)
+        return existing.id
 
 
 # ---------------------------------------------------------------------------
