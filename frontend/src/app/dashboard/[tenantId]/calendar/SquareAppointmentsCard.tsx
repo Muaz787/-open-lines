@@ -63,10 +63,20 @@ export default function SquareAppointmentsCard({ tenantId }: { tenantId: string 
 
   useEffect(() => { load() }, [load])
 
+  // Returned from the Square OAuth flow (origin=calendar) — confirm + clear the param.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const sq = p.get('square')
+    if (sq === 'connected') flash('Square connected — sync your services & staff below.')
+    else if (sq === 'error') flash('Square connection failed. Please try again.')
+    if (sq) window.history.replaceState({}, '', window.location.pathname)
+  }, [])
+
   const connect = async () => {
     setBusy(true)
     try {
-      const r = await authedFetch(`${API}/square-connect/onboard/${tenantId}`, { method: 'POST' })
+      // origin=calendar → OAuth returns the user to this page, not Deposit Collection.
+      const r = await authedFetch(`${API}/square-connect/onboard/${tenantId}?origin=calendar`, { method: 'POST' })
       if (!r.ok) { flash((await r.json().catch(() => ({}))).detail || 'Connect failed'); return }
       const { url } = await r.json()
       window.location.href = url
@@ -113,7 +123,7 @@ export default function SquareAppointmentsCard({ tenantId }: { tenantId: string 
           </div>
           <div style={{ fontSize: 12, color: 'var(--db-muted)', lineHeight: 1.5, maxWidth: 540 }}>
             Let the AI read availability and book directly into your existing Square Appointments
-            calendar — no separate calendar to manage. Uses the same Square connection as deposits.
+            calendar — no separate calendar to manage.
           </div>
         </div>
         {hasServices && (
@@ -127,10 +137,16 @@ export default function SquareAppointmentsCard({ tenantId }: { tenantId: string 
 
       {/* Not connected */}
       {!status?.connected && (
-        <button className="db-btn db-btn--dark" style={{ fontSize: 13, marginTop: 14 }}
-          onClick={connect} disabled={busy}>
-          {busy ? 'Opening Square…' : 'Connect Square'}
-        </button>
+        <div style={{ marginTop: 14 }}>
+          <button className="db-btn db-btn--dark" style={{ fontSize: 13 }}
+            onClick={connect} disabled={busy}>
+            {busy ? 'Opening Square…' : 'Connect Square'}
+          </button>
+          <div style={{ fontSize: 11, color: 'var(--db-muted)', marginTop: 8, lineHeight: 1.5 }}>
+            One Square connection powers scheduling and (optionally) deposits. Connecting here won&apos;t
+            turn on deposit collection — that stays a separate choice.
+          </div>
+        </div>
       )}
 
       {/* Connected but nothing synced yet */}

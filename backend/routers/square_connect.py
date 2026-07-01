@@ -21,12 +21,23 @@ def _payments_page(tenant_id: str) -> str:
     return f"{_FRONTEND}/dashboard/{tenant_id}/payments"
 
 
+def _dest_page(tenant_id: str, origin: str = "payments") -> str:
+    """Return the page the user should land back on after OAuth — the one they
+    started from (calendar for Square Appointments, else Deposit Collection)."""
+    page = "calendar" if origin == "calendar" else "payments"
+    return f"{_FRONTEND}/dashboard/{tenant_id}/{page}"
+
+
 # ---------------------------------------------------------------------------
 # POST /square-connect/onboard/{tenant_id}
 # ---------------------------------------------------------------------------
 
 @router.post("/onboard/{tenant_id}")
-async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+async def onboard(
+    tenant_id: str,
+    origin: str = "payments",  # where the connect started: 'payments' | 'calendar'
+    authorization: Annotated[str | None, Header()] = None,
+):
     """Generate Square OAuth authorize URL and return it for redirect."""
     await verify_tenant_owner(tenant_id, authorization)
     try:
@@ -40,15 +51,18 @@ async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()]
     plan   = (tenant.get("subscription_plan") or "").lower()
     status = tenant.get("subscription_status") or ""
     if plan not in ("pro", "business") or status not in ("active", "trialing", "canceling"):
-        raise HTTPException(status_code=403, detail="Square payments require a Pro or Business plan")
+        raise HTTPException(status_code=403, detail="Square requires a Pro or Business plan")
 
+    origin = "calendar" if origin == "calendar" else "payments"
     state = secrets.token_urlsafe(24)
     try:
         await db.update_tenant(tenant_id, {"square_oauth_state": state})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    url = sq_svc.build_oauth_url(tenant_id, state=f"{tenant_id}:{state}")
+    # Encode the origin in the OAuth state so the callback returns the user to
+    # the page they started from. Nonce (token_urlsafe) never contains ':'.
+    url = sq_svc.build_oauth_url(tenant_id, state=f"{tenant_id}:{state}:{origin}")
     return {"url": url}
 
 
@@ -69,10 +83,12 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
     if not code or not state:
         return RedirectResponse(url=f"{_FRONTEND}/?square=error")
 
-    parts = state.split(":", 1)
-    if len(parts) != 2:
+    parts = state.split(":", 2)
+    if len(parts) < 2:
         return RedirectResponse(url=f"{_FRONTEND}/?square=error")
-    tenant_id, received_state = parts
+    tenant_id, received_state = parts[0], parts[1]
+    origin = parts[2] if len(parts) > 2 else "payments"
+    dest = _dest_page(tenant_id, origin)
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -85,13 +101,13 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
     stored_state = tenant.get("square_oauth_state", "")
     if not stored_state or not secrets.compare_digest(stored_state, received_state):
         logger.warning("Square OAuth: state mismatch for tenant %s", tenant_id)
-        return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=error")
+        return RedirectResponse(url=f"{dest}?square=error")
 
     try:
         token_data = await sq_svc.exchange_code(code)
     except Exception as e:
         logger.error("Square OAuth token exchange failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=error")
+        return RedirectResponse(url=f"{dest}?square=error")
 
     access_token  = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
@@ -100,7 +116,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
 
     if not access_token:
         logger.error("Square OAuth: no access_token in response for tenant %s", tenant_id)
-        return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=error")
+        return RedirectResponse(url=f"{dest}?square=error")
 
     location_id = ""
     currency    = ""
@@ -131,7 +147,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         await db.update_tenant(tenant_id, update)
     except Exception as e:
         logger.error("Square OAuth: DB update failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=error")
+        return RedirectResponse(url=f"{dest}?square=error")
 
     # Re-patch Vapi assistant so the deposit tool appears
     try:
@@ -148,8 +164,8 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
     except Exception as e:
         logger.warning("Square OAuth: appointments sync kickoff failed for %s: %s", tenant_id, e)
 
-    logger.info("Square Connect completed for tenant %s merchant %s", tenant_id, merchant_id)
-    return RedirectResponse(url=f"{_payments_page(tenant_id)}?square=connected")
+    logger.info("Square Connect completed for tenant %s merchant %s (origin=%s)", tenant_id, merchant_id, origin)
+    return RedirectResponse(url=f"{dest}?square=connected")
 
 
 # ---------------------------------------------------------------------------
