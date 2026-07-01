@@ -142,11 +142,13 @@ Return valid JSON only with these keys:
   "service_areas": ["cities/regions/neighbourhoods served, if stated"],
   "faqs": [{{"q": "question a caller might ask", "a": "the answer from the site"}}],
   "policies": ["warranty/guarantee, labour/parts, cancellation, emergency/same-day, payment, or other notable policies, each as one line"],
-  "behavioral_instructions": "5-8 newline-separated lines telling the AI HOW TO BEHAVE on calls for THIS business (book/qualify, what details to collect, when to take a message, how to handle pricing-by-diagnosis). Imperative. Behaviour only — NOT facts.",
+  "behavioral_instructions": "5-8 newline-separated lines telling the AI HOW TO BEHAVE on calls for THIS business (book/qualify, what details to collect, when to take a message, how to handle pricing-by-diagnosis). Imperative. Behaviour only — NOT facts. When mentioning booking, say the appointment goes into the business's own calendar (never 'the customer's calendar'). For transparency, phrase it as letting callers know they've reached the business's virtual/automated receptionist — do NOT use the bare term 'AI'.",
   "business_brief": "A detailed, factual brief about the business written as plain text with short labelled sections. Include ONLY what the site supports, drawn from: Services (with brief descriptions), Service areas, Hours, Contact (phone/email), Booking process, Pricing, Warranty/guarantee, Emergency/same-day availability, Brands served, Special programs, Key policies, and Common caller questions with answers. Be specific and concise. This is FACTS the AI will answer from."
 }}
 
-industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contractor/renovation -> builder; medical/physio clinic -> clinic; dentist/orthodontist -> dental; lawyer -> legal; salon/spa/barber -> beauty; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; flight school / aviation / driving school / tutoring / other services -> custom; if none fit -> custom."""
+Classify by what THIS business itself does for its OWN customers. Ignore industries it merely mentions as examples, case studies, integrations, or client verticals it serves — e.g. a software/SaaS/marketing/agency site that lists industries it helps is 'custom', NOT those industries. Set industry_confidence honestly: use below 0.5 when the site is generic, ambiguous, or is itself a tool/platform rather than a local service business.
+
+industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contractor/renovation -> builder; medical/physio clinic -> clinic; dentist/orthodontist -> dental; lawyer -> legal; salon/spa/barber -> beauty; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; flight school / aviation / driving school / tutoring / software / SaaS / other services -> custom; if none fit -> custom."""
 
     try:
         resp = await client.chat.completions.create(

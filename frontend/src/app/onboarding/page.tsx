@@ -76,18 +76,22 @@ const COUNTRIES: Country[] = [
 
 function detectCountry(): string {
   try {
+    // Timezone is the reliable geographic signal. Device language must NOT take
+    // precedence — many Canadian (and other) devices are set to "en-US", which
+    // would otherwise mis-detect them as the US.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    if (/Toronto|Montreal|Vancouver|Edmonton|Winnipeg|Halifax|Regina|St_Johns|Moncton/.test(tz)) return 'CA'
+    if (/Dublin/.test(tz)) return 'IE'
+    if (/London/.test(tz)) return 'GB'
+    if (tz.startsWith('Australia/')) return 'AU'
+    if (/Auckland|Wellington|Christchurch/.test(tz)) return 'NZ'
+    if (tz.startsWith('America/')) return 'US'
+    // Fall back to the device-language region only if timezone was inconclusive.
     const lang = navigator.language ?? ''
     if (lang.includes('-')) {
       const cc = lang.split('-').pop()?.toUpperCase() ?? ''
       if (COUNTRIES.some(c => c.code === cc)) return cc
     }
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    if (/Toronto|Vancouver|Edmonton|Winnipeg|Halifax|Regina|St_Johns/.test(tz)) return 'CA'
-    if (tz.startsWith('America/')) return 'US'
-    if (/Dublin/.test(tz)) return 'IE'
-    if (/London/.test(tz)) return 'GB'
-    if (tz.startsWith('Australia/')) return 'AU'
-    if (/Auckland|Wellington|Christchurch/.test(tz)) return 'NZ'
   } catch {}
   return 'CA'
 }
@@ -270,7 +274,10 @@ export default function OnboardingPage() {
       setForm(f => ({
         ...f,
         business_name:      f.business_name || d.business_name || '',
-        industry:           d.industry || 'custom',
+        // Only pre-select the industry when the classifier is confident; otherwise
+        // fall back to 'custom' (prompts the user to describe/pick) rather than
+        // asserting a wrong vertical.
+        industry:           d.industry && (d.industry_confidence ?? 0) >= 0.6 ? d.industry : 'custom',
         country:            d.country && COUNTRIES.some(c => c.code === d.country) ? d.country : f.country,
         extra_instructions: f.extra_instructions || d.suggested_instructions || '',
       }))
@@ -587,9 +594,11 @@ export default function OnboardingPage() {
                 <select className="form-input" name="industry" value={form.industry} onChange={handleChange}>
                   {INDUSTRIES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
                 </select>
-                {detected?.scrape_ok && detected.industry_confidence > 0 && (
+                {detected?.scrape_ok && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                    Auto-detected — change if it&rsquo;s not quite right.
+                    {(detected.industry_confidence ?? 0) >= 0.6
+                      ? 'Auto-detected — change if it’s not quite right.'
+                      : 'We couldn’t confidently detect your industry — please pick the closest match.'}
                   </div>
                 )}
               </div>
