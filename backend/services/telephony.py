@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from dotenv import load_dotenv
 from twilio.rest import Client
@@ -50,10 +51,20 @@ _COUNTRY_CONFIG: dict[str, dict] = {
 SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 
 
+def area_code_from_phone(phone: str) -> str:
+    """Extract the North American (NANP) area code from a phone string, or '' if
+    it isn't a 10-/11-digit NANP number. Used to match the business's own region."""
+    digits = re.sub(r"\D", "", phone or "")
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    return digits[:3] if len(digits) == 10 else ""
+
+
 async def find_available_number(
     subaccount_sid: str,
     subaccount_token: str,
     country_code: str = "CA",
+    preferred_area_code: str = "",
 ) -> str:
     cc = country_code.upper()
     if cc not in _COUNTRY_CONFIG:
@@ -62,7 +73,11 @@ async def find_available_number(
 
     config = _COUNTRY_CONFIG[cc]
     twilio_code = config["twilio_code"]
-    area_codes: list[str] = config["area_codes"]
+    # Prefer the business's own area code first (so callers see a local number),
+    # then the country's popular area codes, then a national search.
+    area_codes: list[str] = list(config["area_codes"])
+    if preferred_area_code:
+        area_codes = [preferred_area_code] + [a for a in area_codes if a != preferred_area_code]
     client = _sub_client(subaccount_sid, subaccount_token)
 
     # Try area codes first (North America)

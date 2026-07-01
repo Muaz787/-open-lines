@@ -327,7 +327,21 @@ async def provision_tenant(payload: dict) -> dict:
         subaccount_sid = subaccount["sid"]
         subaccount_token = subaccount["auth_token"]
         country_code = payload.get("country", "CA")
-        phone_number = await telephony.find_available_number(subaccount_sid, subaccount_token, country_code)
+        # Match the business's own region: prefer a number in the area code of the
+        # business's phone (or the phone the analyzer detected on their website),
+        # falling back to the country's popular area codes / a national search.
+        preferred_ac = telephony.area_code_from_phone(payload.get("business_phone", ""))
+        if not preferred_ac and payload.get("analysis_token"):
+            try:
+                from services import website_analysis
+                _cached = website_analysis.get_cached_scrape(payload["analysis_token"]) or {}
+                preferred_ac = telephony.area_code_from_phone((_cached.get("detected") or {}).get("phone", ""))
+            except Exception as e:
+                logger.warning("[Step %d] Could not derive area code from analysis: %s", step, e)
+        if preferred_ac:
+            logger.info("[Step %d] Preferring area code %s from business phone", step, preferred_ac)
+        phone_number = await telephony.find_available_number(
+            subaccount_sid, subaccount_token, country_code, preferred_area_code=preferred_ac)
         purchased_number = await telephony.purchase_number(subaccount_sid, subaccount_token, phone_number)
         logger.info("[Step %d] Provisioned Twilio number %s", step, purchased_number)
     except Exception as e:
