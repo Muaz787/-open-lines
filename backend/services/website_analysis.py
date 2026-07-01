@@ -136,7 +136,7 @@ Return valid JSON only with these keys:
   "business_name": "the business's name, or empty string if unclear",
   "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, parliament, custom",
   "industry_confidence": 0.0-1.0,
-  "country": "ISO 3166-1 alpha-2 code inferred from address/phone/domain, or empty string",
+  "country": "ISO 3166-1 alpha-2 code ONLY when the site clearly shows the business's country — via a postal/mailing address, a phone number written with an international dialing code, or an explicit country/region statement. Do NOT guess from the domain, language, currency, or example content. If there is no clear signal, return an empty string.",
   "phone": "the business's primary public phone number exactly as written on the site (digits/+/()-/spaces), or empty string if none is shown",
   "services": ["up to 12 specific services offered (e.g. 'Refrigerator repair', 'Career Pilot Program')"],
   "service_areas": ["cities/regions/neighbourhoods served, if stated"],
