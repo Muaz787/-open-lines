@@ -348,14 +348,16 @@ def ensure_safety_preamble(prompt: str) -> str:
     return SAFETY_PREAMBLE + prompt
 
 
-# Spoken at the very start of every call so callers are informed they're talking
-# to an AI and the call may be recorded — knowledge/consent for PIPEDA.
-CALL_DISCLOSURE = "Just so you know, you're speaking with an AI assistant and this call may be recorded."
+# Spoken at the very start of every call so callers know they've reached an
+# automated assistant (not a specific human) and the call may be recorded —
+# knowledge/consent for PIPEDA. Says "virtual receptionist" rather than "AI":
+# still discloses it isn't a person, but sounds warmer and more natural.
+CALL_DISCLOSURE = "Just so you know, you've reached our virtual receptionist and this call may be recorded."
 
 
 def ensure_call_disclosure(greeting: str) -> str:
-    """Prepend the AI + recording disclosure to the first message, unless the
-    greeting already discloses recording. Keeps it natural and non-duplicative."""
+    """Prepend the automated-assistant + recording disclosure to the first message,
+    unless the greeting already discloses recording. Keeps it natural and non-duplicative."""
     g = (greeting or "").strip()
     if "record" in g.lower():
         return g
