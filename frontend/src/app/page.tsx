@@ -9,6 +9,15 @@ import CapabilityCarousel from './components/CapabilityCarousel'
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
 
+// Public "call the AI to try it" number. Set NEXT_PUBLIC_DEMO_PHONE (E.164, e.g.
+// +16475551234) in Vercel once the demo tenant is provisioned — the band renders
+// only when it's set, so nothing broken shows before then.
+const DEMO_PHONE = (process.env.NEXT_PUBLIC_DEMO_PHONE || '').trim()
+function formatPhone(p: string): string {
+  const m = p.match(/^\+1(\d{3})(\d{3})(\d{4})$/)
+  return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : p
+}
+
 const TYPING_PHRASES = [
   'Realtors',
   'Property Managers',
@@ -458,6 +467,38 @@ export default function Home() {
           Setup in under 10 minutes · No contracts · Cancel any time
         </motion.p>
       </section>
+
+      {/* TRY IT LIVE — call the AI (renders only when the demo number is set) */}
+      {DEMO_PHONE && (
+        <>
+          <div className="div-line" />
+          <section className="trydemo">
+            <div className="wrap trydemo-inner">
+              <div className="trydemo-copy">
+                <div className="sec-label" style={{ marginBottom: 12 }}>Try it live</div>
+                <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 10 }}>
+                  Don&rsquo;t take our word for it.<br />Call and hear it.
+                </h2>
+                <p className="sec-sub" style={{ marginBottom: 0 }}>
+                  Ring our AI receptionist and have a real conversation — ask about pricing, or
+                  let it book you a demo. It&rsquo;s exactly what your callers will hear.
+                </p>
+              </div>
+              <a
+                href={`tel:${DEMO_PHONE}`}
+                className="trydemo-cta"
+                onClick={() => trackEvent('demo_call_clicked', { location: 'landing_band', ...getUtmParams() })}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+                <span className="trydemo-num">{formatPhone(DEMO_PHONE)}</span>
+                <span className="trydemo-sub">Tap to call · live AI receptionist</span>
+              </a>
+            </div>
+          </section>
+        </>
+      )}
 
       <div className="div-line" />
 

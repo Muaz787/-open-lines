@@ -332,6 +332,15 @@ async def _handle_assistant_request(msg: dict) -> dict:
         personalized_greeting or tenant.get("greeting_template", "")
     )
 
+    # Public "try the AI" demo line — bound cost/abuse on that tenant only:
+    # short max call length + quicker hang-up on silence. Set DEMO_TENANT_ID (and
+    # optionally DEMO_MAX_CALL_SECONDS / DEMO_SILENCE_SECONDS) in Railway once the
+    # demo tenant is provisioned. Real tenants are unaffected.
+    demo_tid = os.getenv("DEMO_TENANT_ID", "").strip()
+    if demo_tid and tenant_id == demo_tid:
+        overrides["maxDurationSeconds"] = int(os.getenv("DEMO_MAX_CALL_SECONDS", "120"))
+        overrides["silenceTimeoutSeconds"] = int(os.getenv("DEMO_SILENCE_SECONDS", "15"))
+
     return {
         "assistantId": assistant_id,
         "assistantOverrides": overrides,
