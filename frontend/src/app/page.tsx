@@ -494,21 +494,6 @@ export default function Home() {
 
       <div className="div-line" />
 
-      {/* SHOWCASE — complete call experience */}
-      <section className="showcase">
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="showcase-img"
-            src="/landing/call-experience.png"
-            alt="A complete call experience — your AI answers instantly, qualifies callers, books appointments, collects payments, sends confirmations, updates your calendar, and follows up automatically."
-            loading="lazy"
-          />
-        </div>
-      </section>
-
-      <div className="div-line" />
-
       {/* LIVE DEMO */}
       <div className="demo-wrap" id="demo" ref={demoSectionRef}>
         <div className="sec wrap">
@@ -588,19 +573,6 @@ export default function Home() {
       <div className="div-line" />
 
       {/* INDUSTRIES */}
-      {/* SHOWCASE — live in minutes */}
-      <section className="showcase">
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="showcase-img"
-            src="/landing/live-in-minutes.png"
-            alt="Live in minutes — enter your website, the AI learns your business, get your AI phone number, and start answering calls 24/7. No technical skills needed."
-            loading="lazy"
-          />
-        </div>
-      </section>
-
       <section className="sec" id="industries">
         <div className="wrap">
           <div className="sec-label">8 Industries</div>
@@ -651,21 +623,6 @@ export default function Home() {
               }}>{i}</span>
             ))}
           </div>
-        </div>
-      </section>
-
-      <div className="div-line" />
-
-      {/* SHOWCASE — connect everything (integrations) */}
-      <section className="showcase">
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="showcase-img"
-            src="/landing/connect-everything.png"
-            alt="Connect everything — OpenLines works with the tools you already use, including Slack, Google Calendar, Outlook Calendar, HubSpot, Square, and Stripe."
-            loading="lazy"
-          />
         </div>
       </section>
 
@@ -788,21 +745,6 @@ export default function Home() {
 
       <div className="div-line" />
 
-      {/* SHOWCASE — secure & compliant */}
-      <section className="showcase">
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="showcase-img"
-            src="/landing/secure-compliant.png"
-            alt="Secure and compliant — end-to-end encryption, secure data storage, role-based access, PCI-compliant payments, AI disclosure on every call, and regular security audits."
-            loading="lazy"
-          />
-        </div>
-      </section>
-
-      <div className="div-line" />
-
       {/* HOW IT WORKS — Process steps */}
       <div className="process-wrap">
         <div className="wrap process-grid">
@@ -888,21 +830,6 @@ export default function Home() {
 
         </div>
       </div>
-
-      <div className="div-line" />
-
-      {/* SHOWCASE — built for service businesses */}
-      <section className="showcase">
-        <div className="wrap">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="showcase-img"
-            src="/landing/service-businesses.png"
-            alt="Built for service businesses — Real Estate, Dental, HVAC, Plumbing, Legal, Auto Repair, Health & Wellness, and more."
-            loading="lazy"
-          />
-        </div>
-      </section>
 
       <div className="div-line" />
 
