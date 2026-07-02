@@ -12,6 +12,7 @@ interface Tenant {
   industry: string
   subscription_plan: string | null
   subscription_status: string | null
+  billing_exempt: boolean
   twilio_phone_number: string | null
   has_calendar: boolean
   has_kb: boolean
@@ -20,8 +21,29 @@ interface Tenant {
   call_count: number
 }
 
+const TRIAL_DAYS = 7
+function withinTrial(created: string) {
+  return Date.now() - new Date(created).getTime() < TRIAL_DAYS * 86_400_000
+}
+// Comp and free-trial aren't "subscriptions", so derive them for display.
+function billingStatus(t: Tenant): string {
+  if (t.billing_exempt) return 'comped'
+  if (t.subscription_status && t.subscription_status !== 'none') return t.subscription_status
+  return withinTrial(t.created_at) ? 'trial' : 'expired'
+}
+function planLabel(t: Tenant): string {
+  if (t.billing_exempt) return 'comp'
+  if (t.subscription_plan) return t.subscription_plan
+  return withinTrial(t.created_at) ? 'trial' : '—'
+}
+
 function StatusBadge({ status }: { status: string | null }) {
-  const map: Record<string, string> = { active: 'adm-badge-green', trialing: 'adm-badge-blue', past_due: 'adm-badge-red', canceled: 'adm-badge-gray', none: 'adm-badge-gray' }
+  const map: Record<string, string> = {
+    active: 'adm-badge-green', comped: 'adm-badge-green',
+    trialing: 'adm-badge-blue', trial: 'adm-badge-blue',
+    past_due: 'adm-badge-red', expired: 'adm-badge-gray',
+    canceled: 'adm-badge-gray', none: 'adm-badge-gray',
+  }
   return <span className={`adm-badge ${map[status ?? 'none'] ?? 'adm-badge-gray'}`}>{status ?? 'none'}</span>
 }
 
@@ -141,8 +163,8 @@ export default function TenantsPage() {
                     <td style={{ fontWeight: 500 }}>{t.business_name}</td>
                     <td className="adm-table-muted" style={{ fontSize: 12 }}>{t.email || '—'}</td>
                     <td className="adm-table-muted">{t.industry}</td>
-                    <td className="adm-table-muted">{t.subscription_plan ?? '—'}</td>
-                    <td><StatusBadge status={t.subscription_status} /></td>
+                    <td className="adm-table-muted">{planLabel(t)}</td>
+                    <td><StatusBadge status={billingStatus(t)} /></td>
                     <td className="adm-table-muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>{t.twilio_phone_number ?? '—'}</td>
                     <td style={{ textAlign: 'center' }}><BoolDot yes={t.has_calendar} /></td>
                     <td style={{ textAlign: 'center' }}><BoolDot yes={t.has_kb} /></td>

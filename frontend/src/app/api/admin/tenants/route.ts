@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     .from('tenants')
     .select(`
       id, business_name, email, owner_name, industry,
-      subscription_plan, subscription_status, twilio_phone_number,
+      subscription_plan, subscription_status, billing_exempt, twilio_phone_number,
       google_refresh_token, kb_files, is_active, created_at,
       calls(count),
       kb_entries(count)
@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       industry: t.industry,
       subscription_plan: t.subscription_plan,
       subscription_status: t.subscription_status,
+      billing_exempt: Boolean(t.billing_exempt),
       twilio_phone_number: t.twilio_phone_number,
       has_calendar: Boolean(t.google_refresh_token),
       has_kb: kbCount > 0 || kbFiles.length > 0,
