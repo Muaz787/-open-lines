@@ -308,10 +308,10 @@ export default function Home() {
           <span className="logo-name">open lines</span>
         </a>
         <div className="nav-mid">
-          <a href="#demo">How it works</a>
-          <a href="#industries">Industries</a>
-          <a href="#platform">Platform</a>
-          <Link href="/pricing">Pricing</Link>
+          <Link href="/how-it-works" onClick={() => trackEvent('nav_link_clicked', { link: 'How it works' })}>How it works</Link>
+          <Link href="/industries" onClick={() => trackEvent('nav_link_clicked', { link: 'Industries' })}>Industries</Link>
+          <Link href="/platform" onClick={() => trackEvent('nav_link_clicked', { link: 'Platform' })}>Platform</Link>
+          <Link href="/pricing" onClick={() => trackEvent('nav_link_clicked', { link: 'Pricing' })}>Pricing</Link>
         </div>
         <div className="nav-right">
           <div className="toggle" onClick={() => setIsDark(d => !d)}>
@@ -357,10 +357,10 @@ export default function Home() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
           >
-            <a href="#demo"       className="mobile-menu-link" onClick={closeMenu}>How it works</a>
-            <a href="#industries" className="mobile-menu-link" onClick={closeMenu}>Industries</a>
-            <a href="#platform"   className="mobile-menu-link" onClick={closeMenu}>Platform</a>
-            <Link href="/pricing" className="mobile-menu-link" onClick={closeMenu}>Pricing</Link>
+            <Link href="/how-it-works" className="mobile-menu-link" onClick={() => { trackEvent('nav_link_clicked', { link: 'How it works' }); closeMenu() }}>How it works</Link>
+            <Link href="/industries" className="mobile-menu-link" onClick={() => { trackEvent('nav_link_clicked', { link: 'Industries' }); closeMenu() }}>Industries</Link>
+            <Link href="/platform" className="mobile-menu-link" onClick={() => { trackEvent('nav_link_clicked', { link: 'Platform' }); closeMenu() }}>Platform</Link>
+            <Link href="/pricing" className="mobile-menu-link" onClick={() => { trackEvent('nav_link_clicked', { link: 'Pricing' }); closeMenu() }}>Pricing</Link>
           </motion.div>
         )}
       </AnimatePresence>
