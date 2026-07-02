@@ -75,6 +75,54 @@ async def toggle_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
         raise HTTPException(status_code=500, detail="Failed to update tenant")
 
 
+@router.patch("/tenants/{tenant_id}/comp")
+async def set_tenant_comp(tenant_id: str, body: dict, x_admin_key: str | None = Header(None)):
+    """Comp a tenant (billing_exempt): line stays live with no trial expiry or
+    subscription — without touching subscription_plan, so revenue metrics stay clean."""
+    _check_admin_key(x_admin_key)
+    exempt = bool(body.get("exempt"))
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        updated = await db.update_tenant(tenant_id, {"billing_exempt": exempt})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to set comp for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to update tenant")
+    logger.info("Tenant %s billing_exempt → %s", tenant_id, exempt)
+    return {"id": updated["id"], "billing_exempt": updated.get("billing_exempt")}
+
+
+@router.patch("/tenants/{tenant_id}/plan")
+async def set_tenant_plan(tenant_id: str, body: dict, x_admin_key: str | None = Header(None)):
+    """Manually set a tenant's plan (comp grant of plan-gated features). Refuses when
+    the tenant has a real Stripe subscription — manage those in Stripe to avoid desync."""
+    _check_admin_key(x_admin_key)
+    plan = (body.get("plan") or "").strip().lower() or None
+    if plan and plan not in ("starter", "pro", "business"):
+        raise HTTPException(status_code=400, detail="Invalid plan (starter|pro|business, or empty to clear)")
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        if tenant.get("stripe_subscription_id"):
+            raise HTTPException(status_code=400, detail="Tenant has a Stripe subscription — change it in Stripe, not here")
+        updated = await db.update_tenant(tenant_id, {
+            "subscription_plan": plan,
+            "subscription_status": "active" if plan else None,
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to set plan for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Failed to update tenant")
+    logger.info("Tenant %s plan → %s (comp)", tenant_id, plan)
+    return {"id": updated["id"], "subscription_plan": updated.get("subscription_plan"),
+            "subscription_status": updated.get("subscription_status")}
+
+
 @router.post("/tenants/{tenant_id}/reprompt")
 async def reprompt_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
     """Rebuild the system prompt from the current template and push it to the Vapi assistant."""

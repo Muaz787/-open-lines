@@ -31,7 +31,8 @@ _BILLING_EXEMPT_IDS = {
 
 
 def is_billing_exempt(tenant: dict) -> bool:
-    return str(tenant.get("id") or "") in _BILLING_EXEMPT_IDS
+    # Per-tenant DB flag (admin-controlled, instant) OR the env allow-list.
+    return bool(tenant.get("billing_exempt")) or str(tenant.get("id") or "") in _BILLING_EXEMPT_IDS
 
 
 def has_active_subscription(tenant: dict) -> bool:
