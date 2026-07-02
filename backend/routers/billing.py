@@ -125,6 +125,27 @@ def _extract_pi_secret(invoice) -> str | None:
     return getattr(pi, "client_secret", None) or None
 
 
+def _invoice_breakdown(invoice) -> dict:
+    """Amounts (in cents) from the first invoice for display: subtotal, tax, total,
+    currency. Lets the client show the tax-inclusive total (GST/HST) before paying."""
+    if not invoice or isinstance(invoice, str):
+        return {}
+    subtotal   = getattr(invoice, "subtotal", None)
+    total      = getattr(invoice, "total", None)
+    amount_due = getattr(invoice, "amount_due", None)
+    currency   = getattr(invoice, "currency", None) or "cad"
+    tax        = getattr(invoice, "tax", None)
+    # Newer API versions drop `invoice.tax`; derive it from total − subtotal.
+    if tax is None and subtotal is not None and total is not None:
+        tax = max(0, total - subtotal)
+    return {
+        "subtotal": subtotal,
+        "tax":      tax,
+        "total":    total if total is not None else amount_due,
+        "currency": currency,
+    }
+
+
 @router.post("/create-checkout")
 async def create_checkout(body: dict, authorization: Annotated[str | None, Header()] = None):
     tenant_id: str = body.get("tenant_id", "")
@@ -483,7 +504,7 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
                 secret = _extract_pi_secret(invoice)
                 if secret:
                     logger.info("Reusing incomplete subscription %s for tenant %s", existing_sub_id, tenant_id)
-                    return {"needs_payment": True, "client_secret": secret, "subscription_id": existing_sub_id}
+                    return {"needs_payment": True, "client_secret": secret, "subscription_id": existing_sub_id, **_invoice_breakdown(invoice)}
                 # No usable payment intent — cancel stale incomplete sub and create fresh
                 try:
                     stripe.Subscription.cancel(existing_sub_id)
@@ -562,7 +583,7 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
         "subscription_status":    "incomplete",
     })
     logger.info("Subscription %s created (incomplete) for tenant %s plan %s", sub.id, tenant_id, plan)
-    return {"needs_payment": True, "client_secret": client_secret, "subscription_id": sub.id}
+    return {"needs_payment": True, "client_secret": client_secret, "subscription_id": sub.id, **_invoice_breakdown(invoice)}
 
 
 @router.post("/confirm-payment")

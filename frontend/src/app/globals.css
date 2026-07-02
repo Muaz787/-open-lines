@@ -1052,6 +1052,30 @@ footer {
 
 .pay-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
+/* Invoice summary (subtotal / GST-HST / total) shown before paying */
+.pay-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+.pay-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.pay-summary-total {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-2);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
 .pay-divider {
   display: flex;
   align-items: center;

@@ -31,11 +31,22 @@ const CARD_STYLE = {
   },
 }
 
+interface Breakdown {
+  subtotal?: number | null
+  tax?: number | null
+  total?: number | null
+  currency?: string
+}
+
+const fmtMoney = (cents: number, currency = 'cad') =>
+  new Intl.NumberFormat('en-CA', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100)
+
 function CheckoutForm({
   tenantId,
   subscriptionId,
   clientSecret,
   planLabel,
+  breakdown,
   onSuccess,
   onCancel,
 }: {
@@ -43,11 +54,16 @@ function CheckoutForm({
   subscriptionId: string
   clientSecret: string
   planLabel: string
+  breakdown?: Breakdown | null
   onSuccess: () => void
   onCancel: () => void
 }) {
   const stripe   = useStripe()
   const elements = useElements()
+
+  const cur       = breakdown?.currency || 'cad'
+  const hasTotal  = typeof breakdown?.total === 'number'
+  const submitLbl = hasTotal ? `Subscribe — ${fmtMoney(breakdown!.total as number, cur)}` : `Subscribe — ${planLabel}`
 
   const [cardholderName, setCardholderName] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ number?: string; expiry?: string; cvc?: string }>({})
@@ -200,11 +216,29 @@ function CheckoutForm({
         </div>
       </div>
 
+      {hasTotal && (
+        <div className="pay-summary">
+          {typeof breakdown?.subtotal === 'number' && (
+            <div className="pay-summary-row">
+              <span>Subtotal</span><span>{fmtMoney(breakdown.subtotal, cur)}</span>
+            </div>
+          )}
+          {typeof breakdown?.tax === 'number' && breakdown.tax > 0 && (
+            <div className="pay-summary-row">
+              <span>GST / HST</span><span>{fmtMoney(breakdown.tax, cur)}</span>
+            </div>
+          )}
+          <div className="pay-summary-row pay-summary-total">
+            <span>Total due today</span><span>{fmtMoney(breakdown!.total as number, cur)}</span>
+          </div>
+        </div>
+      )}
+
       {formError && <div className="pay-err">{formError}</div>}
 
       <div className="pay-actions">
         <button type="submit" disabled={!stripe || processing} className="pay-submit">
-          {processing ? 'Processing…' : `Subscribe — ${planLabel}`}
+          {processing ? 'Processing…' : submitLbl}
         </button>
         <button type="button" onClick={onCancel} disabled={processing} className="pay-cancel">
           Cancel
@@ -514,6 +548,7 @@ function AddressStep({
 export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onSuccess, onCancel }: PaymentFormProps) {
   const [clientSecret, setClientSecret]     = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string>('')
+  const [breakdown, setBreakdown]           = useState<Breakdown | null>(null)
   const [loadError, setLoadError]           = useState<string | null>(null)
   const [submitting, setSubmitting]         = useState(false)
 
@@ -532,6 +567,7 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
       if (data.needs_payment === false) { onSuccess(); return }
       if (data.client_secret) {
         setSubscriptionId(data.subscription_id)
+        setBreakdown({ subtotal: data.subtotal, tax: data.tax, total: data.total, currency: data.currency })
         setClientSecret(data.client_secret)
       } else {
         setLoadError(data.detail ?? 'Could not initialise payment. Please try again.')
@@ -594,6 +630,7 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
           subscriptionId={subscriptionId}
           clientSecret={clientSecret}
           planLabel={planLabel}
+          breakdown={breakdown}
           onSuccess={onSuccess}
           onCancel={onCancel}
         />
