@@ -91,16 +91,6 @@ const INDUSTRIES = [
   { id: 'beauty', label: 'Beauty' },
 ]
 
-const DEMO_SCRIPT = [
-  { who: 'ai',  msg: "Hi, you've reached Shahid Real Estate. I'm Alex, your AI assistant — how can I help you today?" },
-  { who: 'you', msg: "Hi, I'm calling about the property on 42 Harbour Boulevard." },
-  { who: 'ai',  msg: "42 Harbour Blvd is a 4-bed, 2-bath home listed at $1.15M — pool and double garage included. Are you pre-approved for finance?" },
-  { who: 'you', msg: "Yes, we're pre-approved up to $1.3 million." },
-  { who: 'ai',  msg: "Perfect. I have Thursday at 2pm or Saturday at 10am available for a viewing. Which works better for you?" },
-  { who: 'you', msg: "Saturday morning works great." },
-  { who: 'ai',  msg: "Done — Saturday at 10am is booked. You'll get a text confirmation shortly. Is there anything else I can help you with?" },
-]
-
 const EASE = [0.4, 0, 0.2, 1] as [number, number, number, number]
 
 const up = (delay: number) => ({
@@ -263,12 +253,6 @@ export default function Home() {
   const [isDark, setIsDark]           = useState(false)
   const [activeInd, setActiveInd]     = useState('re')
   const typedText                     = useTypewriter(TYPING_PHRASES)
-  const [transcript, setTranscript]   = useState<{ who: string; msg: string }[]>([])
-  const [callRunning, setCallRunning] = useState(false)
-  const [callStatus, setCallStatus]   = useState<'ready' | 'live' | 'ended'>('ready')
-  const transcriptRef  = useRef<HTMLDivElement>(null)
-  const demoSectionRef = useRef<HTMLDivElement>(null)
-  const autoPlayedRef  = useRef(false)
   const reduceMotion   = useReducedMotion()
 
   useEffect(() => {
@@ -282,45 +266,6 @@ export default function Home() {
       ...getUtmParams(),
     })
   }, [])
-
-  // Auto-play demo when section scrolls into view (fires once)
-  useEffect(() => {
-    const el = demoSectionRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !autoPlayedRef.current) {
-        autoPlayedRef.current = true
-        observer.disconnect()
-        // Small delay so the section has settled into view before starting
-        setTimeout(() => runDemo(), 600)
-      }
-    }, { threshold: 0.3 })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const runDemo = () => {
-    if (callRunning) return
-    setCallRunning(true)
-    setTranscript([])
-    setCallStatus('live')
-    let delay = 500
-    DEMO_SCRIPT.forEach((line, i) => {
-      setTimeout(() => {
-        setTranscript(prev => [...prev, line])
-        requestAnimationFrame(() => {
-          if (transcriptRef.current) transcriptRef.current.scrollTop = 9999
-        })
-        if (i === DEMO_SCRIPT.length - 1) {
-          setTimeout(() => {
-            setCallStatus('ended')
-            setTimeout(() => { setCallStatus('ready'); setCallRunning(false) }, 3000)
-          }, 600)
-        }
-      }, delay)
-      delay += line.msg.length * 26 + 350
-    })
-  }
 
   const RealtorRows = [
     { init: 'JD', name: 'John Doe · +1 (555) 019‑2847',      desc: 'Asking about 42 Harbour Blvd. Budget $1.2M. Pre-approved.', tag: 'hot',  label: '🔥 Hot Lead' },
@@ -536,13 +481,13 @@ export default function Home() {
       <div className="div-line" />
 
       {/* LIVE DEMO */}
-      <div className="demo-wrap" id="demo" ref={demoSectionRef}>
+      <div className="demo-wrap" id="demo">
         <div className="sec wrap">
           <div className="demo-grid">
             <div>
               <div className="sec-label">Live Experience</div>
               <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Hear it.<br />See it happen.</h2>
-              <p className="sec-sub">Watch a real conversation play out below — or call our live AI agent yourself to hear it firsthand.</p>
+              <p className="sec-sub">Skip the reading — call our live AI agent and experience it for yourself. It&rsquo;s exactly what your callers will hear.</p>
               <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
                   'Answers calls instantly, 24/7',
@@ -558,60 +503,32 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="phone-card">
-              <div className="phone-head">
-                <span className="phone-title">Open Lines — Demo Agent</span>
-                <div className="call-status">
-                  <div className={`cs-dot${callStatus === 'live' ? ' live' : ''}`} />
-                  <span>{callStatus === 'live' ? 'Live' : callStatus === 'ended' ? 'Call ended' : 'Ready'}</span>
-                </div>
+            <div className="phone-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 10, minHeight: 340 }}>
+              <div style={{
+                width: 60, height: 60, borderRadius: '50%',
+                background: 'var(--accent)', color: '#08130c',
+                display: 'grid', placeItems: 'center', marginBottom: 4,
+              }}>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.58.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.29 21 3 13.71 3 4.5c0-.55.45-1 1-1H7.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.23 1.01L6.6 10.8z"/>
+                </svg>
               </div>
-
-              <div className="transcript" ref={transcriptRef}>
-                {transcript.length === 0 ? (
-                  <div className="t-empty">
-                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Transcript appears here</span>
-                  </div>
-                ) : transcript.map((line, i) => (
-                  <motion.div key={i} className="t-line"
-                    initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] as [number, number, number, number] }}>
-                    <span className={`t-who ${line.who === 'ai' ? 'ai' : 'u'}`}>
-                      {line.who === 'ai' ? 'AI' : 'You'}
-                    </span>
-                    <span className="t-msg">{line.msg}</span>
-                  </motion.div>
-                ))}
-              </div>
-
-              <button className="call-btn" onClick={runDemo} disabled={callRunning}>
-                {callStatus === 'ended' ? (
-                  <span style={{ color: 'var(--accent-text)' }}>✓ Appointment booked · Customer texted · Summary emailed</span>
-                ) : (
-                  <>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.58.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.29 21 3 13.71 3 4.5c0-.55.45-1 1-1H7.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.23 1.01L6.6 10.8z"/>
-                    </svg>
-                    {callRunning ? '⠋ Live call in progress…' : 'Replay demo'}
-                  </>
-                )}
-              </button>
-
-              {DEMO_PHONE && (
-                <div style={{ textAlign: 'center', marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
-                  <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Want to hear it live? Call our AI agent directly:</p>
-                  <a
-                    href={`tel:${DEMO_PHONE}`}
-                    onClick={() => trackEvent('demo_call_clicked', { location: 'interactive_demo', ...getUtmParams() })}
-                    style={{
-                      fontSize: 15, fontWeight: 600, color: 'var(--text)',
-                      letterSpacing: '0.02em', textDecoration: 'none',
-                    }}
-                  >
-                    {formatPhone(DEMO_PHONE)}
-                  </a>
-                </div>
-              )}
+              <div className="sec-label" style={{ marginBottom: 0 }}>Try it live</div>
+              <h3 style={{ fontFamily: 'var(--font-syne), sans-serif', fontSize: 22, letterSpacing: '-0.01em', margin: '2px 0' }}>
+                Talk to the AI yourself
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, maxWidth: 320, margin: 0 }}>
+                Call our live demo agent — ask anything, or have it book you a demo. It&rsquo;s exactly what your callers will hear.
+              </p>
+              <a
+                href={`tel:${DEMO_PHONE}`}
+                onClick={() => trackEvent('demo_call_clicked', { location: 'interactive_demo', ...getUtmParams() })}
+                className="btn-main"
+                style={{ marginTop: 10, fontSize: 15 }}
+              >
+                📞 Call {formatPhone(DEMO_PHONE)}
+              </a>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Answers instantly · 24/7 · no wait</div>
             </div>
           </div>
         </div>
