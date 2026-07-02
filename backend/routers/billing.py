@@ -388,6 +388,26 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
 
     # Get or create Stripe customer
     customer_id: str = tenant.get("stripe_customer_id", "") or ""
+
+    # Guard against stale IDs from a different Stripe mode. Tenants created while
+    # Stripe was in test mode carry a test customer id (and subscription id) that
+    # 404s under the live key ("No such customer"). Detect it and recreate cleanly
+    # instead of failing the subscription.
+    if customer_id:
+        try:
+            cust = stripe.Customer.retrieve(customer_id)
+            if getattr(cust, "deleted", False):
+                customer_id = ""
+        except stripe.InvalidRequestError:
+            logger.warning(
+                "Stored customer %s not found in current Stripe mode for tenant %s — recreating",
+                customer_id, tenant_id,
+            )
+            customer_id = ""
+            # A stale customer means the stored subscription id is stale too.
+            tenant["stripe_subscription_id"] = ""
+            await db.update_tenant(tenant_id, {"stripe_customer_id": None, "stripe_subscription_id": None})
+
     if not customer_id:
         try:
             params: dict = {"metadata": {"tenant_id": tenant_id}}
