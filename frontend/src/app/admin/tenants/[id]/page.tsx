@@ -16,6 +16,7 @@ interface TenantDetail {
     agent_name: string
     subscription_plan: string | null
     subscription_status: string | null
+    billing_exempt: boolean
     stripe_customer_id: string | null
     stripe_subscription_id: string | null
     twilio_phone_number: string | null
@@ -137,6 +138,46 @@ export default function TenantDetailPage() {
     setTimeout(() => setActionMsg(''), 5000)
   }
 
+  async function setComp(exempt: boolean) {
+    if (actionLoading) return
+    setActionLoading(true); setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}/comp`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exempt }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setData(d => d ? { ...d, tenant: { ...d.tenant, billing_exempt: json.billing_exempt } } : d)
+        setActionMsg(json.billing_exempt ? 'Tenant comped — line stays live, no subscription needed' : 'Comp removed')
+      } else setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+    } catch { setActionMsg('Network error — check backend is reachable') }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 5000)
+  }
+
+  async function setPlan(plan: string | null) {
+    if (actionLoading) return
+    setActionLoading(true); setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}/plan`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setData(d => d ? { ...d, tenant: { ...d.tenant, subscription_plan: json.subscription_plan, subscription_status: json.subscription_status } } : d)
+        setActionMsg(plan ? `Plan set to ${plan} (comp)` : 'Plan cleared')
+      } else setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+    } catch { setActionMsg('Network error — check backend is reachable') }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 5000)
+  }
+
   if (loading) return <div className="adm-loading"><div className="adm-spinner" />Loading tenant…</div>
   if (!data) return null
 
@@ -232,6 +273,43 @@ export default function TenantDetailPage() {
             Enable Smart Routing
           </button>
         </div>
+
+        {/* Billing & comp */}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--db-border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
+            Billing &amp; comp
+            {tenant.billing_exempt && <span className="adm-badge adm-badge-green" style={{ marginLeft: 8 }}>Comped</span>}
+          </div>
+          <div className="adm-btn-group">
+            {tenant.billing_exempt ? (
+              <button className="adm-btn adm-btn-danger" onClick={() => setComp(false)} disabled={actionLoading}>Remove comp</button>
+            ) : (
+              <button className="adm-btn adm-btn-primary" onClick={() => setComp(true)} disabled={actionLoading}>Comp this tenant</button>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--db-muted)', margin: '6px 0 14px' }}>
+            Comp keeps the line live with no trial expiry or subscription — and is excluded from revenue metrics.
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
+            Set plan (comp grant · current: {tenant.subscription_plan ?? 'none'})
+          </div>
+          {tenant.stripe_subscription_id ? (
+            <div style={{ fontSize: 11, color: 'var(--db-muted)' }}>Has a Stripe subscription — change the plan in Stripe, not here.</div>
+          ) : (
+            <div className="adm-btn-group">
+              {(['starter', 'pro', 'business'] as const).map(p => (
+                <button key={p}
+                  className={`adm-btn ${tenant.subscription_plan === p ? 'adm-btn-primary' : 'adm-btn-secondary'}`}
+                  onClick={() => setPlan(p)} disabled={actionLoading} style={{ textTransform: 'capitalize' }}>
+                  {p}
+                </button>
+              ))}
+              <button className="adm-btn adm-btn-secondary" onClick={() => setPlan(null)} disabled={actionLoading}>None</button>
+            </div>
+          )}
+        </div>
+
         {actionMsg && <p style={{ margin: '10px 0 0', fontSize: 13, color: actionMsg.startsWith('Failed') || actionMsg.startsWith('Network') ? 'var(--db-danger-text)' : 'var(--db-accent-text)' }}>{actionMsg}</p>}
       </div>
 

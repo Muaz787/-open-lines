@@ -96,6 +96,7 @@ export async function GET(
     supabase.from('tenants').select(`
       id, business_name, industry, owner_name, email,
       subscription_plan, subscription_status, stripe_customer_id, stripe_subscription_id,
+      billing_exempt,
       twilio_phone_number, vapi_assistant_id, is_active, created_at,
       google_refresh_token, appointment_duration_minutes, calendar_timezone,
       kb_files, website_url, extra_instructions, whatsapp_number,
@@ -152,6 +153,7 @@ export async function GET(
       agent_name: t.agent_name,
       subscription_plan: t.subscription_plan,
       subscription_status: t.subscription_status,
+      billing_exempt: t.billing_exempt,
       stripe_customer_id: t.stripe_customer_id,
       stripe_subscription_id: t.stripe_subscription_id,
       twilio_phone_number: t.twilio_phone_number,

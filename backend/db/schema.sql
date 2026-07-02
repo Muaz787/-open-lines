@@ -338,3 +338,8 @@ create index if not exists idx_square_staff_tenant on square_staff(tenant_id);
 -- ('openlines') from bookings synced in from Square's webhook ('square' — made on
 -- the merchant's website / walk-in / Square dashboard).
 alter table appointments add column if not exists source text default 'openlines';
+
+-- Admin comp controls: mark a tenant as billing-exempt (line live, no trial
+-- expiry / no subscription required) from the admin dashboard. Complements the
+-- BILLING_EXEMPT_TENANT_IDS env list.
+alter table tenants add column if not exists billing_exempt boolean default false;

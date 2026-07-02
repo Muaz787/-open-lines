@@ -11,12 +11,13 @@ export async function GET(req: NextRequest) {
 
   const { data: tenants, error } = await supabase
     .from('tenants')
-    .select('id, subscription_plan, subscription_status, created_at')
+    .select('id, subscription_plan, subscription_status, created_at, billing_exempt')
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   const all = tenants ?? []
-  const active = all.filter(t => t.subscription_status === 'active')
+  // Comped tenants are excluded from revenue/active counts even if given a plan.
+  const active = all.filter(t => t.subscription_status === 'active' && !t.billing_exempt)
   const trialing = all.filter(t => t.subscription_status === 'trialing')
   const pastDue = all.filter(t => t.subscription_status === 'past_due')
   const cancelled = all.filter(t => t.subscription_status === 'canceled')
