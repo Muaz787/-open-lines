@@ -2,21 +2,13 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import PricingCards from './PricingCards'
 import BookDemoButton from './BookDemoButton'
+import SiteNav from '../components/SiteNav'
+import SiteFooter from '../components/SiteFooter'
 
 export const metadata: Metadata = {
   title: 'Pricing — Open Lines AI',
   description: 'Simple, transparent pricing for AI phone handling. From $99/month — no setup fees, no contracts.',
 }
-
-const LogoMark = () => (
-  <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
-    <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <path d="M 12.1,24.8 A 11,11 0 0,1 12.1,3.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <line x1="10.5" y1="12.5" x2="10.5" y2="16.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <line x1="14"   y1="9.5"  x2="14"   y2="18.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-    <line x1="17.5" y1="11.5" x2="17.5" y2="17"   stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-  </svg>
-)
 
 
 const ALL_INCLUDED = [
@@ -60,17 +52,7 @@ export default function PricingPage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
 
       {/* ── Nav ── */}
-      <nav>
-        <Link href="/" className="nav-logo">
-          <LogoMark />
-          <span className="logo-name">Open Lines</span>
-        </Link>
-        <div className="nav-right">
-          <Link href="/onboarding">
-            <button className="btn-nav">Get started</button>
-          </Link>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* ── Hero ── */}
       <div className="pricing-hero">
@@ -175,29 +157,7 @@ export default function PricingPage() {
       </div>
 
       {/* ── Footer ── */}
-      <footer>
-        <div className="ft-left">
-          <div className="nav-logo">
-            <LogoMark />
-            <span className="logo-name">Open Lines</span>
-          </div>
-          <div className="ft-tag">
-            AI voice receptionist — answers every call, captures every lead, books every appointment.
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-          <div className="ft-links">
-            <Link href="/">Home</Link>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/terms">Terms</Link>
-          </div>
-          <div className="status-bar">
-            <div className="st-dot" />
-            All systems operational
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
 
     </div>
   )
