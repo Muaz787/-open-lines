@@ -42,7 +42,6 @@ class ProvisionRequest(BaseModel):
     industry: str
     owner_name: str = ""
     country: str = "CA"
-    whatsapp_number: str = ""
     website_url: str = ""
     agent_name: str = "Alex"
     extra_instructions: str = ""

@@ -27,7 +27,6 @@ interface TenantDetail {
     calendar_timezone: string | null
     appointment_duration_minutes: number | null
     website_url: string | null
-    whatsapp_number: string | null
     minutes_used_this_period: number | null
     billing_period_anchor: string | null
     business_hours_start: number | null
@@ -214,7 +213,6 @@ export default function TenantDetailPage() {
             <div className="adm-kv"><span className="adm-kv-key">Owner</span><span className="adm-kv-value">{tenant.owner_name || '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">Email</span><span className="adm-kv-value">{tenant.email || '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">AI agent name</span><span className="adm-kv-value">{tenant.agent_name || '—'}</span></div>
-            <div className="adm-kv"><span className="adm-kv-key">WhatsApp</span><span className="adm-kv-value">{tenant.whatsapp_number || '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">Website</span><span className="adm-kv-value">{tenant.website_url || '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">Joined</span><span className="adm-kv-value">{formatDate(tenant.created_at)}</span></div>
           </div>
