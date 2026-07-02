@@ -53,8 +53,10 @@ Each live webhook has its **own** signing secret — copy it into the matching e
 - [ ] Copy signing secret → `STRIPE_PAYMENTS_WEBHOOK_SECRET`
 
 ## 4. Activate Connect & Tax in Live
-- [ ] **Stripe Connect** platform settings live: business profile/branding + the OAuth **redirect URI** `https://backend-production-71174.up.railway.app/stripe-connect/callback` (so tenants can connect for deposits)
-- [ ] **Stripe Tax** enabled in live + your **GST/HST registration** (716179239RT0001) added in the live Tax settings
+- [ ] **Stripe Connect** platform profile complete in live: **Funds flow = "Sellers collect payments directly" (direct charges)** — this MUST match the code, which creates Checkout Sessions with `stripe_account=…` and no `application_fee` (`services/stripe_service.py`). Also confirm the negative-balance-liability + seller-compliance acknowledgements show **Completed**.
+  - ⚠️ **Connect platform review gate:** a brand-new live Connect platform sits in **"Your application is in review"** for a period after setup. While in review you can only create **test** connected accounts — `POST /v1/accounts` returns 400 in live and the "Connect Stripe" button fails. This is a Stripe-side review, not a bug and not something env vars fix. Wait for Stripe to clear it (Connect → Overview stops showing "in review"), then retry. Contact Stripe support to expedite if needed.
+- [ ] **Stripe Tax** enabled in live + your **GST/HST registration** (716179239RT0001) + **origin/head-office address** set in the live Tax settings.
+  - ⚠️ **Required for subscriptions too:** the subscribe flow sends `automatic_tax={"enabled": True}` (`routers/billing.py`). If live Tax isn't configured, `Subscription.create` throws and the UI shows **"Failed to create subscription: …"**. Subscriptions worked in test only because test-mode Tax is auto-configured.
 - [ ] Confirm the `payments` table has a `refunded_at` column (from the refund work) — if missing, run: `alter table payments add column if not exists refunded_at timestamptz;`
 
 ## 5. Smoke test in live (real card, small amounts)

@@ -494,7 +494,7 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
         )
     except stripe.StripeError as e:
         logger.error("Stripe subscription creation failed for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to create subscription")
+        raise HTTPException(status_code=500, detail=f"Failed to create subscription: {e.user_message or str(e)}")
 
     # If subscription went active immediately (e.g. covered by customer credit balance)
     if getattr(sub, "status", None) == "active":

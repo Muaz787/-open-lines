@@ -365,7 +365,7 @@ export function UpdatePaymentForm({ tenantId, onSuccess, onCancel }: UpdatePayme
 
   return (
     <div className="pay-wrap">
-      <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#1A6BFF', colorBackground: '#111820', colorText: '#DDE8F2', colorTextSecondary: '#7A92AA', borderRadius: '8px' } } }}>
+      <Elements stripe={stripePromise} options={{ clientSecret, appearance: ELEMENTS_APPEARANCE }}>
         <UpdateCardForm tenantId={tenantId} clientSecret={clientSecret} onSuccess={onSuccess} onCancel={onCancel} />
       </Elements>
     </div>
@@ -400,17 +400,7 @@ export function UpgradePaymentForm({
       </div>
       <Elements
         stripe={stripePromise}
-        options={{
-          clientSecret,
-          appearance: {
-            theme: 'night',
-            variables: {
-              colorPrimary: '#1A6BFF', colorBackground: '#111820',
-              colorText: '#DDE8F2', colorTextSecondary: '#7A92AA',
-              colorDanger: '#FF453A', borderRadius: '8px',
-            },
-          },
-        }}
+        options={{ clientSecret, appearance: ELEMENTS_APPEARANCE }}
       >
         <CheckoutForm
           tenantId={tenantId}
@@ -436,37 +426,29 @@ export interface PaymentFormProps {
   onCancel: () => void
 }
 
-// Shared dark Elements appearance (card forms render on dark surfaces)
+// Shared LIGHT Elements appearance. The dashboard uses the Warm Studio light
+// theme (ivory cards, dark navy text), so Stripe's rendered inputs and labels
+// must be light too — otherwise labels wash out to invisible on the ivory card.
 const ELEMENTS_APPEARANCE = {
-  theme: 'night' as const,
-  variables: {
-    colorPrimary: '#1A6BFF',
-    colorBackground: '#111820',
-    colorText: '#DDE8F2',
-    colorTextSecondary: '#7A92AA',
-    colorDanger: '#FF453A',
-    fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
-    borderRadius: '8px',
-  },
-}
-
-// Light appearance for the billing-address modal, which renders on a white card —
-// dark, high-contrast labels and white inputs so the field labels read clearly.
-const ADDRESS_APPEARANCE = {
   theme: 'stripe' as const,
   variables: {
-    colorPrimary: '#1A6BFF',
-    colorBackground: '#ffffff',
-    colorText: '#16161a',
-    colorTextSecondary: '#3d4d5c',
-    colorDanger: '#e53e3e',
+    colorPrimary: '#2F6B4F',       // Warm Studio forest-green accent (focus ring)
+    colorBackground: '#FFFFFF',    // white inputs on the ivory card
+    colorText: '#001F3F',          // --text (dark navy)
+    colorTextSecondary: '#5A6A7A', // --text-2
+    colorDanger: '#E53E3E',
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
     borderRadius: '8px',
   },
   rules: {
-    '.Label': { color: '#16161a', fontWeight: '500' },
+    '.Label': { color: '#001F3F', fontWeight: '600', fontSize: '13px' },
+    '.Input': { border: '1px solid rgba(0,31,63,0.13)', boxShadow: 'none' },
+    '.Input:focus': { border: '1px solid #2F6B4F', boxShadow: '0 0 0 3px rgba(47,107,79,0.12)' },
   },
 }
+
+// Alias kept for the standalone address-capture form (same light appearance).
+const ADDRESS_APPEARANCE = ELEMENTS_APPEARANCE
 
 interface BillingAddress {
   line1?: string
