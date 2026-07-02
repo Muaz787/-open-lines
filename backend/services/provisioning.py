@@ -385,7 +385,6 @@ async def _provision_after_twilio(
     business_name: str = payload["business_name"]
     industry: str = payload["industry"]
     owner_name: str = payload.get("owner_name", "")
-    whatsapp_number: str = payload.get("whatsapp_number", "")
     website_url: str = payload.get("website_url", "")
     agent_name: str = payload.get("agent_name", "Alex")
 
@@ -552,7 +551,6 @@ async def _provision_after_twilio(
             "industry": industry,
             "owner_name": owner_name,
             "country": payload.get("country", "") or None,
-            "whatsapp_number": whatsapp_number,
             "website_url": website_url,
             "agent_name": agent_name,
             "greeting_template": greeting_template,

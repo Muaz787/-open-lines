@@ -6,7 +6,6 @@ create table if not exists tenants (
     business_name           text not null,
     industry                text not null,           -- 'realtor' | 'clinic' | 'parliament'
     owner_name              text,
-    whatsapp_number         text,
     website_url             text,
     twilio_subaccount_sid   text,
     twilio_auth_token       text,
@@ -343,3 +342,8 @@ alter table appointments add column if not exists source text default 'openlines
 -- expiry / no subscription required) from the admin dashboard. Complements the
 -- BILLING_EXEMPT_TENANT_IDS env list.
 alter table tenants add column if not exists billing_exempt boolean default false;
+
+-- Drop the vestigial whatsapp_number column (never read for sending; owner
+-- SMS/WhatsApp alerts use sms_alert_number). Run AFTER the code that stops
+-- referencing it is deployed.
+alter table tenants drop column if exists whatsapp_number;

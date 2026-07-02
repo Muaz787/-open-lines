@@ -99,7 +99,7 @@ export async function GET(
       billing_exempt,
       twilio_phone_number, vapi_assistant_id, is_active, created_at,
       google_refresh_token, appointment_duration_minutes, calendar_timezone,
-      kb_files, website_url, extra_instructions, whatsapp_number,
+      kb_files, website_url, extra_instructions,
       minutes_used_this_period, overage_minutes_reported, billing_period_anchor,
       business_hours_start, business_hours_end, business_days, break_start, break_end,
       agent_name
@@ -164,7 +164,6 @@ export async function GET(
       calendar_timezone: t.calendar_timezone,
       appointment_duration_minutes: t.appointment_duration_minutes,
       website_url: t.website_url,
-      whatsapp_number: t.whatsapp_number,
       minutes_used_this_period: t.minutes_used_this_period,
       billing_period_anchor: t.billing_period_anchor,
       business_hours_start: t.business_hours_start,
