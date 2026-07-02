@@ -6,7 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
-from services import analytics, provisioning, vapi, website_analysis
+from services import analytics, provisioning, telephony, vapi, website_analysis
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
 
@@ -199,7 +199,8 @@ class SettingsUpdateRequest(BaseModel):
             return None
         if len(v) > 32 or not re.fullmatch(r"[+]?[0-9 ()\-.]{6,32}", v):
             raise ValueError("Enter a valid phone number")
-        return v
+        # Store E.164 so SMS/WhatsApp sends work (formatting breaks 'whatsapp:<num>').
+        return telephony.normalize_phone(v)
 
 
 @router.patch("/settings/{tenant_id}")

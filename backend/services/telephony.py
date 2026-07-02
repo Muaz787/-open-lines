@@ -51,6 +51,25 @@ _COUNTRY_CONFIG: dict[str, dict] = {
 SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 
 
+def normalize_phone(phone: str) -> str:
+    """Best-effort E.164 normalization (strips spaces/parens/dashes) so numbers are
+    safe for Twilio SMS and 'whatsapp:<E.164>'. NANP 10 digits → +1…, 11 with leading
+    1 → +…; an existing '+' is preserved. Returns '' if there are no digits."""
+    if not phone:
+        return ""
+    has_plus = phone.strip().startswith("+")
+    digits = re.sub(r"\D", "", phone)
+    if not digits:
+        return ""
+    if has_plus:
+        return "+" + digits
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    return "+" + digits
+
+
 def area_code_from_phone(phone: str) -> str:
     """Extract the North American (NANP) area code from a phone string, or '' if
     it isn't a 10-/11-digit NANP number. Used to match the business's own region."""

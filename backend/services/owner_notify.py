@@ -22,7 +22,9 @@ async def send_owner_sms_whatsapp(
     on the tenant toggle, and each is independent and non-fatal."""
     from services import telephony, analytics
 
-    mobile_to = (tenant.get("sms_alert_number") or tenant.get("business_phone") or "").strip()
+    # Normalize to E.164 — the number may be stored with formatting (spaces/parens),
+    # which breaks Twilio SMS and 'whatsapp:<number>'.
+    mobile_to = telephony.normalize_phone(tenant.get("sms_alert_number") or tenant.get("business_phone") or "")
     if not mobile_to:
         return
     tenant_id = tenant.get("id", "")
