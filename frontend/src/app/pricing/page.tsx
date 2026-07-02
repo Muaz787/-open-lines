@@ -165,9 +165,9 @@ export default function PricingPage() {
             <Link href="/onboarding">
               <button className="btn-main">Start for free →</button>
             </Link>
-            <Link href="/">
-              <button className="btn-ghost">See how it works</button>
-            </Link>
+            <a href="https://calendly.com/open-lines/demo" target="_blank" rel="noopener noreferrer">
+              <button className="btn-ghost">Book a demo</button>
+            </a>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 20 }}>
             No credit card required to explore.
