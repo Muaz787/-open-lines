@@ -2143,7 +2143,7 @@ footer {
 }
 
 /* ── Landing "call the AI to try it" band ─────────────────────────── */
-.trydemo { padding: 56px 0; }
+.trydemo { padding: 56px 40px; }
 .trydemo-inner {
   display: flex; align-items: center; justify-content: space-between;
   gap: 32px; flex-wrap: wrap;
@@ -2164,7 +2164,10 @@ footer {
 }
 .trydemo-sub { font-size: 12px; font-weight: 600; opacity: 0.85; }
 @media (max-width: 720px) {
-  .trydemo { padding: 40px 0; }
+  .trydemo { padding: 44px 24px; }
   .trydemo-inner { flex-direction: column; align-items: flex-start; gap: 22px; }
   .trydemo-cta { width: 100%; padding: 20px; }
+}
+@media (max-width: 400px) {
+  .trydemo { padding: 40px 18px; }
 }
