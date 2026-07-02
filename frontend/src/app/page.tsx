@@ -9,10 +9,10 @@ import CapabilityCarousel from './components/CapabilityCarousel'
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
 
-// Public "call the AI to try it" number. Set NEXT_PUBLIC_DEMO_PHONE (E.164, e.g.
-// +16475551234) in Vercel once the demo tenant is provisioned — the band renders
-// only when it's set, so nothing broken shows before then.
-const DEMO_PHONE = (process.env.NEXT_PUBLIC_DEMO_PHONE || '').trim()
+// Public "call the AI to try it" number — the live OpenLines demo agent (callers
+// can test it and even book a demo on the call). Defaults to the current demo
+// line; override with NEXT_PUBLIC_DEMO_PHONE (E.164) in Vercel if it changes.
+const DEMO_PHONE = (process.env.NEXT_PUBLIC_DEMO_PHONE || '+14388393907').trim()
 function formatPhone(p: string): string {
   const m = p.match(/^\+1(\d{3})(\d{3})(\d{4})$/)
   return m ? `+1 (${m[1]}) ${m[2]}-${m[3]}` : p
