@@ -11,6 +11,7 @@ Trial rules:
   * Trial ends when EITHER the 7 days pass OR 30 minutes are used.
   * An active subscription always keeps the line live regardless of trial.
 """
+import os
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -20,8 +21,22 @@ TRIAL_DAYS = 7
 TRIAL_MINUTES = 30
 _ACTIVE_SUB_STATUSES = {"active", "trialing", "past_due", "canceling"}
 
+# Comp / internal accounts (e.g. the openlines.ai demo line) that should never
+# expire or require a subscription. Set BILLING_EXEMPT_TENANT_IDS to a comma-
+# separated list of tenant ids in the backend env. These keep the line live
+# forever without touching subscription_plan, so revenue metrics stay accurate.
+_BILLING_EXEMPT_IDS = {
+    t.strip() for t in os.getenv("BILLING_EXEMPT_TENANT_IDS", "").split(",") if t.strip()
+}
+
+
+def is_billing_exempt(tenant: dict) -> bool:
+    return str(tenant.get("id") or "") in _BILLING_EXEMPT_IDS
+
 
 def has_active_subscription(tenant: dict) -> bool:
+    if is_billing_exempt(tenant):
+        return True
     return (tenant.get("subscription_status") or "").strip().lower() in _ACTIVE_SUB_STATUSES
 
 
