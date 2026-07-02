@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import PricingCards from './PricingCards'
+import BookDemoButton from './BookDemoButton'
 
 export const metadata: Metadata = {
   title: 'Pricing — Open Lines AI',
@@ -165,9 +166,7 @@ export default function PricingPage() {
             <Link href="/onboarding">
               <button className="btn-main">Start for free →</button>
             </Link>
-            <a href="https://calendly.com/open-lines/demo" target="_blank" rel="noopener noreferrer">
-              <button className="btn-ghost">Book a demo</button>
-            </a>
+            <BookDemoButton />
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 20 }}>
             No credit card required to explore.
