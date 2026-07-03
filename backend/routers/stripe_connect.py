@@ -41,12 +41,31 @@ async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()]
 
     account_id = tenant.get("stripe_account_id")
 
-    if not account_id:
-        account_id = await svc.create_connect_account(tenant["business_name"])
-        await db.update_tenant(tenant_id, {"stripe_account_id": account_id})
-        logger.info("Created Stripe Connect account %s for tenant %s", account_id, tenant_id)
+    # A stored account id from test mode 404s under the live key ("account not
+    # connected to your platform or does not exist"). Drop it and recreate.
+    if account_id and not await svc.account_exists(account_id):
+        logger.warning(
+            "Stored Connect account %s missing in current Stripe mode for tenant %s — recreating",
+            account_id, tenant_id,
+        )
+        account_id = None
+        await db.update_tenant(tenant_id, {"stripe_account_id": None, "stripe_deposits_enabled": False})
 
-    link_url = await svc.create_account_link(account_id, tenant_id)
+    try:
+        if not account_id:
+            account_id = await svc.create_connect_account(tenant["business_name"])
+            await db.update_tenant(tenant_id, {"stripe_account_id": account_id})
+            logger.info("Created Stripe Connect account %s for tenant %s", account_id, tenant_id)
+
+        link_url = await svc.create_account_link(account_id, tenant_id)
+    except svc.stripe.StripeError as e:
+        msg = e.user_message or str(e)
+        logger.error("Stripe Connect onboarding failed for tenant %s: %s", tenant_id, msg)
+        # Brand-new live Connect platforms sit in review; account creation 400s until cleared.
+        if "review" in msg.lower() or "not been enabled" in msg.lower() or "sign up for connect" in msg.lower():
+            raise HTTPException(status_code=409, detail="Stripe is still reviewing your account for live payments. Please try again once Stripe has approved your platform (usually within a day).")
+        raise HTTPException(status_code=502, detail=f"Stripe onboarding error: {msg}")
+
     return {"url": link_url}
 
 

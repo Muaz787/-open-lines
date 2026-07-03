@@ -48,6 +48,17 @@ async def create_account_link(account_id: str, tenant_id: str) -> str:
     return link.url
 
 
+async def account_exists(account_id: str) -> bool:
+    """True if the connected account exists under the current Stripe key. Test-mode
+    account ids 404 in live ('account not connected to your platform or does not
+    exist'), which lets us detect and drop stale ids after a test→live switch."""
+    try:
+        stripe.Account.retrieve(account_id, api_key=_key())
+        return True
+    except stripe.InvalidRequestError:
+        return False
+
+
 async def get_account(account_id: str) -> dict:
     """Retrieve a Connect account status."""
     acct = stripe.Account.retrieve(account_id, api_key=_key())
