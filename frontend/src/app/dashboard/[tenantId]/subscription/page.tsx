@@ -12,9 +12,31 @@ import { authedFetch } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
-  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  priceYear: '$990',   saveYear: '$198', minutes: '150 min / mo', features: ['150 min of AI calls', 'Lead capture', 'SMS notifications'] },
-  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: ['400 min of AI calls', 'Calendar booking', 'Email & SMS alerts'] },
-  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, priceYear: '$3,790', saveYear: '$758', minutes: '900 min / mo', features: ['900 min of AI calls', 'Priority support', 'Custom prompts'] },
+  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  priceYear: '$990',   saveYear: '$198', minutes: '150 min / mo', features: [
+    '1 dedicated AI phone line',
+    '24/7 AI call answering',
+    'Lead capture, qualification & caller ID',
+    'Booking — Google & Outlook Calendar',
+    'Book with a specific team member',
+    'Transcripts, AI summaries & insights',
+    'Email, SMS & WhatsApp alerts',
+    'Knowledge base — 10 MB / 50-page docs + OCR',
+  ] },
+  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: [
+    'Everything in Starter',
+    'Deposit collection — Stripe & Square',
+    'Group & per-person deposits',
+    'HubSpot CRM sync',
+    'Slack notifications',
+    'Larger KB — 25 MB / 300-page docs',
+  ] },
+  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, priceYear: '$3,790', saveYear: '$758', minutes: '900 min / mo', features: [
+    'Everything in Pro',
+    'Largest KB — 50 MB / 1,000-page docs',
+    'Priority support',
+    'Dedicated onboarding & setup',
+    'Early access to new features',
+  ] },
 ] as const
 
 type PlanId = 'starter' | 'pro' | 'business'
@@ -824,8 +846,9 @@ function SubscriptionPage() {
                     )}
                     <div style={{ fontSize: 12, color: 'var(--db-muted)', marginBottom: 10 }}>{plan.minutes}</div>
                     {plan.features.map(f => (
-                      <div key={f} style={{ fontSize: 12, color: 'var(--db-text-2)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: 'var(--db-accent-text)', fontSize: 10 }}>✓</span> {f}
+                      <div key={f} style={{ fontSize: 12, color: 'var(--db-text-2)', marginBottom: 4, display: 'flex', alignItems: 'flex-start', gap: 6, lineHeight: 1.4 }}>
+                        <span style={{ color: 'var(--db-accent-text)', fontSize: 10, marginTop: 3, flexShrink: 0 }}>✓</span>
+                        <span>{f}</span>
                       </div>
                     ))}
                   </button>
