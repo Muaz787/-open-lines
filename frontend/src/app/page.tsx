@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 
 import Link from 'next/link'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
 import CapabilityCarousel from './components/CapabilityCarousel'
+import IntegrationsMarquee from './components/IntegrationsMarquee'
 
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
@@ -588,6 +589,18 @@ export default function Home() {
             ))}
           </div>
         </div>
+      </section>
+
+      <div className="div-line" />
+
+      {/* INTEGRATIONS */}
+      <section className="sec integrations" id="integrations">
+        <div className="wrap">
+          <div className="sec-label">Integrations</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Works with the tools<br />you already use.</h2>
+          <p className="sec-sub">Your AI plugs straight into your calendar, payments and CRM — no rip-and-replace.</p>
+        </div>
+        <IntegrationsMarquee />
       </section>
 
       <div className="div-line" />

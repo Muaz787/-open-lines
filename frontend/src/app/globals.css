@@ -2195,3 +2195,83 @@ footer {
 @media (max-width: 400px) {
   .trydemo { padding: 40px 18px; }
 }
+
+/* ── Integrations marquee ─────────────────────────────────────────────
+   Infinite left-to-right icon scroll. The track holds two identical
+   groups; animating translateX from -50% → 0 slides one group-width to
+   the right and loops seamlessly (icons exit right, re-enter left). */
+.integrations .sec-sub { margin-bottom: 40px; }
+.marquee {
+  /* full-bleed to the viewport edges so icons appear/disappear off-screen */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  overflow: hidden;
+  /* soft fade so icons melt in/out at the edges instead of hard-cutting */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.marquee:hover .mq-track { animation-play-state: paused; }
+.mq-track {
+  display: flex;
+  width: max-content;
+  animation: mq-scroll 46s linear infinite;
+  will-change: transform;
+}
+.mq-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 44px;
+  margin: 0;
+  padding: 6px 22px 0;
+  list-style: none;
+}
+.mq-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 96px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.mq-chip {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 31, 63, 0.06);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.mq-item:hover .mq-chip {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 26px rgba(0, 31, 63, 0.12);
+}
+.mq-chip img { width: 40px; height: 40px; display: block; user-select: none; }
+.mq-name {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+}
+@keyframes mq-scroll {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+@media (max-width: 640px) {
+  .integrations .sec-sub { margin-bottom: 30px; }
+  .mq-group { gap: 30px; padding: 6px 15px 0; }
+  .mq-item { width: 78px; gap: 9px; }
+  .mq-chip { width: 56px; height: 56px; border-radius: 15px; }
+  .mq-chip img { width: 32px; height: 32px; }
+  .mq-name { font-size: 11px; }
+  .mq-track { animation-duration: 34s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mq-track { animation: none; transform: translateX(0); }
+  .marquee { overflow-x: auto; }
+}
