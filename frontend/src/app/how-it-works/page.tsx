@@ -6,6 +6,7 @@ import PageCta from '../components/PageCta'
 export const metadata: Metadata = {
   title: 'How it works — Open Lines AI',
   description: 'Go live with an AI phone receptionist in under 10 minutes. Enter your website, get a dedicated number, and start answering every call — no hardware, no engineers.',
+  alternates: { canonical: '/how-it-works' },
 }
 
 const STEPS = [

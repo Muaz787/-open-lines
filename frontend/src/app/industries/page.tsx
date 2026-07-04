@@ -6,6 +6,7 @@ import PageCta from '../components/PageCta'
 export const metadata: Metadata = {
   title: 'Industries — Open Lines AI',
   description: 'An AI phone receptionist built for local, appointment-driven businesses — real estate, dental & medical, salons, legal, home services, restaurants and more.',
+  alternates: { canonical: '/industries' },
 }
 
 const INDUSTRIES = [

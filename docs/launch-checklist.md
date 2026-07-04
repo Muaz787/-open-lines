@@ -52,7 +52,7 @@ See security hardening notes.
 - [x] Live demo phone number on the homepage (+1 438 839 3907).
 - [ ] Final copy/pricing review; analytics events firing in production (check the funnel).
 - [x] **`robots.txt` + `sitemap.xml`** — generated via `app/robots.ts` + `app/sitemap.ts`; public marketing pages indexable, app/account routes disallowed.
-- [ ] Basic SEO metadata (per-page `title`/`description`, canonical, OG image) on all public pages.
+- [x] **Basic SEO metadata** — `metadataBase` + per-page `title`/`description`/canonical on all public pages; branded OG + Twitter card image generated at `app/opengraph-image.tsx`.
 
 ---
 

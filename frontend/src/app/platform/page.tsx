@@ -6,6 +6,7 @@ import PageCta from '../components/PageCta'
 export const metadata: Metadata = {
   title: 'Platform — Open Lines AI',
   description: 'Everything a front desk does, automated: 24/7 answering, lead qualification, calendar booking, deposits, a knowledge base, notifications, insights, and integrations — with Canadian privacy compliance.',
+  alternates: { canonical: '/platform' },
 }
 
 const FEATURES = [

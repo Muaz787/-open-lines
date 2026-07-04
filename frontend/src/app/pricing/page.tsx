@@ -8,6 +8,7 @@ import SiteFooter from '../components/SiteFooter'
 export const metadata: Metadata = {
   title: 'Pricing — Open Lines AI',
   description: 'Simple, transparent pricing for AI phone handling. From $99/month — no setup fees, no contracts.',
+  alternates: { canonical: '/pricing' },
 }
 
 

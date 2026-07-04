@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Support — Open Lines AI',
   description: 'Get help with Open Lines. Browse our documentation, contact support, or book a live demo.',
+  alternates: { canonical: '/support' },
 }
 
 const LogoMark = () => (

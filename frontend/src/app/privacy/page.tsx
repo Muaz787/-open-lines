@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Privacy Policy — Open Lines',
   description: 'How Open Lines collects, uses, and protects your data.',
+  alternates: { canonical: '/privacy' },
 }
 
 const LAST_UPDATED = 'May 8, 2026'

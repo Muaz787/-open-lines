@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Documentation — Open Lines AI',
   description: 'Learn how to set up your AI phone receptionist, connect calendars, sync HubSpot CRM, and configure your Open Lines account.',
+  alternates: { canonical: '/docs' },
 }
 
 const LogoMark = () => (
