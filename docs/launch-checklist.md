@@ -13,7 +13,7 @@ See `docs/stripe-go-live.md` for the full Stripe test→live steps.
 - [x] **Stripe subscriptions live** — 4 products, monthly+annual prices, metered overage; live keys in Railway, `pk_live` in Vercel.
 - [x] **Stripe Tax** live — GST/HST registration 716179239RT0001 + origin address; verified HST 13% computes on a live Pro invoice ($199 → $224.87).
 - [x] **Square deposits** — already live.
-- [~] **Stripe deposits (Connect)** — platform profile complete (direct charges) but **waiting on Stripe's Connect platform review**. Live `POST /v1/accounts` is blocked until it clears (Connect → Overview stops showing "in review"). Nothing to fix; wait / contact Stripe to expedite.
+- [x] **Stripe deposits (Connect) — platform APPROVED by Stripe (2026-07-04).** Live connected-account creation now works. Also fixed: the deposit onboarding self-heal now drops a stale test-mode connected account on a `PermissionError` (not just `InvalidRequestError`) so the live key recreates it cleanly. Remaining is just the live deposit smoke test below.
 - [ ] **Confirm `payments.refunded_at` column** exists in Supabase (deposit refund flow). If missing: `alter table payments add column if not exists refunded_at timestamptz;`
 - [ ] **End-to-end live smoke test** — one real subscription checkout → confirm tenant flips `incomplete → active`, billing webhook returns 200, invoice shows GST/HST. Then a live deposit + refund once Connect review clears.
 
@@ -51,14 +51,15 @@ See security hardening notes.
 - [x] Landing + sub-pages (How it works / Industries / Platform / Pricing) live with mobile nav.
 - [x] Live demo phone number on the homepage (+1 438 839 3907).
 - [ ] Final copy/pricing review; analytics events firing in production (check the funnel).
-- [ ] `robots.txt` / sitemap / basic SEO metadata on all public pages.
+- [x] **`robots.txt` + `sitemap.xml`** — generated via `app/robots.ts` + `app/sitemap.ts`; public marketing pages indexable, app/account routes disallowed.
+- [ ] Basic SEO metadata (per-page `title`/`description`, canonical, OG image) on all public pages.
 
 ---
 
 ## Blocking vs. nice-to-have
 **Hard blockers before charging real customers:** lawyer-reviewed legal docs + privacy inboxes (§2), Resend auth-email deliverability (§3), E&O/cyber insurance (§6), prod migrations + env (§4/§5).
 
-**Not blocking general launch:** live Stripe **deposits** (§1) — gated on Stripe's Connect review; subscriptions and Square deposits already work, so you can launch and enable Stripe deposits when review clears.
+**Not blocking general launch:** Stripe **deposits** are now unblocked — Connect review cleared 2026-07-04, so subscriptions, Square deposits **and** Stripe deposits all work. Just run the live deposit + refund smoke test (§1) to confirm end-to-end.
 
 ---
 
