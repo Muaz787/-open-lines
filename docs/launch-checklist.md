@@ -28,21 +28,21 @@ See PIPEDA notes; drafts on branch `pipeda-legal-docs`.
 
 ## 3. Email & deliverability
 - [x] **Lifecycle/transactional email suite** — one branded `services/email.py` covering welcome, subscription-activation, deposit-received, cancellation, call-summary and trial reminders. Shared layout + plain-text part + reply-to `support@` + company mailing address in footer. Trial nudges carry a CASL unsubscribe link + `List-Unsubscribe` headers, backed by `/email/unsubscribe` and honored by the trial cron.
-- [ ] **Enable Stripe customer emails** — Stripe Dashboard → **Settings → Customer emails** → turn on **"Successful payments"** and **"Invoices"** (do it in **live** mode). This covers invoice/receipt emails without extra code.
-- [ ] **Resend SMTP verified** for Supabase auth emails (signup confirm, password reset) — send a real signup + reset end-to-end and confirm delivery + correct from-domain (SPF/DKIM on openlines.ai). Also confirm the app domain sends: `EMAIL_FROM` (notifications@openlines.ai), `SUPPORT_EMAIL`, and DNS for the sending domain.
+- [x] **Enable Stripe customer emails** — "Successful payments" + "Invoices" turned on in live mode. Covers invoice/receipt emails.
+- [x] **Resend SMTP verified** for Supabase auth emails — SPF/DKIM on the sending domain confirmed.
 - [ ] Do one live end-to-end pass of each lifecycle email (welcome on signup, activation on subscribe, deposit + cancellation on a booking) and confirm they land in the inbox (not spam) from the production domain, not sandbox.
-- [ ] (Optional) set `EMAIL_UNSUBSCRIBE_SECRET` in prod to pin unsubscribe-token signing (defaults to reusing `VAPI_SERVER_SECRET`).
+- [x] **`EMAIL_UNSUBSCRIBE_SECRET` set** in prod to pin unsubscribe-token signing.
 
 ## 4. Infrastructure & ops
 - [ ] **Railway daily cron** configured for: website re-crawl (stale KB refresh) + free-trial reminder emails. Confirm the schedule is actually running.
-- [ ] **Database migrations applied** in production Supabase — run **`migrations/000_consolidated_schema.sql`** once in the Supabase SQL editor. It's the single idempotent bring-up file (core schema + migrations 001–007 + a reconstructed `payments` table + the Microsoft calendar columns that were never migrated), safe to re-run. Then spot-check the schema.
+- [x] **Database migrations applied** in production Supabase — ran **`migrations/000_consolidated_schema.sql`** (core schema + migrations 001–007 + `payments` + Microsoft calendar cols + email lifecycle cols). This also covers the `oauth_states` migration in §5 and the two new email columns. Recommended: spot-check that `tenants.marketing_unsubscribed_at` / `subscription_activated_email_sent`, `oauth_states`, and `payments` all exist.
 - [ ] **Env vars set in prod**: `VAPI_SERVER_SECRET`, `MISTRAL_API_KEY`, Stripe live keys, Square production keys, Resend key. Admin → System Health should be all-green.
 - [ ] **Backups / monitoring** — confirm Supabase backups on; a basic uptime check on the Railway backend URL.
 
 ## 5. Security
 See security hardening notes.
 
-- [ ] **`oauth_states` migration applied** + `VAPI_SERVER_SECRET` set (tenant-auth / IDOR + OAuth state nonce hardening).
+- [x] **`oauth_states` migration applied** (via `000_consolidated_schema.sql`). Still confirm **`VAPI_SERVER_SECRET`** is set in prod (tenant-auth / IDOR + OAuth state nonce hardening; also backs unsubscribe-token signing if `EMAIL_UNSUBSCRIBE_SECRET` were unset).
 - [ ] Confirm tenant-scoped authz (`verify_tenant_owner`) covers all tenant-data endpoints.
 
 ## 6. Business & insurance
