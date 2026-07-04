@@ -27,8 +27,11 @@ See PIPEDA notes; drafts on branch `pipeda-legal-docs`.
 - [ ] **Public privacy/terms pages** linked from footer + signup.
 
 ## 3. Email & deliverability
-- [ ] **Resend SMTP verified** for Supabase auth emails (signup confirm, password reset) — send a real signup + reset end-to-end and confirm delivery + correct from-domain (SPF/DKIM on openlines.ai).
-- [ ] Transactional email (call summaries, trial reminders, deposit confirmations) sending from the production domain, not sandbox.
+- [x] **Lifecycle/transactional email suite** — one branded `services/email.py` covering welcome, subscription-activation, deposit-received, cancellation, call-summary and trial reminders. Shared layout + plain-text part + reply-to `support@` + company mailing address in footer. Trial nudges carry a CASL unsubscribe link + `List-Unsubscribe` headers, backed by `/email/unsubscribe` and honored by the trial cron.
+- [ ] **Enable Stripe customer emails** — Stripe Dashboard → **Settings → Customer emails** → turn on **"Successful payments"** and **"Invoices"** (do it in **live** mode). This covers invoice/receipt emails without extra code.
+- [ ] **Resend SMTP verified** for Supabase auth emails (signup confirm, password reset) — send a real signup + reset end-to-end and confirm delivery + correct from-domain (SPF/DKIM on openlines.ai). Also confirm the app domain sends: `EMAIL_FROM` (notifications@openlines.ai), `SUPPORT_EMAIL`, and DNS for the sending domain.
+- [ ] Do one live end-to-end pass of each lifecycle email (welcome on signup, activation on subscribe, deposit + cancellation on a booking) and confirm they land in the inbox (not spam) from the production domain, not sandbox.
+- [ ] (Optional) set `EMAIL_UNSUBSCRIBE_SECRET` in prod to pin unsubscribe-token signing (defaults to reusing `VAPI_SERVER_SECRET`).
 
 ## 4. Infrastructure & ops
 - [ ] **Railway daily cron** configured for: website re-crawl (stale KB refresh) + free-trial reminder emails. Confirm the schedule is actually running.

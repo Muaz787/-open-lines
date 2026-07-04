@@ -196,24 +196,14 @@ async def notify_business(tenant: dict, payment: dict | None, *, refunded: bool,
     notification_email = tenant.get("notification_email", "")
     if notification_email and tenant.get("email_enabled", True):
         try:
-            from services.email import send_call_summary_email
-            summary = (
-                f"Appointment for {service} was cancelled. "
-                + (f"Deposit of {amount} refunded." if refunded
-                   else (f"Deposit of {amount} forfeited (cancelled inside the refund window)." if amount is not None
-                         else "No deposit was on file."))
-            )
-            fake_analysis = {
-                "caller_name": caller_name,
-                "summary": summary,
-                "urgency": "warm",
-                "suggested_next_step": f"Follow up with {caller_name} if a rebooking is expected.",
-                "key_details": {"Service": service, **({"Deposit": amount} if amount is not None else {})},
-            }
-            await send_call_summary_email(
+            from services.email import send_cancellation_email
+            await send_cancellation_email(
                 to=notification_email,
                 business_name=business_name,
-                analysis=fake_analysis,
+                caller_name=caller_name,
+                service=service,
+                refunded=refunded,
+                amount=amount,
                 caller_number=caller_phone,
             )
         except Exception as e:

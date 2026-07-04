@@ -548,3 +548,13 @@ alter table zapier_subscriptions enable row level security;
 alter table tenants
   add column if not exists microsoft_refresh_token text null,
   add column if not exists microsoft_user_email    text null;
+
+
+-- ============================================================================
+-- SECTION E — Email lifecycle columns
+-- CASL unsubscribe for promotional (trial) email + once-per-tenant guard for
+-- the subscription-activation email. (Also present in backend/db/schema.sql.)
+-- ============================================================================
+
+alter table tenants add column if not exists marketing_unsubscribed_at        timestamptz;
+alter table tenants add column if not exists subscription_activated_email_sent boolean default false;

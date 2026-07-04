@@ -133,6 +133,9 @@ async def process_trial_reminders(limit: int = 200) -> dict:
         email = t.get("email")
         if not email or has_active_subscription(t):
             continue
+        # CASL: trial nudges are commercial messages — respect an unsubscribe.
+        if t.get("marketing_unsubscribed_at"):
+            continue
         created = _created_dt(t)
         if not created:
             continue
@@ -152,16 +155,18 @@ async def process_trial_reminders(limit: int = 200) -> dict:
             continue
 
         try:
-            await send_trial_reminder_email(
+            ok = await send_trial_reminder_email(
                 to=email,
                 business_name=t.get("business_name") or "there",
                 kind=kind,
                 tenant_id=t["id"],
                 days_remaining=ts["trial_days_remaining"],
             )
-            await db.update_tenant(t["id"], {flag: True})
-            sent[kind] += 1
-            processed += 1
+            # Only mark sent on success, so a transient failure retries next run.
+            if ok:
+                await db.update_tenant(t["id"], {flag: True})
+                sent[kind] += 1
+                processed += 1
         except Exception as e:
             logger.error("trial reminder send failed for tenant %s: %s", t.get("id"), e)
 

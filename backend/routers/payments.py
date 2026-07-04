@@ -648,18 +648,13 @@ async def _notify_payment(tenant: dict, payment: dict, appointment: dict | None 
     notification_email = tenant.get("notification_email", "")
     if notification_email and tenant.get("email_enabled", True):
         try:
-            from services.email import send_call_summary_email
-            fake_analysis = {
-                "caller_name": caller_name,
-                "summary": f"Deposit of {amount} received for {service}. Appointment confirmed.",
-                "urgency": "hot",
-                "suggested_next_step": f"Prepare for {caller_name}'s {service}.",
-                "key_details": {"Payment": amount, "Service": service},
-            }
-            await send_call_summary_email(
+            from services.email import send_deposit_received_email
+            await send_deposit_received_email(
                 to=notification_email,
                 business_name=business_name,
-                analysis=fake_analysis,
+                caller_name=caller_name,
+                amount=amount,
+                service=service,
                 caller_number=caller_phone,
             )
         except Exception as e:

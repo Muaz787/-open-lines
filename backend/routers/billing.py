@@ -278,6 +278,20 @@ async def stripe_webhook(request: Request):
             {"tenant_id": tenant_id, "plan": plan},
         )
 
+        # Activation confirmation email — once per tenant.
+        try:
+            if _t and _t.get("email") and not _t.get("subscription_activated_email_sent"):
+                from services.email import send_subscription_activated_email
+                if await send_subscription_activated_email(
+                    to=_t["email"],
+                    business_name=_t.get("business_name") or "your business",
+                    tenant_id=tenant_id,
+                    plan=plan,
+                ):
+                    await db.update_tenant(tenant_id, {"subscription_activated_email_sent": True})
+        except Exception as e:
+            logger.error("Subscription activation email failed for tenant %s: %s", tenant_id, e)
+
         # Add the overage meter item if checkout created the subscription without it
         if sub_id and STRIPE_OVERAGE_PRICE_ID:
             try:

@@ -347,3 +347,8 @@ alter table tenants add column if not exists billing_exempt boolean default fals
 -- SMS/WhatsApp alerts use sms_alert_number). Run AFTER the code that stops
 -- referencing it is deployed.
 alter table tenants drop column if exists whatsapp_number;
+
+-- Email lifecycle: CASL unsubscribe for promotional (trial) email, and a
+-- once-per-tenant guard so the subscription-activation email isn't resent.
+alter table tenants add column if not exists marketing_unsubscribed_at        timestamptz;
+alter table tenants add column if not exists subscription_activated_email_sent boolean default false;

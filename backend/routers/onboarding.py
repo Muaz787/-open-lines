@@ -140,6 +140,18 @@ async def provision(request: Request, body: ProvisionRequest):
             except Exception as e:
                 logger.error("Auth user creation failed for tenant %s: %s", result.get("tenant_id"), e)
 
+            # Welcome email — non-fatal; the tenant is already provisioned.
+            try:
+                from services.email import send_welcome_email
+                await send_welcome_email(
+                    to=body.email,
+                    business_name=body.business_name,
+                    tenant_id=result["tenant_id"],
+                    phone_number=result.get("phone_number", ""),
+                )
+            except Exception as e:
+                logger.error("Welcome email failed for tenant %s: %s", result.get("tenant_id"), e)
+
         # PRIVACY: business metadata only — no phone numbers, no credentials
         common = {
             "tenant_id": result.get("tenant_id"),
