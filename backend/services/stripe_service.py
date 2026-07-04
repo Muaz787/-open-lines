@@ -49,13 +49,17 @@ async def create_account_link(account_id: str, tenant_id: str) -> str:
 
 
 async def account_exists(account_id: str) -> bool:
-    """True if the connected account exists under the current Stripe key. Test-mode
-    account ids 404 in live ('account not connected to your platform or does not
-    exist'), which lets us detect and drop stale ids after a test→live switch."""
+    """True if the connected account is reachable under the current Stripe key.
+    A test-mode account id retrieved with the live key is unusable in two ways:
+    it can 404 ('account not connected to your platform or does not exist',
+    InvalidRequestError) or be rejected with 'the provided key does not have
+    access to account ... application access may have been revoked'
+    (PermissionError). Either way the stored id is stale after a test→live
+    switch and should be dropped and recreated, so treat both as 'gone'."""
     try:
         stripe.Account.retrieve(account_id, api_key=_key())
         return True
-    except stripe.InvalidRequestError:
+    except (stripe.InvalidRequestError, stripe.PermissionError):
         return False
 
 
