@@ -32,7 +32,7 @@ See PIPEDA notes; drafts on branch `pipeda-legal-docs`.
 
 ## 4. Infrastructure & ops
 - [ ] **Railway daily cron** configured for: website re-crawl (stale KB refresh) + free-trial reminder emails. Confirm the schedule is actually running.
-- [ ] **Database migrations applied** in production Supabase (billing_exempt, appointments.source, square tables/columns, oauth_states, payments.refunded_at). Spot-check schema.
+- [ ] **Database migrations applied** in production Supabase — run **`migrations/000_consolidated_schema.sql`** once in the Supabase SQL editor. It's the single idempotent bring-up file (core schema + migrations 001–007 + a reconstructed `payments` table + the Microsoft calendar columns that were never migrated), safe to re-run. Then spot-check the schema.
 - [ ] **Env vars set in prod**: `VAPI_SERVER_SECRET`, `MISTRAL_API_KEY`, Stripe live keys, Square production keys, Resend key. Admin → System Health should be all-green.
 - [ ] **Backups / monitoring** — confirm Supabase backups on; a basic uptime check on the Railway backend URL.
 
