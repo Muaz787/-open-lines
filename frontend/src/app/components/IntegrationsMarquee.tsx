@@ -14,14 +14,14 @@ const INTEGRATIONS: { name: string; src: string }[] = [
   { name: 'Slack',               src: '/integrations/slack.svg' },
 ]
 
-// One visual group is the list doubled so a single group is wide enough to span
-// the viewport; two identical groups in the track make the loop seamless.
-const GROUP = [...INTEGRATIONS, ...INTEGRATIONS]
-
+// The repeating unit is the 7 icons exactly once. Two identical groups in the
+// track make the loop seamless; the marquee is width-capped (see globals.css)
+// so one 7-icon set is always wider than the visible window — that's what keeps
+// the same icon from ever appearing twice on screen, even on ultra-wide displays.
 function Group({ hidden = false }: { hidden?: boolean }) {
   return (
     <ul className="mq-group" aria-hidden={hidden || undefined}>
-      {GROUP.map((it, i) => (
+      {INTEGRATIONS.map((it, i) => (
         <li key={`${it.name}-${i}`} className="mq-item">
           <span className="mq-chip">
             {/* plain img: tiny static SVGs, fixed CSS size = no layout shift.

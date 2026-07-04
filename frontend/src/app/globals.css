@@ -2197,33 +2197,42 @@ footer {
 }
 
 /* ── Integrations marquee ─────────────────────────────────────────────
-   Infinite left-to-right icon scroll. The track holds two identical
-   groups; animating translateX from -50% → 0 slides one group-width to
-   the right and loops seamlessly (icons exit right, re-enter left). */
+   Infinite left-to-right icon scroll. Each group is the 7 icons exactly
+   once; the track holds two identical groups and animates translateX from
+   -50% → 0, sliding one group-width to the right and looping seamlessly
+   (icons exit right, re-enter left). The marquee is width-capped and the
+   icon spacing is set so one 7-icon group (~1230px) is always WIDER than
+   the visible window (≤1120px) — so the same icon never shows twice at
+   once, even on ultra-wide displays. Uniform loop spacing is kept by
+   giving each group a leading pad equal to its gap (no trailing pad), so
+   the seam between the two groups matches the inter-icon gap. */
 .integrations .sec-sub { margin-bottom: 40px; }
 .marquee {
-  /* full-bleed to the viewport edges so icons appear/disappear off-screen */
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
+  /* centered strip with room on the sides on wide screens; vertical padding
+     leaves space for chip shadows / hover lift (overflow:hidden clips them) */
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 0;
   overflow: hidden;
   /* soft fade so icons melt in/out at the edges instead of hard-cutting */
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
 }
 .marquee:hover .mq-track { animation-play-state: paused; }
 .mq-track {
   display: flex;
   width: max-content;
-  animation: mq-scroll 46s linear infinite;
+  animation: mq-scroll 30s linear infinite;
   will-change: transform;
 }
 .mq-group {
   display: flex;
   flex-shrink: 0;
   align-items: flex-start;
-  gap: 44px;
+  gap: 80px;
   margin: 0;
-  padding: 6px 22px 0;
+  /* leading pad == gap keeps the loop seam spacing uniform */
+  padding: 6px 0 0 80px;
   list-style: none;
 }
 .mq-item {
@@ -2264,12 +2273,12 @@ footer {
 }
 @media (max-width: 640px) {
   .integrations .sec-sub { margin-bottom: 30px; }
-  .mq-group { gap: 30px; padding: 6px 15px 0; }
+  .mq-group { gap: 34px; padding: 6px 0 0 34px; }
   .mq-item { width: 78px; gap: 9px; }
   .mq-chip { width: 56px; height: 56px; border-radius: 15px; }
   .mq-chip img { width: 32px; height: 32px; }
   .mq-name { font-size: 11px; }
-  .mq-track { animation-duration: 34s; }
+  .mq-track { animation-duration: 22s; }
 }
 @media (prefers-reduced-motion: reduce) {
   .mq-track { animation: none; transform: translateX(0); }
