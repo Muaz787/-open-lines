@@ -6,7 +6,7 @@
 
 const INTEGRATIONS: { name: string; src: string }[] = [
   { name: 'Google Calendar',     src: '/integrations/google-calendar.svg' },
-  { name: 'Microsoft Outlook',   src: '/integrations/outlook.svg' },
+  { name: 'Outlook Calendar',    src: '/integrations/outlook.svg' },
   { name: 'Square',              src: '/integrations/square.svg' },
   { name: 'Square Appointments', src: '/integrations/square-appointments.svg' },
   { name: 'Stripe',              src: '/integrations/stripe.svg' },
