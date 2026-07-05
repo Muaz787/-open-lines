@@ -558,3 +558,13 @@ alter table tenants
 
 alter table tenants add column if not exists marketing_unsubscribed_at        timestamptz;
 alter table tenants add column if not exists subscription_activated_email_sent boolean default false;
+
+
+-- ============================================================================
+-- SECTION F — Receptionist voice
+-- The ElevenLabs voice chosen for the agent (gender-matched to the agent name;
+-- custom names use voice_gender). NULL falls back to the name/gender resolver.
+-- ============================================================================
+
+alter table tenants add column if not exists voice_id     text;
+alter table tenants add column if not exists voice_gender text default 'female';

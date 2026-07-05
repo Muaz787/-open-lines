@@ -387,6 +387,10 @@ async def _provision_after_twilio(
     owner_name: str = payload.get("owner_name", "")
     website_url: str = payload.get("website_url", "")
     agent_name: str = payload.get("agent_name", "Alex")
+    # Gender-appropriate voice: preset names map to a fixed voice; a custom name
+    # uses the voice_gender the tenant picked ('female' default).
+    voice_gender: str = (payload.get("voice_gender") or "female")
+    voice_id: str = vapi.resolve_voice_id(agent_name, voice_gender)
 
     # Reuse the onboarding analysis (Business Brief + structured extracts) when present.
     predetected: dict = {}
@@ -519,6 +523,8 @@ async def _provision_after_twilio(
         tenant_stub = {
             "agent_name": agent_name,
             "greeting_template": greeting_template,
+            "voice_id": voice_id,
+            "voice_gender": voice_gender,
         }
         assistant_config = vapi.build_assistant_config(tenant_stub, system_prompt)
         vapi_assistant_id = await vapi.create_assistant(assistant_config, api_key=suborg_key)
@@ -553,6 +559,8 @@ async def _provision_after_twilio(
             "country": payload.get("country", "") or None,
             "website_url": website_url,
             "agent_name": agent_name,
+            "voice_id": voice_id,
+            "voice_gender": voice_gender,
             "greeting_template": greeting_template,
             "qualification_fields": qualification_fields,
             "twilio_subaccount_sid": subaccount_sid,

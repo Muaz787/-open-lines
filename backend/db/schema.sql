@@ -352,3 +352,9 @@ alter table tenants drop column if exists whatsapp_number;
 -- once-per-tenant guard so the subscription-activation email isn't resent.
 alter table tenants add column if not exists marketing_unsubscribed_at        timestamptz;
 alter table tenants add column if not exists subscription_activated_email_sent boolean default false;
+
+-- Receptionist voice: the ElevenLabs voice chosen for the agent (gender-matched
+-- to the agent name; custom names use voice_gender). NULL falls back to the
+-- name/gender resolver at assistant-build time.
+alter table tenants add column if not exists voice_id     text;
+alter table tenants add column if not exists voice_gender text default 'female';

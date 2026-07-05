@@ -44,6 +44,7 @@ class ProvisionRequest(BaseModel):
     country: str = "CA"
     website_url: str = ""
     agent_name: str = "Alex"
+    voice_gender: str = "female"   # used when agent_name is a custom name
     extra_instructions: str = ""
     business_description: str = ""
     email: str = ""

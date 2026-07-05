@@ -166,6 +166,7 @@ export default function OnboardingPage() {
     country:              'CA',
     extra_instructions:   '',
     agent_name:           'Alex',
+    voice_gender:         'female',
     business_description: '',
     password:             '',
   })
@@ -320,6 +321,7 @@ export default function OnboardingPage() {
       industry:      form.industry,
       country:       form.country,
       agent_name:    form.agent_name || 'Alex',
+      voice_gender:  form.voice_gender || 'female',
       email:         form.email,
       password:      form.password,
     }
@@ -654,8 +656,30 @@ export default function OnboardingPage() {
                     }}>Custom</button>
                 </div>
                 {customAgent && (
-                  <input className="form-input" name="agent_name" value={form.agent_name}
-                    onChange={handleChange} placeholder="Enter a name" style={{ marginTop: 10 }} autoFocus />
+                  <>
+                    <input className="form-input" name="agent_name" value={form.agent_name}
+                      onChange={handleChange} placeholder="Enter a name" style={{ marginTop: 10 }} autoFocus />
+                    {/* Gender can't be inferred from a custom name — let them pick the voice. */}
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
+                      Voice
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[['female', 'Female'], ['male', 'Male']].map(([val, label]) => {
+                        const on = form.voice_gender === val
+                        return (
+                          <button type="button" key={val}
+                            onClick={() => setForm(f => ({ ...f, voice_gender: val }))}
+                            style={{
+                              padding: '8px 16px', borderRadius: 999, fontSize: 13, cursor: 'pointer',
+                              border: `1px solid ${on ? 'var(--text)' : 'var(--border)'}`,
+                              background: on ? 'var(--text)' : 'transparent',
+                              color: on ? 'var(--bg, #fff)' : 'var(--text)',
+                              fontWeight: on ? 600 : 400, transition: 'all 0.15s',
+                            }}>{label}</button>
+                        )
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
 

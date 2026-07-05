@@ -191,7 +191,16 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
                     ensure_safety_preamble(system_prompt + _CALLER_LOOKUP_NOTE))},
             ],
         },
-        "voice": {**RECEPTIONIST_VOICE, "fillerInjectionEnabled": True},
+        "voice": {
+            **RECEPTIONIST_VOICE,
+            # Prefer the voice chosen/resolved at provision time; fall back to
+            # resolving from the agent name so existing tenants get a
+            # gender-correct voice on their next assistant rebuild.
+            "voiceId": tenant.get("voice_id") or resolve_voice_id(
+                tenant.get("agent_name"), tenant.get("voice_gender")
+            ),
+            "fillerInjectionEnabled": True,
+        },
         **server_block(f"{APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
 
@@ -377,7 +386,7 @@ def ensure_receptionist_style(prompt: str) -> str:
 # Cartesia ("cartesia", sonic-2) for lower cost/latency if margins require it.
 RECEPTIONIST_VOICE = {
     "provider": "11labs",
-    "voiceId": "EXAVITQu4vr4xnSDxMaL",   # ElevenLabs "Sarah" — warm, professional
+    "voiceId": "EXAVITQu4vr4xnSDxMaL",   # ElevenLabs "Sarah" — warm, professional (default)
     "model": "eleven_turbo_v2_5",
     "stability": 0.5,          # natural expressiveness without wobble
     "similarityBoost": 0.75,
@@ -385,6 +394,38 @@ RECEPTIONIST_VOICE = {
     "useSpeakerBoost": True,
     "speed": 1.0,
 }
+
+# Gender-appropriate voice per receptionist name, so "Alex" sounds male and
+# "Emma/Sophia/Mia" sound female (previously every agent used one female voice).
+# These are ElevenLabs default-library voices — VERIFY each voiceId is enabled
+# in your ElevenLabs/Vapi account before relying on it (an invalid id breaks
+# TTS). Everything falls back to the proven female voice above.
+VOICE_FEMALE = "EXAVITQu4vr4xnSDxMaL"   # Sarah  — warm, professional (proven/default)
+VOICE_MALE   = "nPczCjzI2devNBz1zQrb"   # Brian  — warm, professional male (default library)
+
+NAME_VOICE_MAP = {
+    "alex":   VOICE_MALE,
+    "sam":    VOICE_MALE,
+    "emma":   VOICE_FEMALE,
+    "sophia": VOICE_FEMALE,
+    "mia":    VOICE_FEMALE,
+}
+
+
+def resolve_voice_id(agent_name: str | None, voice_gender: str | None = None) -> str:
+    """Choose a gender-appropriate voice for the agent.
+
+    - A preset name (Alex/Emma/Sophia/Mia/Sam) maps to a fixed voice.
+    - A custom name uses the explicit voice_gender ('male'/'female') the tenant
+      picked in onboarding, since gender can't be inferred from a free-typed name.
+    - Anything unknown falls back to the female voice.
+    """
+    key = (agent_name or "").strip().lower()
+    if key in NAME_VOICE_MAP:
+        return NAME_VOICE_MAP[key]
+    if (voice_gender or "").strip().lower() in ("male", "m", "man"):
+        return VOICE_MALE
+    return VOICE_FEMALE
 RECEPTIONIST_TRANSCRIBER = {
     "provider": "deepgram",
     "model": "nova-3",          # newer than nova-2 — better accuracy on names/numbers
