@@ -57,6 +57,10 @@ See security hardening notes.
 - [x] **`robots.txt` + `sitemap.xml`** — generated via `app/robots.ts` + `app/sitemap.ts`; public marketing pages indexable, app/account routes disallowed.
 - [x] **Basic SEO metadata** — `metadataBase` + per-page `title`/`description`/canonical on all public pages; branded OG + Twitter card image generated at `app/opengraph-image.tsx`.
 
+## 8. Product / onboarding
+- [x] **Gender-matched receptionist voice** — the agent name now drives the ElevenLabs voice: Alex/Sam → male ("Brian"), Emma/Sophia/Mia → female ("Sarah"). Custom names show a Female/Male voice picker in onboarding (defaults female). `tenant.voice_id`/`voice_gender` stored at provision; existing tenants get a gender-correct voice on their next assistant rebuild. Both voices confirmed present in the Vapi 11labs library.
+- [ ] **Test call as "Alex"** — confirm the male voice ("Brian") renders end-to-end on a real call before relying on it (the male voice id is the only one not previously proven in prod; falls back to the female voice otherwise).
+
 ---
 
 ## Blocking vs. nice-to-have
