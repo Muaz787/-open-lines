@@ -358,3 +358,14 @@ alter table tenants add column if not exists subscription_activated_email_sent b
 -- name/gender resolver at assistant-build time.
 alter table tenants add column if not exists voice_id     text;
 alter table tenants add column if not exists voice_gender text default 'female';
+
+-- Prompt system v2: structured owner-operating layer + custom-tenant rebuild.
+-- business_subtype/receptionist_tone/operating_priorities render into the owner
+-- layer (defaults applied at build when null). business_description is persisted
+-- so custom tenants can regenerate; custom_prompt_base is the reusable custom
+-- script with a [[KNOWLEDGE_CONTEXT]] slot refreshed on each rebuild.
+alter table tenants add column if not exists business_subtype     text;
+alter table tenants add column if not exists receptionist_tone    text;
+alter table tenants add column if not exists operating_priorities text[];
+alter table tenants add column if not exists business_description  text;
+alter table tenants add column if not exists custom_prompt_base    text;

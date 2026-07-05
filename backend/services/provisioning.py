@@ -19,6 +19,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 
+# Placeholder for the (refreshable) KB inside a stored custom prompt base. We
+# string-replace it (never str.format) so GPT-authored braces can't break it.
+KB_SENTINEL = "[[KNOWLEDGE_CONTEXT]]"
+
 QUALIFICATION_FIELDS = {
     "realtor": {
         "budget": "What is your approximate budget for the property?",
@@ -100,36 +104,45 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
 
     if not assistant_id:
         raise ValueError("Tenant has no Vapi assistant")
-    if industry == "custom":
-        raise ValueError("Custom industry tenants must be re-provisioned manually")
 
-    template = _load_template(industry)
-
-    qualification_fields   = QUALIFICATION_FIELDS.get(industry, {})
-    qualification_questions = "\n".join(f"- {q}" for q in qualification_fields.values())
-
+    # Fetch fresh structured KB (raw for regeneration context, wrapped for the prompt).
+    structured_raw = ""
     knowledge_context = "No website content available."
     try:
         pinecone_namespace = tenant.get("pinecone_namespace", "")
         if pinecone_namespace:
-            structured = await knowledge.build_structured_knowledge(
+            structured_raw = await knowledge.build_structured_knowledge(
                 pinecone_namespace, business_brief=tenant.get("business_brief") or ""
-            )
-            if structured:
-                knowledge_context = vapi.wrap_untrusted_kb(structured)
+            ) or ""
+            if structured_raw:
+                knowledge_context = vapi.wrap_untrusted_kb(structured_raw)
     except Exception as e:
         logger.warning("KB fetch failed during reprompt for tenant %s (continuing): %s", tenant_id, e)
 
-    system_prompt = template.format(
-        business_name=business_name,
-        agent_name=agent_name,
-        qualification_questions=qualification_questions,
-        knowledge_context=knowledge_context,
-    )
+    # Industry body: custom tenants reuse their stored base (KB refreshed); the
+    # rest render their industry template. Custom is no longer frozen.
+    if industry == "custom":
+        industry_body = await _custom_body(tenant, knowledge_context, structured_raw)
+    else:
+        template = _load_template(industry)
+        qualification_fields    = QUALIFICATION_FIELDS.get(industry, {})
+        qualification_questions = "\n".join(f"- {q}" for q in qualification_fields.values())
+        industry_body = template.format(
+            business_name=business_name,
+            agent_name=agent_name,
+            qualification_questions=qualification_questions,
+            knowledge_context=knowledge_context,
+        )
 
-    extra = (tenant.get("extra_instructions") or "").strip()
-    if extra:
-        system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FROM {business_name.upper()}\n{extra}"
+    # Owner operating layer (subtype/tone/priorities/editable instructions) sits
+    # above the industry body; safety preamble is prepended later.
+    owner_layer = _owner_layer_block(
+        tenant.get("business_subtype"),
+        tenant.get("receptionist_tone"),
+        tenant.get("operating_priorities"),
+        tenant.get("extra_instructions"),
+    )
+    system_prompt = owner_layer + industry_body
 
     base_system_prompt = system_prompt
 
@@ -214,14 +227,19 @@ async def _generate_custom_content(
     agent_name: str,
     business_description: str,
     knowledge_context: str,
-    extra_instructions: str,
 ) -> tuple[str, dict]:
-    """Use GPT-4o to generate a system prompt and qualification fields for a custom business type."""
+    """Generate a custom receptionist script (with a refreshable KB slot) and 3
+    qualification questions for an 'Other' business.
+
+    The returned script contains the KB_SENTINEL token where reference knowledge
+    is injected, so this base can be stored and refreshed on later rebuilds
+    instead of regenerating from scratch every time. Owner instructions are NOT
+    baked in here — they live in the higher-precedence owner layer."""
     if not OPENAI_API_KEY:
         raise RuntimeError("OPENAI_API_KEY must be set for custom industry provisioning")
 
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-    kb_snippet = vapi.wrap_untrusted_kb(knowledge_context[:6000]) if knowledge_context else "No website content available."
+    kb_for_context = (knowledge_context or "").strip()[:6000]
 
     user_prompt = f"""Write a complete AI phone receptionist script for this business:
 
@@ -236,20 +254,18 @@ The script MUST follow this exact structure:
    Step 1 — Greet and Capture Name: use a greeting that includes "{business_name}" and "{agent_name}" by name, ask for caller's name
    Step 2 — Understand the Request: open question to understand why they're calling
    Step 3 — Ask Qualification Questions: 3 questions, one at a time, relevant to this business
-   Step 4 — Answer Questions: answer using the knowledge context below
+   Step 4 — Answer Questions: answer using the business knowledge. Put the literal token {KB_SENTINEL} on its own line in this step where the reference knowledge belongs — do NOT copy any knowledge text into the script; the system injects it later.
    Step 5 — Arrange Next Steps: schedule, book, or arrange a callback as appropriate
    Step 6 — Confirm Contact Details: NEVER ask the caller to say their phone number (you already have it from caller ID); confirm they can be reached on it
    Step 7 — Warm Wrap-Up
 4. RULES section — 6-8 specific, business-relevant rules
 
-The script must use the actual business name ("{business_name}") and agent name ("{agent_name}") throughout, not placeholders.
+The script must use the actual business name ("{business_name}") and agent name ("{agent_name}") throughout, not placeholders (except the single {KB_SENTINEL} token in Step 4).
 
-Knowledge context to include verbatim in Step 4:
-{kb_snippet}
+For CONTEXT ONLY — use this to write relevant questions and rules, but do NOT copy it verbatim into the script:
+{kb_for_context or "No website content available."}
 
 Also provide exactly 3 qualification questions specific to this business type.
-
-{"Additional instructions to weave in: " + extra_instructions if extra_instructions else ""}
 
 Return valid JSON only:
 {{
@@ -281,10 +297,47 @@ Return valid JSON only:
     system_prompt: str = data["system_prompt"]
     qualification_fields: dict = data["qualification_fields"]
 
-    if extra_instructions:
-        system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FROM {business_name.upper()}\n{extra_instructions}"
+    # Guarantee the base stays refreshable even if the model dropped the token.
+    if KB_SENTINEL not in system_prompt:
+        system_prompt += f"\n\nBUSINESS KNOWLEDGE (reference)\n{KB_SENTINEL}"
 
     return system_prompt, qualification_fields
+
+
+def _owner_layer_block(
+    business_subtype: str | None,
+    receptionist_tone: str | None,
+    operating_priorities: list[str] | None,
+    extra_instructions: str | None,
+) -> str:
+    """Instruction-priority header + owner operating rules — sits above the
+    industry body and below the safety preamble."""
+    return vapi.INSTRUCTION_PRIORITY + vapi.render_owner_layer(
+        business_subtype=business_subtype,
+        receptionist_tone=receptionist_tone,
+        operating_priorities=operating_priorities,
+        business_instructions=(extra_instructions or "").strip() or None,
+    )
+
+
+async def _custom_body(tenant: dict, wrapped_kb: str, kb_raw: str) -> str:
+    """Custom industry body with fresh KB injected. Reuses the stored
+    custom_prompt_base; regenerates it ONCE if missing (older custom tenants),
+    so custom tenants pick up KB/website changes instead of being frozen."""
+    base = (tenant.get("custom_prompt_base") or "").strip()
+    if not base:
+        logger.info("No custom_prompt_base for tenant %s — regenerating once from description + KB", tenant.get("id"))
+        base, _qual = await _generate_custom_content(
+            business_name=tenant["business_name"],
+            agent_name=tenant.get("agent_name", "Alex"),
+            business_description=tenant.get("business_description", "") or "",
+            knowledge_context=kb_raw,
+        )
+        try:
+            await db.update_tenant(tenant["id"], {"custom_prompt_base": base})
+        except Exception as e:
+            logger.warning("Could not store custom_prompt_base for tenant %s: %s", tenant.get("id"), e)
+    return base.replace(KB_SENTINEL, wrapped_kb or "No website content available.")
 
 
 async def provision_tenant(payload: dict) -> dict:
@@ -391,6 +444,13 @@ async def _provision_after_twilio(
     # uses the voice_gender the tenant picked ('female' default).
     voice_gender: str = (payload.get("voice_gender") or "female")
     voice_id: str = vapi.resolve_voice_id(agent_name, voice_gender)
+    # Structured business profile (owner operating layer). Empty -> defaults at build.
+    business_subtype: str = (payload.get("business_subtype") or "").strip()
+    receptionist_tone: str = (payload.get("receptionist_tone") or "").strip()
+    operating_priorities: list[str] = [
+        str(p).strip() for p in (payload.get("operating_priorities") or []) if str(p).strip()
+    ]
+    business_description: str = (payload.get("business_description") or "").strip()
 
     # Reuse the onboarding analysis (Business Brief + structured extracts) when present.
     predetected: dict = {}
@@ -464,35 +524,40 @@ async def _provision_after_twilio(
 
     # Step 8 — Build system prompt
     step = 8
+    custom_prompt_base = None
     try:
         extra_instructions: str = (payload.get("extra_instructions") or "").strip()
 
         # Prefer the structured Business Brief from analysis; fall back to raw scrape.
         brief_text = (predetected.get("business_brief") or "").strip()
+        kb_text = brief_text or scraped_text[:8000]
+        knowledge_context = vapi.wrap_untrusted_kb(kb_text) if kb_text else "No website content available."
 
         if industry == "custom":
-            logger.info("[Step %d] Generating custom system prompt via GPT-4o", step)
-            system_prompt, qualification_fields = await _generate_custom_content(
+            logger.info("[Step %d] Generating custom system prompt via GPT", step)
+            # Store the base WITH the KB sentinel so later rebuilds can refresh KB.
+            custom_prompt_base, qualification_fields = await _generate_custom_content(
                 business_name=business_name,
                 agent_name=agent_name,
-                business_description=payload.get("business_description", ""),
-                knowledge_context=brief_text or scraped_text,
-                extra_instructions=extra_instructions,
+                business_description=business_description,
+                knowledge_context=kb_text,
             )
+            industry_body = custom_prompt_base.replace(KB_SENTINEL, knowledge_context)
         else:
             qualification_questions = "\n".join(
                 f"- {q}" for q in qualification_fields.values()
             )
-            kb_text = brief_text or scraped_text[:8000]
-            knowledge_context = vapi.wrap_untrusted_kb(kb_text) if kb_text else "No website content available."
-            system_prompt = template.format(
+            industry_body = template.format(
                 business_name=business_name,
                 agent_name=agent_name,
                 qualification_questions=qualification_questions,
                 knowledge_context=knowledge_context,
             )
-            if extra_instructions:
-                system_prompt += f"\n\nADDITIONAL INSTRUCTIONS FROM {business_name.upper()}\n{extra_instructions}"
+
+        # Owner operating layer above the industry body (priority + profile + instructions).
+        system_prompt = _owner_layer_block(
+            business_subtype, receptionist_tone, operating_priorities, extra_instructions
+        ) + industry_body
 
         logger.info("[Step %d] Built system prompt (%d chars)", step, len(system_prompt))
     except KeyError as e:
@@ -561,6 +626,11 @@ async def _provision_after_twilio(
             "agent_name": agent_name,
             "voice_id": voice_id,
             "voice_gender": voice_gender,
+            "business_subtype": business_subtype or None,
+            "receptionist_tone": receptionist_tone or None,
+            "operating_priorities": operating_priorities or None,
+            "business_description": business_description or None,
+            "custom_prompt_base": custom_prompt_base,
             "greeting_template": greeting_template,
             "qualification_fields": qualification_fields,
             "twilio_subaccount_sid": subaccount_sid,

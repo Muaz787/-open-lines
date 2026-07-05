@@ -18,7 +18,6 @@ const INDUSTRIES = [
   { value: 'builder',    label: 'Builder / Contractor' },
   { value: 'restaurant', label: 'Restaurant / Café' },
   { value: 'beauty',     label: 'Hair & Beauty Salon' },
-  { value: 'parliament', label: 'Member of Parliament' },
   { value: 'custom',     label: 'Other (describe your business)' },
 ]
 
@@ -122,6 +121,7 @@ interface Detection {
   business_name: string
   industry: string
   industry_confidence: number
+  business_subtype?: string
   country: string
   services: string[]
   service_areas: string[]
@@ -325,6 +325,7 @@ export default function OnboardingPage() {
       email:         form.email,
       password:      form.password,
     }
+    if (detected?.business_subtype) body.business_subtype = detected.business_subtype
     if (form.website_url)           body.website_url          = detected?.website_url || form.website_url
     if (form.extra_instructions)    body.extra_instructions   = form.extra_instructions
     if (form.business_description)  body.business_description  = form.business_description

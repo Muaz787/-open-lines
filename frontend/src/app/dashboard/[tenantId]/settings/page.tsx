@@ -9,6 +9,23 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+const TONE_OPTIONS = [
+  'Warm and friendly',
+  'Premium and calm',
+  'Fast and efficient',
+  'Professional and formal',
+  'Reassuring and patient',
+]
+
+const PRIORITY_OPTIONS = [
+  'Book an appointment whenever it makes sense for the caller',
+  'Qualify the caller before booking',
+  'Always collect a deposit when one is required',
+  'Flag or transfer emergencies immediately',
+  "Capture the caller's name and reason for calling before ending",
+  "Don't quote exact prices unless confirmed in the knowledge base",
+]
+
 interface Tenant {
   id: string
   business_name: string
@@ -44,6 +61,14 @@ function SettingsPage() {
   const [pwState, setPwState]             = useState<SaveState>('idle')
   const [pwMsg, setPwMsg]                 = useState('')
 
+  // Receptionist behaviour (owner operating layer)
+  const [bizInstructions, setBizInstructions] = useState('')
+  const [subtype, setSubtype]                 = useState('')
+  const [tone, setTone]                       = useState('')
+  const [priorities, setPriorities]           = useState<string[]>([])
+  const [behaviorState, setBehaviorState]     = useState<SaveState>('idle')
+  const [behaviorMsg, setBehaviorMsg]         = useState('')
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) { router.replace('/login'); return }
@@ -60,9 +85,44 @@ function SettingsPage() {
         if (d?.whatsapp_enabled != null) setWhatsappEnabled(!!d.whatsapp_enabled)
         if (d?.sms_alert_number) setSmsNumber(d.sms_alert_number)
         if (d?.business_phone) setBizPhone(d.business_phone)
+        if (d?.extra_instructions) setBizInstructions(d.extra_instructions)
+        if (d?.business_subtype) setSubtype(d.business_subtype)
+        if (d?.receptionist_tone) setTone(d.receptionist_tone)
+        if (Array.isArray(d?.operating_priorities)) setPriorities(d.operating_priorities)
       }
     })
   }, [tenantId, router])
+
+  const movePriority = (i: number, dir: -1 | 1) => {
+    setPriorities(list => {
+      const j = i + dir
+      if (j < 0 || j >= list.length) return list
+      const next = [...list]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      return next
+    })
+  }
+
+  const saveBehavior = async () => {
+    setBehaviorState('saving'); setBehaviorMsg('')
+    try {
+      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extra_instructions:   bizInstructions.trim(),
+          business_subtype:     subtype.trim(),
+          receptionist_tone:    tone.trim(),
+          operating_priorities: priorities,
+        }),
+      })
+      if (res.ok) { setBehaviorState('saved'); setTimeout(() => setBehaviorState('idle'), 2500) }
+      else {
+        const d = await res.json().catch(() => ({}))
+        setBehaviorState('error'); setBehaviorMsg(d?.detail || 'Save failed — try again')
+      }
+    } catch { setBehaviorState('error'); setBehaviorMsg('Save failed — try again') }
+  }
 
   const saveNotifEmail = async () => {
     setNotifEmailState('saving')
@@ -236,6 +296,75 @@ function SettingsPage() {
                 </button>
                 {notifEmailState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
                 {notifEmailState === 'error'  && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Save failed — try again</span>}
+              </div>
+            </div>
+            </section>
+
+            {/* ── Receptionist behaviour ── */}
+            <section>
+            <div className="db-page-heading">Receptionist behaviour</div>
+            <div className="db-card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
+
+                {/* Business type */}
+                <label className="db-field-label" style={{ marginBottom: 4 }}>What kind of business is this?</label>
+                <input
+                  type="text" value={subtype} onChange={e => setSubtype(e.target.value)}
+                  placeholder="e.g. sushi restaurant, med spa, appliance repair" className="db-input"
+                />
+                <div className="db-field-help" style={{ marginTop: 4 }}>Helps your AI use the right language for your business.</div>
+
+                {/* Tone */}
+                <label className="db-field-label" style={{ marginBottom: 4, marginTop: 16 }}>How should your AI receptionist sound?</label>
+                <select value={tone} onChange={e => setTone(e.target.value)} className="db-input">
+                  <option value="">Default (warm &amp; professional)</option>
+                  {TONE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+
+                {/* Priorities */}
+                <label className="db-field-label" style={{ marginBottom: 4, marginTop: 16 }}>What should your AI prioritize on calls?</label>
+                <div className="db-field-help" style={{ marginTop: 0 }}>Order matters — earlier items win if two conflict. Leave empty to use sensible defaults.</div>
+                {priorities.map((p, i) => (
+                  <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: '1px solid var(--db-border-lt)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--db-muted)', width: 16 }}>{i + 1}.</span>
+                    <span style={{ flex: 1, fontSize: 13, color: 'var(--db-text)' }}>{p}</span>
+                    <button type="button" aria-label="Move up" onClick={() => movePriority(i, -1)} disabled={i === 0}
+                      style={{ cursor: i === 0 ? 'default' : 'pointer', opacity: i === 0 ? 0.3 : 1, background: 'none', border: 'none', fontSize: 14 }}>▲</button>
+                    <button type="button" aria-label="Move down" onClick={() => movePriority(i, 1)} disabled={i === priorities.length - 1}
+                      style={{ cursor: i === priorities.length - 1 ? 'default' : 'pointer', opacity: i === priorities.length - 1 ? 0.3 : 1, background: 'none', border: 'none', fontSize: 14 }}>▼</button>
+                    <button type="button" aria-label="Remove" onClick={() => setPriorities(list => list.filter(x => x !== p))}
+                      style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: 15, color: 'var(--db-muted)' }}>✕</button>
+                  </div>
+                ))}
+                {PRIORITY_OPTIONS.filter(o => !priorities.includes(o)).length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                    {PRIORITY_OPTIONS.filter(o => !priorities.includes(o)).map(o => (
+                      <button key={o} type="button" onClick={() => setPriorities(list => [...list, o])}
+                        style={{ cursor: 'pointer', fontSize: 12, padding: '5px 10px', borderRadius: 16, border: '1px solid var(--db-border-lt)', background: 'transparent', color: 'var(--db-text)' }}>
+                        + {o}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Business instructions */}
+                <label className="db-field-label" style={{ marginBottom: 4, marginTop: 16 }}>Anything specific your AI receptionist should follow?</label>
+                <textarea
+                  value={bizInstructions} onChange={e => setBizInstructions(e.target.value)}
+                  rows={4} className="db-input"
+                  placeholder="e.g. Always mention our free first consultation. Confirm parking is available on request."
+                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                />
+                <div className="db-field-help" style={{ marginTop: 4 }}>
+                  These instructions guide how your AI receptionist handles calls. They cannot override safety, privacy, or legal rules.
+                </div>
+              </div>
+              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button className="db-btn db-btn--accent-ghost" onClick={saveBehavior} disabled={behaviorState === 'saving'}>
+                  {behaviorState === 'saving' ? 'Saving…' : 'Save'}
+                </button>
+                {behaviorState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved — your AI is updating</span>}
+                {behaviorState === 'error' && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>{behaviorMsg || 'Save failed — try again'}</span>}
               </div>
             </div>
             </section>

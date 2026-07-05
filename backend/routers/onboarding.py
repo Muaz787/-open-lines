@@ -29,7 +29,7 @@ _SENSITIVE = {
     "hubspot_access_token", "hubspot_refresh_token",
     "square_access_token", "square_refresh_token",
     "vapi_suborg_api_key", "vapi_suborg_id",
-    "slack_webhook_url", "last_system_prompt",
+    "slack_webhook_url", "last_system_prompt", "custom_prompt_base",
 }
 
 
@@ -47,6 +47,9 @@ class ProvisionRequest(BaseModel):
     voice_gender: str = "female"   # used when agent_name is a custom name
     extra_instructions: str = ""
     business_description: str = ""
+    business_subtype: str = ""
+    receptionist_tone: str = ""
+    operating_priorities: list[str] = []
     email: str = ""
     password: str = ""
     business_phone: str = ""
@@ -189,6 +192,11 @@ class SettingsUpdateRequest(BaseModel):
     booking_instructions: str | None = None
     auto_recrawl_enabled: bool | None = None
     slot_capacity:        int | None = None
+    # Owner operating layer (editable business profile + instructions).
+    extra_instructions:   str | None = None
+    business_subtype:     str | None = None
+    receptionist_tone:    str | None = None
+    operating_priorities: list[str] | None = None
 
     @field_validator("slot_capacity")
     @classmethod
@@ -227,15 +235,30 @@ async def update_settings(
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided")
-    # Booking instructions are injected into the live system prompt — validate them.
+    # Owner-supplied free text is injected into the prompt — validate for
+    # prompt-injection / unsafe-use before it can reach the assistant.
     if update_data.get("booking_instructions"):
         validate_business_instructions(update_data["booking_instructions"], field="booking instructions")
+    if update_data.get("extra_instructions"):
+        validate_business_instructions(update_data["extra_instructions"], field="business instructions")
+
     try:
         updated = await db.update_tenant(tenant_id, update_data)
-        return _sanitize_tenant(updated)
     except Exception as e:
         logger.error("Settings update failed for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Settings update failed")
+
+    # Rebuild + push the prompt when an owner-operating-layer field changed.
+    # Non-fatal: the settings save itself already succeeded.
+    _PROMPT_FIELDS = {"extra_instructions", "business_subtype", "receptionist_tone", "operating_priorities"}
+    if _PROMPT_FIELDS & update_data.keys() and updated and updated.get("vapi_assistant_id"):
+        try:
+            from services.provisioning import rebuild_and_push_system_prompt
+            await rebuild_and_push_system_prompt(updated)
+        except Exception as e:
+            logger.warning("Prompt rebuild after settings update failed for tenant %s (non-fatal): %s", tenant_id, e)
+
+    return _sanitize_tenant(updated)
 
 
 @router.get("/status/{tenant_id}")
