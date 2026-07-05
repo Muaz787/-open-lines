@@ -67,6 +67,7 @@ async def test_provision_tenant_realtor_happy_path():
         patch("services.knowledge.embed_and_store",       mock_embed_and_store),
         patch("services.vapi.build_assistant_config",     mock_build_config),
         patch("services.vapi.create_assistant",           mock_create_assistant),
+        patch("services.vapi.import_twilio_number",        AsyncMock(return_value="fake_vapi_phone_id")),
         patch("db.supabase.insert_tenant",                mock_insert_tenant),
     ):
         result = await provision_tenant(REALTOR_PAYLOAD)
@@ -81,7 +82,10 @@ async def test_provision_tenant_realtor_happy_path():
 
     # Every external service was called exactly once
     mock_create_subaccount.assert_awaited_once_with("Test Realty")
-    mock_find_available_number.assert_awaited_once_with(FAKE_SUBACCOUNT_SID, FAKE_SUBACCOUNT_TOKEN)
+    # find_available_number also takes country + optional preferred area code;
+    # assert it ran once with the subaccount creds, tolerant of the extra args.
+    mock_find_available_number.assert_awaited_once()
+    assert mock_find_available_number.call_args.args[:2] == (FAKE_SUBACCOUNT_SID, FAKE_SUBACCOUNT_TOKEN)
     mock_purchase_number.assert_awaited_once_with(FAKE_SUBACCOUNT_SID, FAKE_SUBACCOUNT_TOKEN, FAKE_PHONE_NUMBER)
     mock_scrape_website.assert_awaited_once_with("https://fake-test-realty.example.com")
     mock_embed_and_store.assert_awaited_once()
@@ -115,6 +119,7 @@ async def test_provision_tenant_skips_scrape_when_no_website():
         patch("services.knowledge.embed_and_store",       mock_embed),
         patch("services.vapi.build_assistant_config",     MagicMock(return_value={})),
         patch("services.vapi.create_assistant",           AsyncMock(return_value=FAKE_ASSISTANT_ID)),
+        patch("services.vapi.import_twilio_number",        AsyncMock(return_value="fake_vapi_phone_id")),
         patch("db.supabase.insert_tenant",                AsyncMock(return_value={"id": FAKE_TENANT_ID})),
     ):
         result = await provision_tenant(payload)
@@ -154,6 +159,7 @@ async def test_provision_tenant_namespace_slugified():
         patch("services.knowledge.embed_and_store",       AsyncMock(return_value=0)),
         patch("services.vapi.build_assistant_config",     MagicMock(return_value={})),
         patch("services.vapi.create_assistant",           AsyncMock(return_value=FAKE_ASSISTANT_ID)),
+        patch("services.vapi.import_twilio_number",        AsyncMock(return_value="fake_vapi_phone_id")),
         patch("db.supabase.insert_tenant",                AsyncMock(return_value={"id": FAKE_TENANT_ID})) as mock_insert,
     ):
         await provision_tenant(payload)
