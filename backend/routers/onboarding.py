@@ -17,6 +17,7 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 VALID_INDUSTRIES = {
     "realtor", "clinic", "parliament",
     "plumber", "restaurant", "builder", "dental", "legal", "beauty",
+    "automotive", "insurance",
     "custom",
 }
 

@@ -17,7 +17,8 @@ const INDUSTRIES = [
   { icon: '🔧', name: 'Home Services (HVAC, Plumbing)', body: 'Triage urgent vs. routine jobs, capture the details, and book the service call.' },
   { icon: '🏗️', name: 'Contractors & Builders', body: 'Qualify project leads, collect scope and budget, and book site visits or estimates.' },
   { icon: '🍽️', name: 'Restaurants', body: 'Take reservations, answer hours & menu questions, and never miss a booking during the rush.' },
-  { icon: '🚗', name: 'Auto Repair', body: 'Book service appointments, capture the vehicle and issue, and follow up automatically.' },
+  { icon: '🚗', name: 'Automotive', body: 'Dealerships, repair shops and body shops — route sales, service and collision calls, capture the vehicle, and book the right next step.' },
+  { icon: '🛡️', name: 'Insurance', body: 'Brokers & agencies — take new-quote and policy intake, flag claims for priority, and book callbacks with a licensed advisor.' },
 ]
 
 export default function IndustriesPage() {

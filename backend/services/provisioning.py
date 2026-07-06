@@ -69,6 +69,16 @@ QUALIFICATION_FIELDS = {
         "preferred_time": "Do you have a preferred day or time?",
         "stylist": "Do you have a preferred stylist or therapist, or are you happy with whoever is available?",
     },
+    "automotive": {
+        "reason": "Are you calling about buying or selling a vehicle, service and repairs, or body/collision work?",
+        "vehicle": "What's the year, make, and model of the vehicle?",
+        "details": "What's the issue or what are you looking for, and how soon do you need it?",
+    },
+    "insurance": {
+        "insurance_type": "What type of insurance is this about — auto, home, life, business, or something else?",
+        "request_type": "Is this a new quote, a change to an existing policy, or a claim?",
+        "client_status": "Are you a current client with us, or would this be new?",
+    },
 }
 
 

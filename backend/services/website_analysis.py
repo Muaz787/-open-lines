@@ -25,7 +25,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Must mirror VALID_INDUSTRIES in routers/onboarding.py
 _INDUSTRIES = (
     "realtor", "clinic", "dental", "legal", "plumber",
-    "builder", "restaurant", "beauty", "parliament", "custom",
+    "builder", "restaurant", "beauty", "automotive", "insurance",
+    "parliament", "custom",
 )
 
 # ---------------------------------------------------------------------------
@@ -134,7 +135,7 @@ Website content (markdown, truncated):
 Return valid JSON only with these keys:
 {{
   "business_name": "the business's name, or empty string if unclear",
-  "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, parliament, custom",
+  "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, automotive (car dealerships, mechanics/auto repair, body/collision shops), insurance (brokers/agencies), parliament, custom",
   "industry_confidence": 0.0-1.0,
   "business_subtype": "a short, specific business type in 1-4 words (e.g. 'sushi restaurant', 'med spa', 'appliance repair', 'real estate team', 'pediatric dental clinic'), or empty string if unclear",
   "country": "ISO 3166-1 alpha-2 code ONLY when the site clearly shows the business's country — via a postal/mailing address, a phone number written with an international dialing code, or an explicit country/region statement. Do NOT guess from the domain, language, currency, or example content. If there is no clear signal, return an empty string.",

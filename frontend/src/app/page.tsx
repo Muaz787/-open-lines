@@ -33,6 +33,7 @@ const TYPING_PHRASES = [
   'E-commerce',
   'Retail',
   'Automotive',
+  'Insurance',
 ]
 
 function useTypewriter(phrases: string[], typeMs = 65, deleteMs = 38, pauseMs = 1800) {
