@@ -84,6 +84,11 @@ QUALIFICATION_FIELDS = {
         "address": "So we can route your file to the right team, can I confirm your home address and postal code?",
         "callback_time": "What's the best time of day to reach you if someone needs to call back?",
     },
+    "courier": {
+        "request_type": "Is this a new pickup or delivery, a quote, or a question about an existing order?",
+        "locations": "What are the pickup and drop-off addresses?",
+        "details": "What's being delivered — roughly the size or type — and how soon do you need it?",
+    },
 }
 
 

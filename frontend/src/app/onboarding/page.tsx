@@ -21,6 +21,7 @@ const INDUSTRIES = [
   { value: 'automotive', label: 'Automotive — Dealership, Repair & Body' },
   { value: 'insurance',  label: 'Insurance — Broker / Agency' },
   { value: 'public_office', label: 'Government & Public Office' },
+  { value: 'courier',    label: 'Courier & Delivery' },
   { value: 'custom',     label: 'Other (describe your business)' },
 ]
 

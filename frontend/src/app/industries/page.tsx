@@ -19,6 +19,7 @@ const INDUSTRIES = [
   { icon: '🍽️', name: 'Restaurants', body: 'Take reservations, answer hours & menu questions, and never miss a booking during the rush.' },
   { icon: '🚗', name: 'Automotive', body: 'Dealerships, repair shops and body shops — route sales, service and collision calls, capture the vehicle, and book the right next step.' },
   { icon: '🛡️', name: 'Insurance', body: 'Brokers & agencies — take new-quote and policy intake, flag claims for priority, and book callbacks with a licensed advisor.' },
+  { icon: '📦', name: 'Courier & Delivery', body: 'Never miss an order to a phone outage — capture pickup & drop-off details on the call and send them straight to dispatch, 24/7.' },
 ]
 
 export default function IndustriesPage() {
