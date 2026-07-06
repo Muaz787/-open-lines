@@ -79,6 +79,11 @@ QUALIFICATION_FIELDS = {
         "request_type": "Is this a new quote, a change to an existing policy, or a claim?",
         "client_status": "Are you a current client with us, or would this be new?",
     },
+    "public_office": {
+        "inquiry_type": "What is your inquiry about — casework or help with a personal issue, a comment on an issue, an event, or something else?",
+        "address": "So we can route your file to the right team, can I confirm your home address and postal code?",
+        "callback_time": "What's the best time of day to reach you if someone needs to call back?",
+    },
 }
 
 

@@ -20,6 +20,7 @@ const INDUSTRIES = [
   { value: 'beauty',     label: 'Hair & Beauty Salon' },
   { value: 'automotive', label: 'Automotive — Dealership, Repair & Body' },
   { value: 'insurance',  label: 'Insurance — Broker / Agency' },
+  { value: 'public_office', label: 'Government & Public Office' },
   { value: 'custom',     label: 'Other (describe your business)' },
 ]
 
