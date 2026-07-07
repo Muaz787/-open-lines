@@ -1,4 +1,5 @@
 import os
+import hmac
 import logging
 from fastapi import APIRouter, HTTPException, Header
 
@@ -18,7 +19,7 @@ def _check_admin_key(x_admin_key: str | None) -> None:
     admin_key = os.getenv("ADMIN_API_KEY", "")
     if not admin_key:
         raise HTTPException(status_code=503, detail="Admin API key not configured")
-    if x_admin_key != admin_key:
+    if not x_admin_key or not hmac.compare_digest(x_admin_key, admin_key):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 

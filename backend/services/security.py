@@ -8,6 +8,7 @@ Security helpers for Open Lines:
 
 import os
 import re
+import hmac
 import base64
 import ipaddress
 import logging
@@ -104,25 +105,17 @@ async def require_tenant_owner(
 # 1b. Vapi shared-secret verification (server webhooks + mid-call tool calls)
 # ---------------------------------------------------------------------------
 
-_vapi_secret_warned = False
-
 
 def verify_vapi_server_secret(x_vapi_secret: str | None) -> None:
     """Verify the shared secret Vapi sends (as X-Vapi-Secret) on server webhooks
-    and mid-call tool requests. Backward-compatible: when VAPI_SERVER_SECRET is
-    unset we log once and allow, so live calls keep working until it's configured
-    in both Vapi and the environment."""
-    global _vapi_secret_warned
+    and mid-call tool requests. Fail-closed: if VAPI_SERVER_SECRET is not set we
+    refuse the request rather than allowing unauthenticated tool/webhook calls.
+    The secret is set in both Vapi (server secret) and the environment."""
     secret = os.getenv("VAPI_SERVER_SECRET", "")
     if not secret:
-        if not _vapi_secret_warned:
-            logger.warning(
-                "VAPI_SERVER_SECRET not set — Vapi webhook/tool authenticity is NOT "
-                "enforced. Set it in Vapi (server secret) and as an env var to close this."
-            )
-            _vapi_secret_warned = True
-        return
-    if x_vapi_secret != secret:
+        logger.error("VAPI_SERVER_SECRET not set — refusing Vapi webhook/tool request")
+        raise HTTPException(status_code=503, detail="Webhook secret not configured")
+    if not x_vapi_secret or not hmac.compare_digest(x_vapi_secret, secret):
         logger.warning("Vapi request rejected: missing/invalid X-Vapi-Secret")
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 

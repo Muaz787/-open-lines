@@ -55,12 +55,14 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "")
 APP_ENV = os.getenv("APP_ENV", "development")
 
 origins = [
-    "http://localhost:3000",
     "https://openlines.ai",
     "https://www.openlines.ai",
     "https://open-lines.vercel.app",
     "https://pay.openlines.ai",
 ]
+# Local dev origin only outside production.
+if APP_ENV != "production":
+    origins.append("http://localhost:3000")
 if FRONTEND_URL and FRONTEND_URL not in origins:
     origins.append(FRONTEND_URL)
 
