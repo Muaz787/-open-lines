@@ -146,6 +146,39 @@ async def reprompt_tenant(tenant_id: str, x_admin_key: str | None = Header(None)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/reprompt-all")
+async def reprompt_all(x_admin_key: str | None = Header(None), limit: int = 0):
+    """Rebuild + push the system prompt for EVERY tenant with a Vapi assistant.
+
+    Use to roll a shared-layer prompt change out to existing tenants immediately
+    (they otherwise pick it up on their next KB/staff/settings change). Runs
+    sequentially and is non-fatal per tenant. Pass ?limit=N to process only the
+    first N (handy for a smoke test before the full run)."""
+    _check_admin_key(x_admin_key)
+    try:
+        tenants = await db.get_all_tenants_for_reprompt()
+    except Exception as e:
+        logger.error("reprompt-all: tenant fetch failed: %s", e)
+        raise HTTPException(status_code=500, detail="Tenant fetch failed")
+
+    if limit and limit > 0:
+        tenants = tenants[:limit]
+
+    rebuilt, failed, errors = 0, 0, []
+    for t in tenants:
+        tid = t.get("id")
+        try:
+            await rebuild_and_push_system_prompt(t)
+            rebuilt += 1
+        except Exception as e:
+            failed += 1
+            errors.append({"tenant_id": tid, "error": str(e)[:200]})
+            logger.warning("reprompt-all: rebuild failed for tenant %s: %s", tid, e)
+
+    logger.info("reprompt-all: %d rebuilt, %d failed of %d", rebuilt, failed, len(tenants))
+    return {"total": len(tenants), "rebuilt": rebuilt, "failed": failed, "errors": errors}
+
+
 @router.post("/tenants/{tenant_id}/enable-smart-routing")
 async def enable_smart_routing(tenant_id: str, x_admin_key: str | None = Header(None)):
     """Switch the tenant's Vapi phone number from assistantId to serverUrl so that

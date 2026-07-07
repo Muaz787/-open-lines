@@ -359,6 +359,21 @@ async def get_tenants_with_calendar() -> list:
     return res.data or []
 
 
+async def get_all_tenants_for_reprompt() -> list:
+    """Full tenant rows for every tenant that has a Vapi assistant — candidates
+    for a bulk system-prompt rebuild. Full rows are needed by
+    rebuild_and_push_system_prompt (industry, profile, KB namespace, tokens…)."""
+    res = (
+        get_client()
+        .table("tenants")
+        .select("*")
+        .not_.is_("vapi_assistant_id", "null")
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return res.data or []
+
+
 async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     """Return the most recent active appointment for this caller (up to 24h in the past
     and any future date) so same-day reschedules are caught even after the slot has passed.
