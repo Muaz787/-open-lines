@@ -836,6 +836,12 @@ export default function OnboardingPage() {
                     Create My AI Receptionist →
                   </button>
                 </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 12, lineHeight: 1.5 }}>
+                  By creating your AI receptionist, you agree to our{' '}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Terms of Service</a>
+                  {' '}and{' '}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Privacy Policy</a>.
+                </div>
                 {error && <div className="error-msg">{error}</div>}
               </form>
             </motion.div>
