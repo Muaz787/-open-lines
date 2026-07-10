@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/terms' },
 }
 
-const LAST_UPDATED = 'May 8, 2026'
+const LAST_UPDATED = 'July 10, 2026'
 const CONTACT_EMAIL = 'muaz91@hotmail.com'
 
 const LogoMark = () => (
@@ -88,8 +88,8 @@ export default function TermsOfService() {
         </Section>
 
         <Section title="5. Call recording and AI disclosure">
-          <P>Open Lines AI agents conduct and transcribe phone calls on your behalf. You are responsible for complying with all applicable laws regarding call recording and AI disclosure in your jurisdiction. In many regions, this requires informing callers that they are speaking with an AI and/or that the call is being recorded. It is your responsibility to configure your agent&apos;s greeting accordingly.</P>
-          <P>We are not liable for any regulatory penalties arising from your failure to make required disclosures to callers.</P>
+          <P>Open Lines AI agents conduct and transcribe phone calls on your behalf. To support compliance, every call now opens with a standard disclosure telling the caller they are speaking with an AI assistant and that the call may be recorded. You remain responsible for ensuring this disclosure — and any additional notices or consent required in your jurisdiction — meets your legal obligations, and for handling caller personal information lawfully. We process caller information on your behalf as described in our <a href="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy Policy</a>.</P>
+          <P>We are not liable for any regulatory penalties arising from your failure to make required disclosures to, or obtain required consent from, your callers.</P>
         </Section>
 
         <Section title="6. Google Calendar integration">
