@@ -119,7 +119,8 @@ export default function PrivacyPolicy() {
         </Section>
 
         <Section title="8. Where your information is processed">
-          <P>Open Lines is based in Canada, but several of the service providers above are located in the United States and other countries. As a result, personal information may be stored or processed outside Canada and may be subject to the laws of those countries, including lawful access requests by foreign courts, law enforcement, or government authorities.</P>
+          <P>Your <strong>primary database</strong> — the main store of tenant and caller records — is hosted in <strong>Canada</strong> (Supabase, ca-central-1 / Montreal), and its backups are retained in the same region.</P>
+          <P>Open Lines is based in Canada, but several of the service providers above are located in the United States and other countries, and some processing (for example, live call transcription, language, voice, telephony, and email) happens there. As a result, personal information may be stored or processed outside Canada and may be subject to the laws of those countries, including lawful access requests by foreign courts, law enforcement, or government authorities.</P>
           <P>We use these providers under contractual safeguards intended to provide a comparable level of protection to that required under Canadian law. If you have questions about a specific provider or location, contact our Privacy Officer.</P>
         </Section>
 

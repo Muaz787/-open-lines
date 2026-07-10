@@ -16,7 +16,7 @@ const SUBPROCESSORS: { name: string; purpose: string; location: string }[] = [
   { name: 'Deepgram',    purpose: 'Speech-to-text (via Vapi)', location: 'United States' },
   { name: 'OpenAI',      purpose: 'Language model — call summaries, lead extraction, and responses', location: 'United States' },
   { name: 'ElevenLabs',  purpose: 'Text-to-speech voice (via Vapi)', location: 'United States' },
-  { name: 'Supabase',    purpose: 'Database storage and authentication', location: 'United States' },
+  { name: 'Supabase',    purpose: 'Primary database storage and authentication', location: 'Canada (ca-central-1)' },
   { name: 'Pinecone',    purpose: 'Vector storage for each agent’s knowledge base', location: 'United States' },
   { name: 'Firecrawl',   purpose: 'Website content extraction to build the knowledge base', location: 'United States' },
   { name: 'Mistral',     purpose: 'OCR for scanned/image documents uploaded to the knowledge base', location: 'European Union (France)' },
