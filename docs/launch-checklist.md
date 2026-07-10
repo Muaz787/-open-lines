@@ -22,9 +22,10 @@ Note: the old `pipeda-legal-docs` branch is too stale to merge (would revert ~9.
 
 - [x] **Call recording + AI disclosure** — "virtual receptionist, call may be recorded" in the greeting.
 - [x] **Data retention/deletion** flows shipped (purge runs in the daily cron — see §4).
-- [x] **PIPEDA-aligned privacy/terms live (2026-07-10)** — cherry-picked improved text onto main: explicit PIPEDA + controller/processor roles, named Privacy Officer, AI/recording consent notice, full sub-processor list, cross-border processing disclosure, retention specifics, breach-notification commitment, and OPC complaint right.
-- [x] **Privacy Officer named + inboxes** — Privacy Officer: **Muaz Muhamed**; contacts **privacy@openlines.ai** (privacy) and **support@openlines.ai** (general/terms). ⚠️ Keep both inboxes actively **monitored** — the policy directs access requests/complaints there.
-- [x] **Public privacy/terms pages** linked from **footer + signup** (signup consent link added).
+- [x] **PIPEDA-aligned privacy/terms live (2026-07-10)** — explicit PIPEDA + controller/processor roles, AI/recording consent notice, cross-border processing disclosure, retention specifics, breach-notification commitment, and OPC complaint right.
+- [x] **Privacy page restructured (Chatbase-inspired, 2026-07-10)** — **role-based Privacy Officer** (no named individual; still PIPEDA-compliant — accountable person designated internally, only the contact is published), dedicated **`/subprocessors`** page (maintained provider/purpose/location table, linked from the policy + footer + sitemap), plus new **"no AI model training"**, **"Cookies & analytics"** (PostHog), and **"Children's data"** sections. Did NOT copy GDPR/SCC or SOC-2 claims.
+- [x] **Privacy Officer + inboxes** — role-based Privacy Officer; contacts **privacy@openlines.ai** (privacy) and **support@openlines.ai** (general/terms). ⚠️ Keep both inboxes actively **monitored** — the policy directs access requests/complaints there.
+- [x] **Public privacy/terms/sub-processors pages** linked from **footer + signup** (signup consent link added).
 - [ ] **Lawyer review** of the (now much stronger) Privacy Policy + Terms — still a draft until reviewed.
 
 ## 3. Email & deliverability
