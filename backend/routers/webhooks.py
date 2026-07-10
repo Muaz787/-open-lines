@@ -14,6 +14,17 @@ from services import analytics, knowledge, vapi as vapi_svc
 from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools, ensure_safety_preamble
 from routers.calendar import _CALENDAR_NOTE
 
+# Injected when NO calendar is connected. The industry/custom templates tell the
+# AI to book directly and confirm to the caller; without a booking tool that
+# would confirm a phantom appointment. This overrides that for un-connected
+# tenants so the AI never claims to book.
+_NO_BOOKING_NOTE = """
+
+BOOKING IS NOT AVAILABLE ON THIS LINE YET (no calendar is connected).
+- You do NOT have a booking tool. You CANNOT schedule, confirm, reschedule, or cancel a specific appointment time, and you must NEVER say an appointment is booked or confirmed.
+- If the caller wants an appointment or a time change: capture their name, preferred day/time, and the reason, then say a member of the team will follow up shortly to confirm the time.
+- Do not invent a confirmed time and do not imply a calendar invite will be sent."""
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -278,6 +289,9 @@ async def _handle_assistant_request(msg: dict) -> dict:
     system_prompt = base_prompt + date_note + caller_context
     if has_calendar:
         system_prompt += _CALENDAR_NOTE + schedule_note
+    else:
+        # No calendar connected — stop the AI confirming appointments it can't book.
+        system_prompt += _NO_BOOKING_NOTE
     system_prompt += _CALLER_LOOKUP_NOTE
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
     # even if this tenant's stored prompt predates it. The receptionist voice/manner
@@ -315,7 +329,17 @@ async def _handle_assistant_request(msg: dict) -> dict:
         # Natural voice + turn-taking pushed on EVERY call so all tenants (incl.
         # pre-existing assistants provisioned with the old OpenAI voice) get the
         # upgraded receptionist voice and human-like interruption/endpointing live.
-        "voice": {**vapi_svc.RECEPTIONIST_VOICE, "fillerInjectionEnabled": True},
+        # Use the tenant's chosen/resolved voice (gender-matched to the agent name)
+        # — NOT the default — so real calls match the onboarding selection. This
+        # override previously clobbered the male voice back to the default female
+        # one on every real call.
+        "voice": {
+            **vapi_svc.RECEPTIONIST_VOICE,
+            "voiceId": tenant.get("voice_id") or vapi_svc.resolve_voice_id(
+                tenant.get("agent_name"), tenant.get("voice_gender")
+            ),
+            "fillerInjectionEnabled": True,
+        },
         "transcriber": dict(vapi_svc.RECEPTIONIST_TRANSCRIBER),
         "startSpeakingPlan": vapi_svc.START_SPEAKING_PLAN,
         "stopSpeakingPlan": vapi_svc.STOP_SPEAKING_PLAN,

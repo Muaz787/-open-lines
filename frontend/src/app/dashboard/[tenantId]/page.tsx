@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useId, Suspense } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { PaymentForm } from './PaymentForm'
@@ -51,10 +51,13 @@ interface Tenant {
   last_crawl_at?: string
   subscription_plan?: string
   subscription_status?: string
+  square_appointments_enabled?: boolean
 }
 
 interface CalendarStatus {
   connected: boolean
+  google_connected?: boolean
+  microsoft_connected?: boolean
   appointment_duration_minutes: number
   calendar_timezone: string
 }
@@ -121,6 +124,7 @@ function TrendChart({ data, active }: { data: number[]; active: boolean }) {
 function DashboardPage() {
   const { tenantId }  = useParams<{ tenantId: string }>()
   const searchParams  = useSearchParams()
+  const router        = useRouter()
 
   const [tenant, setTenant]           = useState<Tenant | null>(null)
   const [leads, setLeads]             = useState<Lead[]>([])
@@ -370,6 +374,30 @@ function DashboardPage() {
 
         {/* ── Content ── */}
         <div className="db-content">
+
+          {/* Post-onboarding nudge: line is live but can't book until a calendar is linked */}
+          {tenant?.twilio_phone_number
+            && !calStatus?.google_connected
+            && !calStatus?.microsoft_connected
+            && !tenant?.square_appointments_enabled && (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              flexWrap: 'wrap', padding: '14px 18px', marginBottom: 18, borderRadius: 12,
+              border: '1px solid var(--db-border-lt)', background: 'var(--db-warn-bg, #fff8e6)',
+            }}>
+              <div style={{ fontSize: 13, color: 'var(--db-text)', lineHeight: 1.5 }}>
+                <strong>Your line is live — but it can&rsquo;t book appointments yet.</strong>{' '}
+                Connect a calendar so your AI can schedule and confirm bookings. Until then it will
+                take the caller&rsquo;s preferred time and let them know your team will follow up.
+              </div>
+              <button
+                className="db-btn db-btn--accent-ghost"
+                onClick={() => router.push(`/dashboard/${tenantId}/calendar`)}
+              >
+                Connect a calendar →
+              </button>
+            </div>
+          )}
 
           {/* Greeting + brass hero KPI */}
           <div className="db-hero">
