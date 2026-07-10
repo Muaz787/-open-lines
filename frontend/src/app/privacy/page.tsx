@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 }
 
 const LAST_UPDATED = 'July 10, 2026'
-const PRIVACY_OFFICER = 'Muaz Muhamed'
 const CONTACT_EMAIL = 'privacy@openlines.ai'
+const COMPANY_ADDRESS = '201-5255 Yonge St, North York, ON M2N 6P4, Canada'
 
 const LogoMark = () => (
   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -57,7 +57,7 @@ export default function PrivacyPolicy() {
           <P>Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides an AI-powered voice receptionist platform that answers phone calls, captures lead information, and books appointments on behalf of businesses (&quot;tenants&quot;). This policy explains how we collect, use, and protect personal information when you interact with our platform — whether as a business that signs up to use Open Lines, or as a caller who speaks with an Open Lines AI agent.</P>
           <P>We are a Canadian company and handle personal information in accordance with Canada&apos;s <strong>Personal Information Protection and Electronic Documents Act (PIPEDA)</strong> and applicable provincial privacy laws.</P>
           <P><strong>Our roles.</strong> When a caller speaks with an AI agent, the <strong>business (tenant)</strong> decides what information is collected and why, and Open Lines processes that information <em>on the tenant&apos;s behalf</em>. For information about our tenants&apos; own accounts, Open Lines is responsible directly. In all cases we remain accountable for personal information in our custody, including information handled by the service providers listed below.</P>
-          <P><strong>Privacy Officer.</strong> Our designated Privacy Officer, {PRIVACY_OFFICER}, is accountable for our compliance with this policy. Questions, access requests, or complaints can be sent to <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P><strong>Privacy Officer.</strong> We have designated a Privacy Officer who is accountable for our compliance with this policy. Questions, access requests, or complaints can be sent to our privacy team at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
         <Section title="2. Data we collect">
@@ -91,7 +91,12 @@ export default function PrivacyPolicy() {
           <P style={{ marginTop: 16 }}>We do not sell personal data to third parties. We do not use caller data for advertising.</P>
         </Section>
 
-        <Section title="4. Google Calendar API">
+        <Section title="4. How we use AI (and no model training on your data)">
+          <P>Your AI receptionist answers using <strong>your own knowledge base</strong> — the website content and documents you provide — through retrieval, not by memorising or learning from callers. <strong>We do not use caller conversations, transcripts, or your business data to train, fine-tune, or improve any general-purpose AI model.</strong></P>
+          <P>We use third-party AI providers for speech-to-text, language, and voice. They process each call through their APIs to generate a response in real time, under terms that do not permit using your data to train their models. We do not sell your data or use it for advertising.</P>
+        </Section>
+
+        <Section title="5. Google Calendar API">
           <P>Open Lines integrates with the Google Calendar API to check a tenant&apos;s availability and create, modify, or delete calendar events on their behalf. Our use of Google Calendar data complies with the <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Google API Services User Data Policy</a>, including the Limited Use requirements.</P>
           <P>Specifically:</P>
           <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -103,54 +108,51 @@ export default function PrivacyPolicy() {
           </ul>
         </Section>
 
-        <Section title="5. Service providers (sub-processors)">
-          <P>We use the following service providers to operate the platform. Each processes personal information only as necessary to provide their function, under contractual confidentiality and security obligations:</P>
-          <ul style={{ paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Li><strong>Twilio</strong> — phone number provisioning and SMS delivery.</Li>
-            <Li><strong>Vapi</strong> — AI voice call processing and transcription.</Li>
-            <Li><strong>OpenAI</strong> — natural-language processing for call summaries and lead extraction.</Li>
-            <Li><strong>Supabase</strong> — secure database storage for tenant and caller data.</Li>
-            <Li><strong>Pinecone</strong> — vector storage for the knowledge base powering each AI agent.</Li>
-            <Li><strong>Firecrawl</strong> — website content used to build each tenant&apos;s knowledge base.</Li>
-            <Li><strong>Stripe</strong> and <strong>Square</strong> — subscription billing and appointment-deposit payments.</Li>
-            <Li><strong>Resend</strong> — transactional email (call summaries to tenants).</Li>
-            <Li><strong>Google</strong> and <strong>Microsoft</strong> — calendar booking, where the tenant connects their account.</Li>
-            <Li><strong>HubSpot</strong> and <strong>Slack</strong> — optional integrations a tenant may enable.</Li>
-            <Li><strong>PostHog</strong> — product analytics (we minimise personal information sent to analytics).</Li>
-            <Li><strong>Railway</strong> and <strong>Vercel</strong> — application hosting.</Li>
-          </ul>
+        <Section title="6. Cookies & analytics">
+          <P>Our website and dashboard use cookies and similar technologies for essential functionality (such as keeping you signed in) and for privacy-conscious product analytics. We use <strong>PostHog</strong> to understand how the product is used; we do not enable session recording, and we minimise the personal information sent to analytics. We do not use advertising or cross-site tracking cookies.</P>
+          <P>You can block or delete cookies in your browser settings; note that disabling essential cookies may affect how the dashboard works.</P>
         </Section>
 
-        <Section title="6. Where your information is processed">
+        <Section title="7. Service providers (sub-processors)">
+          <P>We use third-party service providers (sub-processors) to operate the platform. Each processes personal information only as necessary to provide their function, under contractual confidentiality and security obligations. A current list of our sub-processors — with their purpose and location — is maintained here:</P>
+          <P style={{ marginTop: 12 }}><Link href="/subprocessors" style={{ color: 'var(--accent-text)', fontWeight: 500 }}>View our sub-processors &rarr;</Link></P>
+        </Section>
+
+        <Section title="8. Where your information is processed">
           <P>Open Lines is based in Canada, but several of the service providers above are located in the United States and other countries. As a result, personal information may be stored or processed outside Canada and may be subject to the laws of those countries, including lawful access requests by foreign courts, law enforcement, or government authorities.</P>
           <P>We use these providers under contractual safeguards intended to provide a comparable level of protection to that required under Canadian law. If you have questions about a specific provider or location, contact our Privacy Officer.</P>
         </Section>
 
-        <Section title="7. Data retention">
+        <Section title="9. Data retention">
           <P>We keep personal information only as long as it is needed for the purposes described in this policy. Call recordings, transcripts, and lead records are generally retained while the tenant&apos;s account is active and for up to <strong>12 months</strong> afterwards, unless a longer period is required by law or a shorter period is requested.</P>
           <P>When the retention period ends, or on a valid deletion request, <strong>we delete or de-identify personal information from our active systems according to our retention policy, subject to legal, security, billing, and backup retention requirements.</strong> Some information may persist for a limited time in encrypted backups or in our service providers&apos; systems under their own retention terms before it is overwritten or removed.</P>
           <P>Tenants can request deletion of their data and associated caller records at any time by contacting <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. When a tenant disconnects Google or Microsoft Calendar, the OAuth token is deleted from our database immediately.</P>
         </Section>
 
-        <Section title="8. Data security">
+        <Section title="10. Data security">
           <P>We protect personal information with safeguards appropriate to its sensitivity. Each tenant&apos;s data is access-controlled and isolated; integration tokens and credentials are encrypted; all communication between services uses HTTPS/TLS; secrets are kept out of logs; and access to production data is restricted to authorised personnel. Despite these measures, no method of transmission or storage is completely secure.</P>
           <P>If a breach of security safeguards creates a real risk of significant harm, we will notify affected individuals and the Office of the Privacy Commissioner of Canada as required by law, and keep a record of the breach.</P>
         </Section>
 
-        <Section title="9. Your rights">
+        <Section title="11. Your rights">
           <P>You may request access to the personal information we hold about you, ask us to correct it, or ask us to delete it. To exercise any of these rights, contact our Privacy Officer at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a> and we will respond within 30 days. Because caller information is collected on behalf of a business, we may direct or coordinate your request with the relevant business.</P>
           <P>If you are not satisfied with how we handle your request or a privacy concern, you have the right to complain to the <a href="https://www.priv.gc.ca/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Office of the Privacy Commissioner of Canada</a>.</P>
         </Section>
 
-        <Section title="10. Changes to this policy">
+        <Section title="12. Children's data">
+          <P>Open Lines is a business service and is not directed to children. We do not knowingly collect personal information from children. If a caller volunteers such information to a business using our platform, it is handled the same way as any other caller information and can be deleted on request. If you believe a child&apos;s information has been collected in error, contact our privacy team and we will delete it.</P>
+        </Section>
+
+        <Section title="13. Changes to this policy">
           <P>We may update this policy from time to time. The &quot;Last updated&quot; date at the top of this page will reflect any changes. Continued use of the platform after changes constitutes acceptance of the revised policy.</P>
         </Section>
 
-        <Section title="11. Contact">
-          <P>For any privacy-related questions or requests:</P>
+        <Section title="14. Contact">
+          <P>For any privacy-related questions, access requests, or complaints, contact our privacy team:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
             <strong>Open Lines Technologies Inc.</strong><br />
-            Attn: {PRIVACY_OFFICER}, Privacy Officer<br />
+            Attn: Privacy Officer<br />
+            {COMPANY_ADDRESS}<br />
             <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>
