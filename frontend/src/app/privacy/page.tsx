@@ -8,8 +8,8 @@ export const metadata: Metadata = {
 }
 
 const LAST_UPDATED = 'July 10, 2026'
-// TODO: switch to privacy@openlines.ai once that inbox is live and monitored.
-const CONTACT_EMAIL = 'muaz91@hotmail.com'
+const PRIVACY_OFFICER = 'Muaz Muhamed'
+const CONTACT_EMAIL = 'privacy@openlines.ai'
 
 const LogoMark = () => (
   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -57,7 +57,7 @@ export default function PrivacyPolicy() {
           <P>Open Lines Technologies Inc. (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides an AI-powered voice receptionist platform that answers phone calls, captures lead information, and books appointments on behalf of businesses (&quot;tenants&quot;). This policy explains how we collect, use, and protect personal information when you interact with our platform — whether as a business that signs up to use Open Lines, or as a caller who speaks with an Open Lines AI agent.</P>
           <P>We are a Canadian company and handle personal information in accordance with Canada&apos;s <strong>Personal Information Protection and Electronic Documents Act (PIPEDA)</strong> and applicable provincial privacy laws.</P>
           <P><strong>Our roles.</strong> When a caller speaks with an AI agent, the <strong>business (tenant)</strong> decides what information is collected and why, and Open Lines processes that information <em>on the tenant&apos;s behalf</em>. For information about our tenants&apos; own accounts, Open Lines is responsible directly. In all cases we remain accountable for personal information in our custody, including information handled by the service providers listed below.</P>
-          <P><strong>Privacy Officer.</strong> Questions, access requests, or complaints can be sent to our Privacy Officer at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
+          <P><strong>Privacy Officer.</strong> Our designated Privacy Officer, {PRIVACY_OFFICER}, is accountable for our compliance with this policy. Questions, access requests, or complaints can be sent to <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>.</P>
         </Section>
 
         <Section title="2. Data we collect">
@@ -150,6 +150,7 @@ export default function PrivacyPolicy() {
           <P>For any privacy-related questions or requests:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
             <strong>Open Lines Technologies Inc.</strong><br />
+            Attn: {PRIVACY_OFFICER}, Privacy Officer<br />
             <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>
           </div>
         </Section>

@@ -18,13 +18,14 @@ See `docs/stripe-go-live.md` for the full Stripe test→live steps.
 - [ ] **End-to-end live smoke test** — one real subscription checkout → confirm tenant flips `incomplete → active`, billing webhook returns 200, invoice shows GST/HST. Then a live deposit + refund once Connect review clears.
 
 ## 2. Legal & compliance (PIPEDA)
-See PIPEDA notes; drafts on branch `pipeda-legal-docs`.
+Note: the old `pipeda-legal-docs` branch is too stale to merge (would revert ~9.8k lines of newer main). Its improved privacy/terms text was cherry-picked onto current main instead.
 
 - [x] **Call recording + AI disclosure** — "virtual receptionist, call may be recorded" in the greeting.
-- [x] **Data retention/deletion** flows shipped.
-- [ ] **Lawyer review** of Privacy Policy + Terms of Service, then merge `pipeda-legal-docs`.
-- [ ] **Privacy Officer** named + **privacy@openlines.ai** and **support@openlines.ai** inboxes live and monitored.
-- [ ] **Public privacy/terms pages** linked from footer + signup.
+- [x] **Data retention/deletion** flows shipped (purge runs in the daily cron — see §4).
+- [x] **PIPEDA-aligned privacy/terms live (2026-07-10)** — cherry-picked improved text onto main: explicit PIPEDA + controller/processor roles, named Privacy Officer, AI/recording consent notice, full sub-processor list, cross-border processing disclosure, retention specifics, breach-notification commitment, and OPC complaint right.
+- [x] **Privacy Officer named + inboxes** — Privacy Officer: **Muaz Muhamed**; contacts **privacy@openlines.ai** (privacy) and **support@openlines.ai** (general/terms). ⚠️ Keep both inboxes actively **monitored** — the policy directs access requests/complaints there.
+- [x] **Public privacy/terms pages** linked from **footer + signup** (signup consent link added).
+- [ ] **Lawyer review** of the (now much stronger) Privacy Policy + Terms — still a draft until reviewed.
 
 ## 3. Email & deliverability
 - [x] **Lifecycle/transactional email suite** — one branded `services/email.py` covering welcome, subscription-activation, deposit-received, cancellation, call-summary and trial reminders. Shared layout + plain-text part + reply-to `support@` + company mailing address in footer. Trial nudges carry a CASL unsubscribe link + `List-Unsubscribe` headers, backed by `/email/unsubscribe` and honored by the trial cron.
@@ -34,7 +35,7 @@ See PIPEDA notes; drafts on branch `pipeda-legal-docs`.
 - [x] **`EMAIL_UNSUBSCRIBE_SECRET` set** in prod to pin unsubscribe-token signing.
 
 ## 4. Infrastructure & ops
-- [ ] **Railway daily cron** configured for: website re-crawl (stale KB refresh) + free-trial reminder emails. Confirm the schedule is actually running.
+- [x] **Railway daily cron** confirmed running (heartbeat: last ran ~20h ago, 2026-07-10). `scripts/recrawl_cron.py` runs in one pass: website re-crawl + free-trial reminders + **data-retention purge** + call-intent backfill, and writes `cron_last_run` to system_meta (Admin → System Health).
 - [x] **Database migrations applied** in production Supabase — ran **`migrations/000_consolidated_schema.sql`** (core schema + migrations 001–007 + `payments` + Microsoft calendar cols + email lifecycle cols). This also covers the `oauth_states` migration in §5 and the two new email columns. Recommended: spot-check that `tenants.marketing_unsubscribed_at` / `subscription_activated_email_sent`, `oauth_states`, and `payments` all exist.
 - [ ] **Env vars set in prod**: `VAPI_SERVER_SECRET`, `MISTRAL_API_KEY`, Stripe live keys, Square production keys, Resend key. Admin → System Health should be all-green.
 - [ ] **Backups / monitoring** — confirm Supabase backups on; a basic uptime check on the Railway backend URL.

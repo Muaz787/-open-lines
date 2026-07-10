@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 }
 
 const LAST_UPDATED = 'July 10, 2026'
-const CONTACT_EMAIL = 'muaz91@hotmail.com'
+const CONTACT_EMAIL = 'support@openlines.ai'
 
 const LogoMark = () => (
   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
