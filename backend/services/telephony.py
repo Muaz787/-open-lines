@@ -50,6 +50,28 @@ _COUNTRY_CONFIG: dict[str, dict] = {
 
 SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 
+# Canadian area codes grouped by province. Used to keep a new number in the
+# SAME province as the business — so an Ontario business never gets a Quebec
+# number just because a single Toronto code was momentarily out of inventory.
+_CA_AREA_CODES_BY_PROVINCE: dict[str, list[str]] = {
+    "ON": ["416", "647", "437", "905", "289", "365", "613", "343", "519", "226", "705", "249", "807"],
+    "QC": ["514", "438", "263", "450", "579", "418", "581", "819", "873"],
+    "BC": ["604", "778", "236", "672", "250"],
+    "AB": ["403", "587", "825", "780", "368"],
+    "MB": ["204", "431"],
+    "SK": ["306", "639"],
+    "NS": ["902", "782"],
+    "NB": ["506"],
+    "NL": ["709"],
+    "PE": ["902", "782"],
+}
+_PROVINCE_BY_AREA_CODE: dict[str, str] = {
+    ac: prov for prov, acs in _CA_AREA_CODES_BY_PROVINCE.items() for ac in acs
+}
+# When a Canadian business's province can't be determined, default to Ontario
+# (home market) rather than a national search that could land out-of-province.
+DEFAULT_CA_PROVINCE = "ON"
+
 
 def normalize_phone(phone: str) -> str:
     """Best-effort E.164 normalization (strips spaces/parens/dashes) so numbers are
@@ -84,6 +106,7 @@ async def find_available_number(
     subaccount_token: str,
     country_code: str = "CA",
     preferred_area_code: str = "",
+    province: str = "",
 ) -> str:
     cc = country_code.upper()
     if cc not in _COUNTRY_CONFIG:
@@ -92,11 +115,26 @@ async def find_available_number(
 
     config = _COUNTRY_CONFIG[cc]
     twilio_code = config["twilio_code"]
-    # Prefer the business's own area code first (so callers see a local number),
-    # then the country's popular area codes, then a national search.
-    area_codes: list[str] = list(config["area_codes"])
-    if preferred_area_code:
-        area_codes = [preferred_area_code] + [a for a in area_codes if a != preferred_area_code]
+
+    if cc == "CA":
+        # Keep the number in the business's province. Strongest signal is the
+        # province of the business's own area code; else the detected province;
+        # else Ontario (home market). We try the preferred code first, then EVERY
+        # area code in that province, and only fall back to a national search as a
+        # last resort — so an Ontario business never lands on a Quebec/BC number.
+        prov = _PROVINCE_BY_AREA_CODE.get(preferred_area_code, "") or (province or "").upper()
+        if prov not in _CA_AREA_CODES_BY_PROVINCE:
+            prov = DEFAULT_CA_PROVINCE
+        prov_codes = _CA_AREA_CODES_BY_PROVINCE[prov]
+        area_codes = ([preferred_area_code] if preferred_area_code else []) + \
+            [a for a in prov_codes if a != preferred_area_code]
+        logger.info("Number search: CA province=%s, codes=%s (preferred=%s)", prov, area_codes, preferred_area_code or "-")
+    else:
+        # Prefer the business's own area code first, then popular codes, then national.
+        area_codes = list(config["area_codes"])
+        if preferred_area_code:
+            area_codes = [preferred_area_code] + [a for a in area_codes if a != preferred_area_code]
+
     client = _sub_client(subaccount_sid, subaccount_token)
 
     # Try area codes first (North America)

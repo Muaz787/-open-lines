@@ -105,6 +105,7 @@ def _empty_detection() -> dict:
         "industry": "custom",
         "industry_confidence": 0.0,
         "country": "",
+        "province": "",
         "phone": "",
         "services": [],
         "service_areas": [],
@@ -139,6 +140,7 @@ Return valid JSON only with these keys:
   "industry_confidence": 0.0-1.0,
   "business_subtype": "a short, specific business type in 1-4 words (e.g. 'sushi restaurant', 'med spa', 'appliance repair', 'real estate team', 'pediatric dental clinic'), or empty string if unclear",
   "country": "ISO 3166-1 alpha-2 code ONLY when the site clearly shows the business's country — via a postal/mailing address, a phone number written with an international dialing code, or an explicit country/region statement. Do NOT guess from the domain, language, currency, or example content. If there is no clear signal, return an empty string.",
+  "province": "the 2-letter province or state code (e.g. 'ON', 'QC', 'BC', 'AB') ONLY when the site clearly shows the business's province/state via its address or a stated primary service area (e.g. a Markham, Toronto, or Ottawa address/service area → 'ON'; Montreal → 'QC'). Do NOT guess. Empty string if unclear.",
   "phone": "the business's primary public phone number exactly as written on the site (digits/+/()-/spaces), or empty string if none is shown",
   "services": ["up to 12 specific services offered (e.g. 'Refrigerator repair', 'Career Pilot Program')"],
   "service_areas": ["cities/regions/neighbourhoods served, if stated"],
@@ -172,6 +174,7 @@ industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contr
         industry = "custom"
 
     country = str(data.get("country", "") or "").upper().strip()[:2]
+    province = str(data.get("province", "") or "").upper().strip()[:2]
 
     # Detected business phone — keep only phone-ish characters, drop if implausible.
     phone = str(data.get("phone", "") or "").strip()[:32]
@@ -205,6 +208,7 @@ industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contr
         "industry_confidence": round(max(0.0, min(1.0, confidence)), 2),
         "business_subtype": str(data.get("business_subtype", "") or "").strip()[:60],
         "country": country,
+        "province": province,
         "phone": phone,
         "services": services,
         "service_areas": service_areas,

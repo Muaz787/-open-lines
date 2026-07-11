@@ -400,21 +400,26 @@ async def provision_tenant(payload: dict) -> dict:
         subaccount_sid = subaccount["sid"]
         subaccount_token = subaccount["auth_token"]
         country_code = payload.get("country", "CA")
-        # Match the business's own region: prefer a number in the area code of the
-        # business's phone (or the phone the analyzer detected on their website),
-        # falling back to the country's popular area codes / a national search.
+        # Match the business's own region: prefer the area code of the business's
+        # phone, and keep the number in the business's PROVINCE (from the phone's
+        # area code, else the province the analyzer detected from the address /
+        # service area). Ontario businesses get an Ontario number, etc.
         preferred_ac = telephony.area_code_from_phone(payload.get("business_phone", ""))
-        if not preferred_ac and payload.get("analysis_token"):
+        detected_province = ""
+        if payload.get("analysis_token"):
             try:
                 from services import website_analysis
                 _cached = website_analysis.get_cached_scrape(payload["analysis_token"]) or {}
-                preferred_ac = telephony.area_code_from_phone((_cached.get("detected") or {}).get("phone", ""))
+                _detected = _cached.get("detected") or {}
+                if not preferred_ac:
+                    preferred_ac = telephony.area_code_from_phone(_detected.get("phone", ""))
+                detected_province = (_detected.get("province") or "").strip()
             except Exception as e:
-                logger.warning("[Step %d] Could not derive area code from analysis: %s", step, e)
-        if preferred_ac:
-            logger.info("[Step %d] Preferring area code %s from business phone", step, preferred_ac)
+                logger.warning("[Step %d] Could not derive area code/province from analysis: %s", step, e)
+        logger.info("[Step %d] Number region: preferred_ac=%s, province=%s", step, preferred_ac or "-", detected_province or "-")
         phone_number = await telephony.find_available_number(
-            subaccount_sid, subaccount_token, country_code, preferred_area_code=preferred_ac)
+            subaccount_sid, subaccount_token, country_code,
+            preferred_area_code=preferred_ac, province=detected_province)
         purchased_number = await telephony.purchase_number(subaccount_sid, subaccount_token, phone_number)
         logger.info("[Step %d] Provisioned Twilio number %s", step, purchased_number)
     except Exception as e:
