@@ -126,6 +126,7 @@ interface Detection {
   industry: string
   industry_confidence: number
   business_subtype?: string
+  business_description?: string
   country: string
   services: string[]
   service_areas: string[]
@@ -284,6 +285,8 @@ export default function OnboardingPage() {
         industry:           d.industry && (d.industry_confidence ?? 0) >= 0.6 ? d.industry : 'custom',
         country:            d.country && COUNTRIES.some(c => c.code === d.country) ? d.country : f.country,
         extra_instructions: f.extra_instructions || d.suggested_instructions || '',
+        // AI-drafted from the crawl; the tenant can edit, replace, or record over it.
+        business_description: f.business_description || d.business_description || '',
       }))
       trackEvent('website_analysis_succeeded', {
         industry_detected: d.industry,
