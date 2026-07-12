@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
+import { billingStatus } from '@/lib/billing'
 
 const PLAN_PRICE: Record<string, number> = { starter: 99, pro: 199, business: 379 }
 
@@ -16,13 +17,18 @@ export async function GET(req: NextRequest) {
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   const all = tenants ?? []
-  // Comped tenants are excluded from revenue/active counts even if given a plan.
-  const active = all.filter(t => t.subscription_status === 'active' && !t.billing_exempt)
-  const trialing = all.filter(t => t.subscription_status === 'trialing')
-  const pastDue = all.filter(t => t.subscription_status === 'past_due')
-  const cancelled = all.filter(t => t.subscription_status === 'canceled')
-  const none = all.filter(t => !t.subscription_status || t.subscription_status === 'none')
+  // Bucket by the SAME derived billing status the rest of the admin UI uses, so a
+  // card-free trial counts as trialing (not "no subscription") and comps get their
+  // own bucket. billingStatus() maps: comped | active | trialing | past_due |
+  // canceled | trial (free) | expired (trial lapsed).
+  const active    = all.filter(t => billingStatus(t) === 'active')
+  const trialing  = all.filter(t => billingStatus(t) === 'trial')
+  const comped    = all.filter(t => billingStatus(t) === 'comped')
+  const pastDue   = all.filter(t => billingStatus(t) === 'past_due')
+  const cancelled = all.filter(t => billingStatus(t) === 'canceled')
+  const none      = all.filter(t => billingStatus(t) === 'expired')
 
+  // MRR from paying (active) subs only — comps and free trials contribute $0.
   const mrr = active.reduce((sum, t) => sum + (PLAN_PRICE[t.subscription_plan ?? ''] ?? 0), 0)
 
   const planDist: Record<string, { count: number; revenue: number }> = {}
@@ -35,6 +41,7 @@ export async function GET(req: NextRequest) {
     mrr,
     active_count: active.length,
     trial_count: trialing.length,
+    comped_count: comped.length,
     past_due_count: pastDue.length,
     cancelled_count: cancelled.length,
     none_count: none.length,

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { billingStatus } from '@/lib/billing'
 
 
 interface TenantDetail {
@@ -40,7 +41,12 @@ interface TenantDetail {
 }
 
 function StatusBadge({ status }: { status: string | null }) {
-  const map: Record<string, string> = { active: 'adm-badge-green', trialing: 'adm-badge-blue', past_due: 'adm-badge-red', canceled: 'adm-badge-gray', none: 'adm-badge-gray' }
+  const map: Record<string, string> = {
+    active: 'adm-badge-green', comped: 'adm-badge-green',
+    trialing: 'adm-badge-blue', trial: 'adm-badge-blue',
+    past_due: 'adm-badge-red', expired: 'adm-badge-gray',
+    canceled: 'adm-badge-gray', none: 'adm-badge-gray',
+  }
   return <span className={`adm-badge ${map[status ?? 'none'] ?? 'adm-badge-gray'}`}>{status ?? 'none'}</span>
 }
 
@@ -189,7 +195,7 @@ export default function TenantDetailPage() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
         <h1 className="adm-page-title" style={{ marginBottom: 0 }}>{tenant.business_name}</h1>
-        <StatusBadge status={tenant.subscription_status} />
+        <StatusBadge status={billingStatus(tenant)} />
         {!tenant.is_active && <span className="adm-badge adm-badge-red">Inactive</span>}
       </div>
 
@@ -223,7 +229,7 @@ export default function TenantDetailPage() {
           <div className="adm-section-title">Subscription</div>
           <div className="adm-kv-list">
             <div className="adm-kv"><span className="adm-kv-key">Plan</span><span className="adm-kv-value">{tenant.subscription_plan ?? '—'}</span></div>
-            <div className="adm-kv"><span className="adm-kv-key">Status</span><StatusBadge status={tenant.subscription_status} /></div>
+            <div className="adm-kv"><span className="adm-kv-key">Status</span><StatusBadge status={billingStatus(tenant)} /></div>
             <div className="adm-kv"><span className="adm-kv-key">Phone</span><span className="adm-kv-value" style={{ fontFamily: 'monospace' }}>{tenant.twilio_phone_number ?? '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">Vapi assistant</span><span className="adm-kv-value" style={{ fontFamily: 'monospace', fontSize: 11 }}>{tenant.vapi_assistant_id ? tenant.vapi_assistant_id.slice(0, 16) + '…' : '—'}</span></div>
             <div className="adm-kv"><span className="adm-kv-key">Stripe customer</span><span className="adm-kv-value" style={{ fontFamily: 'monospace', fontSize: 11 }}>{tenant.stripe_customer_id ?? '—'}</span></div>

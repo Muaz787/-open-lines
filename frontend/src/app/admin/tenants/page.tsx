@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { billingStatus, withinTrial } from '@/lib/billing'
 
 interface Tenant {
   id: string
@@ -21,16 +22,8 @@ interface Tenant {
   call_count: number
 }
 
-const TRIAL_DAYS = 7
-function withinTrial(created: string) {
-  return Date.now() - new Date(created).getTime() < TRIAL_DAYS * 86_400_000
-}
-// Comp and free-trial aren't "subscriptions", so derive them for display.
-function billingStatus(t: Tenant): string {
-  if (t.billing_exempt) return 'comped'
-  if (t.subscription_status && t.subscription_status !== 'none') return t.subscription_status
-  return withinTrial(t.created_at) ? 'trial' : 'expired'
-}
+// billingStatus / withinTrial now come from @/lib/billing (shared with the
+// revenue route + tenant detail so the three views can't drift).
 function planLabel(t: Tenant): string {
   if (t.billing_exempt) return 'comp'
   if (t.subscription_plan) return t.subscription_plan

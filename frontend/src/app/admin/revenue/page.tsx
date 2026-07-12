@@ -8,6 +8,7 @@ interface RevenueData {
   mrr: number
   active_count: number
   trial_count: number
+  comped_count: number
   past_due_count: number
   cancelled_count: number
   none_count: number
@@ -38,9 +39,10 @@ export default function RevenuePage() {
     { label: 'Estimated MRR', value: `$${data.mrr.toLocaleString()}`, sub: 'active subscriptions only', cls: 'green' },
     { label: 'Active Subscriptions', value: data.active_count, sub: 'paying customers', cls: 'green' },
     { label: 'Trialing', value: data.trial_count, sub: 'free trial', cls: 'blue' },
+    { label: 'Comped', value: data.comped_count, sub: 'free (billing-exempt)', cls: 'green' },
     { label: 'Past Due', value: data.past_due_count, sub: 'payment failed', cls: data.past_due_count > 0 ? 'red' : undefined },
     { label: 'Cancelled', value: data.cancelled_count, sub: 'churned' },
-    { label: 'No Subscription', value: data.none_count, sub: 'not activated' },
+    { label: 'No Subscription', value: data.none_count, sub: 'trial ended / not activated' },
   ]
 
   return (
