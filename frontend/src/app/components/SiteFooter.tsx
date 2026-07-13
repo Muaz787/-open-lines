@@ -31,6 +31,8 @@ export default function SiteFooter() {
           <Link href="/pricing">Pricing</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <Link href="/acceptable-use">Acceptable Use</Link>
+          <Link href="/dpa">DPA</Link>
           <Link href="/subprocessors">Sub-processors</Link>
         </div>
         <div className="status-bar">

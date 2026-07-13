@@ -84,11 +84,11 @@ export default function TermsOfService() {
             <Li>Attempt to reverse-engineer, copy, or resell any part of the platform.</Li>
             <Li>Introduce malicious code or attempt to gain unauthorised access to our systems.</Li>
           </ul>
-          <P>You are solely responsible for ensuring your use of the Service complies with all applicable laws in your jurisdiction, including laws governing AI-assisted communications, call recording, and data privacy.</P>
+          <P>You are solely responsible for ensuring your use of the Service complies with all applicable laws in your jurisdiction, including laws governing AI-assisted communications, call recording, and data privacy. Your use of the Service is also subject to our <a href="/acceptable-use" style={{ color: 'var(--accent-text)' }}>Acceptable Use Policy</a>, which forms part of these Terms.</P>
         </Section>
 
         <Section title="5. Call recording and AI disclosure">
-          <P>Open Lines AI agents conduct and transcribe phone calls on your behalf. To support compliance, every call now opens with a standard disclosure telling the caller they are speaking with an AI assistant and that the call may be recorded. You remain responsible for ensuring this disclosure — and any additional notices or consent required in your jurisdiction — meets your legal obligations, and for handling caller personal information lawfully. We process caller information on your behalf as described in our <a href="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy Policy</a>.</P>
+          <P>Open Lines AI agents conduct and transcribe phone calls on your behalf. To support compliance, every call now opens with a standard disclosure telling the caller they are speaking with an AI assistant and that the call may be recorded. You remain responsible for ensuring this disclosure — and any additional notices or consent required in your jurisdiction — meets your legal obligations, and for handling caller personal information lawfully. We process caller information on your behalf as described in our <a href="/privacy" style={{ color: 'var(--accent-text)' }}>Privacy Policy</a> and <a href="/dpa" style={{ color: 'var(--accent-text)' }}>Data Processing Agreement</a>.</P>
           <P>We are not liable for any regulatory penalties arising from your failure to make required disclosures to, or obtain required consent from, your callers.</P>
         </Section>
 
