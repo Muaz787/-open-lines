@@ -197,6 +197,20 @@ h1 em { font-style: normal; color: var(--text-3); font-weight: 400; }
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--text); }
 
+/* Standout free-trial CTA for the vertical landing pages (/salons, /barbers, /realtors) */
+.btn-trial {
+  padding: 15px 30px; background: var(--accent-text); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.25s var(--ease);
+  box-shadow: 0 8px 24px rgba(21,128,61,0.25);
+}
+.btn-trial:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(21,128,61,0.34); }
+.vl-hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+.vl-cta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+@media (max-width: 860px) {
+  .vl-hero-grid { grid-template-columns: 1fr; gap: 36px; }
+}
+
 /* ── Layout ── */
 .wrap { max-width: 1120px; margin: 0 auto; }
 .sec { padding: 112px 40px; }
