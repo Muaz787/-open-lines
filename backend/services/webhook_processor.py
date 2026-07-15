@@ -22,7 +22,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MAX_ATTEMPTS = 3
 # Retry delays: 30s, 60s, 120s
 _RETRY_DELAYS = [30, 60, 120]
-_POLL_INTERVAL = 5  # seconds between queue polls
+# Adaptive polling: poll fast while the queue has work, back off when idle so an
+# empty queue isn't hitting Supabase every few seconds (cuts DB load + log noise).
+_BATCH_LIMIT = 10
+_POLL_INTERVAL_MIN = 5    # seconds — fast poll while there's work to drain
+_POLL_INTERVAL_MAX = 20   # seconds — idle ceiling; worst-case pickup latency
 
 _openai: AsyncOpenAI | None = None
 
@@ -366,14 +370,27 @@ async def _process_one(event: dict) -> None:
 
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")
+    interval = _POLL_INTERVAL_MIN
     while True:
         try:
-            events = await db.claim_pending_webhook_events(limit=10)
+            events = await db.claim_pending_webhook_events(limit=_BATCH_LIMIT)
             for event in events:
                 await _process_one(event)
         except Exception as e:
             logger.error("Webhook processor loop error: %s", e)
-        await asyncio.sleep(_POLL_INTERVAL)
+            events = None
+
+        if events and len(events) >= _BATCH_LIMIT:
+            # Full batch — more is likely queued; drain immediately without sleeping.
+            interval = _POLL_INTERVAL_MIN
+            continue
+        if events:
+            # Had work but drained it — stay responsive for the next event.
+            interval = _POLL_INTERVAL_MIN
+        else:
+            # Idle (or a poll error) — back off up to the ceiling to cut load + noise.
+            interval = min(interval * 2, _POLL_INTERVAL_MAX)
+        await asyncio.sleep(interval)
 
 
 def start_background_processor() -> None:
