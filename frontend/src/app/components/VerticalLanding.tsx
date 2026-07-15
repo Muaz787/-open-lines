@@ -89,23 +89,21 @@ function CallMock() {
   )
 }
 
-/* ── Illustration: instant SMS text-back on a missed call ── */
+/* ── Illustration: AI answers the call live, then texts the caller a confirmation ── */
 function TextbackMock({ business, reply }: { business: string; reply: string }) {
   return (
     <div style={mockCard}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <span style={{ fontSize: 15 }}>📱</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Missed call → texted back in seconds</span>
+        <span style={{ fontSize: 15 }}>📞</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Answered live, then texted a confirmation</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={smsMissed}>Missed call · {business}</div>
-        <div style={smsOut}>
-          Hi, it&apos;s {business} — sorry we missed you! I&apos;m the assistant here and happy to help.
-          What are you looking for, and what&apos;s the best time to reach you?
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={smsMissed}>📞 Call answered by your AI receptionist · 0:48</div>
+        <div style={mockLabel}>On the call</div>
         <div style={smsIn}>{reply}</div>
-        <div style={smsOut}>Perfect — I&apos;ve got your details and the team is on it. You&apos;re all set. 👍</div>
+        <div style={{ ...mockLabel, color: 'var(--accent-text)' }}>Text sent to caller</div>
+        <div style={smsOut}>Hi, it&apos;s {business} — thanks for calling! You&apos;re all set and we&apos;ve saved your details. Reply here if anything changes. 👍</div>
       </div>
     </div>
   )
@@ -151,6 +149,7 @@ const mockCard: React.CSSProperties = {
 }
 const smsBase: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.5, padding: '10px 14px', borderRadius: 14, maxWidth: '85%', fontWeight: 300 }
 const smsMissed: React.CSSProperties = { ...smsBase, alignSelf: 'center', maxWidth: '100%', textAlign: 'center', fontSize: 11.5, color: 'var(--text-3)', background: 'transparent', fontWeight: 500 }
+const mockLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)' }
 const smsOut: React.CSSProperties = { ...smsBase, alignSelf: 'flex-start', background: 'var(--bg-3)', color: 'var(--text)' }
 const smsIn: React.CSSProperties = { ...smsBase, alignSelf: 'flex-end', background: 'var(--accent)', color: '#fff' }
 const cardBox: React.CSSProperties = { background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 16, padding: '22px 22px' }
@@ -232,7 +231,7 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
         <section className="sec">
           <div className="wrap">
             <div className="sec-label" style={{ textAlign: 'center' }}>See it in action</div>
-            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', textAlign: 'center', marginBottom: 36 }}>Booked, confirmed, and texted back — automatically.</h2>
+            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', textAlign: 'center', marginBottom: 36 }}>Answered, booked, and confirmed by text — automatically.</h2>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'center', alignItems: 'flex-start' }}>
               <CalendarMock name={c.demoMock.name} service={c.demoMock.service} when={c.demoMock.when} withWho={c.demoMock.with} />
               <TextbackMock business={c.textback.business} reply={c.textback.reply} />
