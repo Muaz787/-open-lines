@@ -33,19 +33,19 @@ const REALTORS: VerticalContent = {
     { icon: '🎯', title: 'Qualifies the lead', body: 'Buy or sell, timeline, budget, pre-approval status and target area — captured on the call.' },
     { icon: '📅', title: 'Books showings & consults', body: 'Drops buyer and seller appointments straight into your Google or Outlook calendar.' },
     { icon: '🔥', title: 'Routes hot leads to you', body: 'Serious, time-sensitive leads are flagged and pushed to your cell right away.' },
-    { icon: '🔗', title: 'Syncs to your CRM', body: 'Sends every lead to Follow Up Boss, kvCORE, HubSpot and more via Zapier — no manual entry.' },
+    { icon: '🔗', title: 'Pushes leads to HubSpot', body: 'Every qualified lead lands in HubSpot automatically, plus an email and optional Slack alert — no manual entry.' },
   ],
 
   demoMock: { name: 'Buyer lead', service: 'Buyer consultation', when: 'Wed 5:15 PM', with: 'you' },
   textback: { business: 'The Reyes Group', reply: 'Hi, is the 3-bed on Maple St still available? I’d love to see it.' },
 
   integrationsHeading: 'Plugs into the tools you already run.',
-  integrations: ['Google Calendar', 'Outlook', 'Zapier', 'Follow Up Boss', 'kvCORE', 'HubSpot'],
+  integrations: ['Google Calendar', 'Outlook', 'HubSpot', 'Slack'],
 
   faqs: [
     { q: 'Does it really text back missed calls?', a: 'Yes — the moment a call is missed, the lead gets an SMS in your business name, so they know you’re on it instead of moving to the next agent.' },
     { q: 'Can it qualify leads?', a: 'It captures intent (buy/sell), timeline, budget, pre-approval status and target area, then hands you a clean summary.' },
-    { q: 'Does it connect to my CRM?', a: 'Through Zapier it pushes leads to Follow Up Boss, kvCORE, HubSpot and hundreds of other tools automatically.' },
+    { q: 'Does it connect to my CRM?', a: 'It pushes qualified leads into HubSpot automatically, and emails you a full summary after every call so nothing needs manual entry.' },
     { q: 'Will callers know it’s AI?', a: 'It sounds natural and professional, and always discloses that it’s a virtual assistant, as required.' },
   ],
 

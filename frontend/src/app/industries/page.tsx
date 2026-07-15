@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import SiteNav from '../components/SiteNav'
 import SiteFooter from '../components/SiteFooter'
 import PageCta from '../components/PageCta'
@@ -55,6 +56,29 @@ export default function IndustriesPage() {
             Don’t see your business? If you rely on the phone, it fits. The AI trains on your own website and documents,
             so it works for virtually any local, appointment- or enquiry-driven business.
           </p>
+        </div>
+      </section>
+
+      <div className="div-line" />
+
+      <section className="sec" style={{ textAlign: 'center' }}>
+        <div className="wrap">
+          <div className="sec-label">Dedicated guides</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 10 }}>See it for your business.</h2>
+          <p className="sec-sub" style={{ maxWidth: 480, margin: '0 auto 28px' }}>
+            Built-for-you walkthroughs of how Open Lines works in your line of work.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center' }}>
+            {[
+              { href: '/salons', label: '💇 AI for Salons & Spas' },
+              { href: '/barbers', label: '💈 AI for Barbershops' },
+              { href: '/realtors', label: '🏠 AI for Real Estate' },
+            ].map(g => (
+              <Link key={g.href} href={g.href} style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 999, padding: '10px 20px' }}>
+                {g.label} →
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 

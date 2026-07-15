@@ -3,7 +3,7 @@ import VerticalLanding, { type VerticalContent } from '../components/VerticalLan
 
 export const metadata: Metadata = {
   title: 'AI Receptionist for Salons & Spas — Open Lines',
-  description: 'Never lose a booking to a missed call. Open Lines answers your salon or spa phone 24/7 and books straight into Boulevard, Fresha, Mindbody or Square. Start a 7-day free trial — no credit card.',
+  description: 'Never lose a booking to a missed call. Open Lines answers your salon or spa phone 24/7 and books straight into Google Calendar, Outlook or Square Appointments. Start a 7-day free trial — no credit card.',
   alternates: { canonical: '/salons' },
 }
 
@@ -12,7 +12,7 @@ const SALONS: VerticalContent = {
   eyebrow: 'For Beauty Salons & Spas',
   h1: 'Your hands are full. Your phone shouldn’t cost you clients.',
   subhead:
-    'Open Lines is an AI receptionist that answers every call while you’re with a client — booking appointments straight into Boulevard, Fresha, or Mindbody. Stop losing bookings to a phone you can’t pick up.',
+    'Open Lines is an AI receptionist that answers every call while you’re with a client — booking appointments straight into your Google, Outlook, or Square Appointments calendar. Stop losing bookings to a phone you can’t pick up.',
   trustline: 'Live in under 10 minutes · Works with your booking software · Cancel anytime',
   heroArt: 'call',
 
@@ -40,11 +40,11 @@ const SALONS: VerticalContent = {
   textback: { business: 'Studio Luxe', reply: 'Hi! I wanted to book a colour appointment for this weekend.' },
 
   integrationsHeading: 'Plugs into the tools you already run.',
-  integrations: ['Boulevard', 'Fresha', 'Mindbody', 'Square Appointments', 'Google Calendar', 'Outlook'],
+  integrations: ['Google Calendar', 'Outlook', 'Square Appointments'],
 
   faqs: [
     { q: 'Can it book with a specific stylist?', a: 'Yes. If a client asks for a particular stylist and service, it books exactly that — into your live calendar with real availability.' },
-    { q: 'Does it work with my booking software?', a: 'It books into Boulevard, Fresha, Mindbody, Square Appointments, Google Calendar and Outlook, so there’s nothing to rip out.' },
+    { q: 'Does it work with my calendar?', a: 'It books into Google Calendar, Outlook and Square Appointments with real live availability, so there’s nothing to rip out.' },
     { q: 'What does it sound like?', a: 'A warm, natural human voice. Callers rarely realise it’s AI — and it always discloses that it’s a virtual assistant, as required.' },
     { q: 'What if it can’t answer something?', a: 'It never guesses. It captures the details and texts or emails you to follow up, so nothing falls through.' },
   ],

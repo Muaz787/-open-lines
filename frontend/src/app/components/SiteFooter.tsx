@@ -27,6 +27,9 @@ export default function SiteFooter() {
           <Link href="/">Home</Link>
           <Link href="/how-it-works">How it works</Link>
           <Link href="/industries">Industries</Link>
+          <Link href="/salons">Salons</Link>
+          <Link href="/barbers">Barbers</Link>
+          <Link href="/realtors">Realtors</Link>
           <Link href="/platform">Platform</Link>
           <Link href="/pricing">Pricing</Link>
           <Link href="/privacy">Privacy</Link>

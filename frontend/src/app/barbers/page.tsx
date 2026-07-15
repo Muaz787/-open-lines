@@ -40,12 +40,12 @@ const BARBERS: VerticalContent = {
   textback: { business: 'Fade Co.', reply: 'You got any spots for a fade today?' },
 
   integrationsHeading: 'Plugs into the tools you already run.',
-  integrations: ['Squire', 'Booksy', 'Fresha', 'Square Appointments', 'Google Calendar', 'Outlook'],
+  integrations: ['Google Calendar', 'Outlook', 'Square Appointments'],
 
   faqs: [
     { q: 'Can it book with a specific barber?', a: 'Yes. It books the barber and service the caller asks for, using your real live availability.' },
     { q: 'Can it handle walk-in questions?', a: 'It answers how busy you are and quotes the next open slot, so walk-in callers know when to come in.' },
-    { q: 'Does it work with Squire or Booksy?', a: 'It books into Squire, Booksy, Fresha, Square Appointments, Google Calendar and Outlook — no change to how you already run the shop.' },
+    { q: 'Does it work with my calendar?', a: 'It books into Google Calendar, Outlook and Square Appointments with your real live availability — no change to how you already run the shop.' },
     { q: 'Will callers know it’s AI?', a: 'It sounds natural and to the point, and always discloses that it’s a virtual assistant, as required.' },
   ],
 
