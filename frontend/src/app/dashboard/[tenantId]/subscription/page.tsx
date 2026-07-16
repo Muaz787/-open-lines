@@ -9,6 +9,7 @@ import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
 
 import { authedFetch } from '@/lib/api'
+import { trackConversion } from '@/lib/analytics'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
@@ -777,6 +778,18 @@ function SubscriptionPage() {
                   interval={billingInterval}
                   planLabel={`${payingPlan.label} · ${billingInterval === 'year' ? payingPlan.priceYear + '/yr' : payingPlan.price + '/mo'}`}
                   onSuccess={async () => {
+                    // Conversion → GA4 + Google Ads (and PostHog). Fires only on a
+                    // server-confirmed activation, so no false positives. Read the
+                    // plan/price before clearing payingPlan.
+                    const priceStr = billingInterval === 'year' ? payingPlan.priceYear : payingPlan.price
+                    const value = Number(String(priceStr).replace(/[^0-9.]/g, '')) || undefined
+                    trackConversion('subscription_activated', {
+                      tenant_id: tenantId,
+                      plan: payingPlan.id,
+                      interval: billingInterval,
+                      value,
+                      currency: 'CAD',
+                    })
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
                     await fetchData()

@@ -10,6 +10,24 @@ export function trackEvent(event: string, properties?: Record<string, unknown>) 
   posthog.capture(event, properties)
 }
 
+declare global {
+  interface Window {
+    // gtag is loaded site-wide by the root layout (GA4). Optional so this
+    // no-ops safely if the tag is blocked or not yet loaded.
+    gtag?: (...args: unknown[]) => void
+  }
+}
+
+// Fire a high-value conversion to BOTH PostHog and GA4 / Google Ads (gtag).
+// Unlike trackEvent, this still reaches GA4 even if PostHog isn't configured —
+// used for events we import into Google Ads (e.g. subscription activation).
+// Pass `value` + `currency` when there's revenue so Ads can bid on value.
+export function trackConversion(event: string, properties?: Record<string, unknown>) {
+  if (typeof window === 'undefined') return
+  if (enabled()) posthog.capture(event, properties)
+  if (typeof window.gtag === 'function') window.gtag('event', event, properties ?? {})
+}
+
 // PRIVACY: only pass safe user properties here — never passwords, call
 // transcripts, caller phone numbers, knowledge-base content, or calendar
 // event details.
