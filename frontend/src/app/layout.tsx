@@ -4,8 +4,9 @@ import { Analytics } from '@vercel/analytics/next'
 import Script from 'next/script'
 import './globals.css'
 
-// Google Analytics 4 (gtag.js). ID is public; loaded on every route via the root layout.
-const GA_ID = 'G-06VMJV17HC'
+// Google tags (gtag.js), loaded on every route via the root layout. IDs are public.
+const GA_ID = 'G-06VMJV17HC'       // GA4 analytics
+const GADS_ID = 'AW-18323006317'   // Google Ads (conversion tracking)
 
 const syne = Syne({
   subsets: ['latin'],
@@ -66,6 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', '${GA_ID}');
+            gtag('config', '${GADS_ID}');
           `}
         </Script>
       </body>

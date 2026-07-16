@@ -28,6 +28,17 @@ export function trackConversion(event: string, properties?: Record<string, unkno
   if (typeof window.gtag === 'function') window.gtag('event', event, properties ?? {})
 }
 
+// Google Ads conversion label for a completed subscription (from the Ads
+// conversion action AW-18323006317). Fired on activation for Ads bidding/ROAS.
+export const ADS_SUBSCRIPTION_CONVERSION = 'AW-18323006317/ZEN5CKaqnNEcEO3Gi6FE'
+
+// Fire a Google Ads conversion via gtag's required 'conversion' event + send_to.
+// Separate from GA4 analytics events; no-ops if gtag is blocked/not loaded.
+export function trackAdsConversion(sendTo: string, params?: Record<string, unknown>) {
+  if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
+  window.gtag('event', 'conversion', { send_to: sendTo, ...params })
+}
+
 // PRIVACY: only pass safe user properties here — never passwords, call
 // transcripts, caller phone numbers, knowledge-base content, or calendar
 // event details.

@@ -9,7 +9,7 @@ import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
 
 import { authedFetch } from '@/lib/api'
-import { trackConversion } from '@/lib/analytics'
+import { trackConversion, trackAdsConversion, ADS_SUBSCRIPTION_CONVERSION } from '@/lib/analytics'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 const PLANS = [
@@ -790,6 +790,8 @@ function SubscriptionPage() {
                       value,
                       currency: 'CAD',
                     })
+                    // Google Ads conversion (for campaign bidding/ROAS).
+                    trackAdsConversion(ADS_SUBSCRIPTION_CONVERSION, { value, currency: 'CAD' })
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
                     await fetchData()
