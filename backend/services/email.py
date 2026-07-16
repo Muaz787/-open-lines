@@ -175,10 +175,13 @@ def _send(
 # ---------------------------------------------------------------------------
 
 def _kv_table(details: dict) -> str:
+    # Skip blank values and generic placeholder keys (key1/key2/…) that older custom
+    # tenants produced — they render as ugly "Key1"/empty rows in the email.
     rows = "".join(
         f"<tr><td style='padding:4px 0;color:{_MUTE};font-size:13px;width:150px'>{_esc(str(k).replace('_',' ').title())}</td>"
         f"<td style='padding:4px 0;color:{_INK};font-size:13px;font-weight:500'>{_esc(v)}</td></tr>"
         for k, v in (details or {}).items()
+        if str(v).strip() and not re.fullmatch(r"key[\s_]*\d+", str(k).strip(), re.IGNORECASE)
     )
     return f"<table cellpadding='0' cellspacing='0' style='width:100%;margin:4px 0 8px'>{rows}</table>" if rows else ""
 
@@ -198,6 +201,7 @@ async def send_call_summary_email(
     business_name: str,
     analysis: dict,
     caller_number: str = "",
+    tenant_id: str = "",
 ) -> bool:
     """New-call summary to the business owner."""
     caller_name = analysis.get("caller_name") or "Unknown"
@@ -224,7 +228,7 @@ async def send_call_summary_email(
         heading=f"📞 New call — {business_name}",
         body_html=body,
         cta="View in dashboard",
-        cta_url=f"{FRONTEND_URL}/dashboard",
+        cta_url=(f"{FRONTEND_URL}/dashboard/{tenant_id}" if tenant_id else f"{FRONTEND_URL}/login"),
         preheader=f"{caller_name}: {summary[:90]}",
     )
     return _send(to=to, subject=f"📞 New call from {caller_name} — {business_name}", html_body=html_body)
@@ -237,6 +241,7 @@ async def send_deposit_received_email(
     amount: str,
     service: str,
     caller_number: str = "",
+    tenant_id: str = "",
 ) -> bool:
     """Deposit-paid notification to the owner (its own template, not a call summary)."""
     body = f"""
@@ -253,7 +258,7 @@ async def send_deposit_received_email(
         heading="💳 Deposit received",
         body_html=body,
         cta="View in dashboard",
-        cta_url=f"{FRONTEND_URL}/dashboard",
+        cta_url=(f"{FRONTEND_URL}/dashboard/{tenant_id}" if tenant_id else f"{FRONTEND_URL}/login"),
         preheader=f"{amount} deposit from {caller_name or 'a customer'} for {service}",
     )
     return _send(to=to, subject=f"💳 Deposit received — {amount} from {caller_name or 'a customer'}", html_body=html_body)
@@ -267,6 +272,7 @@ async def send_cancellation_email(
     refunded: bool | None = None,
     amount: str | None = None,
     caller_number: str = "",
+    tenant_id: str = "",
 ) -> bool:
     """Appointment-cancellation notice to the owner, with the refund outcome."""
     if amount is None:
@@ -292,7 +298,7 @@ async def send_cancellation_email(
         heading="Appointment cancelled",
         body_html=body,
         cta="View in dashboard",
-        cta_url=f"{FRONTEND_URL}/dashboard",
+        cta_url=(f"{FRONTEND_URL}/dashboard/{tenant_id}" if tenant_id else f"{FRONTEND_URL}/login"),
         preheader=f"{service} cancelled — {outcome}",
     )
     return _send(to=to, subject=f"Appointment cancelled — {service or business_name}", html_body=html_body)

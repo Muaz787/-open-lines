@@ -656,6 +656,7 @@ async def _notify_payment(tenant: dict, payment: dict, appointment: dict | None 
                 amount=amount,
                 service=service,
                 caller_number=caller_phone,
+                tenant_id=tenant.get("id", ""),
             )
         except Exception as e:
             logger.error("Payment email notification failed for tenant %s: %s", tenant.get("id"), e)

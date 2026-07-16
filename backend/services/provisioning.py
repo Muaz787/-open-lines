@@ -285,15 +285,17 @@ The script must use the actual business name ("{business_name}") and agent name 
 For CONTEXT ONLY — use this to write relevant questions and rules, but do NOT copy it verbatim into the script:
 {kb_for_context or "No website content available."}
 
-Also provide exactly 3 qualification questions specific to this business type.
+Also provide exactly 3 qualification questions specific to this business type. Give each a
+short, descriptive snake_case key that names what it captures (e.g. "business_type",
+"current_system", "timeline") — NOT generic names like key1/key2/key3.
 
 Return valid JSON only:
 {{
   "system_prompt": "...(complete script here)...",
   "qualification_fields": {{
-    "key1": "First qualification question?",
-    "key2": "Second qualification question?",
-    "key3": "Third qualification question?"
+    "business_type": "First qualification question?",
+    "current_system": "Second qualification question?",
+    "timeline": "Third qualification question?"
   }}
 }}"""
 

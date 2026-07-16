@@ -292,6 +292,7 @@ async def process_end_of_call(payload: dict) -> None:
                 business_name=business_name,
                 analysis=analysis,
                 caller_number=caller_number,
+                tenant_id=tenant.get("id", ""),
             )
             analytics.capture(_distinct, "owner_notification_sent", {
                 "tenant_id": tenant_id, "channel": "email",

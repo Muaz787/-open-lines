@@ -205,6 +205,7 @@ async def notify_business(tenant: dict, payment: dict | None, *, refunded: bool,
                 refunded=refunded,
                 amount=amount,
                 caller_number=caller_phone,
+                tenant_id=tenant.get("id", ""),
             )
         except Exception as e:
             logger.error("Cancellation email notification failed for tenant %s: %s", tenant.get("id"), e)
