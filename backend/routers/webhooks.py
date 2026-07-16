@@ -356,6 +356,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
         personalized_greeting or tenant.get("greeting_template", "")
     )
 
+    # Give callers room to pause/think — 10s was hanging up real calls mid-conversation.
+    # Set per-call so existing tenants get it on the next call without re-provisioning.
+    overrides["silenceTimeoutSeconds"] = 25
+
     # Public "try the AI" demo line — bound cost/abuse on that tenant only:
     # short max call length + quicker hang-up on silence. Set DEMO_TENANT_ID (and
     # optionally DEMO_MAX_CALL_SECONDS / DEMO_SILENCE_SECONDS) in Railway once the

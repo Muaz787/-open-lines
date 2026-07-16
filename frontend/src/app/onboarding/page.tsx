@@ -916,6 +916,24 @@ export default function OnboardingPage() {
                 </button>
               </a>
 
+              {/* One more step: connect a calendar so the AI can book appointments right away */}
+              <div style={{
+                marginTop: 14, padding: '13px 15px', borderRadius: 10, textAlign: 'left',
+                border: '1px solid var(--border)', background: 'var(--bg-2, #fff)',
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>
+                  📅 One more step: connect your calendar
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 10 }}>
+                  So your AI can book appointments in real time. Until it&rsquo;s connected, it takes the
+                  caller&rsquo;s preferred time and says your team will follow up.
+                </div>
+                <Link href={`/dashboard/${result.tenant_id}/calendar`}
+                  onClick={() => trackEvent('calendar_connect_started', { location: 'onboarding_success', tenant_id: result.tenant_id })}>
+                  <button className="btn-dashboard" style={{ width: '100%' }}>Connect a calendar →</button>
+                </Link>
+              </div>
+
               <Link href={`/dashboard/${result.tenant_id}`}>
                 <button className="btn-dashboard" style={{ marginTop: 8 }}>View your dashboard →</button>
               </Link>

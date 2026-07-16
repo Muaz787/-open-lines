@@ -171,7 +171,8 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
         "backgroundSound": "off",
         "backchannelingEnabled": True,
         "responseDelaySeconds": 0,
-        "silenceTimeoutSeconds": 10,
+        # Give callers room to pause/think — 10s hung up on real calls mid-conversation.
+        "silenceTimeoutSeconds": 25,
         "startSpeakingPlan": START_SPEAKING_PLAN,
         "stopSpeakingPlan": STOP_SPEAKING_PLAN,
         "endCallFunctionEnabled": True,
