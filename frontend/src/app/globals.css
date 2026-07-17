@@ -554,7 +554,7 @@ footer {
 }
 .ft-left { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
 .ft-tag { font-size: 12px; color: var(--text-3); font-weight: 300; font-style: italic; max-width: 300px; line-height: 1.5; }
-.ft-links { display: flex; gap: 18px; }
+.ft-links { display: flex; flex-wrap: wrap; gap: 12px 18px; }
 .ft-links a { font-size: 12px; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
 .ft-links a:hover { color: var(--text-2); }
 .ft-right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
