@@ -38,7 +38,7 @@ const DEMO_HREF = 'https://calendly.com/open-lines/demo'
 /* ── Reusable CTA cluster: the standout free-trial button + microcopy ── */
 function TrialCta({ slug, location, secondary = true }: { slug: string; location: string; secondary?: boolean }) {
   return (
-    <div>
+    <div className="vl-cta">
       <div className="vl-cta-row">
         <Link
           href={TRIAL_HREF}
@@ -160,7 +160,7 @@ const gridAuto = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minma
    ───────────────────────────────────────────────────────────── */
 export default function VerticalLanding({ content: c }: { content: VerticalContent }) {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', overflowX: 'hidden' }}>
       <SiteNav />
 
       {/* ── Hero ── */}
