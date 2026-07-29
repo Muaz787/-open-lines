@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 
 const INDUSTRIES = [
   { icon: '🏠', name: 'Real Estate', body: 'Answer listing enquiries, qualify buyers, and book viewings straight into your calendar — even after hours.' },
-  { icon: '🦷', name: 'Dental & Medical Clinics', body: 'Book and reschedule appointments, run new-patient intake, and answer hours & insurance questions.' },
   { icon: '💇', name: 'Salons, Spas & Barbershops', body: 'Book with a specific stylist, take deposits to cut no-shows, and handle group bookings.' },
   { icon: '⚖️', name: 'Legal', body: 'Capture new-client intake, screen matters, and schedule consultations — messages routed when a lawyer is needed.' },
   { icon: '🔧', name: 'Home Services (HVAC, Plumbing)', body: 'Triage urgent vs. routine jobs, capture the details, and book the service call.' },
@@ -73,6 +72,13 @@ export default function IndustriesPage() {
               { href: '/salons', label: '💇 AI for Salons & Spas' },
               { href: '/barbers', label: '💈 AI for Barbershops' },
               { href: '/realtors', label: '🏠 AI for Real Estate' },
+              { href: '/legal', label: '⚖️ AI for Law Firms' },
+              { href: '/home-services', label: '🔧 AI for Home Services' },
+              { href: '/contractors', label: '🏗️ AI for Contractors' },
+              { href: '/restaurants', label: '🍽️ AI for Restaurants' },
+              { href: '/automotive', label: '🚗 AI for Auto Shops' },
+              { href: '/insurance', label: '🛡️ AI for Insurance' },
+              { href: '/courier', label: '📦 AI for Couriers' },
             ].map(g => (
               <Link key={g.href} href={g.href} style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 999, padding: '10px 20px' }}>
                 {g.label} →
