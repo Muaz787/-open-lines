@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const SITE_URL = 'https://openlines.ai'
+const SITE_URL = 'https://www.openlines.ai'
 
 // Public, indexable marketing pages only. App/account routes are excluded here
 // and disallowed in robots.ts.

@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://openlines.ai'),
+  metadataBase: new URL('https://www.openlines.ai'),
   title: 'Open Lines AI — The line is always open.',
   description: 'Open Lines AI answers calls, captures leads, and books appointments 24/7. No staff required. AI voice receptionist for realtors, clinics, and small businesses.',
   keywords: ['Open Lines AI', 'AI receptionist', 'AI phone answering', 'voice AI', 'automated receptionist'],
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Open Lines AI — The line is always open.',
     description: 'AI voice receptionist that answers calls, captures leads, and books appointments 24/7.',
-    url: 'https://openlines.ai',
+    url: 'https://www.openlines.ai',
     siteName: 'Open Lines AI',
     type: 'website',
   },

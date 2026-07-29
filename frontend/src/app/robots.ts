@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next'
 
-const SITE_URL = 'https://openlines.ai'
+const SITE_URL = 'https://www.openlines.ai'
 
 // Crawlers may index the public marketing pages; keep app/account areas out.
 export default function robots(): MetadataRoute.Robots {
