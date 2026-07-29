@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: { params: Promise<{ tool: str
     title: c.metaTitle,
     description: c.metaDescription,
     alternates: { canonical: `/integrations/${c.slug}` },
-    openGraph: { title: c.metaTitle, description: c.metaDescription, url: `https://www.openlines.ai/integrations/${c.slug}` },
+    openGraph: { title: c.metaTitle, description: c.metaDescription, url: `https://www.openlines.ai/integrations/${c.slug}`, images: ['/opengraph-image.jpg'] },
   }
 }
 
