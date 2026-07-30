@@ -5,11 +5,18 @@ import SiteFooter from '../components/SiteFooter'
 import PageCta from '../components/PageCta'
 import { BreadcrumbJsonLd } from '../components/JsonLd'
 import { INTEGRATIONS } from './integrations-data'
+import { ogImageUrl } from '@/lib/og-card'
 
 export const metadata: Metadata = {
-  title: 'Integrations — Open Lines AI',
-  description: 'Open Lines works with the calendar, CRM, payment, and notification tools you already run — Google Calendar, Outlook, Square Appointments, HubSpot, Slack, and Stripe.',
+  title: 'Integrations | Open Lines AI',
+  description: 'Open Lines works with the calendar, CRM, payment and notification tools you already run — Google Calendar, Outlook, Square, HubSpot, Slack and Stripe.',
   alternates: { canonical: '/integrations' },
+  openGraph: {
+    title: 'Open Lines integrations',
+    description: 'Books, logs, notifies and takes payments through the software you already use.',
+    url: 'https://www.openlines.ai/integrations',
+    images: [ogImageUrl({ eyebrow: 'Integrations', title: 'Plugs into the tools you already run.', benefit: 'Calendar · CRM · Payments · Slack' })],
+  },
 }
 
 export default function IntegrationsHub() {

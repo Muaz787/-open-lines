@@ -2,7 +2,9 @@ import Link from 'next/link'
 import SiteNav from './SiteNav'
 import SiteFooter from './SiteFooter'
 import PageCta from './PageCta'
-import { FaqJsonLd, BreadcrumbJsonLd } from './JsonLd'
+import Breadcrumbs from './Breadcrumbs'
+import RelatedLinks from './RelatedLinks'
+import { FaqJsonLd, BreadcrumbJsonLd, ServiceJsonLd } from './JsonLd'
 import type { IntegrationContent } from '../integrations/integrations-data'
 
 const cardBox: React.CSSProperties = {
@@ -23,10 +25,12 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
           { name: c.name, path: `/integrations/${c.slug}` },
         ]}
       />
+      <ServiceJsonLd name={`${c.name} integration — Open Lines`} description={c.subhead} path={`/integrations/${c.slug}`} serviceType="AI receptionist integration" />
 
       {/* ── Hero ── */}
       <section className="sec" style={{ paddingBottom: 64 }}>
         <div className="wrap" style={{ maxWidth: 820 }}>
+          <Breadcrumbs trail={[{ name: 'Home', path: '/' }, { name: 'Integrations', path: '/integrations' }, { name: c.name, path: `/integrations/${c.slug}` }]} />
           <div className="sec-label">{c.eyebrow}</div>
           <h1 style={{ fontFamily: 'var(--font-syne), sans-serif', fontSize: 'clamp(30px, 4.6vw, 48px)', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.1, marginBottom: 18 }}>
             <span style={{ fontSize: '0.9em', marginRight: 10 }}>{c.emoji}</span>{c.h1}
@@ -85,6 +89,24 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
 
       <div className="div-line" />
 
+      {/* ── Unique, integration-specific detail ── */}
+      <section className="sec">
+        <div className="wrap" style={{ maxWidth: 760 }}>
+          <div className="sec-label">The detail</div>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 24 }}>{c.unique.heading}</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {c.unique.points.map(p => (
+              <div key={p.title} style={cardBox}>
+                <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 5 }}>{p.title}</div>
+                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 300 }}>{p.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="div-line" />
+
       {/* ── FAQ ── */}
       <section className="sec">
         <div className="wrap" style={{ maxWidth: 760 }}>
@@ -100,6 +122,11 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
           </div>
         </div>
       </section>
+
+      <div className="div-line" />
+
+      <RelatedLinks heading="Used by these industries" links={c.related.industries} />
+      <RelatedLinks heading="Related integrations" links={c.related.integrations} />
 
       <PageCta heading={c.ctaHeading} sub={c.ctaSub} location={`integration_${c.slug}_footer`} />
       <SiteFooter />

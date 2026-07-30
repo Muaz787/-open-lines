@@ -5,11 +5,18 @@ import SiteFooter from '../components/SiteFooter'
 import PageCta from '../components/PageCta'
 import { BreadcrumbJsonLd } from '../components/JsonLd'
 import { ARTICLES } from './learn-data'
+import { ogImageUrl } from '@/lib/og-card'
 
 export const metadata: Metadata = {
-  title: 'Learn — Guides on AI Receptionists & Automation — Open Lines',
-  description: 'Practical guides on AI receptionists, answering service costs, missed-call recovery, and automating your business workflow with AI in 2026.',
+  title: 'Learn: AI Receptionist & Automation Guides | Open Lines',
+  description: 'Practical guides on AI receptionists, answering-service costs, missed-call recovery, and automating your business workflow with AI in 2026.',
   alternates: { canonical: '/learn' },
+  openGraph: {
+    title: 'Open Lines guides',
+    description: 'Plain-English guides on AI receptionists, phone costs, and automating the busywork.',
+    url: 'https://www.openlines.ai/learn',
+    images: [ogImageUrl({ eyebrow: 'Learn', title: 'Guides for busy businesses.', benefit: 'AI receptionists · costs · automation' })],
+  },
 }
 
 export default function LearnHub() {

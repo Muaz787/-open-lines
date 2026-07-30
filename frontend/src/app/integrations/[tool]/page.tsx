@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import IntegrationLanding from '../../components/IntegrationLanding'
 import { INTEGRATION_SLUGS, getIntegration } from '../integrations-data'
+import { ogImageUrl } from '@/lib/og-card'
 
 // Only the integrations we actually support get pages; anything else 404s.
 export const dynamicParams = false
@@ -18,7 +19,12 @@ export async function generateMetadata({ params }: { params: Promise<{ tool: str
     title: c.metaTitle,
     description: c.metaDescription,
     alternates: { canonical: `/integrations/${c.slug}` },
-    openGraph: { title: c.metaTitle, description: c.metaDescription, url: `https://www.openlines.ai/integrations/${c.slug}`, images: ['/opengraph-image.jpg'] },
+    openGraph: {
+      title: `${c.name} integration`,
+      description: c.metaDescription,
+      url: `https://www.openlines.ai/integrations/${c.slug}`,
+      images: [ogImageUrl({ eyebrow: c.eyebrow, title: c.h1, benefit: `${c.name} + Open Lines` })],
+    },
   }
 }
 

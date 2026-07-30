@@ -34,6 +34,32 @@ export function FaqJsonLd({ faqs }: { faqs: { q: string; a: string }[] }) {
   )
 }
 
+export function ServiceJsonLd({
+  name,
+  description,
+  path,
+  serviceType,
+}: { name: string; description: string; path: string; serviceType?: string }) {
+  return (
+    <Script
+      data={{
+        '@context': 'https://schema.org',
+        '@type': 'Service',
+        name,
+        description,
+        serviceType: serviceType || 'AI phone receptionist',
+        url: `${SITE_URL}${path}`,
+        provider: {
+          '@type': 'Organization',
+          name: 'Open Lines Technologies Inc.',
+          url: SITE_URL,
+        },
+        areaServed: { '@type': 'Country', name: 'Canada' },
+      }}
+    />
+  )
+}
+
 export function BreadcrumbJsonLd({ trail }: { trail: { name: string; path: string }[] }) {
   if (!trail?.length) return null
   return (

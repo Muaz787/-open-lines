@@ -1,14 +1,25 @@
 import type { Metadata } from 'next'
 import VerticalLanding, { type VerticalContent } from '../components/VerticalLanding'
+import { ogImageUrl } from '@/lib/og-card'
+
+const OG = ogImageUrl({ eyebrow: 'For Salons & Spas', title: 'Every missed call is a client in someone else’s chair.', benefit: 'Books the right stylist, straight into your calendar.' })
 
 export const metadata: Metadata = {
-  title: 'AI Receptionist for Salons & Spas — Open Lines',
-  description: 'Never lose a booking to a missed call. Open Lines answers your salon or spa phone 24/7 and books straight into Google Calendar, Outlook or Square Appointments. Start a 7-day free trial — no credit card.',
+  title: 'AI Receptionist for Salons & Spas | Open Lines',
+  description: 'Never lose a booking to a missed call. Open Lines answers 24/7 and books the right stylist into Google Calendar, Outlook or Square Appointments.',
   alternates: { canonical: '/salons' },
+  openGraph: {
+    title: 'AI Receptionist for Salons & Spas',
+    description: 'Answer every call and book the right stylist — 24/7, into the calendar you already use.',
+    url: 'https://www.openlines.ai/salons',
+    images: [OG],
+  },
 }
 
 const SALONS: VerticalContent = {
   slug: 'salons',
+  name: 'AI Receptionist for Salons & Spas',
+  shortName: 'Salons & Spas',
   eyebrow: 'For Beauty Salons & Spas',
   h1: 'Your hands are full. Your phone shouldn’t cost you clients.',
   subhead:
@@ -36,6 +47,27 @@ const SALONS: VerticalContent = {
     { icon: '✉️', title: 'Confirms both ways', body: 'Texts the client a confirmation and sends you a summary of every call.' },
   ],
 
+  setup: {
+    heading: 'What we configure for salons & spas',
+    intro: 'Your AI receptionist is tuned to book like your best front desk — with your services, your stylists, and your no-show protection.',
+    points: [
+      { title: 'Service & stylist matching', body: 'It learns your service menu and your team, so it books the right treatment with the requested stylist at a genuinely open slot.' },
+      { title: 'Deposits to cut no-shows', body: 'On eligible plans it texts a secure Stripe or Square link to take a deposit at booking — protecting your chair from no-shows.' },
+      { title: 'Group & bridal bookings', body: 'Bridal parties and back-to-back appointments are captured cleanly and scheduled without tying up your front desk.' },
+    ],
+  },
+  intake: {
+    heading: 'Example booking intake',
+    fields: [
+      'Service requested (and add-ons)',
+      'Preferred stylist',
+      'Preferred date and time',
+      'New client or returning regular',
+      'Contact name and phone',
+      'Deposit taken (eligible plans)',
+    ],
+  },
+
   demoMock: { name: 'Jordan M.', service: 'Balayage + cut', when: 'Thu 2:30 PM', with: 'Nadia' },
   textback: { business: 'Studio Luxe', reply: 'Hi! I wanted to book a colour appointment for this weekend.' },
 
@@ -48,6 +80,18 @@ const SALONS: VerticalContent = {
     { q: 'What does it sound like?', a: 'A warm, natural human voice. Callers rarely realise it’s AI — and it always discloses that it’s a virtual assistant, as required.' },
     { q: 'What if it can’t answer something?', a: 'It never guesses. It captures the details and texts or emails you to follow up, so nothing falls through.' },
   ],
+
+  related: {
+    integrations: [
+      { href: '/integrations/square-appointments', label: 'Book into Square Appointments', sub: 'Live Square availability.' },
+      { href: '/integrations/google-calendar', label: 'Book into Google Calendar', sub: 'Real-time, no double-booking.' },
+      { href: '/integrations/stripe', label: 'Take deposits with Stripe', sub: 'Cut no-shows at the point of booking.' },
+    ],
+    guides: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
+      { href: '/learn/missed-call-text-back', label: 'Turn missed calls into bookings', sub: 'Why answering live wins the client.' },
+    ],
+  },
 
   ctaHeading: 'Stop losing clients to a ringing phone.',
   ctaSub: 'Set up your AI receptionist in under 10 minutes and let it answer every call while you focus on the chair in front of you.',

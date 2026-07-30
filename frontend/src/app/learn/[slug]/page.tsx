@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import LearnArticle from '../../components/LearnArticle'
 import { ARTICLE_SLUGS, getArticle } from '../learn-data'
+import { ogImageUrl } from '@/lib/og-card'
 
 export const dynamicParams = false
 
@@ -17,7 +18,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: c.metaTitle,
     description: c.metaDescription,
     alternates: { canonical: `/learn/${c.slug}` },
-    openGraph: { title: c.metaTitle, description: c.metaDescription, url: `https://www.openlines.ai/learn/${c.slug}`, type: 'article', images: ['/opengraph-image.jpg'] },
+    openGraph: {
+      title: c.h1,
+      description: c.metaDescription,
+      url: `https://www.openlines.ai/learn/${c.slug}`,
+      type: 'article',
+      publishedTime: c.published,
+      modifiedTime: c.updated,
+      images: [ogImageUrl({ eyebrow: c.category, title: c.h1, benefit: 'openlines.ai · Guides' })],
+    },
   }
 }
 

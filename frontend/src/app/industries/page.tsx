@@ -3,11 +3,18 @@ import Link from 'next/link'
 import SiteNav from '../components/SiteNav'
 import SiteFooter from '../components/SiteFooter'
 import PageCta from '../components/PageCta'
+import { ogImageUrl } from '@/lib/og-card'
 
 export const metadata: Metadata = {
-  title: 'Industries — Open Lines AI',
-  description: 'An AI phone receptionist built for local, appointment-driven businesses — real estate, dental & medical, salons, legal, home services, restaurants and more.',
+  title: 'Industries | Open Lines AI',
+  description: 'An AI phone receptionist built for local, appointment-driven businesses — real estate, salons, legal, home services, restaurants, auto and more.',
   alternates: { canonical: '/industries' },
+  openGraph: {
+    title: 'AI receptionist, tuned to your industry',
+    description: 'Built for businesses that can’t miss a call — salons, trades, real estate, legal, and more.',
+    url: 'https://www.openlines.ai/industries',
+    images: [ogImageUrl({ eyebrow: 'Industries', title: 'Built for businesses that can’t miss a call.', benefit: 'One platform, tuned to your line of work.' })],
+  },
 }
 
 const INDUSTRIES = [

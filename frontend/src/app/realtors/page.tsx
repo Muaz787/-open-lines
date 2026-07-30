@@ -1,14 +1,25 @@
 import type { Metadata } from 'next'
 import VerticalLanding, { type VerticalContent } from '../components/VerticalLanding'
+import { ogImageUrl } from '@/lib/og-card'
+
+const OG = ogImageUrl({ eyebrow: 'For Real Estate Agents', title: 'The lead that goes to voicemail goes to another agent.', benefit: 'Answers in one ring, qualifies, and texts back.' })
 
 export const metadata: Metadata = {
-  title: 'AI Receptionist for Real Estate Agents — Open Lines',
-  description: 'The lead that goes to voicemail goes to another agent. Open Lines answers every call in one ring, qualifies the lead, and texts a confirmation the moment the call ends. Start a 7-day free trial — no credit card.',
+  title: 'AI Receptionist for Real Estate Agents | Open Lines',
+  description: 'The lead that goes to voicemail goes to another agent. Open Lines answers in one ring, qualifies the lead, and texts a confirmation instantly.',
   alternates: { canonical: '/realtors' },
+  openGraph: {
+    title: 'AI Receptionist for Real Estate Agents',
+    description: 'Answer in one ring, qualify the lead, and text a confirmation the moment the call ends.',
+    url: 'https://www.openlines.ai/realtors',
+    images: [OG],
+  },
 }
 
 const REALTORS: VerticalContent = {
   slug: 'realtors',
+  name: 'AI Receptionist for Real Estate Agents',
+  shortName: 'Real Estate',
   eyebrow: 'For Real Estate Agents & Brokers',
   h1: 'The lead that goes to voicemail goes to another agent.',
   subhead:
@@ -36,6 +47,27 @@ const REALTORS: VerticalContent = {
     { icon: '🔗', title: 'Pushes leads to HubSpot', body: 'Every qualified lead lands in HubSpot automatically, plus an email and optional Slack alert — no manual entry.' },
   ],
 
+  setup: {
+    heading: 'What we configure for real estate agents',
+    intro: 'Your AI receptionist is tuned to win the speed-to-lead race — answering instantly, qualifying, and getting hot leads to your cell.',
+    points: [
+      { title: 'Instant lead qualification', body: 'It captures intent (buy or sell), timeline, budget, pre-approval status, and target area on the call, so you follow up with the full picture.' },
+      { title: 'Hot-lead routing', body: 'Serious, time-sensitive leads are flagged and pushed to your cell right away — plus an optional Slack alert for your team.' },
+      { title: 'Text-back that holds the lead', body: 'It texts the caller a confirmation in your name the moment the call ends, so they stop shopping the next agent.' },
+    ],
+  },
+  intake: {
+    heading: 'Example lead intake',
+    fields: [
+      'Buying or selling',
+      'Target area / property of interest',
+      'Timeline to move',
+      'Budget range',
+      'Pre-approval status',
+      'Contact name and phone',
+    ],
+  },
+
   demoMock: { name: 'Buyer lead', service: 'Buyer consultation', when: 'Wed 5:15 PM', with: 'you' },
   textback: { business: 'The Reyes Group', reply: 'Hi, is the 3-bed on Maple St still available? I’d love to see it.' },
 
@@ -48,6 +80,18 @@ const REALTORS: VerticalContent = {
     { q: 'Does it connect to my CRM?', a: 'It pushes qualified leads into HubSpot automatically, and emails you a full summary after every call so nothing needs manual entry.' },
     { q: 'Will callers know it’s AI?', a: 'It sounds natural and professional, and always discloses that it’s a virtual assistant, as required.' },
   ],
+
+  related: {
+    integrations: [
+      { href: '/integrations/hubspot', label: 'Push leads to HubSpot', sub: 'Contact + call summary, automatically.' },
+      { href: '/integrations/slack', label: 'Get hot-lead alerts in Slack', sub: 'Your team sees every lead instantly.' },
+      { href: '/integrations/google-calendar', label: 'Book showings into Google Calendar', sub: 'Live availability, no clashes.' },
+    ],
+    guides: [
+      { href: '/learn/missed-call-text-back', label: 'Missed-call text-back for agents', sub: 'Win the speed-to-lead race.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and qualifies.' },
+    ],
+  },
 
   ctaHeading: 'Never lose another commission to voicemail.',
   ctaSub: 'Set up your AI receptionist in under 10 minutes and answer every lead — even when you’re showing the next house.',

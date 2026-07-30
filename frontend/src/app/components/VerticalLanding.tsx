@@ -3,6 +3,10 @@
 import Link from 'next/link'
 import SiteNav from './SiteNav'
 import SiteFooter from './SiteFooter'
+import Breadcrumbs from './Breadcrumbs'
+import RelatedLinks from './RelatedLinks'
+import CustomerStory, { type Story } from './CustomerStory'
+import { FaqJsonLd, BreadcrumbJsonLd, ServiceJsonLd } from './JsonLd'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
 
 /* ─────────────────────────────────────────────────────────────
@@ -11,6 +15,10 @@ import { trackEvent, getUtmParams } from '@/lib/analytics'
    ───────────────────────────────────────────────────────────── */
 export interface VerticalContent {
   slug: string
+  /** Full page name for Service schema + breadcrumb, e.g. "AI Receptionist for Law Firms". */
+  name: string
+  /** Short breadcrumb crumb, e.g. "Law Firms". */
+  shortName: string
   eyebrow: string
   h1: string
   subhead: string
@@ -23,11 +31,22 @@ export interface VerticalContent {
   solutionHeading: string
   solutionSub: string
   features: { icon: string; title: string; body: string }[]
+  /** Unique, industry-specific "what we configure" section (de-templating + expertise). */
+  setup: { heading: string; intro: string; points: { title: string; body: string }[] }
+  /** Example details the AI captures on a call in this industry (honest, illustrative). */
+  intake: { heading: string; fields: string[] }
   demoMock: { name: string; service: string; when: string; with?: string }
   textback: { business: string; reply: string }
   integrationsHeading: string
   integrations: string[]
   faqs: { q: string; a: string }[]
+  /** Contextual internal links into related clusters. */
+  related: {
+    integrations: { href: string; label: string; sub?: string }[]
+    guides: { href: string; label: string; sub?: string }[]
+  }
+  /** Optional evidence slot — a real, approved customer story. Renders only when set. */
+  story?: Story
   ctaHeading: string
   ctaSub: string
 }
@@ -163,9 +182,14 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)', overflowX: 'hidden' }}>
       <SiteNav />
 
+      <FaqJsonLd faqs={c.faqs} />
+      <BreadcrumbJsonLd trail={[{ name: 'Home', path: '/' }, { name: 'Industries', path: '/industries' }, { name: c.shortName, path: `/${c.slug}` }]} />
+      <ServiceJsonLd name={c.name} description={c.subhead} path={`/${c.slug}`} />
+
       {/* ── Hero ── */}
       <section className="sec" style={{ paddingBottom: 72 }}>
         <div className="wrap">
+          <Breadcrumbs trail={[{ name: 'Home', path: '/' }, { name: 'Industries', path: '/industries' }, { name: c.shortName, path: `/${c.slug}` }]} />
           <div className="vl-hero-grid">
             <div>
               <div className="sec-label">{c.eyebrow}</div>
@@ -240,6 +264,41 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
         </section>
       </div>
 
+      {/* ── What we set up (unique, industry-specific expertise) ── */}
+      <section className="sec">
+        <div className="wrap">
+          <div className="vl-hero-grid" style={{ alignItems: 'start' }}>
+            <div>
+              <div className="sec-label">How we tune it for you</div>
+              <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 12 }}>{c.setup.heading}</h2>
+              <p className="sec-sub" style={{ maxWidth: 520, marginBottom: 24 }}>{c.setup.intro}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {c.setup.points.map(p => (
+                  <div key={p.title} style={{ ...cardBox, padding: '16px 18px' }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 4 }}>{p.title}</div>
+                    <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{p.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 16, padding: '24px 24px' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--accent-text)', marginBottom: 6 }}>{c.intake.heading}</div>
+              <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 14px', fontWeight: 300 }}>Example details it captures on a call — illustrative, not a real caller.</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {c.intake.fields.map(f => (
+                  <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: 'var(--text)', fontWeight: 300, lineHeight: 1.5 }}>
+                    <span style={{ color: 'var(--accent-text)', fontWeight: 700 }}>✓</span>
+                    <span>{f}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <CustomerStory story={c.story} />
+
       {/* ── Integrations ── */}
       <section className="sec">
         <div className="wrap" style={{ textAlign: 'center' }}>
@@ -273,6 +332,11 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
           </div>
         </div>
       </section>
+
+      <div className="div-line" />
+
+      <RelatedLinks heading="Connect your tools" links={c.related.integrations} />
+      <RelatedLinks heading="Keep reading" links={c.related.guides} />
 
       {/* ── Final CTA ── */}
       <div style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>

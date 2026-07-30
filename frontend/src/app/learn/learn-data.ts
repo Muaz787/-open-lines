@@ -11,10 +11,18 @@ export interface LearnArticle {
   metaTitle: string
   metaDescription: string
   h1: string
+  /** ISO dates for E-E-A-T + Article schema. */
+  published: string
   updated: string
   intro: string
+  /** Optional editorial-methodology note (e.g. how figures were researched). */
+  methodology?: string
   sections: { heading: string; paras?: string[]; bullets?: { title: string; body: string }[] }[]
   faqs: { q: string; a: string }[]
+  /** Cited sources (shown as a references list + used in the methodology). */
+  sources?: { label: string; url: string }[]
+  /** Contextual internal links: related guides + one commercial page. */
+  related: { href: string; label: string; sub?: string }[]
   ctaHeading: string
   ctaSub: string
 }
@@ -24,11 +32,13 @@ export const ARTICLES: LearnArticle[] = [
     slug: 'answering-service-cost',
     category: 'Cost guide',
     shortTitle: 'Answering service cost',
-    metaTitle: 'How Much Does an Answering Service Cost in 2026? — Open Lines',
-    metaDescription: 'A clear 2026 breakdown of answering service costs — per-minute live services, in-house receptionists, and flat-rate AI receptionists — so you can pick what fits.',
+    metaTitle: 'Answering Service Cost: 2026 Guide | Open Lines',
+    metaDescription: 'What answering services cost in 2026 — per-minute live services, in-house receptionists, and flat-rate AI — with real figures and cited sources.',
     h1: 'How much does an answering service cost in 2026?',
-    updated: '2026',
-    intro: 'If you’re losing business to missed calls, an answering service is the obvious fix — but the pricing models are all over the map. Here’s a plain breakdown of what each option really costs in 2026, and how to work out which one is cheapest for the volume of calls you actually get.',
+    published: '2026-07-28',
+    updated: '2026-07-30',
+    intro: 'If you’re losing business to missed calls, an answering service is the obvious fix — but the pricing models are all over the map. Here’s a plain breakdown of what each option really costs in 2026, with figures drawn from current published pricing, and how to work out which one is cheapest for the volume of calls you actually get.',
+    methodology: 'Figures below reflect published 2026 pricing from several answering-service providers and salary data for Canada, gathered and last checked on July 30, 2026. Ranges are indicative — your exact cost depends on call volume, features, and provider. Sources are listed at the end.',
     sections: [
       {
         heading: 'The three ways businesses cover their phone',
@@ -42,8 +52,8 @@ export const ARTICLES: LearnArticle[] = [
       {
         heading: 'Typical 2026 price ranges',
         paras: [
-          'Live answering services are commonly billed around $1–$2 per minute, or in monthly bundles that often land anywhere from roughly $200 to $600+ per month once you’re past a light plan. The catch is that costs scale directly with how much your callers talk — a few long calls can blow the budget.',
-          'A full-time in-house receptionist typically runs $35,000–$50,000+ per year once you include wages, benefits, and overhead — and that still only covers business hours.',
+          'Live answering services in 2026 are commonly billed at roughly $0.75–$2.00 per minute, with many mid-range providers around $0.90–$1.25 per minute. On monthly bundles, basic plans tend to run about $135–$250, mid-range plans about $330–$525, and higher-volume plans about $495–$925 — and busy months can add 20–40% in overage fees on top. The catch is that cost scales directly with how much your callers talk.',
+          'A full-time in-house receptionist in Canada typically costs around $40,000–$62,000 per year in wages (roughly $18–$20+ per hour), before you add benefits and overhead — and that still only covers business hours, not nights or weekends.',
           'An AI receptionist is usually a flat monthly subscription. Because it isn’t billed per minute, the cost stays predictable whether you get 20 calls a month or 200, and it covers nights, weekends, and holidays at no extra charge.',
         ],
       },
@@ -59,8 +69,20 @@ export const ARTICLES: LearnArticle[] = [
     faqs: [
       { q: 'Is an AI receptionist cheaper than a live answering service?', a: 'For most small businesses past a few calls a day, yes. Live services bill per minute, so cost rises with call volume, while an AI receptionist is a flat monthly fee that also covers nights and weekends.' },
       { q: 'Are there per-minute or per-call fees with Open Lines?', a: 'Open Lines is a flat monthly subscription rather than a per-minute meter, so your cost stays predictable regardless of how busy the phone gets. See the pricing page for current plans.' },
-      { q: 'What does a full-time receptionist cost?', a: 'Typically $35,000–$50,000+ per year once wages, benefits, and overhead are included — and that only covers their working hours, not after-hours or weekend calls.' },
+      { q: 'What does a full-time receptionist cost?', a: 'In Canada, receptionist wages typically run about $40,000–$62,000 per year (roughly $18–$20+ per hour) before benefits and overhead — and that only covers working hours, not after-hours or weekend calls.' },
       { q: 'Can I try it before paying?', a: 'Yes. Open Lines offers a 7-day free trial with no credit card, so you can see how it handles your calls before committing.' },
+    ],
+    sources: [
+      { label: 'Housecall Pro — How Much Does an Answering Service Cost? (2026)', url: 'https://www.housecallpro.com/resources/how-much-does-an-answering-service-cost/' },
+      { label: 'Nextiva — Answering Service Cost (2026)', url: 'https://www.nextiva.com/blog/answering-service-cost.html' },
+      { label: 'NextPhone — Answering Service Cost Per Month (2026)', url: 'https://www.getnextphone.com/blog/phone-answering-costs' },
+      { label: 'Talent.com — Receptionist average salary in Canada (2026)', url: 'https://ca.talent.com/salary?job=receptionist' },
+      { label: 'PayScale — Receptionist hourly pay in Canada (2026)', url: 'https://www.payscale.com/research/CA/Job=Receptionist/Hourly_Rate' },
+    ],
+    related: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How the flat-rate option actually works.' },
+      { href: '/learn/virtual-receptionist-small-business', label: 'Virtual receptionist guide', sub: 'Live vs. AI, and how to choose.' },
+      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Flat monthly plans, no per-minute meter.' },
     ],
     ctaHeading: 'Predictable pricing. Every call answered.',
     ctaSub: 'Start a 7-day free trial and see what a flat-rate AI receptionist does for your missed calls.',
@@ -72,7 +94,8 @@ export const ARTICLES: LearnArticle[] = [
     metaTitle: 'What Is an AI Receptionist? A 2026 Guide — Open Lines',
     metaDescription: 'What an AI receptionist is, how it answers calls and books appointments, what it can and can’t do, and which businesses benefit most. A plain-English 2026 guide.',
     h1: 'What is an AI receptionist?',
-    updated: '2026',
+    published: '2026-07-28',
+    updated: '2026-07-30',
     intro: 'An AI receptionist is software that answers your phone in a natural voice, has a real conversation with the caller, and handles the things a front-desk receptionist would — booking appointments, answering common questions, and taking down leads — 24 hours a day. Here’s how it actually works and where it fits.',
     sections: [
       {
@@ -108,6 +131,11 @@ export const ARTICLES: LearnArticle[] = [
       { q: 'What happens if it can’t answer something?', a: 'It doesn’t guess. It captures the caller’s question and details and routes them to you for follow-up, so nothing is lost.' },
       { q: 'How long does it take to set up?', a: 'With Open Lines, most businesses are live in under 10 minutes — it learns from your website, so there’s little to configure.' },
     ],
+    related: [
+      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing, compared.' },
+      { href: '/learn/missed-call-text-back', label: 'Missed-call text-back', sub: 'Turn missed calls into booked jobs.' },
+      { href: '/industries', label: 'See it for your industry', sub: 'Salons, trades, real estate, and more.' },
+    ],
     ctaHeading: 'See what an AI receptionist does for you.',
     ctaSub: 'Start a 7-day free trial — no credit card — and let it answer your next call.',
   },
@@ -115,10 +143,11 @@ export const ARTICLES: LearnArticle[] = [
     slug: 'missed-call-text-back',
     category: 'Guide',
     shortTitle: 'Missed-call text-back',
-    metaTitle: 'Missed-Call Text-Back: Turn Missed Calls Into Booked Jobs — Open Lines',
+    metaTitle: 'Missed-Call Text-Back: 2026 Guide | Open Lines',
     metaDescription: 'What missed-call text-back is, why missed calls quietly cost you revenue, and how answering live then confirming by text wins more bookings. A 2026 guide.',
     h1: 'Missed-call text-back — and why answering live is even better',
-    updated: '2026',
+    published: '2026-07-28',
+    updated: '2026-07-30',
     intro: 'Missed-call text-back automatically sends a text to anyone whose call you didn’t answer. It’s a smart safety net — but the real win is not missing the call in the first place. Here’s how both approaches work and how to capture the business you’re currently losing to voicemail.',
     sections: [
       {
@@ -152,6 +181,11 @@ export const ARTICLES: LearnArticle[] = [
       { q: 'Why do missed calls cost so much?', a: 'Most callers who hit voicemail don’t leave a message — they call the next business. For booking-driven businesses, an unanswered call is usually a lost sale.' },
       { q: 'When do most missed calls happen?', a: 'When you’re busy with a customer or job, and after hours. An AI receptionist covers exactly those moments, 24/7.' },
     ],
+    related: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers live and books.' },
+      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing, compared.' },
+      { href: '/realtors', label: 'AI receptionist for real estate', sub: 'Win the speed-to-lead race.' },
+    ],
     ctaHeading: 'Stop missing the calls that matter.',
     ctaSub: 'Start a 7-day free trial and let your AI receptionist answer, book, and confirm — automatically.',
   },
@@ -159,10 +193,11 @@ export const ARTICLES: LearnArticle[] = [
     slug: 'virtual-receptionist-small-business',
     category: 'Guide',
     shortTitle: 'Virtual receptionist guide',
-    metaTitle: 'Virtual Receptionists for Small Business: A 2026 Guide — Open Lines',
+    metaTitle: 'Virtual Receptionist for Small Business | Open Lines',
     metaDescription: 'The small-business guide to virtual receptionists in 2026 — the options, pros and cons, costs, and how to choose between a live service and an AI receptionist.',
     h1: 'The small business guide to virtual receptionists',
-    updated: '2026',
+    published: '2026-07-28',
+    updated: '2026-07-30',
     intro: 'A virtual receptionist answers your calls without sitting at your front desk. For a small business, it can be the difference between catching every lead and quietly losing them to voicemail. Here’s how the options compare and how to choose the right one for your business in 2026.',
     sections: [
       {
@@ -197,6 +232,11 @@ export const ARTICLES: LearnArticle[] = [
       { q: 'Live receptionist or AI — which is better?', a: 'AI wins on 24/7 coverage and predictable flat pricing; a live service can suit low volumes of complex calls. Many businesses use AI for most calls and escalate unusual ones to a human.' },
       { q: 'How quickly can I get set up?', a: 'With Open Lines, most businesses are live in under 10 minutes because it learns from your existing website.' },
     ],
+    related: [
+      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing, compared.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
+      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Flat monthly plans, free trial.' },
+    ],
     ctaHeading: 'Give your small business a receptionist that never clocks out.',
     ctaSub: 'Start a 7-day free trial — no credit card — and let it answer every call.',
   },
@@ -204,10 +244,11 @@ export const ARTICLES: LearnArticle[] = [
     slug: 'automate-your-workflow-2026-ai',
     category: 'Guide',
     shortTitle: 'Automate your workflow with AI',
-    metaTitle: 'How to Automate Your Workflow in 2026 with AI (Tools + Tips) — Open Lines',
-    metaDescription: 'A practical 2026 guide to automating your business workflow with AI — the tools worth using for calls, scheduling, CRM, payments, and comms, plus tips to start small.',
+    metaTitle: 'Automate Your Workflow With AI: 2026 Guide | Open Lines',
+    metaDescription: 'A practical 2026 guide to automating your workflow with AI — the tools worth using for calls, scheduling, CRM, payments and comms, plus tips to start small.',
     h1: 'How to automate your workflow in 2026 using AI',
-    updated: '2026',
+    published: '2026-07-28',
+    updated: '2026-07-30',
     intro: 'Automation in 2026 isn’t about replacing your team — it’s about handing the repetitive, time-eating tasks to software so your people can do the work that actually needs a human. This guide walks through where AI genuinely helps, the tools worth using in each area, and how to start without over-engineering.',
     sections: [
       {
@@ -269,6 +310,11 @@ export const ARTICLES: LearnArticle[] = [
       { q: 'Do I need technical skills to automate my workflow?', a: 'Not for the essentials. Tools like Open Lines learn from your website and go live in minutes. You only need “glue” platforms once you’re connecting several custom systems.' },
       { q: 'Will automating make my business feel impersonal?', a: 'It shouldn’t. Good automation handles the repetitive parts so your team has more time for the human moments — and quality AI discloses itself and escalates anything unusual to a person.' },
       { q: 'Where does Open Lines fit in an automated workflow?', a: 'It automates the first and most valuable link: answering the phone, booking into your calendar, and pushing a summary to your CRM or Slack — so the call-to-booking-to-follow-up chain runs itself.' },
+    ],
+    related: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'Automate the phone first.' },
+      { href: '/learn/missed-call-text-back', label: 'Missed-call text-back', sub: 'Stop losing calls to voicemail.' },
+      { href: '/integrations', label: 'Connect your tools', sub: 'Calendar, CRM, payments, and Slack.' },
     ],
     ctaHeading: 'Automate the one workflow that pays for itself first.',
     ctaSub: 'Put an AI receptionist on your phone in under 10 minutes. Start a 7-day free trial — no credit card.',
