@@ -26,7 +26,7 @@ export default function PrivacyPolicy() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
 
       {/* Nav */}
-      <nav>
+      <nav className="site-nav">
         <Link href="/" className="nav-logo">
           <LogoMark />
           <span className="logo-name">open lines</span>

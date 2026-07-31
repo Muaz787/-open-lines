@@ -58,7 +58,7 @@ export default function DocsPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
 
-      <nav>
+      <nav className="site-nav">
         <Link href="/" className="nav-logo">
           <LogoMark />
           <span className="logo-name">open lines</span>

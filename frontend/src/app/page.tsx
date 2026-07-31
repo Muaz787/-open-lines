@@ -304,7 +304,7 @@ export default function Home() {
   return (
     <>
       {/* NAV */}
-      <nav>
+      <nav className="site-nav">
         <a href="#" className="nav-logo">
           <LogoMark />
           <span className="logo-name">open lines</span>
