@@ -33,7 +33,7 @@ export const ARTICLES: LearnArticle[] = [
     category: 'Cost guide',
     shortTitle: 'Answering service cost',
     metaTitle: 'Answering Service Cost: 2026 Guide | Open Lines',
-    metaDescription: 'What answering services cost in 2026 — per-minute live services, in-house receptionists, and flat-rate AI — with real figures and cited sources.',
+    metaDescription: 'What answering services cost in 2026 — live per-minute services, in-house staff, and AI plans with included minutes — with real, cited figures.',
     h1: 'How much does an answering service cost in 2026?',
     published: '2026-07-28',
     updated: '2026-07-30',
@@ -46,7 +46,7 @@ export const ARTICLES: LearnArticle[] = [
         bullets: [
           { title: 'Live (human) answering services', body: 'A call centre answers in your name. Usually billed per minute or in monthly minute bundles — great for overflow, but the meter is always running.' },
           { title: 'An in-house receptionist', body: 'A person on your payroll. Total coverage during their hours, but the highest fixed cost and no nights or weekends without paying overtime.' },
-          { title: 'An AI receptionist', body: 'Software answers, books, and captures leads 24/7, typically for a flat monthly fee that doesn’t spike with call volume.' },
+          { title: 'An AI receptionist', body: 'Software answers, books, and captures leads 24/7, usually on a monthly plan that includes a set allowance of minutes, with a per-minute overage only if you exceed it.' },
         ],
       },
       {
@@ -54,21 +54,21 @@ export const ARTICLES: LearnArticle[] = [
         paras: [
           'Live answering services in 2026 are commonly billed at roughly $0.75–$2.00 per minute, with many mid-range providers around $0.90–$1.25 per minute. On monthly bundles, basic plans tend to run about $135–$250, mid-range plans about $330–$525, and higher-volume plans about $495–$925 — and busy months can add 20–40% in overage fees on top. The catch is that cost scales directly with how much your callers talk.',
           'A full-time in-house receptionist in Canada typically costs around $40,000–$62,000 per year in wages (roughly $18–$20+ per hour), before you add benefits and overhead — and that still only covers business hours, not nights or weekends.',
-          'An AI receptionist is usually a flat monthly subscription. Because it isn’t billed per minute, the cost stays predictable whether you get 20 calls a month or 200, and it covers nights, weekends, and holidays at no extra charge.',
+          'An AI receptionist is usually a monthly plan with a set allowance of included minutes. Unlike a live service, you’re not metered from the very first minute — you get a block of minutes for your base fee, and only pay a per-minute overage if you go beyond it. It covers nights, weekends, and holidays at no extra charge.',
         ],
       },
       {
         heading: 'How to work out your real cost',
-        paras: ['Add up your monthly call volume and average call length. Multiply by the per-minute rate for a live service, and compare that to a flat AI subscription. For most appointment- and enquiry-driven small businesses, once you’re past a handful of calls a day, a flat rate wins on both price and coverage — and it never sends a caller to voicemail after hours.'],
+        paras: ['Add up your monthly call volume and average call length. Multiply by the per-minute rate for a live service, then compare that to an AI plan’s base fee plus its included minutes (and any overage beyond them). For most appointment- and enquiry-driven small businesses, once you’re past a handful of calls a day, an AI plan with a generous included allowance works out cheaper and covers hours a live meter would keep charging for — and it never sends a caller to voicemail after hours.'],
       },
       {
         heading: 'Where Open Lines fits',
-        paras: ['Open Lines is a flat-rate AI receptionist: it answers every call in a natural voice, books appointments into your calendar, captures leads, and works 24/7 — with no per-minute meter. You can compare plans on the pricing page and start a 7-day free trial with no credit card.'],
+        paras: ['Open Lines is an AI receptionist on a simple monthly plan: each plan includes a set number of minutes, with a per-minute overage rate only if you go over — and a call is never cut off mid-conversation. It answers every call in a natural voice, books appointments into your calendar, captures leads, and works 24/7. You can compare plans on the pricing page and start a 7-day free trial with no credit card.'],
       },
     ],
     faqs: [
-      { q: 'Is an AI receptionist cheaper than a live answering service?', a: 'For most small businesses past a few calls a day, yes. Live services bill per minute, so cost rises with call volume, while an AI receptionist is a flat monthly fee that also covers nights and weekends.' },
-      { q: 'Are there per-minute or per-call fees with Open Lines?', a: 'Open Lines is a flat monthly subscription rather than a per-minute meter, so your cost stays predictable regardless of how busy the phone gets. See the pricing page for current plans.' },
+      { q: 'Is an AI receptionist cheaper than a live answering service?', a: 'For most small businesses past a few calls a day, yes. Live services meter every minute from the start, so cost rises with call volume, while an AI plan gives you a block of included minutes for a monthly fee — with overage only beyond it — and covers nights and weekends.' },
+      { q: 'Does Open Lines charge per minute?', a: 'Each Open Lines plan includes a set number of minutes for a flat monthly price. If you go over your included minutes, the extra time is billed at your plan’s per-minute overage rate — and calls are never cut off mid-conversation. See the pricing page for current plans and rates.' },
       { q: 'What does a full-time receptionist cost?', a: 'In Canada, receptionist wages typically run about $40,000–$62,000 per year (roughly $18–$20+ per hour) before benefits and overhead — and that only covers working hours, not after-hours or weekend calls.' },
       { q: 'Can I try it before paying?', a: 'Yes. Open Lines offers a 7-day free trial with no credit card, so you can see how it handles your calls before committing.' },
     ],
@@ -80,12 +80,12 @@ export const ARTICLES: LearnArticle[] = [
       { label: 'PayScale — Receptionist hourly pay in Canada (2026)', url: 'https://www.payscale.com/research/CA/Job=Receptionist/Hourly_Rate' },
     ],
     related: [
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How the flat-rate option actually works.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How AI phone answering actually works.' },
       { href: '/learn/virtual-receptionist-small-business', label: 'Virtual receptionist guide', sub: 'Live vs. AI, and how to choose.' },
-      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Flat monthly plans, no per-minute meter.' },
+      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Monthly plans with included minutes.' },
     ],
-    ctaHeading: 'Predictable pricing. Every call answered.',
-    ctaSub: 'Start a 7-day free trial and see what a flat-rate AI receptionist does for your missed calls.',
+    ctaHeading: 'Clear pricing. Every call answered.',
+    ctaSub: 'Start a 7-day free trial and see what an AI receptionist does for your missed calls.',
   },
   {
     slug: 'what-is-an-ai-receptionist',
@@ -204,7 +204,7 @@ export const ARTICLES: LearnArticle[] = [
         heading: 'The two main types',
         bullets: [
           { title: 'Live virtual receptionists', body: 'Remote humans answer in your name, usually billed per minute or in monthly minute bundles. Personable, good for nuanced calls — but the cost scales with volume and coverage.' },
-          { title: 'AI virtual receptionists', body: 'Software answers, books, and captures leads in a natural voice, 24/7, for a flat monthly fee. Consistent and always available, with no per-minute meter.' },
+          { title: 'AI virtual receptionists', body: 'Software answers, books, and captures leads in a natural voice, 24/7, on a monthly plan with a set allowance of included minutes (plus a per-minute overage if you exceed it). Consistent and always available.' },
         ],
       },
       {
@@ -214,12 +214,12 @@ export const ARTICLES: LearnArticle[] = [
           { title: '24/7 coverage', body: 'Nights and weekends are when many bookings happen. Make sure after-hours calls are actually answered.' },
           { title: 'Learns your business', body: 'It should answer your real FAQs — hours, services, pricing, location — from your own website and documents.' },
           { title: 'Clear reporting', body: 'You want a clean summary of every call, ideally synced to your CRM, Slack, or inbox.' },
-          { title: 'Predictable pricing', body: 'Watch for per-minute costs that spike on your busiest months. A flat fee is easier to plan around.' },
+          { title: 'Predictable pricing', body: 'Watch how minutes are billed. A plan with a clear included allowance and a stated overage rate is easier to budget than being metered from the first minute.' },
         ],
       },
       {
         heading: 'How to choose',
-        paras: ['If you get a low volume of complex, high-touch calls, a live service may suit you. If you get a steady stream of bookings and enquiries — and you’re losing some to voicemail — a flat-rate AI receptionist usually delivers better coverage for less, and never closes for the night. Many businesses start with an AI receptionist for the bulk of calls and keep escalation to a human for anything unusual.'],
+        paras: ['If you get a low volume of complex, high-touch calls, a live service may suit you. If you get a steady stream of bookings and enquiries — and you’re losing some to voicemail — an AI receptionist usually delivers better coverage for less, and never closes for the night. Many businesses start with an AI receptionist for the bulk of calls and keep escalation to a human for anything unusual.'],
       },
       {
         heading: 'Getting started with Open Lines',
@@ -228,14 +228,14 @@ export const ARTICLES: LearnArticle[] = [
     ],
     faqs: [
       { q: 'What does a virtual receptionist do?', a: 'It answers your calls without being physically at your desk — booking appointments, answering common questions, and capturing leads. It can be a live remote person or an AI receptionist.' },
-      { q: 'Is a virtual receptionist worth it for a small business?', a: 'If you’re losing calls to voicemail while you’re busy or closed, yes. Recovered bookings usually cover the cost quickly, especially with a flat-rate AI option.' },
-      { q: 'Live receptionist or AI — which is better?', a: 'AI wins on 24/7 coverage and predictable flat pricing; a live service can suit low volumes of complex calls. Many businesses use AI for most calls and escalate unusual ones to a human.' },
+      { q: 'Is a virtual receptionist worth it for a small business?', a: 'If you’re losing calls to voicemail while you’re busy or closed, yes. Recovered bookings usually cover the cost quickly, especially with an AI plan that includes a block of minutes.' },
+      { q: 'Live receptionist or AI — which is better?', a: 'AI wins on 24/7 coverage and pricing that’s easy to budget — a monthly plan with included minutes rather than a meter running from the first second; a live service can suit low volumes of complex calls. Many businesses use AI for most calls and escalate unusual ones to a human.' },
       { q: 'How quickly can I get set up?', a: 'With Open Lines, most businesses are live in under 10 minutes because it learns from your existing website.' },
     ],
     related: [
       { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing, compared.' },
       { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
-      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Flat monthly plans, free trial.' },
+      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Monthly plans with included minutes.' },
     ],
     ctaHeading: 'Give your small business a receptionist that never clocks out.',
     ctaSub: 'Start a 7-day free trial — no credit card — and let it answer every call.',
@@ -259,7 +259,7 @@ export const ARTICLES: LearnArticle[] = [
         heading: 'Automate your phone and reception',
         paras: ['For most local and service businesses, the phone is the single biggest source of missed revenue and repetitive work. An AI receptionist answers every call in a natural voice, books appointments into your calendar, answers your FAQs from your own website, and sends you a summary — 24/7.'],
         bullets: [
-          { title: 'Open Lines', body: 'An AI receptionist that answers calls, books into Google Calendar, Outlook, or Square Appointments, captures leads, and reports each call to your inbox, Slack, or HubSpot. Flat monthly pricing, live in under 10 minutes.' },
+          { title: 'Open Lines', body: 'An AI receptionist that answers calls, books into Google Calendar, Outlook, or Square Appointments, captures leads, and reports each call to your inbox, Slack, or HubSpot. Monthly plans with included minutes, live in under 10 minutes.' },
         ],
       },
       {
