@@ -32,7 +32,7 @@ export default function SiteNav() {
 
   return (
     <>
-      <nav>
+      <nav className="site-nav">
         <Link href="/" className="nav-logo">
           <LogoMark />
           <span className="logo-name">Open Lines</span>

@@ -57,7 +57,7 @@ body {
 }
 
 /* ── Nav ── */
-nav {
+.site-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 200;
   height: 56px; padding: 0 40px;
   display: flex; align-items: center; justify-content: space-between;
@@ -66,7 +66,7 @@ nav {
   border-bottom: 1px solid var(--border);
   transition: background 0.5s var(--ease), border-color 0.5s var(--ease);
 }
-[data-theme="dark"] nav { background: rgba(7, 9, 13, 0.82); }
+[data-theme="dark"] .site-nav { background: rgba(7, 9, 13, 0.82); }
 
 .nav-logo { display: flex; align-items: center; gap: 9px; text-decoration: none; }
 .logo-svg { width: 28px; height: 28px; flex-shrink: 0; color: var(--text); transition: color 0.5s; }
@@ -906,7 +906,7 @@ footer {
 /* ── Mobile (≤ 640 px) ── */
 @media (max-width: 640px) {
   /* Nav */
-  nav { padding: 0 16px; height: 52px; }
+  .site-nav { padding: 0 16px; height: 52px; }
   .nav-right { gap: 8px; }
   .btn-nav { padding: 7px 12px; font-size: 12px; }
   .nav-right > a:last-of-type { display: none; } /* hide Book a Demo — it's in the hero */
