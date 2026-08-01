@@ -388,22 +388,25 @@ async def patch_fish_voice(x_admin_key: str | None = Header(None)):
         return {"patched": [], "note": "FISH_TTS_CANARY_TENANT_IDS is empty"}
     results = []
     for tid in ids:
-        t = await db.get_tenant_by_id(tid)
-        if not t:
-            results.append({"tenant_id": tid, "status": "tenant_not_found"})
-            continue
-        aid = t.get("vapi_assistant_id")
-        if not aid:
-            results.append({"tenant_id": tid, "status": "no_assistant_id"})
-            continue
-        block = vapi_svc.build_voice_block(t)
         try:
+            t = await db.get_tenant_by_id(tid)
+            if not t:
+                results.append({"tenant_id": tid, "status": "tenant_not_found"})
+                continue
+            aid = t.get("vapi_assistant_id")
+            if not aid:
+                results.append({"tenant_id": tid, "status": "no_assistant_id",
+                                "tenant_keys": sorted(t.keys())})
+                continue
+            block = vapi_svc.build_voice_block(t)
             key = vapi_svc.get_tenant_vapi_key(t)
             ok = await vapi_svc.update_assistant(aid, {"voice": block}, api_key=key)
             results.append({"tenant_id": tid, "assistant_id": aid,
                             "patched": ok, "voice_provider": block.get("provider")})
         except Exception as e:
-            results.append({"tenant_id": tid, "status": "error", "error": str(e)[:200]})
+            logger.exception("patch-fish-voice failed for %s", tid)
+            results.append({"tenant_id": tid, "status": "error",
+                            "error": f"{type(e).__name__}: {str(e)[:200]}"})
     return {"patched": results}
 
 
