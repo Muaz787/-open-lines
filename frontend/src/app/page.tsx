@@ -5,6 +5,7 @@ import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 
 import Link from 'next/link'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
 import CapabilityCarousel from './components/CapabilityCarousel'
+import AskAiSection from './components/AskAiSection'
 import IntegrationsMarquee from './components/IntegrationsMarquee'
 
 // ── Update this when you have your Calendly link ──
@@ -751,6 +752,11 @@ export default function Home() {
 
       {/* CAPABILITIES — what the AI can do on every call */}
       <CapabilityCarousel />
+
+      <div className="div-line" />
+
+      {/* ASK AN AI — research us with ChatGPT / Claude / Perplexity */}
+      <AskAiSection />
 
       <div className="div-line" />
 
