@@ -20,7 +20,6 @@ import logging
 from typing import Annotated
 
 import httpx
-import msgpack
 from fastapi import APIRouter, Header, Request, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -55,16 +54,16 @@ async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header
     if not text:
         raise HTTPException(status_code=400, detail="No text to synthesize")
 
-    fish_body = msgpack.packb({
+    fish_payload = {
         "text": text,
         "reference_id": reference_id,
         "format": "pcm",          # raw 16-bit mono LE — exactly what Vapi expects
         "sample_rate": sample_rate,
         "latency": "balanced",    # ~300ms time-to-first-audio
-    })
+    }
+    # Fish accepts application/json (httpx sets it via json=) — no msgpack dep needed.
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/msgpack",
         "model": model,
     }
 
@@ -72,7 +71,7 @@ async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header
     # surfaces as a non-200 to Vapi (which then uses the ElevenLabs fallback).
     client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0))
     try:
-        req = client.build_request("POST", FISH_TTS_URL, headers=headers, content=fish_body)
+        req = client.build_request("POST", FISH_TTS_URL, headers=headers, json=fish_payload)
         resp = await client.send(req, stream=True)
     except Exception as e:
         await client.aclose()

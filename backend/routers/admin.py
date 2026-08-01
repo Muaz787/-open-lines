@@ -335,6 +335,41 @@ async def send_trial_reminders(x_admin_key: str | None = Header(None)):
     return {"sent": sent}
 
 
+@router.get("/voice-config")
+async def voice_config(
+    tenant_id: str | None = None,
+    phone: str | None = None,
+    x_admin_key: str | None = Header(None),
+):
+    """Diagnose the Fish-Audio TTS canary. Pass ?tenant_id=<uuid> (or ?phone=<the
+    number you called>) and read `voice_provider`: 'custom-voice' means the call
+    WILL route through Fish; '11labs' means it falls back to ElevenLabs (tenant not
+    in the canary list, or Fish env missing). If this endpoint 404s, the new code
+    isn't deployed yet."""
+    _check_admin_key(x_admin_key)
+    from services import vapi as vapi_svc
+
+    canary = [x.strip() for x in os.getenv("FISH_TTS_CANARY_TENANT_IDS", "").split(",") if x.strip()]
+    out: dict = {
+        "fish_api_key_set": bool(os.getenv("FISH_API_KEY")),
+        "fish_reference_id_set": bool(os.getenv("FISH_VOICE_REFERENCE_ID")),
+        "fish_model": os.getenv("FISH_TTS_MODEL", "speech-1.6"),
+        "vapi_server_secret_set": bool(os.getenv("VAPI_SERVER_SECRET")),
+        "canary_tenant_ids": canary,
+    }
+    tid = tenant_id
+    if not tid and phone:
+        t = await db.get_tenant_by_phone(phone)
+        tid = t and t.get("id")
+        out["matched_tenant_id_for_phone"] = tid
+    if tid:
+        block = vapi_svc.build_voice_block({"id": tid})
+        out["resolved_tenant_id"] = tid
+        out["tenant_in_canary"] = tid in canary
+        out["voice_provider"] = block.get("provider")  # 'custom-voice' => Fish active
+    return out
+
+
 @router.post("/check-minutes-alert")
 async def check_minutes_alert(x_admin_key: str | None = Header(None)):
     """Run the platform call-minutes threshold check now — the Vapi-migration nudge.
