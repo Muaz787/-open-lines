@@ -30,20 +30,37 @@ logger = logging.getLogger(__name__)
 
 FISH_TTS_URL = "https://api.fish.audio/v1/tts"
 
+# In-memory record of the last time Vapi called this endpoint (Railway runs a
+# single container, so /admin/voice-config reads this same process). Debug aid to
+# answer "is Vapi even calling us, with auth, and what was the outcome" without
+# hunting through logs. Not persisted; resets on redeploy.
+LAST_HIT: dict = {}
+
+
+def _mark(**kw) -> None:
+    from datetime import datetime, timezone
+    LAST_HIT.update({"ts": datetime.now(timezone.utc).isoformat(), **kw})
+
 
 @router.post("/fish-tts")
 async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header()] = None):
     """Stream Fish Audio PCM for one Vapi utterance. Any failure -> non-200 so
     Vapi uses the assistant's ElevenLabs fallbackPlan."""
-    # Entry log confirms whether Vapi is calling us at all, and whether it sends auth.
+    # Entry log + in-memory mark confirm whether Vapi calls us at all, with auth.
     logger.info("fish-tts: request received (x-vapi-secret present=%s)", bool(x_vapi_secret))
-    verify_vapi_server_secret(x_vapi_secret)  # 401 if secret missing/mismatched
+    _mark(outcome="received", auth_present=bool(x_vapi_secret))
+    try:
+        verify_vapi_server_secret(x_vapi_secret)  # 401 if secret missing/mismatched
+    except Exception:
+        _mark(outcome="auth_rejected", auth_present=bool(x_vapi_secret))
+        raise
 
     api_key = os.getenv("FISH_API_KEY", "")
     reference_id = os.getenv("FISH_VOICE_REFERENCE_ID", "")
     model = os.getenv("FISH_TTS_MODEL", "").strip()  # empty -> let Fish use its default
     if not api_key or not reference_id:
         logger.error("fish-tts: FISH_API_KEY or FISH_VOICE_REFERENCE_ID not set")
+        _mark(outcome="not_configured")
         raise HTTPException(status_code=503, detail="Fish TTS not configured")
 
     try:
@@ -84,7 +101,10 @@ async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header
         await resp.aclose()
         await client.aclose()
         logger.error("fish-tts: Fish API %s: %s", resp.status_code, detail)
+        _mark(outcome="fish_error", fish_status=resp.status_code)
         raise HTTPException(status_code=502, detail="Fish TTS error")
+
+    _mark(outcome="streaming_pcm", fish_status=200, sample_rate=sample_rate)
 
     async def stream():
         try:

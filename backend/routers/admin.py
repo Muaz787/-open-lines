@@ -348,14 +348,17 @@ async def voice_config(
     isn't deployed yet."""
     _check_admin_key(x_admin_key)
     from services import vapi as vapi_svc
+    from routers import voice as voice_mod
 
     canary = [x.strip() for x in os.getenv("FISH_TTS_CANARY_TENANT_IDS", "").split(",") if x.strip()]
     out: dict = {
         "fish_api_key_set": bool(os.getenv("FISH_API_KEY")),
         "fish_reference_id_set": bool(os.getenv("FISH_VOICE_REFERENCE_ID")),
-        "fish_model": os.getenv("FISH_TTS_MODEL", "speech-1.6"),
+        "fish_model": os.getenv("FISH_TTS_MODEL", "") or "(default)",
         "vapi_server_secret_set": bool(os.getenv("VAPI_SERVER_SECRET")),
         "canary_tenant_ids": canary,
+        # Last time Vapi actually called /voice/fish-tts (empty {} = never hit).
+        "voice_endpoint_last_hit": voice_mod.LAST_HIT or None,
     }
     tid = tenant_id
     if not tid and phone:
