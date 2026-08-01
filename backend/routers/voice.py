@@ -35,7 +35,9 @@ FISH_TTS_URL = "https://api.fish.audio/v1/tts"
 async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header()] = None):
     """Stream Fish Audio PCM for one Vapi utterance. Any failure -> non-200 so
     Vapi uses the assistant's ElevenLabs fallbackPlan."""
-    verify_vapi_server_secret(x_vapi_secret)  # 403 if secret missing/mismatched
+    # Entry log confirms whether Vapi is calling us at all, and whether it sends auth.
+    logger.info("fish-tts: request received (x-vapi-secret present=%s)", bool(x_vapi_secret))
+    verify_vapi_server_secret(x_vapi_secret)  # 401 if secret missing/mismatched
 
     api_key = os.getenv("FISH_API_KEY", "")
     reference_id = os.getenv("FISH_VOICE_REFERENCE_ID", "")

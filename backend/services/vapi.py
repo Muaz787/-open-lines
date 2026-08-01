@@ -505,13 +505,16 @@ def build_voice_block(tenant: dict) -> dict:
     eleven = _elevenlabs_voice(tenant)
     if not _fish_enabled_for(tenant):
         return {**eleven, "fillerInjectionEnabled": True}
+    secret = _server_secret()
+    server: dict = {"url": f"{APP_BACKEND_URL}/voice/fish-tts", "timeoutSeconds": 30}
+    if secret:
+        # Belt-and-suspenders: set both `secret` and an explicit header, since Vapi's
+        # custom-voice server may not send X-Vapi-Secret from `secret` alone.
+        server["secret"] = secret
+        server["headers"] = {"x-vapi-secret": secret}
     return {
         "provider": "custom-voice",
-        "server": {
-            "url": f"{APP_BACKEND_URL}/voice/fish-tts",
-            "secret": _server_secret(),
-            "timeoutSeconds": 30,
-        },
+        "server": server,
         "fallbackPlan": {"voices": [eleven]},
     }
 
