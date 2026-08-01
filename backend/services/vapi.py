@@ -497,6 +497,13 @@ def _fish_enabled_for(tenant: dict) -> bool:
     return bool(ids) and str(tenant.get("id") or "") in ids
 
 
+def is_fish_canary(tenant: dict) -> bool:
+    """Public: is this tenant on the Fish-Audio canary? (Vapi ignores custom-voice
+    in per-call overrides, so canaried tenants get it on the assistant instead and
+    the override skips the voice field.)"""
+    return _fish_enabled_for(tenant)
+
+
 def build_voice_block(tenant: dict) -> dict:
     """Voice config for a call. Canaried tenants get Fish Audio via our custom-TTS
     bridge (/voice/fish-tts), with a native Vapi fallbackPlan to ElevenLabs so a

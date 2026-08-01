@@ -326,13 +326,6 @@ async def _handle_assistant_request(msg: dict) -> dict:
             "messages": [{"role": "system", "content": system_prompt}],
             "tools": tools,
         },
-        # Natural voice + turn-taking pushed on EVERY call so all tenants (incl.
-        # pre-existing assistants provisioned with the old OpenAI voice) get the
-        # upgraded receptionist voice and human-like interruption/endpointing live.
-        # build_voice_block gives the tenant's gender-matched ElevenLabs voice by
-        # default, or the Fish-Audio custom-TTS bridge (with ElevenLabs fallback)
-        # for canaried tenants (FISH_TTS_CANARY_TENANT_IDS).
-        "voice": vapi_svc.build_voice_block(tenant),
         "transcriber": dict(vapi_svc.RECEPTIONIST_TRANSCRIBER),
         "startSpeakingPlan": vapi_svc.START_SPEAKING_PLAN,
         "stopSpeakingPlan": vapi_svc.STOP_SPEAKING_PLAN,
@@ -343,6 +336,14 @@ async def _handle_assistant_request(msg: dict) -> dict:
         # assistant. This also gives OLD assistants the secret at call time.
         **vapi_svc.server_block(f"{vapi_svc.APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
+    # Voice: non-canary tenants get the ElevenLabs override on every call (so even
+    # pre-existing assistants get the upgraded, gender-matched voice). Canaried
+    # Fish-Audio tenants get their voice from the ASSISTANT config instead — Vapi
+    # ignores a custom-voice provider in per-call overrides — so we deliberately do
+    # NOT set voice here for them (run /admin/patch-fish-voice to set it once).
+    if not vapi_svc.is_fish_canary(tenant):
+        overrides["voice"] = vapi_svc.build_voice_block(tenant)
+
     # Always open with the virtual-assistant + recording disclosure (PIPEDA
     # knowledge/consent), covering new, returning, and pre-existing tenants on every call.
     overrides["firstMessage"] = vapi_svc.ensure_call_disclosure(

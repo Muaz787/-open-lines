@@ -373,6 +373,40 @@ async def voice_config(
     return out
 
 
+@router.post("/patch-fish-voice")
+async def patch_fish_voice(x_admin_key: str | None = Header(None)):
+    """Persistently set the Fish custom-voice on each canaried tenant's Vapi
+    assistant. Vapi ignores a custom-voice provider in per-call overrides, so it
+    must live on the assistant itself. Run once after setting the canary env var;
+    the per-call override deliberately skips voice for canaried tenants so this
+    assistant-level voice is the one that applies."""
+    _check_admin_key(x_admin_key)
+    from services import vapi as vapi_svc
+
+    ids = [x.strip() for x in os.getenv("FISH_TTS_CANARY_TENANT_IDS", "").split(",") if x.strip()]
+    if not ids:
+        return {"patched": [], "note": "FISH_TTS_CANARY_TENANT_IDS is empty"}
+    results = []
+    for tid in ids:
+        t = await db.get_tenant_by_id(tid)
+        if not t:
+            results.append({"tenant_id": tid, "status": "tenant_not_found"})
+            continue
+        aid = t.get("vapi_assistant_id")
+        if not aid:
+            results.append({"tenant_id": tid, "status": "no_assistant_id"})
+            continue
+        block = vapi_svc.build_voice_block(t)
+        try:
+            key = vapi_svc.get_tenant_vapi_key(t)
+            ok = await vapi_svc.update_assistant(aid, {"voice": block}, api_key=key)
+            results.append({"tenant_id": tid, "assistant_id": aid,
+                            "patched": ok, "voice_provider": block.get("provider")})
+        except Exception as e:
+            results.append({"tenant_id": tid, "status": "error", "error": str(e)[:200]})
+    return {"patched": results}
+
+
 @router.post("/test-fish-tts")
 async def test_fish_tts(x_admin_key: str | None = Header(None)):
     """Call Fish Audio /v1/tts directly with a sample line and report exactly what it
