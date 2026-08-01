@@ -69,6 +69,15 @@ async def main() -> int:
     except Exception as e:
         logger.error("call-intent backfill failed: %s", e)
 
+    # ...and checks whether total platform call-minutes crossed the ops threshold
+    # (default 30k/mo) — a one-time nudge to revisit self-hosting the voice stack.
+    try:
+        from services import usage
+        alert = await usage.check_platform_minutes_alert()
+        logger.info("platform-minutes alert check: %s", alert)
+    except Exception as e:
+        logger.error("platform-minutes alert check failed: %s", e)
+
     # Heartbeat for the admin health page — proves the daily cron is running.
     try:
         from datetime import datetime, timezone

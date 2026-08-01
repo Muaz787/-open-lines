@@ -224,6 +224,16 @@ async def set_system_meta(key: str, value: str) -> None:
     }).execute()
 
 
+async def sum_minutes_used_this_period() -> int:
+    """Total call-minutes used across all tenants in their current billing period —
+    a cheap proxy for the platform's monthly minute run-rate (drives the ops usage
+    alert). Note: per-tenant periods are staggered, and PostgREST caps returned rows
+    (~1000). Fine at the scale this alert fires (tens of tenants); paginate with
+    .range() if the tenant count ever exceeds the row cap."""
+    res = get_client().table("tenants").select("minutes_used_this_period").execute()
+    return sum((r.get("minutes_used_this_period") or 0) for r in (res.data or []))
+
+
 async def create_staff(tenant_id: str, name: str) -> dict:
     res = get_client().table("staff").insert({"tenant_id": tenant_id, "name": name}).execute()
     return res.data[0] if res.data else {}

@@ -335,6 +335,16 @@ async def send_trial_reminders(x_admin_key: str | None = Header(None)):
     return {"sent": sent}
 
 
+@router.post("/check-minutes-alert")
+async def check_minutes_alert(x_admin_key: str | None = Header(None)):
+    """Run the platform call-minutes threshold check now — the Vapi-migration nudge.
+    Emails the founder at most once per threshold (deduped via system_meta); returns
+    the current total, threshold, and whether it fired. Also runs daily via the cron."""
+    _check_admin_key(x_admin_key)
+    from services import usage
+    return await usage.check_platform_minutes_alert()
+
+
 @router.post("/purge-retention")
 async def purge_retention(x_admin_key: str | None = Header(None)):
     """Run the data-retention purge: delete aged raw webhook payloads and fully

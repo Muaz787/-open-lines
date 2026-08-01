@@ -368,6 +368,42 @@ async def send_subscription_activated_email(
 
 
 # ---------------------------------------------------------------------------
+# Internal ops alerts (to the founder — operational, no unsubscribe)
+# ---------------------------------------------------------------------------
+# Architecture & migration plan for replacing Vapi (see memory: vapi_migration_plan).
+_VAPI_PLAN_URL = "https://claude.ai/code/artifact/65108f16-b8aa-48dc-b02e-c9bb910c8d3d"
+
+
+async def send_platform_minutes_alert_email(*, total_minutes: int, threshold: int) -> bool:
+    """One-time-per-threshold ops nudge to the founder when platform call-minutes
+    cross the level where self-hosting the voice stack starts to pay off."""
+    to = os.getenv("PLATFORM_ALERT_EMAIL", SUPPORT_EMAIL)
+    body = f"""
+      <p style="margin:0 0 14px;font-size:15px;color:{_INK}">
+        Open Lines just crossed <strong>{total_minutes:,} call-minutes</strong> this
+        billing period — past the <strong>{threshold:,}/month</strong> mark you set as
+        the point to revisit replacing Vapi with a first-party voice stack.</p>
+      <p style="margin:0 0 14px;font-size:14px;color:#444;line-height:1.6">
+        This is the volume where self-hosting starts to pay off. The biggest lever is
+        the TTS provider (e.g. ElevenLabs &rarr; Cartesia / Deepgram Aura), which can
+        roughly halve per-minute cost. The full architecture &amp; migration plan —
+        recommendation, cost model, and the zero-downtime phased rollout — is here:</p>
+    """
+    html_body = _layout(
+        heading="📈 You hit the Vapi-migration threshold",
+        body_html=body,
+        cta="Open the migration plan",
+        cta_url=_VAPI_PLAN_URL,
+        preheader=f"{total_minutes:,} call-minutes — time to revisit the voice-stack plan.",
+    )
+    return _send(
+        to=to,
+        subject=f"Open Lines hit {threshold:,} call-minutes/month — revisit the Vapi migration",
+        html_body=html_body,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Trial reminders (promotional — unsubscribe required; skip if opted out)
 # ---------------------------------------------------------------------------
 

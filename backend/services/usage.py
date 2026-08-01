@@ -61,6 +61,40 @@ def get_usage_summary(tenant: dict) -> dict:
     }
 
 
+async def check_platform_minutes_alert() -> dict:
+    """Ops alert: when total platform call-minutes for the current period cross a
+    threshold (default 30,000/month), email the founder — once per threshold — that
+    it's time to revisit replacing Vapi with a self-hosted voice stack.
+
+    Deduped via system_meta so it fires at most once per threshold. Automatically
+    re-arms if PLATFORM_MINUTES_ALERT_THRESHOLD is later raised (e.g. 30k -> 50k).
+    Set the threshold to 0 to disable. Wired into the daily cron; also runnable via
+    POST /admin/check-minutes-alert. Recipient: PLATFORM_ALERT_EMAIL (or SUPPORT_EMAIL).
+    """
+    threshold = int(os.getenv("PLATFORM_MINUTES_ALERT_THRESHOLD", "30000"))
+    if threshold <= 0:
+        return {"fired": False, "reason": "disabled"}
+
+    total = await db.sum_minutes_used_this_period()
+    meta = await db.get_system_meta("platform_minutes_alert_threshold")
+    last_fired = int((meta or {}).get("value") or 0)
+
+    if total >= threshold and last_fired < threshold:
+        from services.email import send_platform_minutes_alert_email
+        try:
+            await send_platform_minutes_alert_email(total_minutes=total, threshold=threshold)
+        except Exception as e:
+            logger.error("platform minutes alert email failed: %s", e)
+        await db.set_system_meta("platform_minutes_alert_threshold", str(threshold))
+        logger.warning(
+            "PLATFORM MINUTES ALERT fired: total=%d >= threshold=%d (Vapi-migration nudge sent)",
+            total, threshold,
+        )
+        return {"fired": True, "total_minutes": total, "threshold": threshold}
+
+    return {"fired": False, "total_minutes": total, "threshold": threshold, "last_fired_threshold": last_fired}
+
+
 def _send_usage_alert(tenant: dict, threshold_pct: int, minutes_used: int, allocation: int) -> None:
     """Log usage threshold alert. Wire to an email provider when ready."""
     logger.warning(
