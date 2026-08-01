@@ -370,6 +370,45 @@ async def voice_config(
     return out
 
 
+@router.post("/test-fish-tts")
+async def test_fish_tts(x_admin_key: str | None = Header(None)):
+    """Call Fish Audio /v1/tts directly with a sample line and report exactly what it
+    says — the fastest way to see if the model/reference_id/format are accepted. If
+    this returns ok=true with audio_bytes>0 but real calls still fall back, the issue
+    is Vapi not honoring the custom-voice override (not Fish)."""
+    _check_admin_key(x_admin_key)
+    import httpx
+    api_key = os.getenv("FISH_API_KEY", "")
+    ref = os.getenv("FISH_VOICE_REFERENCE_ID", "")
+    model = os.getenv("FISH_TTS_MODEL", "").strip()
+    if not api_key or not ref:
+        return {"ok": False, "error": "FISH_API_KEY or FISH_VOICE_REFERENCE_ID not set"}
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if model:
+        headers["model"] = model
+    payload = {
+        "text": "Thursday at 2:30 is open. I'll text you a confirmation.",
+        "reference_id": ref,
+        "format": "pcm",
+        "sample_rate": 8000,
+        "latency": "balanced",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post("https://api.fish.audio/v1/tts", headers=headers, json=payload)
+    except Exception as e:
+        return {"ok": False, "error": f"connect: {str(e)[:300]}"}
+    ok = r.status_code == 200
+    return {
+        "ok": ok,
+        "status": r.status_code,
+        "model_sent": model or "(default)",
+        "reference_id_len": len(ref),
+        "audio_bytes": len(r.content) if ok else 0,
+        "error": "" if ok else r.text[:500],
+    }
+
+
 @router.post("/check-minutes-alert")
 async def check_minutes_alert(x_admin_key: str | None = Header(None)):
     """Run the platform call-minutes threshold check now — the Vapi-migration nudge.

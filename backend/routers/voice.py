@@ -39,7 +39,7 @@ async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header
 
     api_key = os.getenv("FISH_API_KEY", "")
     reference_id = os.getenv("FISH_VOICE_REFERENCE_ID", "")
-    model = os.getenv("FISH_TTS_MODEL", "speech-1.6")
+    model = os.getenv("FISH_TTS_MODEL", "").strip()  # empty -> let Fish use its default
     if not api_key or not reference_id:
         logger.error("fish-tts: FISH_API_KEY or FISH_VOICE_REFERENCE_ID not set")
         raise HTTPException(status_code=503, detail="Fish TTS not configured")
@@ -62,10 +62,9 @@ async def fish_tts(request: Request, x_vapi_secret: Annotated[str | None, Header
         "latency": "balanced",    # ~300ms time-to-first-audio
     }
     # Fish accepts application/json (httpx sets it via json=) — no msgpack dep needed.
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "model": model,
-    }
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if model:
+        headers["model"] = model  # only send when explicitly configured
 
     # Open the stream and check status BEFORE returning 200, so a Fish failure
     # surfaces as a non-200 to Vapi (which then uses the ElevenLabs fallback).
