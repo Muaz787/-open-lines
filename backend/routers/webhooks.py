@@ -329,17 +329,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
         # Natural voice + turn-taking pushed on EVERY call so all tenants (incl.
         # pre-existing assistants provisioned with the old OpenAI voice) get the
         # upgraded receptionist voice and human-like interruption/endpointing live.
-        # Use the tenant's chosen/resolved voice (gender-matched to the agent name)
-        # — NOT the default — so real calls match the onboarding selection. This
-        # override previously clobbered the male voice back to the default female
-        # one on every real call.
-        "voice": {
-            **vapi_svc.RECEPTIONIST_VOICE,
-            "voiceId": tenant.get("voice_id") or vapi_svc.resolve_voice_id(
-                tenant.get("agent_name"), tenant.get("voice_gender")
-            ),
-            "fillerInjectionEnabled": True,
-        },
+        # build_voice_block gives the tenant's gender-matched ElevenLabs voice by
+        # default, or the Fish-Audio custom-TTS bridge (with ElevenLabs fallback)
+        # for canaried tenants (FISH_TTS_CANARY_TENANT_IDS).
+        "voice": vapi_svc.build_voice_block(tenant),
         "transcriber": dict(vapi_svc.RECEPTIONIST_TRANSCRIBER),
         "startSpeakingPlan": vapi_svc.START_SPEAKING_PLAN,
         "stopSpeakingPlan": vapi_svc.STOP_SPEAKING_PLAN,

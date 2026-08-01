@@ -192,16 +192,10 @@ def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
                     ensure_safety_preamble(system_prompt + _CALLER_LOOKUP_NOTE))},
             ],
         },
-        "voice": {
-            **RECEPTIONIST_VOICE,
-            # Prefer the voice chosen/resolved at provision time; fall back to
-            # resolving from the agent name so existing tenants get a
-            # gender-correct voice on their next assistant rebuild.
-            "voiceId": tenant.get("voice_id") or resolve_voice_id(
-                tenant.get("agent_name"), tenant.get("voice_gender")
-            ),
-            "fillerInjectionEnabled": True,
-        },
+        # ElevenLabs by default (gender-matched), or the Fish-Audio custom-TTS
+        # bridge for canaried tenants. The per-call assistant-request override
+        # applies the same block, so this is mainly for freshly provisioned lines.
+        "voice": build_voice_block(tenant),
         **server_block(f"{APP_BACKEND_URL}/webhooks/vapi-call-ended"),
     }
 
@@ -481,6 +475,47 @@ def resolve_voice_id(agent_name: str | None, voice_gender: str | None = None) ->
     if (voice_gender or "").strip().lower() in ("male", "m", "man"):
         return VOICE_MALE
     return VOICE_FEMALE
+
+
+def _elevenlabs_voice(tenant: dict) -> dict:
+    """The default ElevenLabs voice block for a tenant (gender-matched to the agent)."""
+    return {
+        **RECEPTIONIST_VOICE,
+        "voiceId": tenant.get("voice_id") or resolve_voice_id(
+            tenant.get("agent_name"), tenant.get("voice_gender")
+        ),
+    }
+
+
+def _fish_enabled_for(tenant: dict) -> bool:
+    """Fish Audio is used only for tenants explicitly listed in
+    FISH_TTS_CANARY_TENANT_IDS, and only when the Fish key + voice are configured.
+    Default: nobody (returns False), so the general fleet is never affected."""
+    if not os.getenv("FISH_API_KEY") or not os.getenv("FISH_VOICE_REFERENCE_ID"):
+        return False
+    ids = {x.strip() for x in os.getenv("FISH_TTS_CANARY_TENANT_IDS", "").split(",") if x.strip()}
+    return bool(ids) and str(tenant.get("id") or "") in ids
+
+
+def build_voice_block(tenant: dict) -> dict:
+    """Voice config for a call. Canaried tenants get Fish Audio via our custom-TTS
+    bridge (/voice/fish-tts), with a native Vapi fallbackPlan to ElevenLabs so a
+    bridge error auto-falls-back with no dead air. Everyone else gets ElevenLabs.
+    Add fillerInjectionEnabled by the caller if desired (ElevenLabs-only field)."""
+    eleven = _elevenlabs_voice(tenant)
+    if not _fish_enabled_for(tenant):
+        return {**eleven, "fillerInjectionEnabled": True}
+    return {
+        "provider": "custom-voice",
+        "server": {
+            "url": f"{APP_BACKEND_URL}/voice/fish-tts",
+            "secret": _server_secret(),
+            "timeoutSeconds": 30,
+        },
+        "fallbackPlan": {"voices": [eleven]},
+    }
+
+
 RECEPTIONIST_TRANSCRIBER = {
     "provider": "deepgram",
     "model": "nova-3",          # newer than nova-2 — better accuracy on names/numbers

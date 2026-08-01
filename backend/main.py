@@ -98,7 +98,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls, hubspot, slack, stripe_connect, square_connect, payments, pay, zapier, staff, email_prefs
+from routers import webhooks, onboarding, leads, admin, knowledge, calendar, tools, billing, calls, hubspot, slack, stripe_connect, square_connect, payments, pay, zapier, staff, email_prefs, voice
 
 app.include_router(webhooks.router)
 app.include_router(onboarding.router)
@@ -117,6 +117,7 @@ app.include_router(square_connect.router)
 app.include_router(payments.router)
 app.include_router(pay.router)
 app.include_router(email_prefs.router)
+app.include_router(voice.router)
 
 # Zapier integration is paused — only mount its routes when explicitly enabled.
 from services import zapier as _zapier_service
