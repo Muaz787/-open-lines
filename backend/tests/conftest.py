@@ -35,3 +35,36 @@ class TwilioRestException(Exception):
 _twilio_exc.TwilioRestException = TwilioRestException  # type: ignore[attr-defined]
 sys.modules["twilio.base.exceptions"] = _twilio_exc
 sys.modules["twilio.base"].exceptions = _twilio_exc  # type: ignore[attr-defined]
+
+# slowapi (prod-only) — provide a functional stub so importing routers that use the
+# rate limiter works. .limit() is a passthrough decorator so the real endpoint
+# functions (and FastAPI route registration) are preserved.
+_slowapi = _types.ModuleType("slowapi")
+
+
+class _Limiter:  # noqa: N801
+    def __init__(self, *a, **k):
+        pass
+
+    def limit(self, *a, **k):
+        def _deco(fn):
+            return fn
+        return _deco
+
+
+_slowapi.Limiter = _Limiter  # type: ignore[attr-defined]
+_slowapi_util = _types.ModuleType("slowapi.util")
+_slowapi_util.get_remote_address = lambda request=None: "test"  # type: ignore[attr-defined]
+_slowapi_errors = _types.ModuleType("slowapi.errors")
+
+
+class RateLimitExceeded(Exception):
+    pass
+
+
+_slowapi_errors.RateLimitExceeded = RateLimitExceeded  # type: ignore[attr-defined]
+_slowapi.util = _slowapi_util  # type: ignore[attr-defined]
+_slowapi.errors = _slowapi_errors  # type: ignore[attr-defined]
+sys.modules["slowapi"] = _slowapi
+sys.modules["slowapi.util"] = _slowapi_util
+sys.modules["slowapi.errors"] = _slowapi_errors

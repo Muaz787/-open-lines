@@ -836,6 +836,91 @@ def build_deposit_tool(tenant_id: str, amount_cents: int, mandatory: bool) -> di
     }
 
 
+# ── AI Call Routing tools (dark unless the tenant is routing-entitled) ───────
+# Server messages the assistant must emit for routing: assistant-request (smart
+# routing), transfer-destination-request (dynamic transfer destination), and
+# end-of-call-report (outcome). Set on routing-entitled assistants only.
+ROUTING_SERVER_MESSAGES = ["assistant-request", "transfer-destination-request", "end-of-call-report"]
+
+
+def build_classify_route_tool(tenant_id: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "classify_and_route",
+            "description": (
+                "Call once you understand WHY the caller is calling — before offering to "
+                "transfer. Pass the detected intent and urgency; the system decides whether "
+                "you should keep handling the call, take a callback, or connect them to the "
+                "team. Follow the instruction it returns."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "intent": {"type": "string", "description": (
+                        "Short label for why they're calling (e.g. sales, billing, support, "
+                        "complaint, urgent_service, public_emergency).")},
+                    "urgency": {"type": "string", "enum": ["low", "normal", "urgent"]},
+                    "requested_person": {"type": "string", "description": "A specific person or department they asked for, if any."},
+                    "language": {"type": "string"},
+                    "confidence": {"type": "number", "description": "0-1: how confident you are in the intent."},
+                },
+                "required": ["intent"],
+            },
+        },
+        "server": _tool_server(f"{APP_BACKEND_URL}/tools/{tenant_id}/classify-and-route", 15),
+    }
+
+
+def build_create_callback_tool(tenant_id: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": "create_callback",
+            "description": (
+                "Record a callback request so the team can call the caller back. Use when a "
+                "human is needed and a transfer isn't available. Capture the caller's name and reason."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "caller_name": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "urgency": {"type": "string"},
+                },
+                "required": [],
+            },
+        },
+        "server": _tool_server(f"{APP_BACKEND_URL}/tools/{tenant_id}/create-callback", 15),
+    }
+
+
+def build_transfer_call_tool() -> dict:
+    """Native transferCall tool with EMPTY destinations, so Vapi asks our server
+    (transfer-destination-request) for the approved number. Warm/bridged + dial only
+    (metered-mode-only rule)."""
+    return {
+        "type": "transferCall",
+        "destinations": [],
+        "transferPlan": {"mode": "warm-transfer-say-summary", "sipVerb": "dial"},
+    }
+
+
+def build_routing_tools(tenant: dict) -> list[dict]:
+    """Routing tools for a tenant, gated by entitlement (dark otherwise). The
+    decision tools (classify/callback) attach when routing is enabled; the native
+    transferCall attaches only when transfer EXECUTION is enabled — so we can run
+    the decision layer first and turn on live transfers separately."""
+    from services import entitlements
+    if not entitlements.has_feature(tenant, "routing"):
+        return []
+    tenant_id = tenant.get("id", "")
+    tools = [build_classify_route_tool(tenant_id), build_create_callback_tool(tenant_id)]
+    if entitlements.transfer_execution_enabled():
+        tools.append(build_transfer_call_tool())
+    return tools
+
+
 def build_all_tools(tenant: dict) -> list[dict]:
     """Return the full Vapi tool list for a tenant based on which features are active."""
     tenant_id     = tenant.get("id", "")
@@ -860,6 +945,7 @@ def build_all_tools(tenant: dict) -> list[dict]:
             mandatory=bool(tenant.get("stripe_deposit_mandatory", True)),
         ))
 
+    tools += build_routing_tools(tenant)   # dark unless routing-entitled
     return tools
 
 
@@ -905,22 +991,25 @@ async def patch_assistant_tools(tenant: dict) -> None:
             base += _DEPOSIT_NOTE
         messages[0]["content"] = ensure_receptionist_style(base)
 
-    await update_assistant(
-        assistant_id,
-        {
-            "model": {
-                "provider": "openai",
-                "model": "gpt-4.1-mini",
-                "temperature": 0.8,
-                "tools": tools,
-                "messages": messages,
-            }
-        },
-        api_key=tenant_vapi_key,
-    )
+    update_payload: dict = {
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "temperature": 0.8,
+            "tools": tools,
+            "messages": messages,
+        }
+    }
+    # Routing-entitled assistants must declare the transfer-destination-request +
+    # end-of-call-report server messages so dynamic transfers + outcomes reach us.
+    from services import entitlements
+    if entitlements.has_feature(tenant, "routing"):
+        update_payload["serverMessages"] = ROUTING_SERVER_MESSAGES
+
+    await update_assistant(assistant_id, update_payload, api_key=tenant_vapi_key)
     logger.info(
         "Patched assistant %s — tools=%s",
-        assistant_id, [t["function"]["name"] for t in tools],
+        assistant_id, [t.get("function", {}).get("name") or t.get("type") for t in tools],
     )
 
 

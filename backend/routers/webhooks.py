@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Header
 
 from db import supabase as db
+from db import routing as rdb
 from services.security import verify_tenant_owner, verify_vapi_server_secret
 from services import analytics, knowledge, vapi as vapi_svc
+from services import entitlements, transfer as transfer_svc, routing_destinations as rd
 from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools, ensure_safety_preamble
 from routers.calendar import _CALENDAR_NOTE
 
@@ -300,6 +302,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
     tools = build_calendar_tools(tenant_id) if has_calendar else [build_caller_lookup_tool(tenant_id)]
+    tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
 
     logger.info(
         "assistant-request: tenant %s caller %s → %s (phone_found=%s)",
@@ -354,6 +357,13 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Set per-call so existing tenants get it on the next call without re-provisioning.
     overrides["silenceTimeoutSeconds"] = 25
 
+    # Routing-entitled tenants: declare the transfer/outcome server messages so the
+    # dynamic transfer webhook + end-of-call outcome recording fire. Belt-and-braces
+    # alongside the assistant-level serverMessages (per-call overrides for this field
+    # may be ignored by Vapi — the assistant patch is the authoritative path).
+    if entitlements.has_feature(tenant, "routing"):
+        overrides["serverMessages"] = vapi_svc.ROUTING_SERVER_MESSAGES
+
     # Public "try the AI" demo line — bound cost/abuse on that tenant only:
     # short max call length + quicker hang-up on silence. Set DEMO_TENANT_ID (and
     # optionally DEMO_MAX_CALL_SECONDS / DEMO_SILENCE_SECONDS) in Railway once the
@@ -367,6 +377,67 @@ async def _handle_assistant_request(msg: dict) -> dict:
         "assistantId": assistant_id,
         "assistantOverrides": overrides,
     }
+
+
+async def _handle_transfer_destination_request(msg: dict) -> dict:
+    """Vapi asks our server for the transfer destination when the AI invokes
+    transferCall with no number. We resolve it from the routing DECISION already
+    recorded for this call (classify-and-route), so the AI never carries a number.
+
+    Gated by ROUTING_TRANSFER_ENABLED (telephony master) + tenant entitlement. When
+    declined, Vapi's fallbackPlan / the assistant continues — never a dropped call.
+    Records the transfer attempt (started); the outcome is filled from the
+    end-of-call report. Warm/bridged + sipVerb=dial only (metered-mode-only rule)."""
+    decline = {"error": "transfer_unavailable"}
+    phone_obj = msg.get("phoneNumber") or {}
+    call = msg.get("call") or {}
+    called_number = (phone_obj.get("number") or phone_obj.get("twilioPhoneNumber")
+                     or (call.get("phoneNumber") or {}).get("number", ""))
+    call_id = call.get("id", "")
+    if not called_number:
+        return decline
+    try:
+        tenant = await db.get_tenant_by_phone(called_number)
+    except Exception:
+        tenant = None
+    if not tenant:
+        return decline
+    if not (entitlements.has_feature(tenant, "routing") and entitlements.transfer_execution_enabled()):
+        return decline
+
+    tenant_id = tenant["id"]
+    decision = await rdb.get_latest_transfer_decision(tenant_id, call_id)
+    if not decision or not decision.get("chosen_destination_id"):
+        return decline
+    dest = await rdb.get_destination(tenant_id, decision["chosen_destination_id"])
+    if not dest or not dest.get("enabled", True) or not dest.get("e164_encrypted"):
+        return decline
+    try:
+        number = rd.reveal(dest["e164_encrypted"])
+    except Exception as e:
+        logger.error("transfer-destination: decrypt failed for tenant %s: %s", tenant_id, e)
+        return decline
+    # loop guard (defence in depth; also enforced at destination creation)
+    own = tenant.get("twilio_phone_number")
+    try:
+        if own and rd.is_same_number(number, rd.keyed_hash(own)):
+            logger.warning("transfer-destination: refusing loop to own line (tenant %s)", tenant_id)
+            return decline
+    except Exception:
+        pass
+
+    try:
+        await rdb.record_transfer_attempt({
+            "tenant_id": tenant_id, "vapi_call_id": call_id, "destination_id": dest["id"],
+            "mode": "warm", "attempt_index": 0,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logger.warning("transfer-destination: could not record attempt for %s: %s", tenant_id, e)
+
+    logger.info("transfer-destination: routing call %s to destination %s (tenant %s)",
+                call_id, dest["id"], tenant_id)
+    return {"destination": transfer_svc.build_destination(number)}
 
 
 @router.post("/vapi-call-ended")
@@ -394,6 +465,10 @@ async def vapi_call_ended(
     # to know which assistant to connect to this call.
     if event_type == "assistant-request":
         return await _handle_assistant_request(msg)
+
+    # Dynamic transfer destination — synchronous (Vapi waits for the destination).
+    if event_type == "transfer-destination-request":
+        return await _handle_transfer_destination_request(msg)
 
     if event_type and event_type != "end-of-call-report":
         logger.debug("Ignoring Vapi event type: %s", event_type)

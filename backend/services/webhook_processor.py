@@ -14,7 +14,8 @@ from datetime import datetime, timedelta, timezone
 
 from openai import AsyncOpenAI
 from db import supabase as db
-from services import analytics, telephony
+from db import routing as rdb
+from services import analytics, telephony, transfer as transfer_svc
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,7 @@ async def process_end_of_call(payload: dict) -> None:
     )
     started_at: str | None = call.get("startedAt") or msg.get("startedAt")
     ended_at: str | None = call.get("endedAt") or msg.get("endedAt")
+    ended_reason: str = call.get("endedReason") or msg.get("endedReason") or ""
     vapi_duration = (
         call.get("durationSeconds")
         or call.get("duration")
@@ -167,6 +169,27 @@ async def process_end_of_call(payload: dict) -> None:
             "Failed to save call record for call %s tenant %s (lead update will still run): %s",
             call_id, tenant_id, e,
         )
+
+    # Transfer outcome — only when this call actually had a transfer attempt (created
+    # by the transfer-destination webhook) or Vapi reports a forwarded call. Maps the
+    # end-of-call reason to our outcome + inbox disposition. Best-effort; never blocks.
+    try:
+        attempt = await rdb.get_transfer_attempt(call_id)
+        if attempt or ended_reason == "assistant-forwarded-call":
+            outcome = transfer_svc.outcome_from_ended_reason(ended_reason)
+            if outcome:
+                await rdb.record_transfer_attempt({
+                    "tenant_id": tenant_id, "vapi_call_id": call_id, "attempt_index": 0,
+                    "outcome": outcome, "ended_at": ended_at or None,
+                })
+                if inserted_call.get("id"):
+                    await db.update_call(inserted_call["id"], {
+                        "transferred": True,
+                        "disposition": transfer_svc.disposition_for_outcome(outcome),
+                    })
+                logger.info("Recorded transfer outcome=%s for call %s tenant %s", outcome, call_id, tenant_id)
+    except Exception as e:
+        logger.warning("Transfer-outcome recording failed for call %s tenant %s: %s", call_id, tenant_id, e)
 
     # PRIVACY: no transcript, no caller phone number — ids and duration only
     _distinct = analytics.distinct_id_for(tenant, tenant_id)

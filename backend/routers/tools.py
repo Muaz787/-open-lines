@@ -23,7 +23,9 @@ from services import square_booking
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
+from services import entitlements, routing_engine
 from db import supabase as db
+from db import routing as rdb
 
 logger = logging.getLogger(__name__)
 
@@ -1430,3 +1432,149 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         f"Done — your {service} on {friendly} has been cancelled.{refund_clause} "
         f"Is there anything else I can help you with?",
     )
+
+
+# ===========================================================================
+# AI Call Routing — mid-call tools (DECISION layer; no telephony yet).
+#
+#   classify-and-route : the AI passes its classification; the server runs the
+#                        deterministic routing_engine against the tenant's approved
+#                        profile/rules/destinations, RECORDS the decision (audit),
+#                        and returns a natural-language directive. It NEVER returns a
+#                        phone number to the AI. Actual transfer execution is a
+#                        separate telephony layer gated by ROUTING_TRANSFER_ENABLED;
+#                        until that is on, a "transfer" decision degrades to the safe
+#                        callback fallback (never a false promise / dropped call).
+#   create-callback    : record a structured callback request (the always-safe
+#                        fallback) so the team can call the caller back.
+#
+# Both inherit the router-level X-Vapi-Secret gate.
+# ===========================================================================
+
+_HANDLE_MSG = ("You can handle this yourself — continue helping the caller. Do not "
+               "transfer or promise a callback unless they ask.")
+_CALLBACK_MSG = ("Let the caller know the right person will call them back shortly. "
+                 "Capture their name and the reason if you don't have them, then call "
+                 "the create_callback tool and close warmly.")
+_TRANSFER_MSG = ("Tell the caller you're connecting them to the team now, then hand off.")
+
+
+def _caller_phone_from(body: dict, args: dict) -> str:
+    msg = body.get("message", body)
+    cust = (msg.get("call") or {}).get("customer") or {}
+    return (cust.get("number") or cust.get("phoneNumber")
+            or (msg.get("customer") or {}).get("number", "")
+            or args.get("caller_phone", ""))
+
+
+def _source_from(body: dict) -> str:
+    """direct | forwarded | unknown — best-effort (forwarding indicator, if present)."""
+    msg = body.get("message", body)
+    call = msg.get("call") or {}
+    if call.get("forwardedFrom") or (msg.get("phoneNumber") or {}).get("forwardedFrom"):
+        return "forwarded"
+    return "unknown"
+
+
+async def _do_classify_and_route(tenant_id: str, body: dict) -> dict:
+    tc_id, call_id, args = _parse_tool_call(body)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    # Not entitled / feature dark -> the AI simply keeps handling the call.
+    if not tenant or not entitlements.has_feature(tenant, "routing"):
+        return _result(tc_id, _HANDLE_MSG)
+
+    profile = await rdb.get_profile(tenant_id) or {}
+    rules = await rdb.list_rules(tenant_id, profile["id"]) if profile.get("id") else []
+    dests = {d["id"]: {"type": d.get("type"), "enabled": d.get("enabled", True)}
+             for d in await rdb.list_destinations(tenant_id)}
+
+    try:
+        conf = float(args.get("confidence")) if args.get("confidence") is not None else None
+    except (TypeError, ValueError):
+        conf = None
+    caller_phone = _caller_phone_from(body, args)
+    is_returning = False
+    if caller_phone:
+        try:
+            is_returning = bool(await db.get_lead_by_phone(tenant_id, caller_phone))
+        except Exception:
+            is_returning = False
+
+    ctx = {
+        "intent": args.get("intent"), "urgency": args.get("urgency"),
+        "requested_person": args.get("requested_person"), "language": args.get("language"),
+        "confidence": conf, "text": args.get("text"), "is_returning": is_returning,
+    }
+    decision = routing_engine.evaluate(profile, rules, dests, ctx)
+
+    # Audit — best-effort, never blocks the call.
+    try:
+        await rdb.insert_routing_decision({
+            "tenant_id": tenant_id, "vapi_call_id": call_id, "source": _source_from(body),
+            "intent": ctx["intent"], "urgency": ctx["urgency"], "confidence": conf,
+            "matched_rule_id": decision.matched_rule_id,
+            "chosen_destination_id": decision.destination_id,
+            "decision": decision.decision, "evaluated": {"reason": decision.reason},
+        })
+    except Exception as e:
+        logger.warning("classify-and-route: could not record decision for %s: %s", tenant_id, e)
+
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "routing_decision",
+                      {"tenant_id": tenant_id, "decision": decision.decision, "reason": decision.reason})
+
+    # Map decision -> AI directive. Transfer only if the telephony layer is live.
+    if decision.decision == "transfer":
+        if entitlements.transfer_execution_enabled():
+            return _result(tc_id, _TRANSFER_MSG)
+        logger.info("classify-and-route: transfer decided but execution disabled — callback fallback (%s)", tenant_id)
+        return _result(tc_id, _CALLBACK_MSG)
+    if decision.decision == "callback":
+        return _result(tc_id, _CALLBACK_MSG)
+    return _result(tc_id, _HANDLE_MSG)   # handled_ai (incl. public-emergency: never dial)
+
+
+@router.post("/{tenant_id}/classify-and-route")
+@limiter.limit("60/minute", key_func=tenant_key)
+async def classify_and_route(request: Request, tenant_id: str, body: dict):
+    try:
+        return await _do_classify_and_route(tenant_id, body)
+    except ValueError as e:
+        logger.error("tools/classify-and-route: bad payload for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=400, detail="Malformed tool-call payload")
+
+
+async def _do_create_callback(tenant_id: str, body: dict) -> dict:
+    tc_id, call_id, args = _parse_tool_call(body)
+    caller_phone = _caller_phone_from(body, args)
+    data = {
+        "call_id": None, "caller_name": args.get("caller_name") or "",
+        "caller_phone": caller_phone, "reason": args.get("reason") or "",
+        "urgency": args.get("urgency") or "", "status": "open",
+    }
+    try:
+        await rdb.create_callback(tenant_id, data)
+    except Exception as e:
+        logger.error("tools/create-callback: failed to store for %s: %s", tenant_id, e)
+        return _result(tc_id, "I've noted your request and the team will follow up. "
+                              "Is there anything else I can help with?")
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+        analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "callback_requested",
+                          {"tenant_id": tenant_id})
+    except Exception:
+        pass
+    return _result(tc_id, "Perfect — I've taken your details and the team will call you back "
+                          "shortly. Is there anything else I can help you with?")
+
+
+@router.post("/{tenant_id}/create-callback")
+@limiter.limit("20/minute", key_func=tenant_key)
+async def create_callback(request: Request, tenant_id: str, body: dict):
+    try:
+        return await _do_create_callback(tenant_id, body)
+    except ValueError as e:
+        logger.error("tools/create-callback: bad payload for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=400, detail="Malformed tool-call payload")
