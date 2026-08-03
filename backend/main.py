@@ -118,6 +118,11 @@ app.include_router(payments.router)
 app.include_router(pay.router)
 app.include_router(email_prefs.router)
 app.include_router(voice.router)
+# AI Overflow Handling & Call Routing (Phase 1). All routes are entitlement-gated
+# (dark) — inert until ROUTING_ENABLED + per-tenant routing_enabled are on.
+from routers import routing as routing_router
+app.include_router(routing_router.router)
+app.include_router(routing_router.admin_router)
 
 # Zapier integration is paused — only mount its routes when explicitly enabled.
 from services import zapier as _zapier_service
