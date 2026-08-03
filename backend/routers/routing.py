@@ -172,11 +172,9 @@ async def list_destinations(tenant_id: str):
 async def create_destination(tenant_id: str, body: DestinationCreate):
     tenant = await _entitled(tenant_id)
 
-    # per-plan limit (count active destinations)
-    active = [d for d in await rdb.list_destinations(tenant_id) if d.get("enabled", True)]
-    if len(active) >= entitlements.limit_for(tenant, "max_destinations"):
-        raise HTTPException(status_code=403, detail="Destination limit reached for your plan")
-
+    # Validate the INPUT first so a bad number returns a specific error (invalid /
+    # loop / duplicate) even when the tenant is already at their plan limit — the
+    # per-plan cap is checked LAST and only blocks otherwise-valid new additions.
     ok, reason = rd.validate_destination_number(body.number)
     if not ok:
         raise HTTPException(status_code=400, detail=f"Invalid destination number ({reason})")
@@ -189,6 +187,11 @@ async def create_destination(tenant_id: str, body: DestinationCreate):
     secure = rd.secure_fields(body.number)   # encrypt + mask + keyed hash
     if await rdb.find_destination_by_hash(tenant_id, secure["e164_hash"]):
         raise HTTPException(status_code=409, detail="This destination already exists")
+
+    # per-plan limit (count active destinations) — last, for valid & unique numbers
+    active = [d for d in await rdb.list_destinations(tenant_id) if d.get("enabled", True)]
+    if len(active) >= entitlements.limit_for(tenant, "max_destinations"):
+        raise HTTPException(status_code=403, detail="Destination limit reached for your plan")
 
     row = await rdb.create_destination(tenant_id, {"type": body.type, "label": body.label, **secure})
     return _public_destination(row)

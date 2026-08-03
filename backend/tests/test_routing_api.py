@@ -45,12 +45,24 @@ async def test_gate_denies_when_master_off(base):
 
 @pytest.mark.asyncio
 async def test_destination_limit_enforced(base):
-    # pro max_destinations = 2; already two active
+    # pro max_destinations = 2; already two active; a VALID, unique number -> 403 limit
     base.setattr(rr.rdb, "list_destinations", AsyncMock(return_value=[
         {"id": "d1", "enabled": True}, {"id": "d2", "enabled": True}]))
+    base.setattr(rr.rdb, "find_destination_by_hash", AsyncMock(return_value=None))
     with pytest.raises(HTTPException) as e:
         await rr.create_destination("t1", DestinationCreate(number="+16475551234"))
     assert e.value.status_code == 403 and "limit" in e.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_invalid_number_beats_limit_at_cap(base):
+    # At the cap, an INVALID number must return 400 (invalid), not 403 (limit) —
+    # validation runs before the per-plan cap.
+    base.setattr(rr.rdb, "list_destinations", AsyncMock(return_value=[
+        {"id": "d1", "enabled": True}, {"id": "d2", "enabled": True}]))
+    with pytest.raises(HTTPException) as e:
+        await rr.create_destination("t1", DestinationCreate(number="911"))
+    assert e.value.status_code == 400
 
 
 @pytest.mark.asyncio
