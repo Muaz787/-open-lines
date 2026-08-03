@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 
 from routers import routing as rr
-from routers.routing import DestinationCreate, RuleCreate, SimulateRequest
+from routers.routing import DestinationCreate, RuleCreate, SimulateRequest, ProfileUpdate
 
 PRO_TENANT = {
     "id": "t1", "subscription_plan": "pro", "subscription_status": "active",
@@ -106,6 +106,28 @@ async def test_rule_rejects_foreign_destination(base):
     with pytest.raises(HTTPException) as e:
         await rr.create_rule("t1", RuleCreate(profile_id="p1", destination_id="d_other"))
     assert e.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_put_profile_empty_returns_existing_without_update(base):
+    # Regression: an empty PUT (the "ensure a profile exists" call) must return the
+    # existing profile as-is, never do an empty UPDATE (which returned no row and
+    # blanked the client's default/urgent destinations + broke rule creation).
+    base.setattr(rr.rdb, "get_profile", AsyncMock(return_value={"id": "p1", "mode": "ai_first",
+                 "default_destination_id": "reg"}))
+    upd = AsyncMock()
+    base.setattr(rr.rdb, "update_profile", upd)
+    out = await rr.put_profile("t1", ProfileUpdate())
+    assert out["id"] == "p1" and out["default_destination_id"] == "reg"
+    upd.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_put_profile_with_fields_updates(base):
+    base.setattr(rr.rdb, "get_profile", AsyncMock(return_value={"id": "p1"}))
+    base.setattr(rr.rdb, "update_profile", AsyncMock(return_value={"id": "p1", "default_destination_id": "reg"}))
+    out = await rr.put_profile("t1", ProfileUpdate(default_destination_id="reg"))
+    assert out["default_destination_id"] == "reg"
 
 
 @pytest.mark.asyncio

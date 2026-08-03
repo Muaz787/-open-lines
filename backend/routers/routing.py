@@ -149,6 +149,11 @@ async def put_profile(tenant_id: str, body: ProfileUpdate):
     data = body.model_dump(exclude_unset=True)
     existing = await rdb.get_profile(tenant_id)
     if existing:
+        # Nothing to change (e.g. an "ensure a profile exists" call): return the
+        # existing profile as-is. An empty UPDATE returns no row, which previously
+        # blanked the client's state and left rules without a profile_id.
+        if not data:
+            return existing
         return await rdb.update_profile(tenant_id, existing["id"], data)
     return await rdb.create_profile(tenant_id, data)
 
