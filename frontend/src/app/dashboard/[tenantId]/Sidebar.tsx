@@ -60,6 +60,12 @@ const IconCalls = () => (
     <path d="M2 2.5h4l1.5 3.5-2 1.5a9 9 0 003 3l1.5-2 3.5 1.5V13a1 1 0 01-1 1C5.5 14 1 9.5 1 3.5a1 1 0 011-1z" strokeLinejoin="round"/>
   </svg>
 )
+const IconRouting = () => (
+  <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
+    <circle cx="3" cy="7.5" r="1.6"/><circle cx="12" cy="3.5" r="1.6"/><circle cx="12" cy="11.5" r="1.6"/>
+    <path d="M4.6 7.5h2.4M9 3.5H7.4a1.4 1.4 0 00-1.4 1.4v5.2a1.4 1.4 0 001.4 1.4H9" strokeLinejoin="round"/>
+  </svg>
+)
 const IconCalendar = () => (
   <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="14" height="14">
     <rect x="1.5" y="2.5" width="12" height="11" rx="1.5"/><path d="M1.5 6.5h12M5 1.5v2M10 1.5v2"/>
@@ -154,6 +160,7 @@ export default function Sidebar({
         {navItem(`${base}/knowledge-base`, <IconKB />, 'Knowledge Base')}
         {navItem(`${base}/leads`, <IconLeads />, 'Leads', leadsCount > 0 ? <span className="db-nav-badge db-badge-red">{leadsCount}</span> : undefined)}
         {navItem(`${base}/calls`, <IconCalls />, 'Calls')}
+        {navItem(`${base}/call-handling`, <IconRouting />, 'Call Handling')}
         {tenant && BOOKING_INDUSTRIES.has(tenant.industry) &&
           navItem(`${base}/calendar`, <IconCalendar />, 'Calendar', apptsCount > 0 ? <span className="db-nav-badge db-badge-green">{apptsCount}</span> : undefined)}
         <div className="db-nav-label">Account</div>

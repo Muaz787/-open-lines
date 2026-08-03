@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatCallDate, formatDuration, initials, capitalize } from '../lib/format'
-import { urgBadgeClass } from '../lib/badges'
+import { urgBadgeClass, dispositionBadgeClass, dispositionLabel } from '../lib/badges'
 import { TranscriptLines } from '../components/TranscriptLines'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
@@ -25,6 +25,8 @@ interface CallRow {
   duration_secs?: number
   created_at: string
   lead_id?: string
+  disposition?: string
+  transferred?: boolean
   leads?: CallLead
 }
 
@@ -204,6 +206,11 @@ export default function CallsPage() {
                         </div>
                         <div className="db-lead-sum">{lead?.summary ?? 'No summary'}</div>
                       </div>
+                      {call.disposition && (
+                        <span className={dispositionBadgeClass(call.disposition)}>
+                          {dispositionLabel(call.disposition)}
+                        </span>
+                      )}
                       <span className={urgBadgeClass(lead?.urgency)}>
                         {lead?.urgency ? capitalize(lead.urgency) : 'New'}
                       </span>

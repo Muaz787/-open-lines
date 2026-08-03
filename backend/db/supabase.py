@@ -510,7 +510,8 @@ async def get_calls_with_leads(tenant_id: str, days: int = 30, limit: int = 100)
     query = (
         get_client()
         .table("calls")
-        .select("id, vapi_call_id, duration_secs, created_at, lead_id, leads(name, phone, urgency, summary, metadata)")
+        .select("id, vapi_call_id, duration_secs, created_at, lead_id, disposition, transferred, "
+                "leads(name, phone, urgency, summary, metadata)")
         .eq("tenant_id", tenant_id)
         .order("created_at", desc=True)
         .limit(limit)
