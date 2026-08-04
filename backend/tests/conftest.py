@@ -18,7 +18,10 @@ _STUBS = [
     "openai",
     "pinecone",
     "supabase",
-    "httpx",
+    # NOTE: httpx is intentionally NOT stubbed. It is a real installed dependency,
+    # and stubbing it as a MagicMock turned httpx.HTTPStatusError / RequestError into
+    # non-exception mocks, so `except httpx.HTTPStatusError` never matched (a provider
+    # 400 would fall through as an opaque 500). Tests use the real httpx types.
 ]
 
 for _mod in _STUBS:

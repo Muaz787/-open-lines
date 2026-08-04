@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import httpx
 from dotenv import load_dotenv
@@ -6,6 +7,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Patterns for scrubbing anything sensitive out of a provider error body BEFORE it
+# reaches the logs: bearer tokens / secret + api-key key:value pairs, and phone
+# numbers (E.164 or formatted NANP). Applied by redact_provider_error().
+_REDACT_PATTERNS = [
+    (re.compile(r"(?i)(authorization|x-vapi-secret|api[_-]?key|secret|token)"
+                r"([\"'\s:=]+)(?:bearer\s+)?[A-Za-z0-9._\-]{6,}"), r"\1\2[REDACTED]"),
+    (re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-]{6,}"), "Bearer [REDACTED]"),
+    (re.compile(r"\+\d{10,15}\b"), "[REDACTED_PHONE]"),               # E.164
+    (re.compile(r"\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b"), "[REDACTED_PHONE]"),  # NANP formatted
+]
+
+
+def redact_provider_error(text: str | None, limit: int = 500) -> str:
+    """Sanitize + length-limit a third-party (Vapi) error body before logging.
+    Strips credentials/authorization tokens and raw phone numbers, and caps length
+    so a large provider payload can't flood the logs. Diagnostic, never sensitive."""
+    if not text:
+        return ""
+    s = str(text)
+    for pat, repl in _REDACT_PATTERNS:
+        s = pat.sub(repl, s)
+    if len(s) > limit:
+        s = s[:limit] + f"…[+{len(s) - limit} chars truncated]"
+    return s
 
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 _raw_backend = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app").strip()
@@ -151,7 +177,7 @@ async def update_assistant(assistant_id: str, config: dict, api_key: str | None 
     except httpx.HTTPStatusError as e:
         logger.error(
             "Failed to update Vapi assistant %s: %s %s",
-            assistant_id, e.response.status_code, e.response.text,
+            assistant_id, e.response.status_code, redact_provider_error(e.response.text),
         )
         raise
     except httpx.RequestError as e:
@@ -837,10 +863,16 @@ def build_deposit_tool(tenant_id: str, amount_cents: int, mandatory: bool) -> di
 
 
 # ── AI Call Routing tools (dark unless the tenant is routing-entitled) ───────
-# Server messages the assistant must emit for routing: assistant-request (smart
-# routing), transfer-destination-request (dynamic transfer destination), and
-# end-of-call-report (outcome). Set on routing-entitled assistants only.
-ROUTING_SERVER_MESSAGES = ["assistant-request", "transfer-destination-request", "end-of-call-report"]
+# Server messages a routing-entitled assistant must emit so the dynamic transfer
+# destination and end-of-call outcome reach us. Only values in Vapi's assistant
+# `serverMessages` enum are valid here.
+# NOTE: `assistant-request` is deliberately NOT in this list. It is a phone-number
+# /org-level message (Vapi asking which assistant to use for an inbound call) and
+# is configured on the phone number's `server`, never on the assistant — it is not
+# a member of the assistant serverMessages enum, so including it makes Vapi reject
+# the assistant PATCH with a 400. Smart routing is unaffected (it flows from the
+# phone number config, not from here).
+ROUTING_SERVER_MESSAGES = ["transfer-destination-request", "end-of-call-report"]
 
 
 def build_classify_route_tool(tenant_id: str) -> dict:
@@ -897,12 +929,17 @@ def build_create_callback_tool(tenant_id: str) -> dict:
 
 def build_transfer_call_tool() -> dict:
     """Native transferCall tool with EMPTY destinations, so Vapi asks our server
-    (transfer-destination-request) for the approved number. Warm/bridged + dial only
-    (metered-mode-only rule)."""
+    (transfer-destination-request) for the approved number at call time.
+
+    NOTE: no tool-level `transferPlan`. Vapi's TransferCallTool schema only accepts
+    {type, destinations, messages, rejectionPlan}; a tool-level `transferPlan` is
+    rejected with a 400. The complete warm/bridged + sipVerb=dial plan (the
+    metered-mode-only rule) lives on the dynamic destination returned by the
+    transfer-destination-request handler — see services/transfer.build_destination.
+    """
     return {
         "type": "transferCall",
         "destinations": [],
-        "transferPlan": {"mode": "warm-transfer-say-summary", "sipVerb": "dial"},
     }
 
 
