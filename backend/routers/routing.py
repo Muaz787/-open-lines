@@ -20,6 +20,7 @@ import logging
 import os
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
@@ -310,5 +311,26 @@ async def admin_sync_assistant(tenant_id: str, x_admin_key: Annotated[str | None
     if not tenant or not tenant.get("vapi_assistant_id"):
         raise HTTPException(status_code=404, detail="Tenant or assistant not found")
     from services import vapi as vapi_svc
-    await vapi_svc.patch_assistant_tools(tenant)
+    try:
+        await vapi_svc.patch_assistant_tools(tenant)
+    except httpx.HTTPStatusError as e:
+        # The voice provider rejected the assistant update (e.g. a schema-invalid
+        # field -> 400). Log the provider status + a SANITIZED, length-limited body
+        # (credentials/auth tokens and phone numbers scrubbed, payload capped) and
+        # surface a controlled 502 — never leak the raw upstream response, an auth
+        # header, a caller number, or fall through to an opaque 500.
+        logger.error(
+            "sync-assistant: Vapi rejected assistant update for tenant %s: %s %s",
+            tenant_id, e.response.status_code, vapi_svc.redact_provider_error(e.response.text),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Voice provider rejected the assistant update",
+        ) from e
+    except httpx.RequestError as e:
+        logger.error("sync-assistant: network error reaching Vapi for tenant %s: %s", tenant_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach the voice provider",
+        ) from e
     return {"tenant_id": tenant_id, "status": "assistant synced"}
