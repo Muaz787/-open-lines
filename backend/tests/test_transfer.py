@@ -19,9 +19,19 @@ def test_build_destination_is_warm_bridged_dial():
     d = t.build_destination("+16475551234")
     assert d["type"] == "number" and d["number"] == "+16475551234"
     plan = d["transferPlan"]
-    assert plan["mode"] == "warm-transfer-say-summary"      # warm/bridged
+    # wait-for-operator variant: speak the summary only AFTER a human answers (first
+    # live test showed plain say-summary was missed against a half-answered line)
+    assert plan["mode"] == "warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary"
     assert plan["sipVerb"] == "dial"                        # metered-mode-only rule
     assert "summaryPlan" in plan and plan["timeout"] == 30
+
+
+def test_summary_plan_has_generous_generation_timeout():
+    # 5s was too tight on the first live call (empty summary -> nothing spoken).
+    # Give the summary time to generate before the operator is connected.
+    plan = t.build_destination("+16475551234")["transferPlan"]
+    assert plan["summaryPlan"]["enabled"] is True
+    assert plan["summaryPlan"]["timeoutSeconds"] >= 15
 
 
 def test_dynamic_destination_carries_schema_valid_plan():

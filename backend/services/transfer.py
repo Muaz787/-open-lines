@@ -13,9 +13,19 @@ Tool type + transferPlan verified against the Vapi OpenAPI spec on 2026-08-02
 """
 from __future__ import annotations
 
-# Warm transfer that speaks a generated summary to the operator (M1 in Phase 0).
-WARM_MODE = "warm-transfer-say-summary"
+# Warm transfer that speaks a generated summary to the operator.
+# We use the "wait-for-operator-to-speak-first" variant: Vapi dials the operator,
+# waits for them to actually answer/say hello, THEN delivers the summary, THEN
+# bridges the caller. For a HUMAN operator this is far more reliable than plain
+# `warm-transfer-say-summary`, which speaks the moment the leg is dialed and gets
+# missed against a ringing/half-answered line (first live test: operator heard no
+# summary, caller was bridged straight in).
+WARM_MODE = "warm-transfer-wait-for-operator-to-speak-first-and-then-say-summary"
 SIP_VERB = "dial"   # keeps a Twilio child leg -> transfer time stays metered
+# Time budget to GENERATE the spoken summary. Vapi: if this times out the summary
+# is empty and nothing is spoken. 5s was too tight on the first live call; 20s
+# comfortably lets the summary generate before the operator is connected.
+SUMMARY_TIMEOUT_SECONDS = 20
 
 
 def build_destination(number: str, mode: str = WARM_MODE) -> dict:
@@ -32,7 +42,7 @@ def build_destination(number: str, mode: str = WARM_MODE) -> dict:
             "dialTimeout": 30,
             "summaryPlan": {
                 "enabled": True,
-                "timeoutSeconds": 5,
+                "timeoutSeconds": SUMMARY_TIMEOUT_SECONDS,
                 "messages": [{
                     "role": "system",
                     "content": "In one sentence, tell the operator who is calling and why.",
