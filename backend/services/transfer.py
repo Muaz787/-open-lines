@@ -1,15 +1,28 @@
 """
 Transfer helpers (pure) for AI Call Routing telephony.
 
-Enforces the two locked decisions:
-  * METERED-MODE-ONLY: warm/bridged transfer with sipVerb="dial" so the whole
-    transfer stays inside Vapi's call duration (metered as ordinary call minutes;
-    the "absorb into plan minutes" pricing model relies on this). NEVER blind /
-    sipVerb="refer" (carrier hand-off would drop the call out of the meter).
+Enforces two decisions:
+  * BRIDGED-DIAL: warm/bridged transfer with sipVerb="dial", never blind /
+    sipVerb="refer". Dialing keeps the operator on a bridged leg instead of handing
+    the call off to the carrier via SIP REFER.
+
+    PRICING NOTE — corrected 2026-08-08 after live validation. Earlier this said the
+    dial mode keeps transfer time "inside Vapi's call duration (metered as plan
+    minutes)". That is NOT true for our transfer mode. Vapi's call ENDS at the
+    hand-off (endedReason="assistant-forwarded-call"): on the validating call,
+    durationSeconds stopped ~2s after transferCall fired, before the operator even
+    answered. Because usage.record_call_minutes keys off durationSeconds, the
+    post-hand-off caller<->operator talk-time is NOT counted against the customer's
+    plan minutes. That talk-time runs on the telephony (Twilio) operator leg and is
+    absorbed as a small COGS (~a couple cents/min), NOT billed to the customer.
+    Capturing the true talk-minutes needs DEFERRED Twilio-leg reconciliation (the
+    operator leg is still in progress at end-of-call), and which account bears that
+    leg's cost still needs confirming — both tracked as follow-ups (see
+    routing_overflow memory). We still prefer dial over refer for a clean bridge.
   * DOMESTIC-ONLY destinations are enforced upstream at destination creation.
 
-Tool type + transferPlan verified against the Vapi OpenAPI spec on 2026-08-02
-(schema TransferCallTool; see routing_overflow memory / Phase 0).
+Tool type + transferPlan verified against the Vapi OpenAPI spec (schema
+TransferCallTool; see routing_overflow memory / Phase 0).
 """
 from __future__ import annotations
 

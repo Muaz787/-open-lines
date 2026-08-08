@@ -178,6 +178,14 @@ async def process_end_of_call(payload: dict) -> None:
         if attempt or ended_reason == "assistant-forwarded-call":
             outcome = transfer_svc.outcome_from_ended_reason(ended_reason)
             if outcome:
+                # NOTE: we set ended_at (the AI-side hand-off time) but NOT
+                # duration_secs. The real transfer duration is the post-hand-off
+                # caller<->operator talk-time, which lives on the Twilio operator leg
+                # and is STILL IN PROGRESS at this end-of-call event (Vapi has already
+                # left the call). Reading it needs deferred Twilio-leg reconciliation —
+                # a tracked follow-up. Do not fill duration_secs with (ended_at -
+                # started_at); that is only the ~seconds-long hand-off window, not the
+                # talk-time, and would misrepresent transfer COGS. See transfer.py.
                 await rdb.record_transfer_attempt({
                     "tenant_id": tenant_id, "vapi_call_id": call_id, "attempt_index": 0,
                     "outcome": outcome, "ended_at": ended_at or None,
