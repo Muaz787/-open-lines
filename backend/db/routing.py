@@ -168,6 +168,27 @@ async def get_transfer_attempt(vapi_call_id: str, attempt_index: int = 0) -> dic
     return (res.data or [None])[0]
 
 
+async def list_attempts_needing_duration(lookback_hours: int = 48, limit: int = 200) -> list:
+    """Recent transfer attempts that have an outcome + vapi_call_id but no
+    duration_secs yet — candidates for Twilio operator-leg reconciliation. We filter
+    duration_secs IS NULL server-side and the rest in Python (keeps the query simple
+    and portable). Bounded by a lookback window so we don't rescan old rows forever."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(hours=lookback_hours)).isoformat()
+    res = (get_client().table("transfer_attempts").select("*")
+           .is_("duration_secs", "null")
+           .gte("created_at", since)
+           .order("created_at", desc=True).limit(limit).execute())
+    return [r for r in (res.data or []) if r.get("outcome") and r.get("vapi_call_id")]
+
+
+async def set_attempt_duration(attempt_id: str, duration_secs: int) -> None:
+    """Record the reconciled operator-leg talk-time on a transfer attempt (visibility
+    only — this is NOT fed into billing / plan-minute usage)."""
+    (get_client().table("transfer_attempts").update({"duration_secs": int(duration_secs)})
+     .eq("id", attempt_id).execute())
+
+
 # ---------------------------------------------------------------------------
 # callback_requests
 # ---------------------------------------------------------------------------

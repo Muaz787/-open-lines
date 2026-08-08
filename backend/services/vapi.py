@@ -1050,12 +1050,12 @@ async def patch_assistant_tools(tenant: dict) -> None:
     )
 
 
-async def get_call_details(call_id: str) -> dict:
+async def get_call_details(call_id: str, api_key: str | None = None) -> dict:
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(
                 f"{VAPI_BASE_URL}/call/{call_id}",
-                headers=_headers(),
+                headers=_headers(api_key),
                 timeout=30.0,
             )
             res.raise_for_status()

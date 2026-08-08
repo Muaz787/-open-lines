@@ -469,6 +469,18 @@ async def purge_retention(x_admin_key: str | None = Header(None)):
     return await retention.run_retention()
 
 
+@router.post("/reconcile-transfer-durations")
+async def reconcile_transfer_durations(x_admin_key: str | None = Header(None)):
+    """Backfill transfer_attempts.duration_secs from the Twilio operator-leg
+    (post-hand-off talk-time, which isn't in Vapi's meter). VISIBILITY only — this is
+    never fed into usage/billing. Idempotent: only fills rows still missing a
+    duration, and re-runs safely (a still-live leg is left for the next run).
+    Intended for the daily cron."""
+    _check_admin_key(x_admin_key)
+    from services import transfer_reconcile
+    return await transfer_reconcile.reconcile_pending()
+
+
 @router.post("/tenants/{tenant_id}/delete-data")
 async def delete_tenant_data_endpoint(
     tenant_id: str,
