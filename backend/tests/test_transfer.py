@@ -34,6 +34,14 @@ def test_summary_plan_has_generous_generation_timeout():
     assert plan["summaryPlan"]["timeoutSeconds"] >= 15
 
 
+def test_summary_plan_includes_transcript_variable():
+    # Vapi requires the {{transcript}} template var in the summaryPlan messages so
+    # the summary model receives the call content. Missing it = no summary spoken to
+    # the operator (root cause on two live calls).
+    msgs = t.build_destination("+16475551234")["transferPlan"]["summaryPlan"]["messages"]
+    assert "{{transcript}}" in " ".join(m["content"] for m in msgs)
+
+
 def test_dynamic_destination_carries_schema_valid_plan():
     # The complete warm-transfer plan lives ONLY on the dynamic destination (not on
     # the assistant tool), and every value it uses is a current Vapi schema enum.
