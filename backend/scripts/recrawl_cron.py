@@ -78,6 +78,17 @@ async def main() -> int:
     except Exception as e:
         logger.error("platform-minutes alert check failed: %s", e)
 
+    # ...and reconciles warm-transfer talk-time from the Twilio operator leg into
+    # transfer_attempts.duration_secs (VISIBILITY only — never fed into billing).
+    # Idempotent: only fills rows still missing a duration; a still-live leg is left
+    # for the next run. Uses each tenant's own Twilio subaccount creds from the DB.
+    try:
+        from services import transfer_reconcile
+        rec = await transfer_reconcile.reconcile_pending()
+        logger.info("transfer-duration reconcile done: %s", rec)
+    except Exception as e:
+        logger.error("transfer-duration reconcile failed: %s", e)
+
     # Heartbeat for the admin health page — proves the daily cron is running.
     try:
         from datetime import datetime, timezone
