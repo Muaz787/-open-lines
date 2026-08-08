@@ -40,13 +40,29 @@ def build_destination(number: str, mode: str = WARM_MODE) -> dict:
             "sipVerb": SIP_VERB,
             "timeout": 30,
             "dialTimeout": 30,
+            # Vapi requires the {{transcript}} template variable in the summaryPlan
+            # messages so the summary model actually receives the call content.
+            # Without it, no usable summary is generated and NOTHING is spoken to the
+            # operator (confirmed on two live calls: operator was bridged in silently).
+            # System message carries the instruction; the user message carries the
+            # transcript. Warm-transfer summaries require Twilio telephony (we use it).
             "summaryPlan": {
                 "enabled": True,
                 "timeoutSeconds": SUMMARY_TIMEOUT_SECONDS,
-                "messages": [{
-                    "role": "system",
-                    "content": "In one sentence, tell the operator who is calling and why.",
-                }],
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are given the transcript of a phone call to a business. "
+                            "In one sentence, tell the operator who is calling and why, "
+                            "so they can take over the call."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": "Here is the transcript:\n\n{{transcript}}\n\n",
+                    },
+                ],
             },
         },
     }
