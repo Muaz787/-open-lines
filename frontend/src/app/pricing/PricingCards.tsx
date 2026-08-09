@@ -3,75 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
-
-const PLANS = [
-  {
-    name: 'Starter',
-    price: 99,
-    priceYear: 990,
-    saveYear: 198,
-    minutes: 150,
-    popular: false,
-    accent: 'var(--border-2)',
-    features: [
-      '150 minutes / month',
-      '1 dedicated AI phone line',
-      '24/7 AI call answering',
-      'Lead capture, qualification & caller recognition',
-      'Appointment booking — Google & Outlook Calendar',
-      'Book with a specific team member',
-      'Transcripts, AI summaries & call insights',
-      'SMS confirmations + email, SMS & WhatsApp alerts',
-      'Knowledge base — 10 MB / 50-page docs, scanned-doc OCR',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-  {
-    name: 'Pro',
-    price: 199,
-    priceYear: 1990,
-    saveYear: 398,
-    minutes: 400,
-    popular: true,
-    accent: 'var(--accent)',
-    features: [
-      '400 minutes / month',
-      'Everything in Starter',
-      'AI call routing & overflow — warm-transfer callers to your team',
-      'Deposit collection — Stripe & Square',
-      'Group & per-person deposits',
-      'HubSpot CRM sync',
-      'Slack notifications',
-      'Larger knowledge base — 25 MB / 300-page docs',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-  {
-    name: 'Business',
-    price: 379,
-    priceYear: 3790,
-    saveYear: 758,
-    minutes: 900,
-    popular: false,
-    accent: '#3B7EF6',
-    features: [
-      '900 minutes / month',
-      'Everything in Pro',
-      'Call routing at scale — up to 50 destinations & rules',
-      'Largest knowledge base — 50 MB / 1,000-page docs',
-      'Priority support',
-      'Dedicated onboarding & setup',
-      'Early access to new features',
-    ],
-    cta: 'Get started',
-    ctaHref: '/onboarding',
-    note: '$0.69 / min overage',
-  },
-] as const
+import { PLANS } from '@/lib/plans'
 
 const Check = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
@@ -143,7 +75,7 @@ export default function PricingCards() {
                 <div className="pp-minutes">{plan.minutes} minutes included · {plan.note}</div>
 
                 <Link
-                  href={plan.ctaHref}
+                  href="/onboarding"
                   style={{ display: 'block', textDecoration: 'none' }}
                   onClick={() => trackEvent('get_started_clicked', {
                     location: 'pricing',
@@ -152,7 +84,7 @@ export default function PricingCards() {
                   })}
                 >
                   <button className={`pp-cta${plan.popular ? ' pp-cta-popular' : ''}`}>
-                    {plan.cta} →
+                    Get started →
                   </button>
                 </Link>
 
