@@ -32,6 +32,14 @@ const HUBSPOT_STEPS = [
   { title: 'AI summaries as notes',       body: 'A structured note is added: urgency, appointment status, key details, and suggested next steps. No full transcript.' },
 ]
 
+const ROUTING_STEPS = [
+  { title: 'Open Call Handling',            body: 'In your dashboard go to Call Handling. Available on Pro and Business plans.' },
+  { title: 'Add transfer destinations',     body: 'Add the phone numbers to hand callers to — front desk, on-call, a specific team. Domestic numbers only, stored encrypted and shown masked.' },
+  { title: 'Choose where calls go',         body: 'Pick a default destination for anyone who needs a person, and an urgent / on-call destination for time-sensitive callers.' },
+  { title: 'Add routing rules (optional)',  body: 'Send specific reasons to specific destinations — e.g. "billing → accounts". Rules are checked in order, and urgent always wins.' },
+  { title: 'Turn it on',                    body: 'Flip the toggle — nothing changes on your calls until you do. Preview how a caller routes with the built-in "Test it" simulator; no call is placed.' },
+]
+
 const SCOPES = [
   { scope: 'crm.objects.contacts.read',  why: 'Search for existing contacts by caller phone number to avoid duplicates.' },
   { scope: 'crm.objects.contacts.write', why: 'Create new contacts and update names when identified from the call.' },
@@ -43,6 +51,7 @@ const TROUBLESHOOTING = [
   { title: 'Calendar not booking',       steps: ['Re-connect your calendar under Account → Calendar', 'Confirm business hours are set correctly', 'Check that the calendar token hasn\'t expired — a reconnect fixes it'] },
   { title: 'HubSpot not syncing',        steps: ['Go to Account → Integrations and verify HubSpot shows Connected', 'Disconnect and reconnect to refresh the OAuth token', 'Confirm your HubSpot portal has contacts permissions enabled'] },
   { title: 'AI giving wrong answers',    steps: ['Update your Knowledge Base with more specific information', 'Add explicit FAQs for topics the AI is getting wrong', 'Review recent calls to identify gaps in your knowledge entries'] },
+  { title: 'Calls not transferring',     steps: ['Open Call Handling and make sure routing is turned On', 'Add at least one destination and set a default', 'Double-check the destination\'s area code — re-add it if unsure', 'Use "Test it" to preview how a caller routes'] },
 ]
 
 const FAQS = [
@@ -50,7 +59,8 @@ const FAQS = [
   { q: 'Can I use my existing phone number?', a: 'Yes — you can port your existing number to Open Lines, or use call forwarding from your current number.' },
   { q: 'How does calendar booking work?', a: 'The AI checks your connected calendar for available slots, offers times to the caller, and creates the event automatically. Reschedule and cancel are also handled.' },
   { q: 'Is the call transcript stored?', a: 'Transcripts are processed to generate a structured summary, then discarded. Only the summary, urgency, and key details are retained.' },
-  { q: 'What\'s the difference between plans?', a: 'Starter covers AI calling and lead capture. Pro adds calendar booking and HubSpot sync. Business adds priority support and higher call volume.' },
+  { q: 'Can Open Lines transfer callers to my team?', a: 'Yes — on Pro and Business, AI call routing answers routine calls and warm-transfers anyone who needs a person to the right number. It briefs whoever picks up with a one-line summary of who\'s calling and why, then connects the caller. If no one answers, it takes a callback so nothing is lost. Set it up under Call Handling in your dashboard.' },
+  { q: 'What\'s the difference between plans?', a: 'Starter covers AI calling, calendar booking, and lead capture. Pro adds deposit collection, HubSpot CRM sync, and AI call routing. Business adds routing at scale, priority support, and higher call volume.' },
   { q: 'How do I change what the AI says?', a: 'Go to Settings in your dashboard to update your AI\'s name, greeting, tone, and the qualification questions it asks callers.' },
 ]
 
@@ -208,6 +218,38 @@ export default function DocsPage() {
               </div>
             ))}
           </div>
+        </Section>
+
+        <div className="div-line" style={{ margin: '48px 0' }} />
+
+        {/* Call routing */}
+        <Section id="call-routing" label="Call Routing" title="Routing callers to your team" subtitle="Answer routine calls with AI and warm-transfer the ones that need a person to the right place. Available on Pro and Business plans.">
+          <div style={{ padding: '14px 16px', background: 'var(--accent-dim)', border: '1px solid rgba(52,199,89,0.2)', borderRadius: 10, marginBottom: 20, fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>
+            <strong>Opt-in and safe by default:</strong> nothing changes on your calls until you turn routing on, and if no one answers a transfer the AI takes a callback — so no caller is ever dropped.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            {ROUTING_STEPS.map(({ title, body }, i) => (
+              <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 16px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'var(--text)', color: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700 }}>{i + 1}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>{title}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <InfoBox label="What call routing does">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+              {['Warm transfer — briefs your team before connecting the caller', 'Safe callback fallback if no one answers', 'Urgent / on-call routing for time-sensitive calls', 'Deterministic rules by caller intent', 'Domestic numbers only, stored encrypted', 'Never dials emergency or premium numbers'].map(item => (
+                <div key={item} style={{ fontSize: 13, color: 'var(--text-2)', display: 'flex', gap: 7 }}>
+                  <span style={{ color: 'var(--accent-text)', flexShrink: 0 }}>✓</span>{item}
+                </div>
+              ))}
+            </div>
+          </InfoBox>
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 12, lineHeight: 1.6 }}>
+            Capacity: Pro includes up to 2 destinations and 5 rules; Business up to 50 of each.
+          </p>
         </Section>
 
         <div className="div-line" style={{ margin: '48px 0' }} />
