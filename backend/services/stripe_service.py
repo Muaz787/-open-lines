@@ -7,10 +7,29 @@ logger = logging.getLogger(__name__)
 
 STRIPE_SECRET_KEY              = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PAYMENTS_WEBHOOK_SECRET = os.getenv("STRIPE_PAYMENTS_WEBHOOK_SECRET", "")
-_raw_frontend  = os.getenv("FRONTEND_URL", "https://openlines.ai")
-FRONTEND_URL   = _raw_frontend if _raw_frontend.startswith("http") else f"https://{_raw_frontend}"
-_raw_backend   = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app")
-APP_BACKEND_URL = _raw_backend if _raw_backend.startswith("http") else f"https://{_raw_backend}"
+def _clean_base_url(raw: str | None, default: str) -> str:
+    """Normalize a base-URL env value so pasted whitespace/newlines — or even a
+    second 'KEY=value' line accidentally mashed into the value (a real Railway
+    footgun that broke Stripe onboarding with 'Not a valid URL') — can't produce an
+    invalid URL.
+
+    Takes the FIRST whitespace-delimited token (drops a trailing '\\nAPP_BACKEND_URL=…'
+    or stray junk), ensures a scheme, upgrades http->https for real hosts (Stripe
+    LIVE rejects http; localhost keeps http so Stripe TEST mode still works), and
+    drops any trailing slash."""
+    v = (raw or "").strip()
+    v = v.split()[0] if v else ""
+    if not v:
+        v = default
+    if not v.startswith(("http://", "https://")):
+        v = "https://" + v
+    if v.startswith("http://") and "localhost" not in v and "127.0.0.1" not in v:
+        v = "https://" + v[len("http://"):]
+    return v.rstrip("/")
+
+
+FRONTEND_URL    = _clean_base_url(os.getenv("FRONTEND_URL"), "https://openlines.ai")
+APP_BACKEND_URL = _clean_base_url(os.getenv("APP_BACKEND_URL"), "https://backend-production-71174.up.railway.app")
 
 
 def _key() -> str:
