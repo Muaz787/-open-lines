@@ -530,6 +530,40 @@ async def release_tenant_number_endpoint(
     return {"status": "released", "tenant_id": tenant_id, "number": current, **result}
 
 
+@router.post("/tenants/{tenant_id}/reprovision-number")
+async def reprovision_tenant_number_endpoint(
+    tenant_id: str,
+    x_admin_key: str | None = Header(None),
+):
+    """Give a returning tenant a working phone line again after their number was
+    reclaimed. Buys a NEW number — the old one is gone for good and may belong to
+    someone else now. Reuses their existing Twilio subaccount and Vapi assistant.
+
+    Costs money (a real number, billed monthly), so it is refused outright if the
+    tenant already has one rather than quietly buying a second.
+    """
+    _check_admin_key(x_admin_key)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found (check the tenant_id is a valid UUID)")
+
+    from services.provisioning import reprovision_tenant_number
+    result = await reprovision_tenant_number(tenant)
+    if not result.get("provisioned"):
+        detail = {
+            "tenant_already_has_a_number": f"This tenant already has {result.get('number')}",
+            "missing_twilio_credentials":  "No Twilio subaccount on this tenant — it must be re-onboarded",
+            "no_assistant_on_tenant":      "No Vapi assistant on this tenant — it must be re-onboarded",
+        }.get(str(result.get("reason")), f"Could not provision a number: {result.get('reason')}")
+        raise HTTPException(status_code=400 if "already" in str(result.get("reason")) else 502, detail=detail)
+
+    logger.info("ADMIN: reprovisioned number %s for tenant %s", result.get("number"), tenant_id)
+    return {"status": "provisioned", "tenant_id": tenant_id, **result}
+
+
 @router.post("/tenants/{tenant_id}/delete-data")
 async def delete_tenant_data_endpoint(
     tenant_id: str,

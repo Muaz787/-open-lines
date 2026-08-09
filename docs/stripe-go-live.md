@@ -130,7 +130,9 @@ Arming this takes two separate deliberate acts:
       nothing, because `NUMBER_RECLAIM_DRY_RUN` defaults to **true**.
 - [ ] Read the Railway logs for **at least two weeks**. Every candidate is logged
       as `[DRY RUN] would release … status=… ever_paid=… due=…`. Confirm each one
-      is genuinely gone before going further.
+      is genuinely gone before going further. The tests prove the eligibility
+      logic is internally consistent; only these logs prove it is right about
+      your actual rows.
 - [ ] Only then `NUMBER_RECLAIM_DRY_RUN=false`.
 
 Grace periods (override via env if needed):
@@ -144,10 +146,16 @@ Two warning emails go out first (14 days and 3 days before). Comps, and any
 subscription in `active` / `trialing` / `past_due` / `canceling`, are never
 touched. Anything with a missing date is left alone rather than guessed at.
 
-**Prerequisite before arming:** there is currently no way to give an existing
-tenant a new number — `provision_tenant` only runs at signup. A tenant whose
-number is released and who then re-subscribes ends up with a working account and
-no phone line. Build the re-provision path before `NUMBER_RECLAIM_DRY_RUN=false`.
+**Coming back after a release.** A reclaimed tenant keeps their row, knowledge
+base and settings, so re-subscribing is worth something — but they need a line
+again. `/admin/tenants/{id}/reprovision-number` (button on the admin tenant page,
+shown whenever a tenant has no number) buys a new one on their existing Twilio
+subaccount and links it to their existing assistant. They do **not** get their old
+number back; it is gone and may belong to someone else.
+
+Deliberately admin-triggered rather than automatic on re-subscribe: it spends
+money on a real number, and a webhook retry storm that buys one per delivery is a
+worse failure than a support ticket. Revisit if it ever becomes frequent.
 
 Migration `011_number_reclaim.sql` must be applied first.
 

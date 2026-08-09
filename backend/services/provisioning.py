@@ -792,3 +792,96 @@ async def release_tenant_number(tenant: dict) -> dict:
 
     logger.info("Released number %s for tenant %s", number, tenant_id)
     return {"released": True, "steps": steps, "reason": "", "number": number}
+
+
+async def reprovision_tenant_number(tenant: dict) -> dict:
+    """Give a returning tenant a working phone line again.
+
+    The inverse of release_tenant_number(), for the case that decision makes
+    possible: we keep the tenant row when we reclaim a number, so their knowledge
+    base, settings and history survive — but without this they'd come back to a
+    working account with no phone line and no way to get one, since
+    provision_tenant() only ever runs at signup.
+
+    Reuses their existing Twilio subaccount and Vapi assistant, so this is just
+    the number: find, buy, import, record. They do NOT get their old number back
+    — that one is gone for good and may belong to someone else now.
+
+    Deliberately admin-triggered rather than automatic on re-subscribe. It spends
+    money on a real phone number, and a webhook retry storm that buys a number per
+    delivery is a worse failure than a support ticket.
+
+    Never raises. Returns {"provisioned": bool, "number": str, "reason": str}.
+    """
+    from db import supabase as db
+
+    tenant_id = str(tenant.get("id") or "")
+    sub_sid   = str(tenant.get("twilio_subaccount_sid") or "")
+    sub_token = str(tenant.get("twilio_auth_token") or "")
+
+    if tenant.get("twilio_phone_number"):
+        return {"provisioned": False, "number": str(tenant["twilio_phone_number"]),
+                "reason": "tenant_already_has_a_number"}
+    if not (sub_sid and sub_token):
+        return {"provisioned": False, "number": "", "reason": "missing_twilio_credentials"}
+    if not tenant.get("vapi_assistant_id"):
+        return {"provisioned": False, "number": "", "reason": "no_assistant_on_tenant"}
+
+    country = str(tenant.get("country") or "CA")
+    # Keep them local to the number they already publish, if we know it.
+    preferred_ac = ""
+    try:
+        preferred_ac = telephony.area_code_from_phone(str(tenant.get("business_phone") or ""))
+    except Exception:
+        pass
+
+    try:
+        candidate = await telephony.find_available_number(
+            sub_sid, sub_token, country, preferred_area_code=preferred_ac,
+        )
+        number = await telephony.purchase_number(sub_sid, sub_token, candidate)
+    except Exception as e:
+        logger.error("reprovision: Twilio purchase failed for tenant %s: %s", tenant_id, e)
+        return {"provisioned": False, "number": "", "reason": "twilio_purchase_failed"}
+
+    try:
+        vapi_phone_id = await vapi.import_twilio_number(
+            phone_number=number,
+            twilio_account_sid=sub_sid,
+            twilio_auth_token=sub_token,
+            label=str(tenant.get("business_name") or "Open Lines"),
+            server_url=f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended",
+            api_key=vapi.get_tenant_vapi_key(tenant),
+        )
+    except Exception as e:
+        # We already own a number Vapi can't route to. Hand it straight back
+        # rather than start billing for a line that will never ring.
+        logger.error("reprovision: Vapi import failed for tenant %s, releasing %s: %s", tenant_id, number, e)
+        try:
+            await telephony.release_number(sub_sid, sub_token, number)
+        except Exception as release_err:
+            logger.error("reprovision: rollback release of %s also failed: %s", number, release_err)
+        return {"provisioned": False, "number": "", "reason": "vapi_import_failed"}
+
+    try:
+        await db.update_tenant(tenant_id, {
+            "twilio_phone_number":  number,
+            "vapi_phone_number_id": vapi_phone_id,
+            # Clear the reclaim history. Leaving number_released_at set would make
+            # release_due_at() return None forever, so this new number could never
+            # be reclaimed if they lapse again — and the stale warning flags would
+            # suppress the notices they'd be owed next time.
+            "number_released_at":        None,
+            "number_release_warn1_sent": False,
+            "number_release_warn2_sent": False,
+        })
+    except Exception as e:
+        logger.error(
+            "reprovision: bought %s for tenant %s but the DB write failed: %s — "
+            "the number is live on Twilio and must be reconciled by hand",
+            number, tenant_id, e,
+        )
+        return {"provisioned": False, "number": number, "reason": "db_write_failed"}
+
+    logger.info("Reprovisioned number %s for tenant %s (%s)", number, tenant_id, tenant.get("business_name"))
+    return {"provisioned": True, "number": number, "reason": ""}
