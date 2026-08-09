@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/admin-auth'
-import { billingStatus } from '@/lib/billing'
+import { billingStatus, isPaying, isTrial } from '@/lib/billing'
 
 const PLAN_PRICE: Record<string, number> = { starter: 99, pro: 199, business: 379 }
 
@@ -20,15 +20,22 @@ export async function GET(req: NextRequest) {
   // Bucket by the SAME derived billing status the rest of the admin UI uses, so a
   // card-free trial counts as trialing (not "no subscription") and comps get their
   // own bucket. billingStatus() maps: comped | active | trialing | past_due |
-  // canceled | trial (free) | expired (trial lapsed).
-  const active    = all.filter(t => billingStatus(t) === 'active')
-  const trialing  = all.filter(t => billingStatus(t) === 'trial')
-  const comped    = all.filter(t => billingStatus(t) === 'comped')
-  const pastDue   = all.filter(t => billingStatus(t) === 'past_due')
-  const cancelled = all.filter(t => billingStatus(t) === 'canceled')
-  const none      = all.filter(t => billingStatus(t) === 'expired')
+  // canceled | trial (legacy card-free) | expired (trial lapsed).
+  //
+  // Trials are matched with isTrial() so BOTH kinds land in one bucket: the legacy
+  // card-free trial ('trial', derived from created_at) and the card trial
+  // ('trialing', a real Stripe subscription). A card trial looks like a live
+  // subscription in every other respect, so matching on 'active' or on the literal
+  // 'trial' alone would book unpaid trials as revenue.
+  const status    = new Map(all.map(t => [t, billingStatus(t)]))
+  const active    = all.filter(t => isPaying(status.get(t)!))
+  const trialing  = all.filter(t => isTrial(status.get(t)!))
+  const comped    = all.filter(t => status.get(t) === 'comped')
+  const pastDue   = all.filter(t => status.get(t) === 'past_due')
+  const cancelled = all.filter(t => status.get(t) === 'canceled')
+  const none      = all.filter(t => status.get(t) === 'expired')
 
-  // MRR from paying (active) subs only — comps and free trials contribute $0.
+  // MRR from paying (active) subs only — comps and both trial kinds contribute $0.
   const mrr = active.reduce((sum, t) => sum + (PLAN_PRICE[t.subscription_plan ?? ''] ?? 0), 0)
 
   const planDist: Record<string, { count: number; revenue: number }> = {}

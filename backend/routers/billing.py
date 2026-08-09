@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import stripe
+from datetime import datetime, timezone as _dt_timezone
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header
 from dotenv import load_dotenv
@@ -35,6 +36,33 @@ STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.g
 _ALL_PLAN_PRICE_IDS = {pid for p in PRICE_IDS.values() for pid in p.values() if pid}
 
 stripe.api_key = STRIPE_SECRET_KEY
+
+
+# Stripe subscription status -> the status we persist on tenants.subscription_status.
+#
+# `trialing` is deliberately kept VERBATIM rather than collapsed into 'active'.
+# A card trial is a real Stripe subscription, so flattening it made trial tenants
+# indistinguishable from paying ones: they were counted into MRR on the admin
+# revenue page and the dashboard trial banner disappeared for them. Every gate
+# that needs "is this line allowed to run" already treats `trialing` as active
+# (services/trial.py, services/entitlements.py, services/kb_limits.py), so
+# keeping the distinction costs nothing operationally and buys correct reporting.
+_BASE_STATUS_MAP: dict[str, str] = {
+    "active":             "active",
+    "trialing":           "trialing",
+    "past_due":           "past_due",
+    "unpaid":             "past_due",
+    "canceled":           "canceled",
+    "incomplete_expired": "canceled",
+}
+
+
+def _our_status(stripe_status: str, extra: dict[str, str] | None = None) -> str:
+    """Map a Stripe subscription status to ours. `extra` adds per-call-site
+    entries (the webhook tracks a couple of transient states the sync/confirm
+    paths don't). Unknown statuses pass through unchanged."""
+    mapping = {**_BASE_STATUS_MAP, **(extra or {})}
+    return mapping.get(stripe_status, stripe_status)
 
 
 def _norm_interval(interval: str | None) -> str:
@@ -314,23 +342,35 @@ async def stripe_webhook(request: Request):
         sub_id          = sub.get("id", "")
         customer_id     = sub.get("customer", "")
         stripe_status   = sub.get("status", "")
-        our_status = {
-            "active": "active", "trialing": "active",
-            "past_due": "past_due", "unpaid": "past_due",
-            "canceled": "canceled", "incomplete": "incomplete",
-            "incomplete_expired": "canceled", "paused": "paused",
-        }.get(stripe_status, stripe_status)
+        our_status = _our_status(stripe_status, {
+            "incomplete": "incomplete", "paused": "paused",
+        })
 
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
             if tenant and tenant.get("stripe_subscription_id") == sub_id:
                 updates: dict = {"subscription_status": our_status}
 
-                # Reset usage counters when billing period rolls over
+                # Mirror the Stripe trial end date so services/trial.py can read it
+                # on the call-gating hot path without a Stripe round-trip. Cleared
+                # once the subscription leaves `trialing` (converted or cancelled),
+                # so a stale date can never make a paid tenant look like a trial.
+                trial_end = sub.get("trial_end")
+                if our_status == "trialing" and trial_end:
+                    updates["stripe_trial_ends_at"] = datetime.fromtimestamp(
+                        int(trial_end), tz=_dt_timezone.utc
+                    ).isoformat()
+                elif our_status != "trialing" and tenant.get("stripe_trial_ends_at"):
+                    updates["stripe_trial_ends_at"] = None
+
+                # Reset usage counters when billing period rolls over. This is also
+                # what gives a converting card trial a clean slate: at trial end
+                # Stripe moves current_period_start to the conversion date, so the
+                # 60 trial minutes are zeroed and the tenant starts their paid month
+                # on their full plan allocation.
                 new_period_start = sub.get("current_period_start")
                 if new_period_start:
-                    from datetime import datetime, timezone as _tz
-                    new_anchor = datetime.fromtimestamp(int(new_period_start), tz=_tz.utc).strftime("%Y-%m-%d")
+                    new_anchor = datetime.fromtimestamp(int(new_period_start), tz=_dt_timezone.utc).strftime("%Y-%m-%d")
                     stored_anchor = str(tenant.get("billing_period_anchor") or "")
                     if stored_anchor and stored_anchor != new_anchor:
                         updates.update({
@@ -617,11 +657,7 @@ async def confirm_payment(body: dict, authorization: Annotated[str | None, Heade
         raise HTTPException(status_code=500, detail="Failed to retrieve subscription from Stripe")
 
     stripe_status: str = sub.status or ""
-    our_status = {
-        "active": "active", "trialing": "active",
-        "past_due": "past_due", "unpaid": "past_due",
-        "canceled": "canceled", "incomplete_expired": "canceled",
-    }.get(stripe_status, stripe_status)
+    our_status = _our_status(stripe_status)
 
     items = _items_data(sub)
     plan = "starter"
@@ -680,11 +716,7 @@ async def sync_subscription(tenant_id: str, authorization: Annotated[str | None,
             raise HTTPException(status_code=404, detail="No Stripe subscription found for this customer")
 
         stripe_status = str(getattr(sub, "status", "") or "")
-        our_status = {
-            "active": "active", "trialing": "active",
-            "past_due": "past_due", "unpaid": "past_due",
-            "canceled": "canceled", "incomplete_expired": "canceled",
-        }.get(stripe_status, stripe_status)
+        our_status = _our_status(stripe_status)
 
         # Extract plan from subscription items (use attribute access — SDK objects aren't dicts)
         items = _items_data(sub)
@@ -695,11 +727,19 @@ async def sync_subscription(tenant_id: str, authorization: Annotated[str | None,
                 plan = _p
                 break
 
+        # This endpoint exists to repair a missed webhook, so it must write every
+        # field the webhook would have — including the mirrored trial end date,
+        # otherwise a resynced card trial is left with no end date at all.
+        _trial_end = getattr(sub, "trial_end", None)
         await db.update_tenant(tenant_id, {
             "stripe_subscription_id": sub.id,
             "stripe_customer_id":     sub.customer,
             "subscription_plan":      plan,
             "subscription_status":    our_status,
+            "stripe_trial_ends_at": (
+                datetime.fromtimestamp(int(_trial_end), tz=_dt_timezone.utc).isoformat()
+                if our_status == "trialing" and _trial_end else None
+            ),
         })
         logger.info("Manually synced subscription for tenant %s: plan=%s status=%s", tenant_id, plan, our_status)
         return {"status": "synced", "plan": plan, "subscription_status": our_status}
