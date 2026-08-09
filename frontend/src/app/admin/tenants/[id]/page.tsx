@@ -139,6 +139,30 @@ export default function TenantDetailPage() {
     setTimeout(() => setActionMsg(''), 6000)
   }
 
+  async function reprovisionNumber() {
+    if (actionLoading) return
+    setActionLoading(true)
+    setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}/reprovision-number`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setActionMsg(`New number provisioned: ${json.number}`)
+        setData(d => d ? { ...d, tenant: { ...d.tenant, twilio_phone_number: json.number } } : d)
+      } else {
+        setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+      }
+    } catch {
+      setActionMsg('Network error — check backend is reachable')
+    }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 6000)
+  }
+
   async function enableSmartRouting() {
     if (actionLoading) return
     setActionLoading(true)
@@ -311,6 +335,25 @@ export default function TenantDetailPage() {
             Enable Smart Routing
           </button>
         </div>
+
+        {/* No number — offer to buy one. This is the path back for a tenant whose
+            number was reclaimed: we keep the row, so their knowledge base and
+            settings survived, but nothing else can give them a working line. */}
+        {!tenant.twilio_phone_number && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--db-border)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
+              Phone number
+            </div>
+            <button className="adm-btn adm-btn-primary" onClick={reprovisionNumber} disabled={actionLoading}>
+              {actionLoading ? 'Provisioning…' : 'Provision a new number'}
+            </button>
+            <div style={{ fontSize: 11.5, color: 'var(--db-faint)', marginTop: 6, lineHeight: 1.5 }}>
+              Buys a new number on this tenant&rsquo;s existing Twilio subaccount and links it to
+              their assistant. They won&rsquo;t get their old number back — it&rsquo;s released and
+              may belong to someone else now.
+            </div>
+          </div>
+        )}
 
         {/* Release number — irreversible, so it is deliberately not a one-click
             action. Twilio can reassign a released number, meaning this business
