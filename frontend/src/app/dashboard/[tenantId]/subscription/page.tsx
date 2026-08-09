@@ -10,37 +10,23 @@ import { statusBadgeClass } from '../lib/badges'
 
 import { authedFetch } from '@/lib/api'
 import { trackConversion, trackAdsConversion, ADS_SUBSCRIPTION_CONVERSION } from '@/lib/analytics'
+import { PLANS as PLAN_CATALOG, type PlanId } from '@/lib/plans'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-const PLANS = [
-  { id: 'starter',  label: 'Starter',  price: '$99',  perMonth: 9900,  priceYear: '$990',   saveYear: '$198', minutes: '150 min / mo', features: [
-    '1 dedicated AI phone line',
-    '24/7 AI call answering',
-    'Lead capture, qualification & caller ID',
-    'Booking — Google & Outlook Calendar',
-    'Book with a specific team member',
-    'Transcripts, AI summaries & insights',
-    'Email, SMS & WhatsApp alerts',
-    'Knowledge base — 10 MB / 50-page docs + OCR',
-  ] },
-  { id: 'pro',      label: 'Pro',       price: '$199', perMonth: 19900, priceYear: '$1,990', saveYear: '$398', minutes: '400 min / mo', features: [
-    'Everything in Starter',
-    'Deposit collection — Stripe & Square',
-    'Group & per-person deposits',
-    'HubSpot CRM sync',
-    'Slack notifications',
-    'Larger KB — 25 MB / 300-page docs',
-  ] },
-  { id: 'business', label: 'Business',  price: '$379', perMonth: 37900, priceYear: '$3,790', saveYear: '$758', minutes: '900 min / mo', features: [
-    'Everything in Pro',
-    'Largest KB — 50 MB / 1,000-page docs',
-    'Priority support',
-    'Dedicated onboarding & setup',
-    'Early access to new features',
-  ] },
-] as const
+// Plans are defined ONCE in lib/plans.ts (shared with the public pricing page so
+// the two never drift). Here we map that catalog to the dashboard's display shape
+// — formatted price strings + a short minutes label for the db-* cards.
+const PLANS = PLAN_CATALOG.map(p => ({
+  id: p.id,
+  label: p.name,
+  price: `$${p.price}`,
+  perMonth: p.price * 100,
+  priceYear: `$${p.priceYear.toLocaleString()}`,
+  saveYear: `$${p.saveYear}`,
+  minutes: `${p.minutes} min / mo`,
+  features: p.features,
+}))
 
-type PlanId = 'starter' | 'pro' | 'business'
 type Plan = typeof PLANS[number]
 
 interface PaymentMethod {
