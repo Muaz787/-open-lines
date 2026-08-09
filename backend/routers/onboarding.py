@@ -17,6 +17,16 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
+def _parse_iso(value: str):
+    """Parse an ISO timestamp for display. None if unparseable — callers degrade
+    to omitting the date rather than failing the email."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
 def card_required() -> bool:
     """Whether a signup must supply a card before we provision anything.
 
@@ -311,13 +321,25 @@ async def provision(request: Request, body: ProvisionRequest):
 
         if body.email and body.password:
             # Welcome email — non-fatal; the tenant is already provisioned.
+            # Carries the trial billing summary when a card was taken, so the
+            # tenant has the plan, date and amount in writing from minute one
+            # rather than first hearing about money on day 3. Stripe raises a
+            # $0.00 invoice for the trial period but never emails it.
             try:
                 from services.email import send_welcome_email
+                _trial_ends = ""
+                if trial_sub.get("ok") and trial_sub.get("trial_ends_at"):
+                    _dt = _parse_iso(trial_sub["trial_ends_at"])
+                    _trial_ends = _dt.strftime("%B %-d, %Y") if _dt else ""
+                _list_price = subscriptions.PLAN_LIST_PRICES.get(body.plan)
                 await send_welcome_email(
                     to=body.email,
                     business_name=body.business_name,
                     tenant_id=result["tenant_id"],
                     phone_number=result.get("phone_number", ""),
+                    plan_name=(body.plan or "").title(),
+                    trial_ends_at=_trial_ends,
+                    amount_text=f"${_list_price} + tax" if _list_price else "",
                 )
             except Exception as e:
                 logger.error("Welcome email failed for tenant %s: %s", result.get("tenant_id"), e)
