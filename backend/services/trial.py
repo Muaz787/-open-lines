@@ -45,6 +45,31 @@ CARD_TRIAL_MINUTES = 60
 
 _ACTIVE_SUB_STATUSES = {"active", "trialing", "past_due", "canceling"}
 
+# Stripe subscription status -> the status we persist on tenants.subscription_status.
+# Lives here rather than in the billing router because this module is where
+# subscription-status semantics are decided (_ACTIVE_SUB_STATUSES, the call gate);
+# routers/billing.py imports it so there is exactly one mapping in the codebase.
+#
+# `trialing` is deliberately kept VERBATIM rather than collapsed into 'active'.
+# A card trial is a real Stripe subscription, so flattening it made trial tenants
+# indistinguishable from paying ones — inflating MRR and hiding the trial banner.
+STRIPE_STATUS_MAP: dict[str, str] = {
+    "active":             "active",
+    "trialing":           "trialing",
+    "past_due":           "past_due",
+    "unpaid":             "past_due",
+    "canceled":           "canceled",
+    "incomplete_expired": "canceled",
+}
+
+
+def map_stripe_status(stripe_status: str, extra: dict[str, str] | None = None) -> str:
+    """Map a Stripe subscription status to ours. `extra` adds per-call-site entries
+    (the webhook tracks a couple of transient states the sync/confirm paths don't).
+    Unknown statuses pass through unchanged."""
+    mapping = {**STRIPE_STATUS_MAP, **(extra or {})}
+    return mapping.get(stripe_status, stripe_status)
+
 # Comp / internal accounts (e.g. the openlines.ai demo line) that should never
 # expire or require a subscription. Set BILLING_EXEMPT_TENANT_IDS to a comma-
 # separated list of tenant ids in the backend env. These keep the line live
@@ -74,6 +99,27 @@ def is_card_trial(tenant: dict) -> bool:
     routers/billing.py.
     """
     return (tenant.get("subscription_status") or "").strip().lower() == "trialing"
+
+
+def conversion_payment_failed(tenant: dict) -> bool:
+    """True when the FIRST charge after a card trial ended has not been paid.
+
+    This is the narrow case where a past_due line SHOULD be cut: the tenant burned
+    their trial and the card then bounced, so they have consumed service and paid
+    nothing. Leaving it live is an open invitation to burn minutes on a dead card.
+
+    It is deliberately NOT the same as "past_due". An established customer whose
+    card expires mid-subscription keeps their line — that is normal dunning and
+    Stripe's retry schedule handles it. The difference is trial_conversion_unpaid,
+    which is set at conversion and cleared the moment any invoice is paid, so it
+    is true only inside the window between converting and a payment landing.
+    """
+    if is_billing_exempt(tenant):
+        return False
+    return (
+        (tenant.get("subscription_status") or "").strip().lower() == "past_due"
+        and bool(tenant.get("trial_conversion_unpaid"))
+    )
 
 
 def _parse_dt(value) -> datetime | None:
@@ -131,6 +177,7 @@ def _card_trial_status(tenant: dict) -> dict:
         "line_active":             line_active,
         # They already have a card and a plan — nothing to ask for.
         "subscription_required":   False,
+        "payment_required":        False,
     }
 
 
@@ -157,7 +204,12 @@ def _derived_trial_status(tenant: dict) -> dict:
     time_active   = (hours_left is not None) and (hours_left > 0)
     trial_active  = (not has_sub) and time_active and (not minutes_exhausted)
     trial_expired = (not has_sub) and (created is not None) and (not time_active or minutes_exhausted)
-    line_active   = has_sub or trial_active
+
+    # past_due normally keeps the line up (ordinary dunning). The one exception is
+    # a card trial whose very first charge bounced — they have used service and
+    # paid nothing, so the line is cut until the card is fixed.
+    payment_required = conversion_payment_failed(tenant)
+    line_active      = (has_sub or trial_active) and not payment_required
 
     return {
         "card_trial":              False,
@@ -173,6 +225,7 @@ def _derived_trial_status(tenant: dict) -> dict:
         "has_active_subscription": has_sub,
         "line_active":             line_active,
         "subscription_required":   (not has_sub) and (not trial_active),
+        "payment_required":        payment_required,
     }
 
 
@@ -199,11 +252,114 @@ def blocked_reason(tenant: dict) -> str:
     ts = trial_status(tenant)
     if ts["line_active"]:
         return ""
+    if ts["payment_required"]:
+        return "trial_conversion_unpaid"
     if ts["trial_minutes_used"] >= ts["trial_minutes_total"]:
         # On a card trial this means auto-conversion did not happen — the tenant
         # has a card on file and should have been charged. Worth alerting on.
         return "card_trial_minutes_exhausted" if ts["card_trial"] else "trial_minutes_exhausted"
     return "card_trial_days_expired" if ts["card_trial"] else "trial_days_expired"
+
+
+async def convert_card_trial(tenant: dict, reason: str) -> dict:
+    """End a card trial NOW: charge the card on file and start the paid plan.
+
+    This is what keeps the line up when a tenant burns through their trial
+    minutes — instead of gating them mid-business-day, the trial simply becomes
+    the subscription they already chose and agreed to. Also used by the
+    "start my plan now" button on the dashboard banner.
+
+    `reason` is recorded on the tenant for analytics:
+        'minutes' — hit CARD_TRIAL_MINUTES (auto-converted by services/usage)
+        'manual'  — tenant chose to start early from the dashboard
+        'time'    — the 7 days elapsed (Stripe does this itself; the billing
+                    webhook records the reason, this function is not involved)
+
+    Returns {converted, status, reason, already} and never raises: callers are
+    the call-recording path and an HTTP handler, neither of which should fail
+    because Stripe was briefly unavailable.
+    """
+    import stripe as _stripe
+    from db import supabase as db
+
+    tenant_id = str(tenant.get("id") or "")
+    sub_id    = str(tenant.get("stripe_subscription_id") or "")
+
+    if not is_card_trial(tenant):
+        return {"converted": False, "already": True, "reason": "not_in_trial", "status": tenant.get("subscription_status")}
+    if not sub_id:
+        logger.error("convert_card_trial: tenant %s is trialing with no subscription id", tenant_id)
+        return {"converted": False, "already": False, "reason": "no_subscription", "status": None}
+    if tenant.get("trial_converted_reason"):
+        return {"converted": False, "already": True, "reason": str(tenant["trial_converted_reason"]), "status": tenant.get("subscription_status")}
+
+    # Only set when we actually have one — assigning "" would clobber the key
+    # routers/billing.py sets at import time if env loading ever reorders.
+    _key = os.getenv("STRIPE_SECRET_KEY", "")
+    if _key:
+        _stripe.api_key = _key
+
+    try:
+        # Ending the trial makes Stripe invoice and charge the saved card straight
+        # away. The idempotency key means a duplicate call (two calls ending at
+        # once, or a retried request) replays the first result instead of
+        # attempting a second charge.
+        sub = _stripe.Subscription.modify(
+            sub_id,
+            trial_end="now",
+            idempotency_key=f"convert-trial-{sub_id}",
+        )
+    except Exception as e:
+        # Deliberately non-fatal. The line stays up until the minute safety net in
+        # _card_trial_status catches it, and the tenant can still self-serve via
+        # the dashboard button, so a Stripe blip must not break call recording.
+        logger.error("convert_card_trial: Stripe failed for tenant %s sub %s: %s", tenant_id, sub_id, e)
+        return {"converted": False, "already": False, "reason": "stripe_error", "status": None}
+
+    status = map_stripe_status(str(getattr(sub, "status", "") or ""))
+
+    updates: dict = {
+        "subscription_status":     status,
+        "trial_converted_reason":  reason,
+        "stripe_trial_ends_at":    None,
+        # Cleared by the first invoice.payment_succeeded. Until then a past_due
+        # line is gated — they have used the trial and paid nothing.
+        "trial_conversion_unpaid": True,
+        # The paid period starts clean: trial minutes are not deducted from the
+        # plan allocation the tenant is now paying for.
+        "minutes_used_this_period": 0,
+        "overage_minutes_reported": 0,
+    }
+    period_start = getattr(sub, "current_period_start", None)
+    if period_start:
+        updates["billing_period_anchor"] = datetime.fromtimestamp(
+            int(period_start), tz=timezone.utc
+        ).strftime("%Y-%m-%d")
+
+    try:
+        await db.update_tenant(tenant_id, updates)
+    except Exception as e:
+        # Stripe has already charged. Losing this write leaves the tenant looking
+        # like they are still trialing until the webhook reconciles them, which it
+        # will — but it needs to be loud, because until then the minute safety net
+        # may gate a line the customer has just paid for.
+        logger.error("convert_card_trial: Stripe converted tenant %s but DB write failed: %s", tenant_id, e)
+        return {"converted": True, "already": False, "reason": reason, "status": status, "db_error": True}
+
+    logger.info("Card trial converted for tenant %s (reason=%s, status=%s)", tenant_id, reason, status)
+
+    try:
+        from services import analytics
+        analytics.capture(
+            analytics.distinct_id_for(tenant, tenant_id),
+            "trial_converted",
+            {"tenant_id": tenant_id, "reason": reason, "status": status,
+             "plan": tenant.get("subscription_plan")},
+        )
+    except Exception:
+        pass
+
+    return {"converted": True, "already": False, "reason": reason, "status": status}
 
 
 async def process_trial_reminders(limit: int = 200) -> dict:

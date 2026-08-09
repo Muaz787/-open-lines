@@ -5,8 +5,12 @@ so a regression here silently takes phone lines down for real businesses. These
 tests pin both branches and, critically, the boundaries between them.
 """
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from services import trial
+import db.supabase as _supabase_mod  # noqa: F401  (registers the dotted path for patch())
 
 
 def _iso(**delta) -> str:
@@ -184,6 +188,157 @@ def test_billing_exempt_beats_card_trial_cap():
     assert ts["line_active"] is True
     assert ts["card_trial"] is False
     assert trial.blocked_reason(t) == ""
+
+
+# ── Unpaid trial conversion (the narrow past_due gate) ───────────────────────
+
+def _converted(unpaid, status="past_due", **over):
+    """A tenant whose trial has ended and been charged."""
+    return {
+        "id": "t_conv", "subscription_status": status, "subscription_plan": "starter",
+        "trial_converted_reason": "minutes", "trial_conversion_unpaid": unpaid,
+        "minutes_used_this_period": 12, "created_at": _iso(days=-9),
+        **over,
+    }
+
+
+def test_bounced_first_charge_gates_the_line():
+    """Burned the trial, card then bounced: service consumed, nothing paid."""
+    t = _converted(unpaid=True)
+    ts = trial.trial_status(t)
+    assert ts["line_active"] is False
+    assert ts["payment_required"] is True
+    assert trial.blocked_reason(t) == "trial_conversion_unpaid"
+
+
+def test_established_customer_past_due_keeps_line():
+    """The whole point of the separate flag: someone who converted cleanly months
+    ago and later has a card expire is in ordinary dunning and must NOT be cut off.
+    trial_converted_reason alone stays set forever and would wrongly gate them."""
+    t = _converted(unpaid=False, created_at=_iso(days=-200))
+    ts = trial.trial_status(t)
+    assert ts["line_active"] is True
+    assert ts["payment_required"] is False
+    assert trial.blocked_reason(t) == ""
+
+
+def test_unpaid_flag_alone_does_not_gate_an_active_subscription():
+    """Only past_due gates. A paid-and-active tenant whose flag has not yet been
+    cleared by the webhook must keep serving calls."""
+    assert trial.trial_status(_converted(unpaid=True, status="active"))["line_active"] is True
+
+
+def test_billing_exempt_beats_the_unpaid_gate():
+    assert trial.trial_status(_converted(unpaid=True, billing_exempt=True))["line_active"] is True
+
+
+def test_conversion_payment_failed_predicate():
+    assert trial.conversion_payment_failed(_converted(unpaid=True)) is True
+    assert trial.conversion_payment_failed(_converted(unpaid=False)) is False
+    assert trial.conversion_payment_failed(_converted(unpaid=True, status="active")) is False
+    assert trial.conversion_payment_failed({}) is False
+
+
+# ── convert_card_trial ───────────────────────────────────────────────────────
+
+def _stripe_sub(status="active", period_start=1_760_000_000):
+    sub = MagicMock()
+    sub.status = status
+    sub.current_period_start = period_start
+    return sub
+
+
+@pytest.mark.asyncio
+async def test_convert_charges_and_resets_counters():
+    t = _card_trial(minutes=60, plan="starter", id="t1", stripe_subscription_id="sub_1")
+    with patch("stripe.Subscription.modify", return_value=_stripe_sub("active")) as modify, \
+         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+        res = await trial.convert_card_trial(t, reason="minutes")
+
+    assert res["converted"] is True and res["status"] == "active"
+    # Ends the trial rather than creating anything new, and is replay-safe.
+    assert modify.call_args.args[0] == "sub_1"
+    assert modify.call_args.kwargs["trial_end"] == "now"
+    assert modify.call_args.kwargs["idempotency_key"] == "convert-trial-sub_1"
+
+    wrote = upd.call_args.args[1]
+    assert wrote["subscription_status"] == "active"
+    assert wrote["trial_converted_reason"] == "minutes"
+    assert wrote["stripe_trial_ends_at"] is None
+    # The paid month starts clean — trial minutes are not billed against it.
+    assert wrote["minutes_used_this_period"] == 0
+    assert wrote["overage_minutes_reported"] == 0
+    assert wrote["billing_period_anchor"]
+    # Cleared only by the first paid invoice.
+    assert wrote["trial_conversion_unpaid"] is True
+
+
+@pytest.mark.asyncio
+async def test_convert_records_a_failed_charge_as_unpaid():
+    """Stripe accepted the trial_end change but the card declined. The tenant must
+    end up gated, not silently served."""
+    t = _card_trial(minutes=60, id="t2", stripe_subscription_id="sub_2")
+    with patch("stripe.Subscription.modify", return_value=_stripe_sub("past_due")), \
+         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+        res = await trial.convert_card_trial(t, reason="minutes")
+
+    assert res["converted"] is True and res["status"] == "past_due"
+    wrote = upd.call_args.args[1]
+    assert wrote["trial_conversion_unpaid"] is True
+    assert trial.conversion_payment_failed({**t, **wrote}) is True
+
+
+@pytest.mark.asyncio
+async def test_convert_is_a_noop_when_already_converted():
+    t = _card_trial(id="t3", stripe_subscription_id="sub_3", trial_converted_reason="time")
+    with patch("stripe.Subscription.modify") as modify, \
+         patch("db.supabase.update_tenant", new=AsyncMock()):
+        res = await trial.convert_card_trial(t, reason="minutes")
+    assert res["converted"] is False and res["already"] is True
+    modify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_convert_is_a_noop_for_a_paying_tenant():
+    t = {"id": "t4", "subscription_status": "active", "stripe_subscription_id": "sub_4"}
+    with patch("stripe.Subscription.modify") as modify:
+        res = await trial.convert_card_trial(t, reason="manual")
+    assert res["converted"] is False
+    modify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_convert_swallows_stripe_errors():
+    """Called from the call-recording path — a Stripe outage must never make us
+    lose a recorded call or raise into the webhook handler."""
+    t = _card_trial(minutes=60, id="t5", stripe_subscription_id="sub_5")
+    with patch("stripe.Subscription.modify", side_effect=RuntimeError("stripe down")), \
+         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+        res = await trial.convert_card_trial(t, reason="minutes")
+    assert res["converted"] is False
+    assert res["reason"] == "stripe_error"
+    upd.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_convert_requires_a_subscription_id():
+    t = _card_trial(minutes=60, id="t6", stripe_subscription_id="")
+    with patch("stripe.Subscription.modify") as modify:
+        res = await trial.convert_card_trial(t, reason="minutes")
+    assert res["converted"] is False and res["reason"] == "no_subscription"
+    modify.assert_not_called()
+
+
+# ── Status mapping ───────────────────────────────────────────────────────────
+
+def test_stripe_status_map_keeps_trialing_distinct():
+    assert trial.map_stripe_status("trialing") == "trialing"
+    assert trial.map_stripe_status("active") == "active"
+    assert trial.map_stripe_status("unpaid") == "past_due"
+    assert trial.map_stripe_status("incomplete_expired") == "canceled"
+    # Per-call-site extras and passthrough for anything Stripe adds later.
+    assert trial.map_stripe_status("paused", {"paused": "paused"}) == "paused"
+    assert trial.map_stripe_status("some_new_status") == "some_new_status"
 
 
 # ── Shape contract ───────────────────────────────────────────────────────────

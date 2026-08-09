@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from dotenv import load_dotenv
 
 from db import supabase as db
-from services import analytics
+from services import analytics, trial
 from services.security import verify_tenant_owner
 
 load_dotenv()
@@ -38,31 +38,10 @@ _ALL_PLAN_PRICE_IDS = {pid for p in PRICE_IDS.values() for pid in p.values() if 
 stripe.api_key = STRIPE_SECRET_KEY
 
 
-# Stripe subscription status -> the status we persist on tenants.subscription_status.
-#
-# `trialing` is deliberately kept VERBATIM rather than collapsed into 'active'.
-# A card trial is a real Stripe subscription, so flattening it made trial tenants
-# indistinguishable from paying ones: they were counted into MRR on the admin
-# revenue page and the dashboard trial banner disappeared for them. Every gate
-# that needs "is this line allowed to run" already treats `trialing` as active
-# (services/trial.py, services/entitlements.py, services/kb_limits.py), so
-# keeping the distinction costs nothing operationally and buys correct reporting.
-_BASE_STATUS_MAP: dict[str, str] = {
-    "active":             "active",
-    "trialing":           "trialing",
-    "past_due":           "past_due",
-    "unpaid":             "past_due",
-    "canceled":           "canceled",
-    "incomplete_expired": "canceled",
-}
-
-
-def _our_status(stripe_status: str, extra: dict[str, str] | None = None) -> str:
-    """Map a Stripe subscription status to ours. `extra` adds per-call-site
-    entries (the webhook tracks a couple of transient states the sync/confirm
-    paths don't). Unknown statuses pass through unchanged."""
-    mapping = {**_BASE_STATUS_MAP, **(extra or {})}
-    return mapping.get(stripe_status, stripe_status)
+# Stripe status -> our persisted status. Defined in services/trial.py, which owns
+# subscription-status semantics (the active set, the call gate), so there is one
+# mapping rather than a copy per call site.
+_our_status = trial.map_stripe_status
 
 
 def _norm_interval(interval: str | None) -> str:
@@ -363,6 +342,33 @@ async def stripe_webhook(request: Request):
                 elif our_status != "trialing" and tenant.get("stripe_trial_ends_at"):
                     updates["stripe_trial_ends_at"] = None
 
+                # Trial -> paid transition. This is the ONLY place a natural 7-day
+                # conversion is observed: Stripe ends the trial and charges on its
+                # own, without going through services/trial.convert_card_trial
+                # (which handles only the early exits — minute cap and the
+                # dashboard button, both of which set the reason themselves).
+                #
+                # trial_conversion_unpaid is what lets the call gate tell a bounced
+                # FIRST charge from an established customer's expired card: it is
+                # set here at conversion and cleared on the first paid invoice
+                # below. Without it a natural conversion that failed would keep an
+                # unpaid line running indefinitely.
+                if (tenant.get("subscription_status") or "") == "trialing" and our_status != "trialing":
+                    updates["trial_conversion_unpaid"] = True
+                    if not tenant.get("trial_converted_reason"):
+                        updates["trial_converted_reason"] = "time"
+                    logger.info(
+                        "Card trial ended for tenant %s → status=%s (reason=%s)",
+                        tenant["id"], our_status,
+                        tenant.get("trial_converted_reason") or "time",
+                    )
+                    analytics.capture(
+                        analytics.distinct_id_for(tenant),
+                        "trial_converted",
+                        {"tenant_id": tenant["id"], "reason": tenant.get("trial_converted_reason") or "time",
+                         "status": our_status, "plan": tenant.get("subscription_plan")},
+                    )
+
                 # Reset usage counters when billing period rolls over. This is also
                 # what gives a converting card trial a clean slate: at trial end
                 # Stripe moves current_period_start to the conversion date, so the
@@ -416,6 +422,51 @@ async def stripe_webhook(request: Request):
                 logger.info("Ignoring subscription.deleted for stale sub %s (tenant has %s)", sub_id, tenant.get("stripe_subscription_id"))
         except Exception as e:
             logger.error("Failed to cancel subscription for customer %s: %s", customer_id, e)
+
+    elif event_type == "invoice.payment_succeeded":
+        # Clears the unpaid-conversion flag. Once ANY invoice is paid, this tenant
+        # is an established customer, so a future past_due is ordinary dunning and
+        # must NOT cut their line (see services/trial.conversion_payment_failed).
+        invoice: dict = event.get("data", {}).get("object", {})
+        customer_id   = invoice.get("customer", "")
+        try:
+            tenant = await db.get_tenant_by_stripe_customer(customer_id)
+            if tenant and tenant.get("trial_conversion_unpaid"):
+                await db.update_tenant(tenant["id"], {"trial_conversion_unpaid": False})
+                logger.info("First post-trial payment received for tenant %s — line unblocked", tenant["id"])
+                analytics.capture(
+                    analytics.distinct_id_for(tenant),
+                    "trial_conversion_paid",
+                    {"tenant_id": tenant["id"], "plan": tenant.get("subscription_plan"),
+                     "amount_paid": invoice.get("amount_paid")},
+                )
+        except Exception as e:
+            logger.error("invoice.payment_succeeded handling failed for customer %s: %s", customer_id, e)
+
+    elif event_type == "invoice.payment_failed":
+        # Status itself is owned by customer.subscription.updated; this handler
+        # exists so a failed charge is observable on its own, with the invoice
+        # context (attempt count, amount) that the subscription event lacks.
+        invoice = event.get("data", {}).get("object", {})
+        customer_id = invoice.get("customer", "")
+        try:
+            tenant = await db.get_tenant_by_stripe_customer(customer_id)
+            if tenant:
+                first_charge = bool(tenant.get("trial_conversion_unpaid"))
+                logger.warning(
+                    "Invoice payment failed for tenant %s (attempt=%s, amount_due=%s, first_post_trial=%s)",
+                    tenant["id"], invoice.get("attempt_count"), invoice.get("amount_due"), first_charge,
+                )
+                analytics.capture(
+                    analytics.distinct_id_for(tenant),
+                    "invoice_payment_failed",
+                    {"tenant_id": tenant["id"], "plan": tenant.get("subscription_plan"),
+                     "attempt_count": invoice.get("attempt_count"),
+                     "amount_due": invoice.get("amount_due"),
+                     "first_post_trial_charge": first_charge},
+                )
+        except Exception as e:
+            logger.error("invoice.payment_failed handling failed for customer %s: %s", customer_id, e)
 
     return {"status": "ok"}
 
@@ -918,6 +969,35 @@ async def cancel_subscription(tenant_id: str, authorization: Annotated[str | Non
     await db.update_tenant(tenant_id, {"subscription_status": "canceling"})
     logger.info("Subscription set to cancel at period end for tenant %s", tenant_id)
     return {"status": "canceling"}
+
+
+@router.post("/end-trial/{tenant_id}")
+async def end_trial(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+    """End the free trial now and start the paid plan.
+
+    Powers the "start my plan now" action on the dashboard trial banner. Its main
+    job is recovery: if auto-conversion at the minute cap failed (Stripe blip),
+    the tenant's line is gated by the safety net in services/trial, and this lets
+    them unblock themselves in one click instead of filing a support ticket.
+    """
+    await verify_tenant_owner(tenant_id, authorization)
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if not trial.is_card_trial(tenant):
+        raise HTTPException(status_code=400, detail="No free trial in progress on this account")
+
+    result = await trial.convert_card_trial(tenant, reason="manual")
+
+    if not result["converted"] and not result["already"]:
+        raise HTTPException(status_code=502, detail="We couldn't start your plan just now. Please try again in a moment.")
+
+    return {
+        "status":  result["status"],
+        "plan":    tenant.get("subscription_plan"),
+        "already": result["already"],
+    }
 
 
 @router.post("/reactivate/{tenant_id}")

@@ -1,0 +1,23 @@
+-- Migration: 010 — Card-trial auto-conversion
+-- Run this in your Supabase SQL editor or via psql. Idempotent (safe to re-run).
+--
+-- SAFETY: additive, defaulted to false, and read by exactly one new gate. Existing
+-- tenants all default to false, which is the permissive value — applying this
+-- migration cannot gate anyone who is not gated today.
+--
+-- WHY A SEPARATE FLAG FROM trial_converted_reason (migration 009):
+--   trial_converted_reason records WHY a trial ended ('time' | 'minutes') and is
+--   never cleared — it is durable analytics. It therefore cannot be used to decide
+--   whether to gate a past_due line: it stays set forever, so a customer who
+--   converted cleanly in March and had a card expire in September would be gated
+--   as if their very first charge had bounced.
+--
+--   trial_conversion_unpaid answers the narrower question the gate actually needs:
+--   "has this tenant been charged since their trial ended, and did it stick?"
+--     * set true   when a trial converts (the charge has been attempted)
+--     * set false  on the first invoice.payment_succeeded thereafter
+--   So it is true only in the window between conversion and a payment landing.
+--   Gate = past_due AND trial_conversion_unpaid, which cannot catch an
+--   established customer mid-dunning. See services/trial.conversion_payment_failed.
+
+alter table tenants add column if not exists trial_conversion_unpaid boolean default false;
