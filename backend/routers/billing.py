@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from dotenv import load_dotenv
 
 from db import supabase as db
-from services import analytics, trial
+from services import analytics, subscriptions, trial
 from services.security import verify_tenant_owner
 
 load_dotenv()
@@ -21,19 +21,12 @@ STRIPE_SECRET_KEY    = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 FRONTEND_URL         = os.getenv("FRONTEND_URL", "https://openlines.ai")
 
-# Per-plan, per-interval Stripe price IDs. Annual prices are optional — if the
-# *_ANNUAL env vars aren't set, annual signups for that plan will 500 with a
-# clear message until the price is created in Stripe.
-PRICE_IDS: dict[str, dict[str, str]] = {
-    "starter":  {"month": os.getenv("STRIPE_PRICE_STARTER", ""),  "year": os.getenv("STRIPE_PRICE_STARTER_ANNUAL", "")},
-    "pro":      {"month": os.getenv("STRIPE_PRICE_PRO", ""),       "year": os.getenv("STRIPE_PRICE_PRO_ANNUAL", "")},
-    "business": {"month": os.getenv("STRIPE_PRICE_BUSINESS", ""),  "year": os.getenv("STRIPE_PRICE_BUSINESS_ANNUAL", "")},
-}
-# Metered overage price linked to a Stripe Billing Meter (event_name: call_minutes)
-STRIPE_OVERAGE_PRICE_ID: str = os.getenv("STRIPE_CALL_MINUTES_PRICE_ID") or os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
-
-# Flat set of every plan price ID across intervals (for membership checks)
-_ALL_PLAN_PRICE_IDS = {pid for p in PRICE_IDS.values() for pid in p.values() if pid}
+# Plan price catalog. Defined in services/subscriptions.py so the onboarding
+# router can resolve the same prices when it creates a signup's trial
+# subscription; these names are kept as aliases so this module reads unchanged.
+PRICE_IDS               = subscriptions.PRICE_IDS
+STRIPE_OVERAGE_PRICE_ID = subscriptions.OVERAGE_PRICE_ID
+_ALL_PLAN_PRICE_IDS     = subscriptions.ALL_PLAN_PRICE_IDS
 
 stripe.api_key = STRIPE_SECRET_KEY
 
@@ -44,31 +37,11 @@ stripe.api_key = STRIPE_SECRET_KEY
 _our_status = trial.map_stripe_status
 
 
-def _norm_interval(interval: str | None) -> str:
-    """Normalize any annual alias to 'year', everything else to 'month'."""
-    return "year" if (interval or "").strip().lower() in ("year", "annual", "yearly", "yr") else "month"
-
-
-def _resolve_price(plan: str, interval: str | None = "month") -> str:
-    """Resolve the Stripe price ID for a plan + billing interval."""
-    return PRICE_IDS.get(plan, {}).get(_norm_interval(interval), "")
-
-
-def _plan_from_price(price_id: str) -> str | None:
-    """Reverse-lookup the plan name from any of its price IDs."""
-    for plan, intervals in PRICE_IDS.items():
-        if price_id in intervals.values():
-            return plan
-    return None
-
-
-def _interval_from_price(price_id: str) -> str:
-    """Reverse-lookup the billing interval ('month'/'year') from a price ID."""
-    for intervals in PRICE_IDS.values():
-        for iv, pid in intervals.items():
-            if pid and pid == price_id:
-                return iv
-    return "month"
+# Price lookups — see services/subscriptions.py.
+_norm_interval       = subscriptions.norm_interval
+_resolve_price       = subscriptions.resolve_price
+_plan_from_price     = subscriptions.plan_from_price
+_interval_from_price = subscriptions.interval_from_price
 
 
 def _items_data(sub) -> list:
@@ -471,16 +444,7 @@ async def stripe_webhook(request: Request):
     return {"status": "ok"}
 
 
-def _clean_address(raw) -> dict | None:
-    """Keep only the Stripe-recognised address fields the AddressElement returns.
-    Stripe Tax needs at least country + postal_code to resolve a GST/HST jurisdiction."""
-    if not isinstance(raw, dict):
-        return None
-    allowed = ("line1", "line2", "city", "state", "postal_code", "country")
-    addr = {k: str(raw[k]).strip() for k in allowed if raw.get(k)}
-    if not addr.get("country") or not addr.get("postal_code"):
-        return None
-    return addr
+_clean_address = subscriptions.clean_address
 
 
 @router.post("/create-subscription")

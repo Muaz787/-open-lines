@@ -42,6 +42,8 @@ Each live webhook has its **own** signing secret — copy it into the matching e
   - `checkout.session.completed`
   - `customer.subscription.updated`
   - `customer.subscription.deleted`
+  - `invoice.payment_succeeded` *(clears `trial_conversion_unpaid` — without it a tenant whose first post-trial charge succeeds stays flagged and gets gated on any later `past_due`)*
+  - `invoice.payment_failed`
 - [ ] Copy signing secret → `STRIPE_WEBHOOK_SECRET`
 
 **B. Deposits webhook — "Connected accounts" events** (toggle "Listen to events on Connected accounts")
@@ -59,8 +61,37 @@ Each live webhook has its **own** signing secret — copy it into the matching e
   - ⚠️ **Required for subscriptions too:** the subscribe flow sends `automatic_tax={"enabled": True}` (`routers/billing.py`). If live Tax isn't configured, `Subscription.create` throws and the UI shows **"Failed to create subscription: …"**. Subscriptions worked in test only because test-mode Tax is auto-configured.
 - [ ] Confirm the `payments` table has a `refunded_at` column (from the refund work) — if missing, run: `alter table payments add column if not exists refunded_at timestamptz;`
 
+## 4b. Card-required free trial
+
+**Radar — do this BEFORE turning the trial on.** `/onboarding/setup-card` is a
+public endpoint that mints SetupIntents, which is a known card-testing vector:
+an attacker can drive confirmations against it to check stolen card numbers. The
+IP rate limit (10/hour) only slows a single source, so Radar is what actually
+stops a distributed attempt.
+- [ ] Radar → Rules: enable the built-in **card testing** protections
+- [ ] Block if `:card_testing_risk_level:` is `highest`
+- [ ] Watch Radar → Reviews for a spike in blocked SetupIntents after launch
+- [ ] Consider a rule blocking >3 distinct cards from one IP per hour
+
+**Trial emails:** Stripe sends its own "your trial is ending" email by default.
+We send our own with the exact amount and date, so turn Stripe's off:
+- [ ] Settings → Billing → Subscriptions → disable the trial-ending email
+
+**Environment:**
+- [ ] `ENCRYPTION_KEY_HEX` is set *(already required for tenant secrets — the card
+      setup token is AES-GCM encrypted with the same key; rotating it mid-signup
+      invalidates in-flight tokens and the user must re-enter their card)*
+- [ ] `TRIAL_REQUIRE_CARD` → leave **unset/false** until the onboarding card UI is
+      deployed. Flipping it to `true` is the switch that makes the trial
+      card-required; it needs no deploy and is the instant rollback lever.
+
+**Migrations:** `009_card_trial.sql` and `010_trial_conversion.sql` must be applied
+before `TRIAL_REQUIRE_CARD` goes on.
+
 ## 5. Smoke test in live (real card, small amounts)
 - [ ] **Subscription:** run a real checkout for a plan → confirm the tenant flips to `active` + correct `subscription_plan` in the dashboard/DB. Then cancel → confirm it downgrades.
+- [ ] **Card trial (end to end):** sign up with a card → confirm `subscription_status = 'trialing'` and `stripe_trial_ends_at` is set → make a call → confirm minutes tick up → force conversion with `POST /billing/end-trial/{tenant_id}` → confirm the status flips to `active`, `billing_period_anchor` moves, and **`minutes_used_this_period` resets to 0**. That last assertion is the one worth not skipping: if the counter does not reset, the trial's minutes get billed against the customer's first paid month.
+- [ ] **Declined conversion:** use Stripe's `4000000000000341` (attaches fine, fails on charge) → confirm the tenant lands `past_due` with `trial_conversion_unpaid = true` and the line is gated. Then pay the invoice → confirm the flag clears and the line comes back.
 - [ ] **Deposit:** connect a Stripe account on a tenant → have the AI (or manually) send a deposit link → pay it → confirm the deposit shows `succeeded` + the caller gets the confirmation SMS.
 - [ ] **Refund:** refund that test deposit in Stripe → confirm `charge.refunded` fires, the payment flips to `refunded`, and the appointment cancels.
 - [ ] Check the two webhooks in the Stripe Dashboard show **200s** (no signature errors → secrets are correct).
