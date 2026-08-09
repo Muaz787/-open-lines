@@ -80,6 +80,7 @@ const Check = () => (
 function CardForm({
   plan,
   businessName,
+  country,
   cardSetupToken,
   onComplete,
   onBack,
@@ -87,6 +88,7 @@ function CardForm({
 }: {
   plan: PlanId
   businessName: string
+  country: string
   cardSetupToken: string
   onComplete: (r: CardResult) => void
   onBack: () => void
@@ -188,9 +190,25 @@ function CardForm({
 
       <div className="form-group">
         <label className="form-label">Billing Address</label>
-        <AddressElement options={{ mode: 'billing', fields: { phone: 'never' } }} />
+        <AddressElement
+          options={{
+            mode: 'billing',
+            fields: { phone: 'never' },
+            // Type-ahead address suggestions. `automatic` is Stripe's default, but
+            // it's spelled out because the behaviour depends on context: Stripe
+            // supplies the Places lookup for free only when the Address Element
+            // shares an Elements group with the Payment Element, which it does
+            // here. Mounted standalone it would silently fall back to plain text
+            // inputs unless given a Google Maps key of our own.
+            autocomplete: { mode: 'automatic' },
+            // They already told us their country two steps ago — no reason to make
+            // them find it in the dropdown again. Editable, just pre-selected.
+            defaultValues: { address: { country: country || 'CA' } },
+          }}
+        />
         <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
-          Required so we can calculate sales tax (GST/HST) on your invoice.
+          Start typing your street address and we&rsquo;ll fill in the rest. Required so we can
+          calculate sales tax (GST/HST) on your invoice.
         </div>
       </div>
 
@@ -232,6 +250,7 @@ export function TrialCardStep({
   plan,
   email,
   businessName,
+  country = 'CA',
   onComplete,
   onBack,
   busy = false,
@@ -239,6 +258,7 @@ export function TrialCardStep({
   plan: PlanId
   email: string
   businessName: string
+  country?: string
   onComplete: (r: CardResult) => void
   onBack: () => void
   busy?: boolean
@@ -305,6 +325,7 @@ export function TrialCardStep({
       <CardForm
         plan={plan}
         businessName={businessName}
+        country={country}
         cardSetupToken={token}
         onComplete={onComplete}
         onBack={onBack}

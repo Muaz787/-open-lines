@@ -991,6 +991,7 @@ export default function OnboardingPage() {
                 plan={plan}
                 email={form.email}
                 businessName={form.business_name}
+                country={form.country}
                 onComplete={handleProvision}
                 onBack={() => setStage('plan')}
               />
