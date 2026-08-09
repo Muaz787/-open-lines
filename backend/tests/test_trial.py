@@ -341,6 +341,55 @@ def test_stripe_status_map_keeps_trialing_distinct():
     assert trial.map_stripe_status("some_new_status") == "some_new_status"
 
 
+# ── Deactivation ─────────────────────────────────────────────────────────────
+
+def test_deactivated_tenant_takes_no_calls():
+    """`Deactivate Tenant` used to set a flag nothing on the call path read, so a
+    closed account kept answering and kept storing caller data."""
+    t = _card_trial(minutes=5, is_active=False)
+    ts = trial.trial_status(t)
+    assert ts["line_active"] is False
+    assert ts["deactivated"] is True
+    assert trial.blocked_reason(t) == "tenant_deactivated"
+
+
+def test_deactivation_beats_a_paying_subscription():
+    ts = trial.trial_status({
+        "id": "t_x", "subscription_status": "active", "subscription_plan": "pro",
+        "minutes_used_this_period": 10, "created_at": _iso(days=-40), "is_active": False,
+    })
+    assert ts["line_active"] is False
+
+
+def test_deactivation_beats_a_comp():
+    """An admin switching an account off should not be overridden by billing_exempt."""
+    ts = trial.trial_status({
+        "id": "t_c", "subscription_status": "none", "billing_exempt": True,
+        "minutes_used_this_period": 0, "created_at": _iso(days=-400), "is_active": False,
+    })
+    assert ts["line_active"] is False
+
+
+def test_missing_or_null_is_active_does_not_gate():
+    """THE test that matters. is_active defaults true, but an older row or a
+    partial select can hand us None — and a falsy check would read that as "off"
+    and take every live line down at once."""
+    for value in (None, True):
+        t = _card_trial(minutes=5, is_active=value)
+        assert trial.trial_status(t)["line_active"] is True, value
+    # Key absent entirely
+    t = _card_trial(minutes=5)
+    t.pop("is_active", None)
+    assert trial.trial_status(t)["line_active"] is True
+
+
+def test_reactivating_restores_the_line():
+    t = _card_trial(minutes=5, is_active=False)
+    assert trial.trial_status(t)["line_active"] is False
+    t["is_active"] = True
+    assert trial.trial_status(t)["line_active"] is True
+
+
 # ── Shape contract ───────────────────────────────────────────────────────────
 
 def test_both_branches_return_the_same_keys():

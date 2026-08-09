@@ -69,6 +69,10 @@ export default function TenantDetailPage() {
   const [token, setToken] = useState('')
   const [actionMsg, setActionMsg] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  // Releasing a number is irreversible, so the button opens a field that makes
+  // you type the number rather than firing on a single click.
+  const [releasing, setReleasing] = useState(false)
+  const [releaseConfirm, setReleaseConfirm] = useState('')
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -103,6 +107,36 @@ export default function TenantDetailPage() {
     }
     setActionLoading(false)
     setTimeout(() => setActionMsg(''), 4000)
+  }
+
+  async function releaseNumber() {
+    if (actionLoading) return
+    setActionLoading(true)
+    setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}/release-number`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ confirm_number: releaseConfirm }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setActionMsg(`Released ${json.number} — Twilio will stop billing for it`)
+        setReleasing(false)
+        setReleaseConfirm('')
+        setData(d => d ? { ...d, tenant: { ...d.tenant, twilio_phone_number: '' } } : d)
+      } else {
+        setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+      }
+    } catch {
+      setActionMsg('Network error — check backend is reachable')
+    }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 6000)
   }
 
   async function enableSmartRouting() {
@@ -277,6 +311,53 @@ export default function TenantDetailPage() {
             Enable Smart Routing
           </button>
         </div>
+
+        {/* Release number — irreversible, so it is deliberately not a one-click
+            action. Twilio can reassign a released number, meaning this business
+            loses it for good and its callers eventually reach a stranger. */}
+        {tenant.twilio_phone_number && (
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--db-border)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
+              Phone number
+            </div>
+            {!releasing ? (
+              <button className="adm-btn adm-btn-danger" onClick={() => setReleasing(true)} disabled={actionLoading}>
+                Release {tenant.twilio_phone_number}
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--db-text-2)', lineHeight: 1.6 }}>
+                  This gives <strong>{tenant.twilio_phone_number}</strong> back to Twilio and
+                  <strong> cannot be undone</strong>. Twilio may reassign it, and calls to it will
+                  no longer reach this business. Type the number to confirm.
+                </div>
+                <input
+                  className="adm-input"
+                  value={releaseConfirm}
+                  onChange={e => setReleaseConfirm(e.target.value)}
+                  placeholder={tenant.twilio_phone_number}
+                  autoFocus
+                />
+                <div className="adm-btn-group">
+                  <button
+                    className="adm-btn adm-btn-danger"
+                    onClick={releaseNumber}
+                    disabled={actionLoading || !releaseConfirm.trim()}
+                  >
+                    {actionLoading ? 'Releasing…' : 'Release permanently'}
+                  </button>
+                  <button
+                    className="adm-btn adm-btn-secondary"
+                    onClick={() => { setReleasing(false); setReleaseConfirm('') }}
+                    disabled={actionLoading}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Billing & comp */}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--db-border)' }}>

@@ -90,6 +90,21 @@ def has_active_subscription(tenant: dict) -> bool:
     return (tenant.get("subscription_status") or "").strip().lower() in _ACTIVE_SUB_STATUSES
 
 
+def is_deactivated(tenant: dict) -> bool:
+    """True when an admin has explicitly switched this account off.
+
+    Checked with `is False` rather than a truthiness test on purpose. The column
+    defaults to true, but any row where it is absent or NULL — an older tenant, a
+    partial select — must NOT read as "off", because this feeds the gate that
+    decides whether anyone's phone answers. A falsy check here would take every
+    line down at once.
+
+    Deactivation beats everything, including billing_exempt: an admin turning an
+    account off should not be overridden by a comp flag.
+    """
+    return tenant.get("is_active") is False
+
+
 def is_card_trial(tenant: dict) -> bool:
     """True when the tenant is inside a Stripe trial with a card on file.
 
@@ -242,9 +257,21 @@ def trial_status(tenant: dict) -> dict:
     live line, whereas the card branch would apply the 60-minute cap — a comp
     must never have its line gated.
     """
-    if is_card_trial(tenant) and not is_billing_exempt(tenant):
-        return _card_trial_status(tenant)
-    return _derived_trial_status(tenant)
+    status = (
+        _card_trial_status(tenant)
+        if is_card_trial(tenant) and not is_billing_exempt(tenant)
+        else _derived_trial_status(tenant)
+    )
+
+    # An explicitly deactivated account takes no calls, whatever its billing says.
+    # Applied last so it overrides every other path — subscription, trial, comp.
+    # Until this existed, `Deactivate Tenant` set a flag nothing on the call path
+    # read: a closed account kept answering and kept storing caller data.
+    if is_deactivated(tenant):
+        status = {**status, "line_active": False, "deactivated": True}
+    else:
+        status["deactivated"] = False
+    return status
 
 
 def blocked_reason(tenant: dict) -> str:
@@ -252,6 +279,8 @@ def blocked_reason(tenant: dict) -> str:
     ts = trial_status(tenant)
     if ts["line_active"]:
         return ""
+    if ts["deactivated"]:
+        return "tenant_deactivated"
     if ts["payment_required"]:
         return "trial_conversion_unpaid"
     if ts["trial_minutes_used"] >= ts["trial_minutes_total"]:

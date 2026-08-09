@@ -69,6 +69,27 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
             logger.warning("retention: delete from %s failed for tenant %s: %s", table, tenant_id, e)
 
     if drop_tenant:
+        # Release the phone number BEFORE the row goes, not after. The Twilio
+        # subaccount SID, auth token and number all live on this row and are the
+        # only credentials that can release it — dropping the row first left the
+        # number permanently unreleasable except by hand in the Twilio console,
+        # billing us for it forever.
+        if tenant and tenant.get("twilio_phone_number"):
+            try:
+                from services.provisioning import release_tenant_number
+                result = await release_tenant_number(tenant)
+                deleted["phone_number_released"] = 1 if result.get("released") else 0
+                if not result.get("released"):
+                    errors["phone_number"] = result.get("reason", "release_failed")
+                    logger.error(
+                        "retention: could not release %s for tenant %s (%s) — "
+                        "release it manually in Twilio before this row is gone",
+                        tenant.get("twilio_phone_number"), tenant_id, result.get("reason"),
+                    )
+            except Exception as e:
+                errors["phone_number"] = str(e)[:200]
+                logger.error("retention: number release raised for tenant %s: %s", tenant_id, e)
+
         try:
             client.table("tenants").delete().eq("id", tenant_id).execute()
             deleted["tenant"] = 1

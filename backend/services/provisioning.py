@@ -706,3 +706,89 @@ async def _provision_after_twilio(
         "status": "live",
         "dashboard_url": f"{FRONTEND_URL}/dashboard/{tenant_id}",
     }
+
+
+async def release_tenant_number(tenant: dict) -> dict:
+    """Give a tenant's phone number back — the inverse of provisioning it.
+
+    DESTRUCTIVE AND IRREVERSIBLE. Twilio can reassign a released number to
+    somebody else, so a business that loses one loses it for good and its callers
+    reach a stranger. Every caller must be a deliberate act: the retention purge
+    (where the row is being deleted anyway) or an explicit admin action.
+
+    Vapi is detached FIRST, on purpose. If the Twilio release then fails we are
+    left paying for a number nobody routes to, which the next run fixes. The
+    reverse order would leave Vapi pointing at a number Twilio has already handed
+    to someone else — that failure sends real calls to the wrong business.
+
+    Idempotent: the tenant's number fields are cleared on success, and a missing
+    number is reported as already released rather than treated as an error.
+
+    Never raises. Returns {"released": bool, "steps": {...}, "reason": str}.
+    """
+    from db import supabase as db
+
+    tenant_id  = str(tenant.get("id") or "")
+    number     = str(tenant.get("twilio_phone_number") or "")
+    sub_sid    = str(tenant.get("twilio_subaccount_sid") or "")
+    sub_token  = str(tenant.get("twilio_auth_token") or "")
+    vapi_id    = str(tenant.get("vapi_phone_number_id") or "")
+    steps: dict = {}
+
+    if not number:
+        return {"released": True, "steps": {}, "reason": "no_number_on_tenant"}
+
+    logger.warning(
+        "RELEASING number %s for tenant %s (%s) — subscription_status=%s. This cannot be undone.",
+        number, tenant_id, tenant.get("business_name"), tenant.get("subscription_status"),
+    )
+
+    if vapi_id:
+        try:
+            steps["vapi_deleted"] = await vapi.delete_phone_number(
+                vapi_id, api_key=vapi.get_tenant_vapi_key(tenant)
+            )
+        except Exception as e:
+            logger.error("release: Vapi delete failed for tenant %s: %s", tenant_id, e)
+            steps["vapi_deleted"] = False
+        if not steps["vapi_deleted"]:
+            # Stop here rather than release the Twilio number underneath a live
+            # Vapi record. Retryable — nothing has been given away yet.
+            return {"released": False, "steps": steps, "reason": "vapi_delete_failed"}
+    else:
+        steps["vapi_deleted"] = True  # nothing registered
+
+    if not (sub_sid and sub_token):
+        logger.error(
+            "release: tenant %s has number %s but no subaccount credentials — "
+            "release it manually in the Twilio console",
+            tenant_id, number,
+        )
+        return {"released": False, "steps": steps, "reason": "missing_twilio_credentials"}
+
+    try:
+        await telephony.release_number(sub_sid, sub_token, number)
+        steps["twilio_released"] = True
+    except Exception as e:
+        logger.error("release: Twilio release failed for tenant %s: %s", tenant_id, e)
+        return {"released": False, "steps": steps, "reason": "twilio_release_failed"}
+
+    # Clear the fields last, so a failure above leaves the tenant in a state the
+    # next attempt can retry from.
+    try:
+        await db.update_tenant(tenant_id, {
+            "twilio_phone_number":  None,
+            "vapi_phone_number_id": None,
+        })
+        steps["tenant_cleared"] = True
+    except Exception as e:
+        # The number is genuinely gone; we just failed to record it. Loud, because
+        # the row now claims a number that no longer exists.
+        logger.error(
+            "release: number %s released for tenant %s but clearing the row failed: %s",
+            number, tenant_id, e,
+        )
+        steps["tenant_cleared"] = False
+
+    logger.info("Released number %s for tenant %s", number, tenant_id)
+    return {"released": True, "steps": steps, "reason": "", "number": number}
