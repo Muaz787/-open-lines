@@ -105,6 +105,34 @@ def resolve(tenant: dict) -> dict:
     return {"tier": tier, **_TIERS.get(tier, _OFF)}
 
 
+def can_configure(tenant: dict) -> bool:
+    """Plan-gated access to the routing CONFIG surface (owner dashboard/API). True for
+    an active Pro/Business subscription while the master switch is on — INDEPENDENT of
+    whether the tenant has switched routing on yet.
+
+    Configuring (adding destinations/rules) never changes a customer's calls; only
+    opting in — tenants.routing_enabled, see resolve()/has_feature() — attaches the
+    assistant's routing tools. Starter/free/inactive -> False (dashboard shows locked)."""
+    return master_enabled() and tier_for(tenant) in ("pro", "business")
+
+
+def config_caps(tenant: dict) -> dict:
+    """Tier capability/limit map for CONFIGURATION — plan-based, IGNORES opt-in. Lets a
+    Pro/Business tenant set up destinations/rules (with the right limits) before turning
+    routing on. Returns _OFF when not master-on / not an eligible plan."""
+    if not can_configure(tenant):
+        return {"tier": "off", **_OFF}
+    tier = tier_for(tenant)
+    return {"tier": tier, **_TIERS.get(tier, _OFF)}
+
+
+def config_limit_for(tenant: dict, name: str) -> int:
+    """Plan-based limit for the config surface (independent of opt-in). Use in the
+    owner config API so caps are correct before a tenant activates routing."""
+    val = config_caps(tenant).get(name, 0)
+    return int(val) if isinstance(val, (int, bool)) else 0
+
+
 def has_feature(tenant: dict, feature: str) -> bool:
     return bool(resolve(tenant).get(feature, False))
 
