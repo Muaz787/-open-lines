@@ -220,13 +220,8 @@ async def _release(tenant: dict) -> bool:
         )
         return False
 
-    # Permanent audit trail. The number itself is cleared off the row by
-    # release_tenant_number, so this is the only remaining evidence it happened.
-    try:
-        await db.update_tenant(tenant["id"], {"number_released_at": datetime.now(timezone.utc).isoformat()})
-    except Exception as e:
-        logger.error("number reclaim: released %s but failed to stamp tenant %s: %s", number, tenant.get("id"), e)
-
+    # number_released_at is stamped by release_tenant_number itself, so the manual
+    # admin path leaves the same audit trail as this one.
     logger.warning("number reclaim: RELEASED %s for tenant %s (%s)",
                    number, tenant.get("id"), tenant.get("business_name"))
     return True

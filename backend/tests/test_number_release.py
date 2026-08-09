@@ -38,6 +38,7 @@ async def test_release_detaches_vapi_before_giving_the_number_back():
 
     async def _twilio_release(sid, token, number):
         calls.append("twilio")
+        return True
 
     with patch("services.vapi.delete_phone_number", new=_vapi_delete), \
          patch("services.telephony.release_number", new=_twilio_release), \
@@ -47,7 +48,12 @@ async def test_release_detaches_vapi_before_giving_the_number_back():
     assert res["released"] is True
     assert calls == ["vapi", "twilio"]
     # Cleared so a retry is a no-op rather than a second release attempt.
-    assert upd.call_args.args[1] == {"twilio_phone_number": None, "vapi_phone_number_id": None}
+    wrote = upd.call_args.args[1]
+    assert wrote["twilio_phone_number"] is None
+    assert wrote["vapi_phone_number_id"] is None
+    # Audit trail — stamped here so a manual admin release records the same as
+    # the automated sweep.
+    assert wrote["number_released_at"]
 
 
 @pytest.mark.asyncio
@@ -70,6 +76,22 @@ async def test_a_failed_twilio_release_leaves_the_row_intact_for_a_retry():
         res = await provisioning.release_tenant_number(_tenant())
 
     assert res["released"] is False and res["reason"] == "twilio_release_failed"
+    upd.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_number_missing_from_the_subaccount_does_not_clear_the_row():
+    """THE regression this suite missed. release_number used to swallow every
+    error and return None, so a release that did nothing looked identical to one
+    that worked — and we cleared the row anyway, losing the only record of a
+    number Twilio kept billing for."""
+    with patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
+         patch("services.telephony.release_number", new=AsyncMock(return_value=False)), \
+         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+        res = await provisioning.release_tenant_number(_tenant())
+
+    assert res["released"] is False and res["reason"] == "twilio_number_not_found"
+    assert res["steps"]["twilio_released"] is False
     upd.assert_not_called()
 
 
@@ -169,3 +191,47 @@ async def test_data_only_delete_keeps_the_number():
          patch("services.provisioning.release_tenant_number", new=AsyncMock()) as rel:
         await retention.delete_tenant_data("t1", drop_tenant=False)
     rel.assert_not_called()
+
+
+# ── telephony.release_number itself ──────────────────────────────────────────
+#
+# These exist because the rest of this file mocks release_number, and the mock
+# used to be MORE capable than the real thing: it could raise, which the real
+# function never did — it swallowed everything and returned None. That mismatch
+# is what let a silent no-op reach production. Pin the real contract here.
+
+def _twilio_client(found: bool):
+    client = MagicMock()
+    number = MagicMock()
+    client.incoming_phone_numbers.list.return_value = [number] if found else []
+    return client, number
+
+
+@pytest.mark.asyncio
+async def test_release_number_deletes_and_reports_true():
+    from services import telephony
+    client, number = _twilio_client(found=True)
+    with patch("services.telephony._sub_client", return_value=client):
+        assert await telephony.release_number("AC_sub", "tok", "+14165550100") is True
+    number.delete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_release_number_reports_false_when_the_number_is_elsewhere():
+    """Each tenant has its own sub-account. A number that isn't on this one was
+    never released, and saying otherwise leaves it billing us with no record."""
+    from services import telephony
+    client, number = _twilio_client(found=False)
+    with patch("services.telephony._sub_client", return_value=client):
+        assert await telephony.release_number("AC_sub", "tok", "+14165550100") is False
+    number.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_release_number_propagates_twilio_errors():
+    """It used to catch these and return None, so callers cleared the tenant row
+    as though the release had succeeded."""
+    from services import telephony
+    with patch("services.telephony._sub_client", side_effect=RuntimeError("twilio down")):
+        with pytest.raises(RuntimeError):
+            await telephony.release_number("AC_sub", "tok", "+14165550100")

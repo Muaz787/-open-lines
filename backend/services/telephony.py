@@ -189,16 +189,30 @@ async def release_number(
     subaccount_sid: str,
     subaccount_token: str,
     phone_number: str,
-) -> None:
-    """Release a purchased number back to Twilio. Used for rollback on failed provisioning."""
-    try:
-        client = _sub_client(subaccount_sid, subaccount_token)
-        numbers = client.incoming_phone_numbers.list(phone_number=phone_number, limit=1)
-        if numbers:
-            numbers[0].delete()
-            logger.info("Released number %s from sub-account %s", phone_number, subaccount_sid)
-    except Exception as e:
-        logger.error("Failed to release number %s on rollback: %s", phone_number, e)
+) -> bool:
+    """Release a purchased number back to Twilio.
+
+    Returns True only if the number was actually found and deleted. Returns False
+    if it wasn't on this sub-account, and RAISES if Twilio rejects the request.
+
+    It used to swallow every exception and return None, which was fine when the
+    only caller was the provisioning rollback (best-effort cleanup of a number
+    nobody had yet). It is not fine now that this is the primary release path: a
+    caller that cannot tell success from failure clears the number off the tenant
+    row anyway, and we lose the record of a number Twilio keeps billing us for.
+    Callers must act on the result.
+    """
+    client = _sub_client(subaccount_sid, subaccount_token)
+    numbers = client.incoming_phone_numbers.list(phone_number=phone_number, limit=1)
+    if not numbers:
+        logger.warning(
+            "release_number: %s is not on sub-account %s — nothing released",
+            phone_number, subaccount_sid,
+        )
+        return False
+    numbers[0].delete()
+    logger.info("Released number %s from sub-account %s", phone_number, subaccount_sid)
+    return True
 
 
 # Production WhatsApp: a single central OpenLines sender + approved Content
