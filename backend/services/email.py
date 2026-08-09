@@ -313,18 +313,69 @@ async def send_welcome_email(
     business_name: str,
     tenant_id: str,
     phone_number: str = "",
+    *,
+    plan_name: str = "",
+    trial_ends_at: str = "",   # already formatted, e.g. "August 16, 2026"
+    amount_text: str = "",     # e.g. "$199 + tax"
 ) -> bool:
-    """Sent right after onboarding provisions the tenant's live AI line."""
+    """Sent right after onboarding provisions the tenant's live AI line.
+
+    When the tenant started a card trial, this also carries the billing summary.
+    Someone who just handed over a card is owed a written record of what they
+    agreed to — the plan, the date, the amount — at the moment they agree to it,
+    not first mention on day 3. Stripe raises a CA$0.00 invoice for the trial
+    period but doesn't email it (and a $0 invoice would confuse more than it
+    reassures), so this is the confirmation.
+
+    It rides on the welcome email rather than being a second send, because two
+    emails landing seconds apart reads as a system glitch.
+    """
     num_line = (
         f"<p style='margin:0 0 4px;font-size:14px;color:{_INK}'>Your dedicated AI line: "
         f"<strong>{_esc(phone_number)}</strong></p>"
         if phone_number else ""
     )
+
+    trial_block = ""
+    if trial_ends_at:
+        plan_row = (
+            f"<tr><td style='padding:3px 0;font-size:13px;color:{_MUTE}'>Plan</td>"
+            f"<td style='padding:3px 0;font-size:13px;color:{_INK};font-weight:600;text-align:right'>"
+            f"{_esc(plan_name or 'Your plan')}</td></tr>"
+            if plan_name else ""
+        )
+        amount_row = (
+            f"<tr><td style='padding:3px 0;font-size:13px;color:{_MUTE}'>Then</td>"
+            f"<td style='padding:3px 0;font-size:13px;color:{_INK};font-weight:600;text-align:right'>"
+            f"{_esc(amount_text)} / month</td></tr>"
+            if amount_text else ""
+        )
+        trial_block = f"""
+      <table cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0 4px;
+             background:#F0FAF3;border:1px solid #CDEBD8;border-radius:10px">
+        <tr><td style="padding:14px 16px">
+          <table cellpadding="0" cellspacing="0" style="width:100%">
+            <tr><td style="padding:0 0 6px;font-size:13px;color:{_MUTE}">Charged today</td>
+                <td style="padding:0 0 6px;font-size:16px;color:{_GREEN};font-weight:700;text-align:right">$0.00</td></tr>
+            {plan_row}
+            <tr><td style="padding:3px 0;font-size:13px;color:{_MUTE}">Free until</td>
+                <td style="padding:3px 0;font-size:13px;color:{_INK};font-weight:600;text-align:right">{_esc(trial_ends_at)}</td></tr>
+            {amount_row}
+          </table>
+          <p style="margin:10px 0 0;font-size:12px;color:{_MUTE};line-height:1.6">
+            Your card is saved but not charged. We&rsquo;ll email you before the first
+            payment, and you can cancel from your dashboard any time before
+            {_esc(trial_ends_at)} without being charged.</p>
+        </td></tr>
+      </table>
+    """
+
     body = f"""
       <p style="margin:0 0 12px;font-size:14px;color:#444;line-height:1.6">
         {_esc(business_name)} is set up and your AI receptionist is answering calls 24/7. 🎉</p>
       {num_line}
-      <p style="margin:12px 0 6px;font-size:14px;font-weight:600;color:{_INK}">A few things to try next:</p>
+      {trial_block}
+      <p style="margin:16px 0 6px;font-size:14px;font-weight:600;color:{_INK}">A few things to try next:</p>
       <ul style="margin:0;padding-left:18px;font-size:14px;color:#444;line-height:1.7">
         <li>Call your new number and hear it in action</li>
         <li>Connect your calendar so it can book appointments</li>

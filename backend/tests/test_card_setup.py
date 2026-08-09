@@ -282,6 +282,45 @@ async def test_signup_survives_a_failed_trial_subscription():
     assert "trial" not in out
 
 
+@pytest.mark.asyncio
+async def test_welcome_email_carries_the_trial_billing_summary():
+    """Someone who just handed over a card is owed the plan, date and amount in
+    writing at that moment. Stripe raises a $0.00 trial invoice but never emails
+    it, so the welcome email is the only confirmation they get before day 3."""
+    prov_result = {"tenant_id": "t12", "phone_number": "+14165550103"}
+    body = _provision_body(
+        card_setup_token=subscriptions.issue_card_setup_token("cus_w"),
+        payment_method_id="pm_w", plan="pro",
+    )
+    sub_result = {"ok": True, "plan": "pro", "status": "trialing",
+                  "trial_ends_at": "2026-08-16T12:00:00+00:00"}
+
+    with patch("services.provisioning.provision_tenant", new=AsyncMock(return_value=prov_result)), \
+         patch("db.supabase.create_auth_user", new=AsyncMock(return_value="u1")), \
+         patch("db.supabase.update_tenant", new=AsyncMock()), \
+         patch("services.subscriptions.create_trial_subscription", new=AsyncMock(return_value=sub_result)), \
+         patch("services.email.send_welcome_email", new=AsyncMock(return_value=True)) as mail:
+        await onboarding.provision(None, body)
+
+    kw = mail.call_args.kwargs
+    assert kw["plan_name"] == "Pro"
+    assert kw["trial_ends_at"] == "August 16, 2026"
+    assert kw["amount_text"] == "$199 + tax"
+
+
+@pytest.mark.asyncio
+async def test_welcome_email_omits_billing_when_there_is_no_trial():
+    """No card, no subscription — the email must not claim a charge date."""
+    prov_result = {"tenant_id": "t13", "phone_number": "+14165550104"}
+    with patch("services.provisioning.provision_tenant", new=AsyncMock(return_value=prov_result)), \
+         patch("db.supabase.create_auth_user", new=AsyncMock(return_value="u1")), \
+         patch("db.supabase.update_tenant", new=AsyncMock()), \
+         patch("services.email.send_welcome_email", new=AsyncMock(return_value=True)) as mail:
+        await onboarding.provision(None, _provision_body())
+
+    assert mail.call_args.kwargs["trial_ends_at"] == ""
+
+
 def test_invalid_plan_is_rejected_at_the_schema():
     with pytest.raises(Exception):
         onboarding.ProvisionRequest(business_name="A", industry="beauty", plan="enterprise")
