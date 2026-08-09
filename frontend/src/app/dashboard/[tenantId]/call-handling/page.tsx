@@ -48,6 +48,26 @@ function formatForConfirm(raw: string): string {
   return raw.trim()
 }
 
+// Numbered section header — the setup IS a sequence (add destinations → pick where
+// calls go → add rules → test), so the step numbers guide the flow.
+function StepHeader({ n, title, help }: { n: number; title: string; help?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 15 }}>
+      <span aria-hidden style={{
+        flex: '0 0 auto', width: 24, height: 24, borderRadius: 7, marginTop: 1,
+        display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
+        fontFamily: 'var(--font-mono), ui-monospace, monospace',
+        background: 'var(--db-accent-bg)', color: 'var(--db-accent-text)',
+        border: '1px solid var(--db-accent-border)',
+      }}>{n}</span>
+      <div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--db-text)' }}>{title}</div>
+        {help && <div style={{ fontSize: 13, color: 'var(--db-muted)', marginTop: 2, lineHeight: 1.5 }}>{help}</div>}
+      </div>
+    </div>
+  )
+}
+
 function CallHandlingPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
@@ -198,88 +218,124 @@ function CallHandlingPage() {
     if (res.ok) setDecision(await res.json())
   }
 
-  const destLabel = (d: Destination) =>
-    `${d.label ? d.label + ' — ' : ''}${d.number_masked ?? ''}${d.type === 'urgent' ? ' · urgent' : ''}`
-
   if (loading) return <div style={{ padding: 28, color: 'var(--db-muted)' }}>Loading…</div>
 
   if (entitled === false) return (
     <div style={{ padding: 28 }}>
-      <div className="db-card" style={{ maxWidth: 560, padding: 24 }}>
-        <div className="db-page-heading">Call handling &amp; routing</div>
-        <p style={{ color: 'var(--db-muted)', lineHeight: 1.55, margin: '0 0 8px' }}>
-          Answer calls only when your team is busy or closed, and transfer callers who need a
-          person to the right destination — with a safe fallback if no one answers.
+      <div className="db-card" style={{ maxWidth: 560, padding: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--db-text)', margin: 0 }}>Call handling &amp; routing</h1>
+          <span className="db-badge" style={{ background: 'var(--db-gold-grad)', color: 'var(--db-gold-text)', border: '1px solid var(--db-gold-border)' }}>Pro</span>
+        </div>
+        <p style={{ color: 'var(--db-muted)', lineHeight: 1.6, margin: '0 0 10px', fontSize: 14 }}>
+          Answer routine calls with AI and transfer the ones that need a person to the right
+          destination — with a safe fallback if no one picks up.
         </p>
-        <p style={{ color: 'var(--db-muted)', margin: 0 }}>
-          This feature isn&rsquo;t enabled for your account yet — it&rsquo;s available on the Pro and
-          Business plans.
+        <p style={{ color: 'var(--db-muted)', margin: 0, fontSize: 14 }}>
+          It&rsquo;s available on the <strong style={{ color: 'var(--db-text)' }}>Pro</strong> and{' '}
+          <strong style={{ color: 'var(--db-text)' }}>Business</strong> plans.
         </p>
       </div>
     </div>
   )
 
-  const cardStyle: React.CSSProperties = { padding: '18px 20px', marginBottom: 16 }
+  const sectionStyle: React.CSSProperties = { padding: '20px 22px', marginBottom: 16 }
   const rowStyle: React.CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }
+  const numFont = 'var(--font-mono), ui-monospace, monospace'
+  const short = (d?: Destination | null) => (d ? (d.label || d.number_masked || 'destination') : null)
+  const defaultDest = activeDests.find(d => d.id === profile.default_destination_id)
+  const hasDefault = !!defaultDest
+  const toggleDisabled = actState === 'saving' || (!routingActive && !canActivate)
 
   return (
-    <div style={{ padding: 28, maxWidth: 800 }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--db-text)', margin: 0 }}>Call handling &amp; routing</h1>
-        <p style={{ fontSize: 14, color: 'var(--db-muted)', margin: '4px 0 0' }}>
-          Catch overflow calls, answer routine questions, and route callers who need a person — with a safe fallback.
+    <div style={{ padding: 28, maxWidth: 780 }}>
+      <header style={{ marginBottom: 18 }}>
+        <h1 style={{ fontSize: 23, fontWeight: 600, color: 'var(--db-text)', margin: 0, letterSpacing: '-0.01em' }}>Call handling &amp; routing</h1>
+        <p style={{ fontSize: 14, color: 'var(--db-muted)', margin: '5px 0 0', lineHeight: 1.5, maxWidth: 620 }}>
+          Answer routine calls with AI and transfer the ones that need a person to the right place — with a safe fallback if no one picks up.
         </p>
       </header>
 
-      {/* Activation */}
-      <div className="db-card" style={{ ...cardStyle, borderColor: routingActive ? 'var(--db-accent-border)' : 'var(--db-border)',
-        background: routingActive ? 'var(--db-accent-bg)' : 'var(--db-card)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 300px' }}>
-            <div style={{ fontWeight: 600, color: routingActive ? 'var(--db-accent-text)' : 'var(--db-text)' }}>
-              Call routing is {routingActive ? 'on' : 'off'}
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)', marginTop: 3, lineHeight: 1.5 }}>
-              {routingActive
-                ? 'Live — callers are being routed and transferred based on your setup below.'
-                : 'Set up your destinations and rules below, then turn routing on. Nothing changes on your calls until you do.'}
+      {/* ── Activation hero ── */}
+      <div className="db-card" style={{ padding: '20px 22px', marginBottom: 20,
+        borderColor: routingActive ? 'var(--db-accent-border)' : 'var(--db-border)',
+        background: routingActive ? 'var(--db-accent-bg)' : 'var(--db-card)',
+        boxShadow: routingActive ? 'var(--db-shadow-sm)' : 'var(--db-shadow-xs)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: '1 1 280px', minWidth: 0 }}>
+            <span aria-hidden style={{ width: 10, height: 10, borderRadius: '50%', flex: '0 0 auto',
+              background: routingActive ? 'var(--db-accent)' : 'var(--db-faint)',
+              boxShadow: routingActive ? '0 0 0 4px var(--db-accent-bg)' : 'none' }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 600, fontSize: 15, color: routingActive ? 'var(--db-accent-text)' : 'var(--db-text)' }}>Call routing</span>
+                <span className={`db-badge ${routingActive ? 'db-badge--success' : 'db-badge--neutral'}`}>{routingActive ? 'Live' : 'Off'}</span>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--db-muted)', marginTop: 3, lineHeight: 1.5 }}>
+                {routingActive
+                  ? `Routing ${activeDests.length} destination${activeDests.length === 1 ? '' : 's'}${rules.length ? ` · ${rules.length} rule${rules.length === 1 ? '' : 's'}` : ''}${defaultDest ? ` · default: ${short(defaultDest)}` : ''}.`
+                  : 'Nothing changes on your calls until you turn this on.'}
+              </div>
             </div>
           </div>
-          <button type="button"
-            className={`db-btn ${routingActive ? 'db-btn--danger-ghost' : 'db-btn--primary'}`}
-            onClick={() => setRoutingOn(!routingActive)}
-            disabled={actState === 'saving' || (!routingActive && !canActivate)}>
-            {actState === 'saving' ? '…' : routingActive ? 'Turn off' : 'Turn on'}
-          </button>
+          <button type="button" aria-label={routingActive ? 'Turn call routing off' : 'Turn call routing on'}
+            className={`db-switch ${routingActive ? 'on' : ''}`}
+            onClick={() => setRoutingOn(!routingActive)} disabled={toggleDisabled}
+            style={{ opacity: toggleDisabled ? 0.45 : 1, cursor: toggleDisabled ? 'not-allowed' : 'pointer' }} />
         </div>
-        {!routingActive && !canActivate && (
-          <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 10 }}>
-            Add at least one destination below before turning routing on.
+
+        {!routingActive && (
+          <div style={{ marginTop: 15, paddingTop: 14, borderTop: '1px solid var(--db-border-lt)',
+            display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { done: canActivate, label: 'Add at least one transfer destination' },
+              { done: hasDefault, label: 'Choose where unmatched callers go (default) — recommended' },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13,
+                color: s.done ? 'var(--db-text)' : 'var(--db-muted)' }}>
+                <span aria-hidden style={{ width: 16, height: 16, flex: '0 0 auto', borderRadius: '50%',
+                  display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 700,
+                  background: s.done ? 'var(--db-accent)' : 'transparent', color: '#fff',
+                  border: s.done ? 'none' : '1.5px solid var(--db-border)' }}>{s.done ? '✓' : ''}</span>
+                {s.label}
+              </div>
+            ))}
           </div>
         )}
-        {actWarn && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 10 }}>{actWarn}</div>}
+        {actWarn && (
+          <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--db-warn-text)',
+            background: 'var(--db-warn-bg)', borderRadius: 'var(--db-r-sm)', padding: '8px 11px' }}>{actWarn}</div>
+        )}
       </div>
 
-      {/* Destinations */}
-      <div className="db-card" style={cardStyle}>
-        <label className="db-field-label">Transfer destinations</label>
-        <p style={{ fontSize: 13, color: 'var(--db-muted)', margin: '0 0 12px' }}>
-          Domestic numbers only. Stored encrypted, shown masked.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
-          {activeDests.length === 0 && <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>No destinations yet.</div>}
-          {activeDests.map(d => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '9px 0', borderTop: '1px solid var(--db-border-lt)' }}>
-              <span style={{ color: 'var(--db-text)', fontSize: 14 }}>{destLabel(d)}</span>
+      {/* ── 1 · Destinations ── */}
+      <div className="db-card" style={sectionStyle}>
+        <StepHeader n={1} title="Transfer destinations"
+          help="The phone numbers OpenLines can hand callers to. Domestic only, stored encrypted and shown masked." />
+        <div style={{ marginBottom: 14 }}>
+          {activeDests.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--db-muted)', padding: '12px 14px',
+              border: '1px dashed var(--db-border)', borderRadius: 'var(--db-r-sm)', background: 'var(--db-subtle)' }}>
+              No destinations yet — add your first one below.
+            </div>
+          )}
+          {activeDests.map((d, i) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+              padding: '11px 0', borderTop: i === 0 ? 'none' : '1px solid var(--db-border-lt)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: numFont, fontSize: 13.5, color: 'var(--db-text)', whiteSpace: 'nowrap' }}>{d.number_masked}</span>
+                {d.label && <span style={{ fontSize: 13, color: 'var(--db-muted)' }}>{d.label}</span>}
+                {d.type === 'urgent' && <span className="db-badge db-badge--warn">Urgent</span>}
+                {d.id === profile.default_destination_id && <span className="db-badge db-badge--success">Default</span>}
+              </div>
               <button type="button" className="db-btn db-btn--danger-ghost db-btn--sm" onClick={() => removeDestination(d.id)}>Remove</button>
             </div>
           ))}
         </div>
         <div style={rowStyle}>
-          <input className="db-input" style={{ flex: '1 1 150px' }} value={newNumber}
-            onChange={e => setNewNumber(e.target.value)} placeholder="+1 647 555 0123" />
-          <input className="db-input" style={{ flex: '1 1 140px' }} value={newLabel}
+          <input className="db-input" style={{ flex: '1 1 150px', fontFamily: numFont }} value={newNumber}
+            onChange={e => setNewNumber(e.target.value)} placeholder="+1 647 555 0123" inputMode="tel" />
+          <input className="db-input" style={{ flex: '1 1 130px' }} value={newLabel}
             onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. On-call)" />
           <select className="db-select" style={{ flex: '0 0 auto' }} value={newType} onChange={e => setNewType(e.target.value)}>
             <option value="phone">Regular</option>
@@ -294,66 +350,80 @@ function CallHandlingPage() {
           <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--db-r-sm)',
             border: '1px solid var(--db-accent-border)', background: 'var(--db-accent-bg)' }}>
             <div style={{ fontSize: 13, color: 'var(--db-text)' }}>
-              Add this number? <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{confirmNum}</strong>
+              Add this number? <strong style={{ fontFamily: numFont }}>{confirmNum}</strong>
             </div>
             <div style={{ fontSize: 12, color: 'var(--db-muted)', margin: '4px 0 10px' }}>
-              Double-check the area code — it’s masked once saved.
+              Double-check the area code — it&rsquo;s masked once saved.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="db-btn db-btn--primary db-btn--sm" onClick={submitDestination}>Confirm &amp; add</button>
-              <button type="button" className="db-btn db-btn--sm" onClick={() => setConfirmNum(null)}>Edit</button>
+              <button type="button" className="db-btn db-btn--ghost db-btn--sm" onClick={() => setConfirmNum(null)}>Edit</button>
             </div>
           </div>
         )}
         {destErr && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 8 }}>{destErr}</div>}
       </div>
 
-      {/* Where should calls go */}
-      <div className="db-card" style={cardStyle}>
-        <label className="db-field-label">Where should calls go?</label>
-        <div style={{ display: 'grid', gap: 14, marginTop: 4, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          <div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)', marginBottom: 5 }}>Default human destination</div>
-            <select className="db-select" style={{ width: '100%' }} value={profile.default_destination_id ?? ''}
-              onChange={e => saveProfileField({ default_destination_id: e.target.value || null })}>
-              <option value="">— none —</option>
-              {activeDests.map(d => <option key={d.id} value={d.id}>{destLabel(d)}</option>)}
-            </select>
+      {/* ── 2 · Where calls go ── */}
+      <div className="db-card" style={sectionStyle}>
+        <StepHeader n={2} title="Where should calls go?"
+          help="Pick from your destinations above. Urgent callers go to the on-call line; everyone else who needs a person goes to the default." />
+        {activeDests.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>Add a destination first.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', marginBottom: 5 }}>Default human destination</div>
+              <select className="db-select" style={{ width: '100%' }} value={profile.default_destination_id ?? ''}
+                onChange={e => saveProfileField({ default_destination_id: e.target.value || null })}>
+                <option value="">— none (take a callback) —</option>
+                {activeDests.map(d => <option key={d.id} value={d.id}>{short(d)}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', marginBottom: 5 }}>Urgent / on-call destination</div>
+              <select className="db-select" style={{ width: '100%' }} value={profile.urgent_destination_id ?? ''}
+                onChange={e => saveProfileField({ urgent_destination_id: e.target.value || null })}>
+                <option value="">— none —</option>
+                {activeDests.map(d => <option key={d.id} value={d.id}>{short(d)}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)', marginBottom: 5 }}>Urgent / on-call destination</div>
-            <select className="db-select" style={{ width: '100%' }} value={profile.urgent_destination_id ?? ''}
-              onChange={e => saveProfileField({ urgent_destination_id: e.target.value || null })}>
-              <option value="">— none —</option>
-              {activeDests.map(d => <option key={d.id} value={d.id}>{destLabel(d)}</option>)}
-            </select>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Rules */}
-      <div className="db-card" style={cardStyle}>
-        <label className="db-field-label">Routing rules</label>
-        <p style={{ fontSize: 13, color: 'var(--db-muted)', margin: '0 0 12px' }}>When the caller’s reason matches, send them to a destination.</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 14 }}>
-          {rules.length === 0 && <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>No rules yet.</div>}
-          {rules.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '9px 0', borderTop: '1px solid var(--db-border-lt)' }}>
-              <span style={{ color: 'var(--db-text)', fontSize: 14 }}>
-                <strong>{String((r.match as { intent?: string }).intent ?? 'any')}</strong>
-                {' → '}{activeDests.find(d => d.id === r.destination_id)?.label ?? 'destination'}
-              </span>
-              <button type="button" className="db-btn db-btn--danger-ghost db-btn--sm" onClick={() => removeRule(r.id)}>Remove</button>
+      {/* ── 3 · Rules ── */}
+      <div className="db-card" style={sectionStyle}>
+        <StepHeader n={3} title="Routing rules"
+          help="Send callers to a specific destination based on why they're calling. Checked top to bottom; urgent always wins, and anything unmatched uses the default." />
+        <div style={{ marginBottom: 14 }}>
+          {rules.length === 0 && (
+            <div style={{ fontSize: 13, color: 'var(--db-muted)', padding: '12px 14px',
+              border: '1px dashed var(--db-border)', borderRadius: 'var(--db-r-sm)', background: 'var(--db-subtle)' }}>
+              No rules yet — optional. Without rules, callers who need a person go to the default.
             </div>
-          ))}
+          )}
+          {rules.map((r, i) => {
+            const dest = activeDests.find(d => d.id === r.destination_id)
+            return (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                padding: '11px 0', borderTop: i === 0 ? 'none' : '1px solid var(--db-border-lt)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, minWidth: 0, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--db-text)' }}>{String((r.match as { intent?: string }).intent ?? 'any')}</span>
+                  <span style={{ color: 'var(--db-faint)' }}>→</span>
+                  <span className="db-badge db-badge--neutral">{short(dest) ?? 'destination'}</span>
+                </div>
+                <button type="button" className="db-btn db-btn--danger-ghost db-btn--sm" onClick={() => removeRule(r.id)}>Remove</button>
+              </div>
+            )
+          })}
         </div>
         <div style={rowStyle}>
-          <input className="db-input" style={{ flex: '1 1 160px' }} value={ruleIntent}
-            onChange={e => setRuleIntent(e.target.value)} placeholder="Intent (e.g. billing)" />
-          <select className="db-select" style={{ flex: '1 1 180px' }} value={ruleDest} onChange={e => setRuleDest(e.target.value)}>
-            <option value="">Destination…</option>
-            {activeDests.map(d => <option key={d.id} value={d.id}>{destLabel(d)}</option>)}
+          <input className="db-input" style={{ flex: '1 1 150px' }} value={ruleIntent}
+            onChange={e => setRuleIntent(e.target.value)} placeholder="If caller wants… (e.g. billing)" />
+          <select className="db-select" style={{ flex: '1 1 170px' }} value={ruleDest} onChange={e => setRuleDest(e.target.value)}>
+            <option value="">Send to…</option>
+            {activeDests.map(d => <option key={d.id} value={d.id}>{short(d)}</option>)}
           </select>
           <button type="button" className="db-btn db-btn--primary" onClick={addRule}
             disabled={!ruleIntent.trim() || !ruleDest || ruleState === 'saving'}>
@@ -363,24 +433,31 @@ function CallHandlingPage() {
         {ruleState === 'error' && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 8 }}>Could not add rule — try again.</div>}
       </div>
 
-      {/* Simulate */}
-      <div className="db-card" style={cardStyle}>
-        <label className="db-field-label">Test it</label>
-        <p style={{ fontSize: 13, color: 'var(--db-muted)', margin: '0 0 12px' }}>See how a caller would be routed. No call is placed.</p>
+      {/* ── 4 · Test ── */}
+      <div className="db-card" style={sectionStyle}>
+        <StepHeader n={4} title="Test it" help="Preview how a caller would be routed. No call is placed." />
         <div style={rowStyle}>
           <input className="db-input" style={{ flex: '1 1 220px' }} value={simIntent}
             onChange={e => setSimIntent(e.target.value)} placeholder="Pretend the caller wants… (e.g. billing)" />
           <select className="db-select" style={{ flex: '0 0 auto' }} value={simUrgency} onChange={e => setSimUrgency(e.target.value)}>
-            <option value="low">Low</option><option value="normal">Normal</option><option value="urgent">Urgent</option>
+            <option value="low">Low urgency</option><option value="normal">Normal</option><option value="urgent">Urgent</option>
           </select>
-          <button type="button" className="db-btn db-btn--dark" onClick={runSimulate}>Simulate</button>
+          <button type="button" className="db-btn db-btn--dark" onClick={runSimulate} disabled={!simIntent.trim()}>Simulate</button>
         </div>
         {decision && (
-          <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 'var(--db-r-sm)',
+          <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 'var(--db-r-sm)',
             border: '1px solid var(--db-border)', background: 'var(--db-subtle)' }}>
-            <span className={`db-badge db-badge--${DECISION_TONE[decision.decision] ?? 'neutral'}`}>{decision.decision}</span>
-            {decision.destination && <span style={{ marginLeft: 10, color: 'var(--db-text)', fontSize: 14 }}>→ {destLabel(decision.destination)}</span>}
-            <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 6 }}>{decision.reason}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span className={`db-badge db-badge--${DECISION_TONE[decision.decision] ?? 'neutral'}`}>{decision.decision}</span>
+              {decision.destination && (
+                <span style={{ color: 'var(--db-text)', fontSize: 14 }}>
+                  → {short(decision.destination)}
+                  {decision.destination.number_masked &&
+                    <span style={{ fontFamily: numFont, color: 'var(--db-muted)', marginLeft: 6, fontSize: 13 }}>{decision.destination.number_masked}</span>}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 8 }}>{decision.reason}</div>
           </div>
         )}
       </div>
