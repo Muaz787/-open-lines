@@ -356,6 +356,12 @@ async def stripe_webhook(request: Request):
                 # set here at conversion and cleared on the first paid invoice
                 # below. Without it a natural conversion that failed would keep an
                 # unpaid line running indefinitely.
+                # A subscription can reach 'canceled' through this event too, not
+                # only subscription.deleted. Stamped once so a later event can't
+                # push the reclaim clock back.
+                if our_status == "canceled" and not tenant.get("subscription_canceled_at"):
+                    updates["subscription_canceled_at"] = datetime.now(_dt_timezone.utc).isoformat()
+
                 if (tenant.get("subscription_status") or "") == "trialing" and our_status != "trialing":
                     updates["trial_conversion_unpaid"] = True
                     if not tenant.get("trial_converted_reason"):
@@ -414,6 +420,10 @@ async def stripe_webhook(request: Request):
                 await db.update_tenant(tenant["id"], {
                     "subscription_status": "canceled",
                     "subscription_plan":   None,
+                    # Anchor for the number-reclaim grace period. Without it a
+                    # cancelled customer has nothing to count 60 days from, and
+                    # the sweep refuses to touch them rather than guess.
+                    "subscription_canceled_at": datetime.now(_dt_timezone.utc).isoformat(),
                 })
                 logger.info("Subscription canceled for customer %s sub %s", customer_id, sub_id)
                 analytics.capture(
@@ -434,6 +444,18 @@ async def stripe_webhook(request: Request):
         customer_id   = invoice.get("customer", "")
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
+            # first_paid_at is what separates "trial that never converted" from
+            # "customer who left" once both read 'canceled'. They earn different
+            # grace periods before their number is reclaimed, and status alone
+            # cannot tell them apart. Written once, on the first payment ever.
+            if tenant and not tenant.get("first_paid_at"):
+                try:
+                    await db.update_tenant(tenant["id"], {
+                        "first_paid_at": datetime.now(_dt_timezone.utc).isoformat(),
+                    })
+                except Exception as e:
+                    logger.error("Could not stamp first_paid_at for tenant %s: %s", tenant["id"], e)
+
             if tenant and tenant.get("trial_conversion_unpaid"):
                 await db.update_tenant(tenant["id"], {"trial_conversion_unpaid": False})
                 logger.info("First post-trial payment received for tenant %s — line unblocked", tenant["id"])
