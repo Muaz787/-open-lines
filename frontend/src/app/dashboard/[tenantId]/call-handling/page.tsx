@@ -35,12 +35,6 @@ interface Decision {
   destination?: Destination | null
 }
 
-const MODES: { value: string; title: string; blurb: string }[] = [
-  { value: 'ai_first',         title: 'Answer every call with AI',       blurb: 'OpenLines answers all inbound calls (today’s behaviour).' },
-  { value: 'ai_overflow',      title: 'Only when we’re busy or closed',  blurb: 'Your team answers first; OpenLines catches overflow via carrier forwarding.' },
-  { value: 'ai_first_routing', title: 'AI answers and routes',           blurb: 'AI answers, handles routine calls, and transfers the rest to the right person.' },
-]
-
 const DECISION_TONE: Record<string, string> = {
   transfer: 'success', callback: 'info', handled_ai: 'neutral',
 }
@@ -63,7 +57,6 @@ function CallHandlingPage() {
   const [dests, setDests]       = useState<Destination[]>([])
   const [rules, setRules]       = useState<Rule[]>([])
 
-  const [modeState, setModeState] = useState<SaveState>('idle')
   const [destState, setDestState] = useState<SaveState>('idle')
   const [destErr, setDestErr]     = useState('')
   const [newNumber, setNewNumber] = useState('')
@@ -127,15 +120,6 @@ function CallHandlingPage() {
   }, [tenantId, profile])
 
   const flash = (set: (s: SaveState) => void) => { set('saved'); setTimeout(() => set('idle'), 1400) }
-
-  const saveMode = async (mode: string) => {
-    setModeState('saving')
-    try {
-      const prof = await ensureProfile({ mode, overflow_enabled: mode === 'ai_overflow' })
-      await loadRules(prof.id)
-      flash(setModeState)
-    } catch { setModeState('error') }
-  }
 
   const saveProfileField = async (patch: Partial<Profile>) => {
     setProfile(p => ({ ...p, ...patch }))
@@ -274,26 +258,6 @@ function CallHandlingPage() {
           </div>
         )}
         {actWarn && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 10 }}>{actWarn}</div>}
-      </div>
-
-      {/* Mode */}
-      <div className="db-card" style={cardStyle}>
-        <label className="db-field-label">How should calls be answered?</label>
-        <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
-          {MODES.map(m => {
-            const on = profile.mode === m.value
-            return (
-              <button key={m.value} type="button" onClick={() => saveMode(m.value)}
-                style={{ textAlign: 'left', padding: '12px 14px', borderRadius: 'var(--db-r-sm)', cursor: 'pointer',
-                  border: `1px solid ${on ? 'var(--db-accent-border)' : 'var(--db-border)'}`,
-                  background: on ? 'var(--db-accent-bg)' : 'var(--db-card)', transition: 'border-color .12s, background .12s' }}>
-                <div style={{ fontWeight: 600, color: on ? 'var(--db-accent-text)' : 'var(--db-text)' }}>{m.title}</div>
-                <div style={{ fontSize: 13, color: 'var(--db-muted)', marginTop: 2 }}>{m.blurb}</div>
-              </button>
-            )
-          })}
-        </div>
-        {modeState === 'saved' && <div style={{ fontSize: 12, color: 'var(--db-accent-text)', marginTop: 8 }}>✓ Saved</div>}
       </div>
 
       {/* Destinations */}
