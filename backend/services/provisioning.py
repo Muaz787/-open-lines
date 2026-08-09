@@ -449,7 +449,12 @@ async def provision_tenant(payload: dict) -> dict:
         )
     except HTTPException:
         logger.warning("Rolling back: releasing number %s on sub-account %s", purchased_number, subaccount_sid)
-        await telephony.release_number(subaccount_sid, subaccount_token, purchased_number)
+        # Best effort — release_number now raises on a Twilio error, and the
+        # original provisioning failure is the one worth surfacing.
+        try:
+            await telephony.release_number(subaccount_sid, subaccount_token, purchased_number)
+        except Exception as e:
+            logger.error("Rollback release of %s failed: %s", purchased_number, e)
         raise
 
 
@@ -767,18 +772,37 @@ async def release_tenant_number(tenant: dict) -> dict:
         return {"released": False, "steps": steps, "reason": "missing_twilio_credentials"}
 
     try:
-        await telephony.release_number(sub_sid, sub_token, number)
-        steps["twilio_released"] = True
+        deleted = await telephony.release_number(sub_sid, sub_token, number)
     except Exception as e:
         logger.error("release: Twilio release failed for tenant %s: %s", tenant_id, e)
         return {"released": False, "steps": steps, "reason": "twilio_release_failed"}
 
+    if not deleted:
+        # Twilio accepted the request but the number was not on this sub-account.
+        # Do NOT clear the row: either the credentials point somewhere else and
+        # the number is still being billed, or it is genuinely already gone — and
+        # silently clearing would destroy the only record of which it was.
+        steps["twilio_released"] = False
+        logger.error(
+            "release: %s was not found on sub-account %s for tenant %s — leaving the "
+            "tenant row intact; check the number's actual sub-account in Twilio",
+            number, sub_sid, tenant_id,
+        )
+        return {"released": False, "steps": steps, "reason": "twilio_number_not_found"}
+
+    steps["twilio_released"] = True
+
     # Clear the fields last, so a failure above leaves the tenant in a state the
     # next attempt can retry from.
+    from datetime import datetime, timezone
     try:
         await db.update_tenant(tenant_id, {
             "twilio_phone_number":  None,
             "vapi_phone_number_id": None,
+            # Stamped here rather than by the caller, so a manual admin release
+            # leaves the same audit trail as the automated sweep. The number is
+            # cleared off the row, making this the only remaining evidence.
+            "number_released_at":   datetime.now(timezone.utc).isoformat(),
         })
         steps["tenant_cleared"] = True
     except Exception as e:

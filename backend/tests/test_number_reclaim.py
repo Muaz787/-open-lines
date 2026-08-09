@@ -171,16 +171,17 @@ async def test_dry_run_releases_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_armed_run_releases_and_stamps():
+async def test_armed_run_releases():
+    """number_released_at is stamped inside release_tenant_number (mocked here) so
+    the manual admin path records the same audit trail as this sweep."""
     with patch("db.supabase.get_client", return_value=_db_returning([_tenant()])), \
-         patch("db.supabase.update_tenant", new=AsyncMock()) as upd, \
+         patch("db.supabase.update_tenant", new=AsyncMock()), \
          patch("services.provisioning.release_tenant_number",
                new=AsyncMock(return_value={"released": True, "steps": {}, "reason": ""})) as rel:
         out = await nr.run_reclaim()
 
     assert out["released"] == 1 and out["failed"] == 0
     rel.assert_called_once()
-    assert "number_released_at" in upd.call_args.args[1]
 
 
 @pytest.mark.asyncio
