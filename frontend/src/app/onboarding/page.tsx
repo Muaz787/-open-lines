@@ -875,9 +875,34 @@ export default function OnboardingPage() {
               <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
                 Choose your plan
               </div>
-              <div className="ob-sub">
-                Free for 7 days. Nothing is charged until {trialEndDate()}, and you can
-                switch plans or cancel anytime before then.
+              <div className="ob-sub">Pick the plan your free trial runs on.</div>
+
+              {/* The prices below are the loudest thing on this step, and they read as
+                  "you are about to pay $199". This has to shout louder than they do:
+                  the number that matters right now is zero. */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 13,
+                margin: '0 0 20px', padding: '16px 18px', borderRadius: 14,
+                background: 'rgba(52,199,89,0.10)', border: '1.5px solid rgba(52,199,89,0.35)',
+              }}>
+                <span style={{
+                  width: 26, height: 26, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: '#22c55e', color: '#fff',
+                }}><Check /></span>
+                <div>
+                  <div style={{
+                    fontSize: 19, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em',
+                    marginBottom: 4, fontFamily: 'var(--font-syne), sans-serif',
+                  }}>
+                    $0 due today
+                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6 }}>
+                    Use your full plan free for 7 days. Your first payment isn&rsquo;t until{' '}
+                    <strong style={{ color: 'var(--text)' }}>{trialEndDate()}</strong> — switch plans or
+                    cancel anytime before then and you won&rsquo;t be charged at all.
+                  </div>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
@@ -912,8 +937,15 @@ export default function OnboardingPage() {
                             }}>Recommended</span>
                           )}
                         </span>
-                        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>
-                          ${p.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                        {/* "after trial" carries real weight here — without it the
+                            price reads as what you're paying at this moment. */}
+                        <span style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                            ${p.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                          </span>
+                          <span style={{ display: 'block', fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>
+                            after trial
+                          </span>
                         </span>
                       </div>
                       <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6, paddingLeft: 24 }}>
