@@ -73,6 +73,17 @@ async def main() -> int:
     except Exception as e:
         logger.error("trial_reminders failed: %s", e)
 
+    # ...and reclaims phone numbers from tenants who have gone (lapsed trials,
+    # cancelled customers). DARK by default — NUMBER_RECLAIM_ENABLED must be on,
+    # AND NUMBER_RECLAIM_DRY_RUN must be explicitly off, before a single number is
+    # released. Releasing is irreversible, so it takes two deliberate acts.
+    try:
+        from services import number_reclaim
+        rec = await number_reclaim.run_reclaim()
+        logger.info("number reclaim: %s", rec)
+    except Exception as e:
+        logger.error("number reclaim failed: %s", e)
+
     # ...and runs the data-retention purge (aged webhook payloads + closed accounts).
     try:
         from services import retention

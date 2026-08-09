@@ -116,6 +116,41 @@ We send our own with the exact amount and date, so turn Stripe's off:
 **Migrations:** `009_card_trial.sql` and `010_trial_conversion.sql` must be applied
 before `TRIAL_REQUIRE_CARD` goes on.
 
+## 4c. Phone-number reclaim (separate, and DARK by default)
+
+A tenant whose trial lapsed keeps `is_active = true` and `closed_at = null`
+forever, so the retention purge never sees them and their Twilio number bills us
+every month indefinitely.
+
+**Releasing a number cannot be undone.** Twilio may reassign it, so a business
+that loses one loses it permanently and its callers eventually reach a stranger.
+Arming this takes two separate deliberate acts:
+
+- [ ] `NUMBER_RECLAIM_ENABLED=true` — turns the sweep on. It still releases
+      nothing, because `NUMBER_RECLAIM_DRY_RUN` defaults to **true**.
+- [ ] Read the Railway logs for **at least two weeks**. Every candidate is logged
+      as `[DRY RUN] would release … status=… ever_paid=… due=…`. Confirm each one
+      is genuinely gone before going further.
+- [ ] Only then `NUMBER_RECLAIM_DRY_RUN=false`.
+
+Grace periods (override via env if needed):
+- `NUMBER_RECLAIM_TRIAL_GRACE_DAYS` — **30**, from trial end, for tenants that
+  never paid
+- `NUMBER_RECLAIM_CANCELED_GRACE_DAYS` — **60**, from cancellation, for tenants
+  that paid at least once
+- `NUMBER_RECLAIM_MAX_PER_RUN` — **10**, so a wrong query can't cascade
+
+Two warning emails go out first (14 days and 3 days before). Comps, and any
+subscription in `active` / `trialing` / `past_due` / `canceling`, are never
+touched. Anything with a missing date is left alone rather than guessed at.
+
+**Prerequisite before arming:** there is currently no way to give an existing
+tenant a new number — `provision_tenant` only runs at signup. A tenant whose
+number is released and who then re-subscribes ends up with a working account and
+no phone line. Build the re-provision path before `NUMBER_RECLAIM_DRY_RUN=false`.
+
+Migration `011_number_reclaim.sql` must be applied first.
+
 ## 5. Smoke test in live (real card, small amounts)
 - [ ] **Subscription:** run a real checkout for a plan → confirm the tenant flips to `active` + correct `subscription_plan` in the dashboard/DB. Then cancel → confirm it downgrades.
 - [ ] **Card trial (end to end):** sign up with a card → confirm `subscription_status = 'trialing'` and `stripe_trial_ends_at` is set → make a call → confirm minutes tick up → force conversion with `POST /billing/end-trial/{tenant_id}` → confirm the status flips to `active`, `billing_period_anchor` moves, and **`minutes_used_this_period` resets to 0**. That last assertion is the one worth not skipping: if the counter does not reset, the trial's minutes get billed against the customer's first paid month.

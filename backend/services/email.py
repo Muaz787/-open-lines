@@ -603,3 +603,60 @@ async def send_card_trial_email(
     if ok:
         logger.info("Card-trial email (%s) sent to %s for tenant %s", kind, to, tenant_id)
     return ok
+
+
+async def send_number_release_warning(
+    *,
+    to: str,
+    business_name: str,
+    tenant_id: str,
+    number: str,
+    release_date: str,   # already formatted, e.g. "September 8, 2026"
+    final: bool = False,
+) -> bool:
+    """Warn that an inactive account's phone number is about to be released.
+
+    Transactional: it announces the permanent loss of a phone number, which is a
+    service notice rather than marketing, so it carries no unsubscribe and is
+    sent regardless of marketing preferences.
+
+    Releasing is irreversible and Twilio may reassign the number, so the wording
+    is deliberately blunt about that — the whole point of warning twice is to give
+    a business that still wants the number a real chance to keep it.
+    """
+    sub_url = f"{FRONTEND_URL}/dashboard/{tenant_id}/subscription"
+
+    if final:
+        subject = f"Final notice — {number} will be released on {release_date}"
+        heading = "Your phone number is about to be released"
+        opening = (f"This is the last reminder. On <strong>{_esc(release_date)}</strong> we&rsquo;ll release "
+                   f"<strong>{_esc(number)}</strong> and it will no longer reach {_esc(business_name)}.")
+    else:
+        subject = f"{number} will be released on {release_date}"
+        heading = "We're about to release your phone number"
+        opening = (f"Your Open Lines account has been inactive for a while. On "
+                   f"<strong>{_esc(release_date)}</strong> we&rsquo;ll release "
+                   f"<strong>{_esc(number)}</strong> unless you reactivate.")
+
+    body = f"""
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#444">{opening}</p>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#444">
+        <strong>This can&rsquo;t be undone.</strong> Once released, the number goes back to our
+        carrier and may be reassigned to another business — calls to it will stop reaching you
+        permanently.</p>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#444">
+        To keep it, choose a plan before then. Your settings, knowledge base and call history
+        are all still here.</p>
+    """
+    html_body = _layout(
+        heading=heading,
+        body_html=body,
+        cta="Keep my number",
+        cta_url=sub_url,
+        preheader=subject,
+    )
+    ok = _send(to=to, subject=subject, html_body=html_body)
+    if ok:
+        logger.info("Number-release warning (%s) sent to %s for tenant %s",
+                    "final" if final else "first", to, tenant_id)
+    return ok
