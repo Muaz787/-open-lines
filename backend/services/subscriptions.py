@@ -41,6 +41,62 @@ ALL_PLAN_PRICE_IDS = {pid for p in PRICE_IDS.values() for pid in p.values() if p
 # needed to keep this module free of a circular import.
 TRIAL_DAYS = 7
 
+# List prices, used ONLY as a fallback in trial notices when Stripe can't be
+# reached for the real figure. Mirrors frontend/src/lib/plans.ts. Prefer
+# upcoming_charge() below, which returns the actual tax-inclusive amount.
+PLAN_LIST_PRICES: dict[str, int] = {"starter": 99, "pro": 199, "business": 379}
+
+
+def _money(cents: int, currency: str = "cad") -> str:
+    return f"${cents / 100:,.2f} {currency.upper()}"
+
+
+def upcoming_charge(tenant: dict) -> dict:
+    """What the tenant will actually be charged when their trial ends, plus the
+    card it lands on. Best-effort: every failure degrades to the plan list price
+    rather than blocking the notice, because a trial-ending email that never
+    sends is far worse than one quoting a pre-tax figure.
+
+    Returns {"amount_text": str, "card_last4": str}.
+    """
+    plan     = (tenant.get("subscription_plan") or "").lower()
+    fallback = PLAN_LIST_PRICES.get(plan)
+    result   = {
+        "amount_text": f"${fallback} USD" if fallback else "",
+        "card_last4":  "",
+    }
+
+    customer_id = tenant.get("stripe_customer_id") or ""
+    sub_id      = tenant.get("stripe_subscription_id") or ""
+    key         = os.getenv("STRIPE_SECRET_KEY", "")
+    if not (customer_id and key):
+        return result
+    stripe.api_key = key
+
+    # Real amount, including GST/HST — this is the number the notice must quote.
+    try:
+        upcoming = stripe.Invoice.upcoming(
+            customer=customer_id, subscription=sub_id or None,
+            automatic_tax={"enabled": True},
+        )
+        due = int(getattr(upcoming, "amount_due", 0) or 0)
+        if due > 0:
+            result["amount_text"] = _money(due, str(getattr(upcoming, "currency", "cad") or "cad"))
+            if int(getattr(upcoming, "tax", 0) or 0) > 0:
+                result["amount_text"] += " (incl. tax)"
+    except Exception as e:
+        logger.info("upcoming_charge: could not price tenant %s, using list price: %s", tenant.get("id"), e)
+
+    try:
+        cust = stripe.Customer.retrieve(customer_id, expand=["invoice_settings.default_payment_method"])
+        pm   = getattr(getattr(cust, "invoice_settings", None), "default_payment_method", None)
+        last4 = getattr(getattr(pm, "card", None), "last4", "") or ""
+        result["card_last4"] = str(last4)
+    except Exception:
+        pass
+
+    return result
+
 
 def norm_interval(interval: str | None) -> str:
     """Normalize any annual alias to 'year', everything else to 'month'."""

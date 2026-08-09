@@ -152,7 +152,7 @@ export default function PricingPage() {
             <BookDemoButton />
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 20 }}>
-            No credit card required to explore.
+            Free for 7 days — cancel anytime before you’re charged.
           </p>
         </div>
       </div>

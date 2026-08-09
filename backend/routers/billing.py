@@ -192,6 +192,36 @@ async def create_checkout(body: dict, authorization: Annotated[str | None, Heade
     return {"checkout_url": session.url}
 
 
+async def _send_card_trial_email(tenant: dict, kind: str, invoice: dict) -> None:
+    """Send a card-trial conversion/failure notice, deduped by a per-tenant flag.
+
+    Never raises: an email problem must not fail the webhook, or Stripe will retry
+    the whole event and we would redo the DB work behind it.
+    """
+    flag = {"converted": "card_trial_converted_sent", "failed": "card_trial_failed_sent"}[kind]
+    if tenant.get(flag) or not tenant.get("email"):
+        return
+    try:
+        from services.email import send_card_trial_email
+        amount = invoice.get("amount_paid") if kind == "converted" else invoice.get("amount_due")
+        currency = str(invoice.get("currency") or "cad").upper()
+        amount_text = f"${int(amount or 0) / 100:,.2f} {currency}" if amount else ""
+
+        ok = await send_card_trial_email(
+            to=tenant["email"],
+            business_name=tenant.get("business_name") or "there",
+            kind=kind,
+            tenant_id=tenant["id"],
+            plan_name=(tenant.get("subscription_plan") or "").title(),
+            amount_text=amount_text,
+            converted_reason=str(tenant.get("trial_converted_reason") or ""),
+        )
+        if ok:
+            await db.update_tenant(tenant["id"], {flag: True})
+    except Exception as e:
+        logger.error("Card-trial %s email failed for tenant %s: %s", kind, tenant.get("id"), e)
+
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
     # Stripe requires raw bytes to verify the signature — do NOT parse as JSON first
@@ -413,6 +443,9 @@ async def stripe_webhook(request: Request):
                     {"tenant_id": tenant["id"], "plan": tenant.get("subscription_plan"),
                      "amount_paid": invoice.get("amount_paid")},
                 )
+                # Receipt goes out from here, not the daily cron — a charge
+                # notification a day late reads as an unexplained card debit.
+                await _send_card_trial_email(tenant, "converted", invoice)
         except Exception as e:
             logger.error("invoice.payment_succeeded handling failed for customer %s: %s", customer_id, e)
 
@@ -438,6 +471,12 @@ async def stripe_webhook(request: Request):
                      "amount_due": invoice.get("amount_due"),
                      "first_post_trial_charge": first_charge},
                 )
+                # Only for the bounced FIRST charge — that is the case where the
+                # line actually goes dark and the tenant must act. An established
+                # customer mid-dunning keeps service and gets Stripe's own retry
+                # emails, so a scary "your line is paused" notice would be wrong.
+                if first_charge:
+                    await _send_card_trial_email(tenant, "failed", invoice)
         except Exception as e:
             logger.error("invoice.payment_failed handling failed for customer %s: %s", customer_id, e)
 

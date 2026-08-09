@@ -17,9 +17,9 @@ from fastapi import HTTPException
 from services import subscriptions
 from routers import onboarding
 # Registers the sub-module on its parent package so patch() can resolve the
-# dotted name. The welcome email is deliberately NOT patched: provision() imports
-# it lazily inside a try/except, so it degrades harmlessly here (resend is a
-# prod-only dependency, like twilio and friends in conftest).
+# dotted name. The welcome email is deliberately NOT patched: provision() sends it
+# through services.email, whose provider is stubbed in conftest, so nothing leaves
+# the process.
 import db.supabase as _supabase_mod  # noqa: F401
 
 

@@ -362,6 +362,137 @@ async def convert_card_trial(tenant: dict, reason: str) -> dict:
     return {"converted": True, "already": False, "reason": reason, "status": status}
 
 
+async def process_card_trial_reminders(limit: int = 200) -> dict:
+    """Send the day-3 and day-6 notices for card trials. Run daily, deduped by
+    per-tenant flags so each goes out once.
+
+    Separate from process_trial_reminders() below, which serves the legacy
+    card-free trial and skips anyone with an active subscription — that check
+    excludes every card trial. The two also say different things: this one warns
+    about an imminent CHARGE, which makes it transactional rather than marketing.
+
+    CASL/ROSCA: these are NOT suppressed by marketing_unsubscribed_at. Withholding
+    the notice that a card is about to be charged is what turns an ordinary trial
+    into a negative-option billing complaint.
+
+    The conversion and payment-failure notices are NOT here — those are sent from
+    the Stripe invoice webhooks, where they fire immediately rather than up to a
+    day late.
+    """
+    from db import supabase as db
+    from services import subscriptions
+    from services.email import send_card_trial_email
+
+    try:
+        res = (
+            db.get_client().table("tenants")
+            .select(
+                "id, business_name, email, subscription_status, subscription_plan, "
+                "stripe_customer_id, stripe_subscription_id, stripe_trial_ends_at, "
+                "minutes_used_this_period, billing_exempt, "
+                "card_trial_day3_sent, card_trial_day6_sent"
+            )
+            .eq("subscription_status", "trialing")
+            .execute()
+        )
+        rows = res.data or []
+    except Exception as e:
+        logger.error("card trial reminders: tenant fetch failed: %s", e)
+        return {"day3": 0, "day6": 0, "error": True}
+
+    sent = {"day3": 0, "day6": 0}
+    processed = 0
+
+    for t in rows:
+        if processed >= limit:
+            break
+        if not t.get("email") or is_billing_exempt(t):
+            continue
+
+        ts = trial_status(t)
+        if not ts["card_trial"]:
+            continue
+
+        days_left = ts["trial_days_remaining"]
+        if days_left <= 1 and not t.get("card_trial_day6_sent"):
+            kind, flag = "day6", "card_trial_day6_sent"
+        elif 2 <= days_left <= 4 and not t.get("card_trial_day3_sent"):
+            kind, flag = "day3", "card_trial_day3_sent"
+        else:
+            continue
+
+        charge = subscriptions.upcoming_charge(t)
+        ends   = _parse_dt(t.get("stripe_trial_ends_at"))
+        try:
+            ok = await send_card_trial_email(
+                to=t["email"],
+                business_name=t.get("business_name") or "there",
+                kind=kind,
+                tenant_id=t["id"],
+                plan_name=(t.get("subscription_plan") or "").title(),
+                amount_text=charge["amount_text"],
+                charge_date=ends.strftime("%B %-d, %Y") if ends else "",
+                card_last4=charge["card_last4"],
+                days_remaining=days_left,
+                minutes_used=ts["trial_minutes_used"],
+                minutes_total=ts["trial_minutes_total"],
+            )
+            # Only flag on success so a transient send failure retries tomorrow.
+            if ok:
+                await db.update_tenant(t["id"], {flag: True})
+                sent[kind] += 1
+                processed += 1
+        except Exception as e:
+            logger.error("card trial reminder (%s) failed for tenant %s: %s", kind, t.get("id"), e)
+
+    logger.info("card trial reminders sent: %s", sent)
+    return sent
+
+
+async def retry_stalled_conversions(limit: int = 50) -> dict:
+    """Convert card trials that hit the minute cap but were never converted.
+
+    Auto-conversion happens at the end of a call (services/usage). If Stripe was
+    down at that moment, the tenant is left over the cap and still `trialing` —
+    which means the safety net in _card_trial_status has GATED THEIR LINE. There
+    is no next call to retry from, because calls are exactly what is blocked, so
+    without this sweep they stay dark until someone notices.
+    """
+    from db import supabase as db
+
+    try:
+        res = (
+            db.get_client().table("tenants")
+            .select("id, business_name, subscription_status, subscription_plan, "
+                    "stripe_subscription_id, minutes_used_this_period, "
+                    "trial_converted_reason, billing_exempt")
+            .eq("subscription_status", "trialing")
+            .is_("trial_converted_reason", "null")
+            .gte("minutes_used_this_period", CARD_TRIAL_MINUTES)
+            .limit(limit)
+            .execute()
+        )
+        rows = res.data or []
+    except Exception as e:
+        logger.error("stalled conversion sweep: fetch failed: %s", e)
+        return {"converted": 0, "failed": 0, "error": True}
+
+    out = {"converted": 0, "failed": 0}
+    for t in rows:
+        if is_billing_exempt(t):
+            continue
+        logger.warning(
+            "Retrying stalled trial conversion for tenant %s (%d minutes used, line is gated)",
+            t.get("id"), int(t.get("minutes_used_this_period") or 0),
+        )
+        result = await convert_card_trial(t, reason="minutes")
+        out["converted" if result.get("converted") else "failed"] += 1
+
+    if out["converted"] or out["failed"]:
+        logger.info("stalled conversion sweep: %s", out)
+    return out
+
+
 async def process_trial_reminders(limit: int = 200) -> dict:
     """Send any due trial reminder emails (active / ending / ended), once each,
     deduped by per-tenant sent flags. Safe to run daily. Returns counts."""

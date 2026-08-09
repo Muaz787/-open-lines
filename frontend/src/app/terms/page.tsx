@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/terms' },
 }
 
-const LAST_UPDATED = 'July 10, 2026'
+const LAST_UPDATED = 'August 9, 2026'
 const CONTACT_EMAIL = 'support@openlines.ai'
 
 const LogoMark = () => (
@@ -106,27 +106,35 @@ export default function TermsOfService() {
           <P>We reserve the right to update these Terms at any time. The &quot;Last updated&quot; date will reflect changes. Continued use of the Service after changes constitutes your acceptance of the revised Terms.</P>
         </Section>
 
-        <Section title="9. Payment and cancellation">
-          <P>Pricing and billing terms are agreed at the time of subscription. You may cancel your account at any time by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. Upon cancellation, your AI agent and phone number will be deprovisioned. We do not offer prorated refunds for partial billing periods unless required by law.</P>
+        <Section title="9. Free trial and automatic renewal">
+          <P>New accounts start on a 7-day free trial. To begin a trial you choose a plan and provide a valid payment method. <strong>No charge is made during the trial.</strong> When the trial ends, your chosen plan begins automatically and the payment method on file is charged the plan&apos;s then-current monthly fee plus applicable taxes, and monthly thereafter until cancelled.</P>
+          <P>The trial includes up to 60 minutes of AI call handling. If you use all 60 minutes before the 7 days elapse, your paid plan begins at that point and your payment method is charged, so that your phone line continues without interruption. Your monthly minute allowance resets when the paid plan starts; trial minutes are not counted against it.</P>
+          <P><strong>You may cancel at any time before the trial ends and you will not be charged.</strong> Cancel from the Subscription page of your dashboard, or by emailing <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. We will send you an email reminder before your first charge, stating the amount and the date.</P>
+          <P>If a charge is declined at the end of your trial, your AI receptionist will be paused until payment succeeds. Your phone number, settings, and knowledge base are retained during this period.</P>
         </Section>
 
-        <Section title="10. Disclaimer of warranties">
+        <Section title="10. Payment and cancellation">
+          <P>Subscriptions renew automatically each month until cancelled. Pricing and billing terms are those shown at the time of subscription. Plans include a monthly allowance of AI call minutes; usage beyond that allowance is billed at the per-minute overage rate shown on our pricing page.</P>
+          <P>You may cancel your account at any time from your dashboard or by contacting us at <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: 'var(--accent-text)' }}>{CONTACT_EMAIL}</a>. Cancellation takes effect at the end of your current billing period. Upon cancellation, your AI agent and phone number will be deprovisioned. We do not offer prorated refunds for partial billing periods unless required by law.</P>
+        </Section>
+
+        <Section title="11. Disclaimer of warranties">
           <P>The Service is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind, express or implied. We do not warrant that the AI agent will handle every call correctly, that transcriptions will be error-free, or that the Service will meet all of your specific business requirements. Use of AI-generated responses is at your own discretion.</P>
         </Section>
 
-        <Section title="11. Limitation of liability">
+        <Section title="12. Limitation of liability">
           <P>To the maximum extent permitted by applicable law, Open Lines and its operators shall not be liable for any indirect, incidental, consequential, or punitive damages arising from your use of the Service, including missed calls, incorrect bookings, lost leads, or regulatory fines. Our total liability for any claim related to the Service shall not exceed the amount you paid us in the 30 days prior to the claim.</P>
         </Section>
 
-        <Section title="12. Indemnification">
+        <Section title="13. Indemnification">
           <P>You agree to indemnify and hold harmless Open Lines and its operators from any claims, losses, or damages (including legal fees) arising from your use of the Service, your violation of these Terms, or your violation of any applicable law or third-party right.</P>
         </Section>
 
-        <Section title="13. Governing law">
+        <Section title="14. Governing law">
           <P>These Terms are governed by the laws of Ontario, Canada, without regard to conflict of law principles. Any disputes shall be resolved in the courts of Ontario, and you consent to exclusive jurisdiction and venue in those courts.</P>
         </Section>
 
-        <Section title="14. Contact">
+        <Section title="15. Contact">
           <P>For questions about these Terms:</P>
           <div style={{ marginTop: 12, padding: '16px 20px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 14 }}>
             <strong>Open Lines Technologies Inc.</strong><br />

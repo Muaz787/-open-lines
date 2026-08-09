@@ -18,6 +18,11 @@ _STUBS = [
     "openai",
     "pinecone",
     "supabase",
+    # Email provider. Stubbing it makes services.email importable, which tests need
+    # in order to patch the send_* functions by dotted name. Nothing is actually
+    # delivered: services.email._send() is the single choke-point and every test
+    # either patches above it or lets it no-op against this mock.
+    "resend",
     # NOTE: httpx is intentionally NOT stubbed. It is a real installed dependency,
     # and stubbing it as a MagicMock turned httpx.HTTPStatusError / RequestError into
     # non-exception mocks, so `except httpx.HTTPStatusError` never matched (a provider

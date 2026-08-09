@@ -44,7 +44,28 @@ async def main() -> int:
 
     logger.info("recrawl_cron done: considered=%d crawled=%d failed=%d", len(due), crawled, failed)
 
-    # Daily maintenance also sends due free-trial reminder emails (deduped per tenant).
+    # Recover card trials that hit the minute cap but were never converted (Stripe
+    # was down at end-of-call). Their line is GATED by the safety net, and calls are
+    # exactly what would normally trigger the retry — so this sweep is the only way
+    # back. Runs FIRST so a recovered tenant gets the right email below.
+    try:
+        from services import trial
+        stalled = await trial.retry_stalled_conversions()
+        logger.info("stalled trial conversions: %s", stalled)
+    except Exception as e:
+        logger.error("stalled trial conversion sweep failed: %s", e)
+
+    # Daily maintenance also sends due free-trial reminder emails (deduped per
+    # tenant) — for BOTH the card trial (day-3 / day-6 charge notices) and the
+    # legacy card-free trial. Conversion + payment-failure notices are not here;
+    # they are sent from the Stripe invoice webhooks so they arrive immediately.
+    try:
+        from services import trial
+        card_sent = await trial.process_card_trial_reminders()
+        logger.info("card_trial_reminders done: %s", card_sent)
+    except Exception as e:
+        logger.error("card_trial_reminders failed: %s", e)
+
     try:
         from services import trial
         sent = await trial.process_trial_reminders()

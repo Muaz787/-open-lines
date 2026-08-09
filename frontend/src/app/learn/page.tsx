@@ -59,7 +59,7 @@ export default function LearnHub() {
 
       <PageCta
         heading="Ready to stop missing calls?"
-        sub="Set up your AI receptionist in under 10 minutes. No credit card to start."
+        sub="Set up your AI receptionist in under 10 minutes. Free for 7 days."
         location="learn_hub_bottom"
       />
       <SiteFooter />
