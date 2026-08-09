@@ -45,6 +45,15 @@ const DECISION_TONE: Record<string, string> = {
   transfer: 'success', callback: 'info', handled_ai: 'neutral',
 }
 
+// Show the FULL number (area code included) for a confirm step before it gets
+// masked — the safeguard against an area-code typo hiding behind •••1234.
+function formatForConfirm(raw: string): string {
+  let d = raw.replace(/\D/g, '')
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1)
+  if (d.length === 10) return `+1 (${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+  return raw.trim()
+}
+
 function CallHandlingPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
@@ -69,7 +78,13 @@ function CallHandlingPage() {
   const [simUrgency, setSimUrgency] = useState('normal')
   const [decision, setDecision]     = useState<Decision | null>(null)
 
+  const [routingActive, setRoutingActive] = useState(false)
+  const [actState, setActState] = useState<SaveState>('idle')
+  const [actWarn, setActWarn]   = useState('')
+  const [confirmNum, setConfirmNum] = useState<string | null>(null)
+
   const activeDests = dests.filter(d => d.enabled)
+  const canActivate = activeDests.length >= 1
 
   const loadRules = useCallback(async (profileId?: string) => {
     if (!profileId) { setRules([]); return }
@@ -87,6 +102,8 @@ function CallHandlingPage() {
       const prof: Profile = pRes.ok ? await pRes.json() : {}
       if (!active) return
       setProfile(prof)
+      const sRes = await authedFetch(`${API}/routing/${tenantId}/status`)
+      if (active && sRes.ok) setRoutingActive((await sRes.json()).routing_active ?? false)
       const dRes = await authedFetch(`${API}/routing/${tenantId}/destinations`)
       if (active && dRes.ok) setDests((await dRes.json()).destinations ?? [])
       await loadRules(prof.id)
@@ -125,8 +142,15 @@ function CallHandlingPage() {
     await ensureProfile(patch)
   }
 
-  const addDestination = async () => {
-    setDestErr(''); setDestState('saving')
+  // Two-step add: show the full number for confirmation, THEN submit — so an
+  // area-code typo is caught before it disappears behind the mask.
+  const requestAddDestination = () => {
+    if (!newNumber.trim()) return
+    setDestErr(''); setConfirmNum(formatForConfirm(newNumber))
+  }
+
+  const submitDestination = async () => {
+    setDestErr(''); setDestState('saving'); setConfirmNum(null)
     const res = await authedFetch(`${API}/routing/${tenantId}/destinations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ number: newNumber.trim(), label: newLabel.trim() || null, type: newType }),
@@ -137,6 +161,21 @@ function CallHandlingPage() {
     } else {
       const body = await res.json().catch(() => ({}))
       setDestErr(body.detail || 'Could not add destination'); setDestState('error')
+    }
+  }
+
+  const setRoutingOn = async (on: boolean) => {
+    setActState('saving'); setActWarn('')
+    const res = await authedFetch(`${API}/routing/${tenantId}/${on ? 'activate' : 'deactivate'}`, { method: 'POST' })
+    if (res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setRoutingActive(on); setActState('idle')
+      if (on && body.assistant_synced === false) {
+        setActWarn(body.warning || 'Routing is on; the voice assistant will finish syncing on the next call.')
+      }
+    } else {
+      const body = await res.json().catch(() => ({}))
+      setActWarn(body.detail || `Could not turn routing ${on ? 'on' : 'off'}`); setActState('error')
     }
   }
 
@@ -208,6 +247,35 @@ function CallHandlingPage() {
         </p>
       </header>
 
+      {/* Activation */}
+      <div className="db-card" style={{ ...cardStyle, borderColor: routingActive ? 'var(--db-accent-border)' : 'var(--db-border)',
+        background: routingActive ? 'var(--db-accent-bg)' : 'var(--db-card)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 300px' }}>
+            <div style={{ fontWeight: 600, color: routingActive ? 'var(--db-accent-text)' : 'var(--db-text)' }}>
+              Call routing is {routingActive ? 'on' : 'off'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--db-muted)', marginTop: 3, lineHeight: 1.5 }}>
+              {routingActive
+                ? 'Live — callers are being routed and transferred based on your setup below.'
+                : 'Set up your destinations and rules below, then turn routing on. Nothing changes on your calls until you do.'}
+            </div>
+          </div>
+          <button type="button"
+            className={`db-btn ${routingActive ? 'db-btn--danger-ghost' : 'db-btn--primary'}`}
+            onClick={() => setRoutingOn(!routingActive)}
+            disabled={actState === 'saving' || (!routingActive && !canActivate)}>
+            {actState === 'saving' ? '…' : routingActive ? 'Turn off' : 'Turn on'}
+          </button>
+        </div>
+        {!routingActive && !canActivate && (
+          <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 10 }}>
+            Add at least one destination below before turning routing on.
+          </div>
+        )}
+        {actWarn && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 10 }}>{actWarn}</div>}
+      </div>
+
       {/* Mode */}
       <div className="db-card" style={cardStyle}>
         <label className="db-field-label">How should calls be answered?</label>
@@ -253,11 +321,26 @@ function CallHandlingPage() {
             <option value="phone">Regular</option>
             <option value="urgent">Urgent / on-call</option>
           </select>
-          <button type="button" className="db-btn db-btn--primary" onClick={addDestination}
-            disabled={!newNumber.trim() || destState === 'saving'}>
+          <button type="button" className="db-btn db-btn--primary" onClick={requestAddDestination}
+            disabled={!newNumber.trim() || destState === 'saving' || confirmNum !== null}>
             {destState === 'saving' ? 'Adding…' : 'Add'}
           </button>
         </div>
+        {confirmNum && (
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--db-r-sm)',
+            border: '1px solid var(--db-accent-border)', background: 'var(--db-accent-bg)' }}>
+            <div style={{ fontSize: 13, color: 'var(--db-text)' }}>
+              Add this number? <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{confirmNum}</strong>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--db-muted)', margin: '4px 0 10px' }}>
+              Double-check the area code — it’s masked once saved.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="db-btn db-btn--primary db-btn--sm" onClick={submitDestination}>Confirm &amp; add</button>
+              <button type="button" className="db-btn db-btn--sm" onClick={() => setConfirmNum(null)}>Edit</button>
+            </div>
+          </div>
+        )}
         {destErr && <div style={{ fontSize: 12, color: 'var(--db-danger-text)', marginTop: 8 }}>{destErr}</div>}
       </div>
 
