@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import MicButton from '@/app/components/MicButton'
 import { trackEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
+import { PLANS, type PlanId } from '@/lib/plans'
+import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -119,6 +121,9 @@ interface ProvisionResult {
   assistant_id: string
   status: string
   dashboard_url: string
+  // Present only when the trial subscription was created. Absent if Stripe was
+  // unavailable, in which case the tenant is live on the card-free fallback trial.
+  trial?: { plan: string; status: string; trial_ends_at: string | null }
 }
 
 interface Detection {
@@ -141,7 +146,7 @@ interface Detection {
   website_url: string
 }
 
-type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'provisioning' | 'done'
+type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'done'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -177,6 +182,9 @@ export default function OnboardingPage() {
   })
   const [detected, setDetected]     = useState<Detection | null>(null)
   const [analysisToken, setToken]   = useState('')
+  // Default to the recommended plan so the plan step is a confirmation, not a
+  // decision from scratch.
+  const [plan, setPlan]             = useState<PlanId>(PLANS.find(p => p.popular)?.id ?? 'pro')
   const [customAgent, setCustomAgent] = useState(false)
   const [files, setFiles]           = useState<File[]>([])
   const [dragOver, setDragOver]     = useState(false)
@@ -312,18 +320,19 @@ export default function OnboardingPage() {
   }
 
   // ── Final provision ──
-  const handleProvision = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Called once the card is confirmed. The card itself is not charged — provision
+  // creates a trialing subscription from it only after the phone line is live.
+  const handleProvision = async (card: CardResult) => {
     setError(null)
     setStepIndex(0)
     setStage('provisioning')
 
-    trackEvent('provision_started', { industry: form.industry, has_website: !!form.website_url })
+    trackEvent('provision_started', { industry: form.industry, has_website: !!form.website_url, plan })
     if (form.extra_instructions.trim()) {
       trackEvent('instructions_added', { length: form.extra_instructions.trim().length })
     }
 
-    const body: Record<string, string> = {
+    const body: Record<string, unknown> = {
       business_name: form.business_name,
       industry:      form.industry,
       country:       form.country,
@@ -331,6 +340,11 @@ export default function OnboardingPage() {
       voice_gender:  form.voice_gender || 'female',
       email:         form.email,
       password:      form.password,
+      plan,
+      card_setup_token:  card.cardSetupToken,
+      payment_method_id: card.paymentMethodId,
+      address:           card.address,
+      billing_name:      card.billingName,
     }
     if (detected?.business_subtype) body.business_subtype = detected.business_subtype
     if (form.website_url)           body.website_url          = detected?.website_url || form.website_url
@@ -376,11 +390,16 @@ export default function OnboardingPage() {
       trackEvent('onboarding_completed', { tenant_id: provisioned.tenant_id, ...getFirstTouch() })
       trackEvent('provisioning_completed', { tenant_id: provisioned.tenant_id, path })
       trackEvent('activation_screen_viewed', { tenant_id: provisioned.tenant_id })
+      if (provisioned.trial?.trial_ends_at) {
+        trackEvent('trial_started', { tenant_id: provisioned.tenant_id, plan })
+      }
       setResult(provisioned)
       setStage('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
-      setStage('review')
+      // Back to the card step. It re-runs setup-card on mount, so the retry gets a
+      // fresh SetupIntent rather than reusing one that may already be consumed.
+      setStage('payment')
     }
   }
 
@@ -388,7 +407,7 @@ export default function OnboardingPage() {
   const provisionPct = stage === 'provisioning' ? ((stepIndex + 1) / provisionTotal) * 100 : 0
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
 
-  const cardWide = stage === 'customize' || stage === 'review'
+  const cardWide = stage === 'customize' || stage === 'review' || stage === 'plan' || stage === 'payment'
 
   return (
     <div className="ob-page" id="onboarding">
@@ -422,7 +441,8 @@ export default function OnboardingPage() {
                 Your AI receptionist, live in minutes
               </div>
               <div className="ob-sub">
-                No credit card required. Your AI answers every call from day one — set it up in under 5 minutes.
+                Your AI answers every call from day one — set it up in under 5 minutes.
+                Free for 7 days, cancel anytime before you&rsquo;re charged.
               </div>
 
               {/* Path chooser */}
@@ -502,7 +522,7 @@ export default function OnboardingPage() {
               )}
 
               <div style={{ textAlign: 'center', marginTop: 12, fontSize: 12, color: 'var(--text-3)' }}>
-                7-day free trial · No credit card required · Live in minutes
+                7-day free trial · Cancel anytime · Live in minutes
               </div>
             </motion.div>
           )}
@@ -780,9 +800,9 @@ export default function OnboardingPage() {
           {stage === 'review' && (
             <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-                Review &amp; launch
+                Create your account
               </div>
-              <div className="ob-sub">One last look, then we&rsquo;ll create your AI receptionist and phone number.</div>
+              <div className="ob-sub">One last look, then pick the plan your free trial runs on.</div>
 
               <div style={{
                 borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 18,
@@ -806,7 +826,11 @@ export default function OnboardingPage() {
                 ))}
               </div>
 
-              <form onSubmit={handleProvision}>
+              <form onSubmit={e => {
+                e.preventDefault()
+                trackEvent('onboarding_step_completed', { step_number: 3, step_name: 'account' })
+                setStage('plan')
+              }}>
                 <div className="form-group">
                   <label className="form-label">Business Email *</label>
                   <input className="form-input" name="email" type="email" value={form.email}
@@ -822,9 +846,10 @@ export default function OnboardingPage() {
                     onChange={handleChange} placeholder="Min. 8 characters" required minLength={8} />
                 </div>
 
-                {/* Trust row — reinforce the no-card trial at the point of account creation */}
+                {/* Trust row. No longer claims "no credit card" — a card IS collected
+                    two steps later, and promising otherwise here would be a bait. */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', margin: '4px 0 16px' }}>
-                  {['7-day free trial', 'No credit card required', 'Business number included', 'Cancel anytime'].map(t => (
+                  {['7-day free trial', 'Cancel anytime before you’re charged', 'Business number included'].map(t => (
                     <span key={t} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-3)' }}>
                       <span style={{ color: '#22c55e', display: 'inline-flex' }}><Check /></span>{t}
                     </span>
@@ -836,17 +861,107 @@ export default function OnboardingPage() {
                     style={{ flex: '0 0 auto', padding: '13px 20px' }}>← Back</button>
                   <button type="submit" className="btn-submit" style={{ flex: 1, margin: 0 }}
                     disabled={!emailValid || form.password.length < 8}>
-                    Create My AI Receptionist →
+                    Continue →
                   </button>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 12, lineHeight: 1.5 }}>
-                  By creating your AI receptionist, you agree to our{' '}
-                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Terms of Service</a>
-                  {' '}and{' '}
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-text)' }}>Privacy Policy</a>.
                 </div>
                 {error && <div className="error-msg">{error}</div>}
               </form>
+            </motion.div>
+          )}
+
+          {/* ───────── STAGE: PLAN ───────── */}
+          {stage === 'plan' && (
+            <motion.div key="plan" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
+                Choose your plan
+              </div>
+              <div className="ob-sub">
+                Free for 7 days. Nothing is charged until {trialEndDate()}, and you can
+                switch plans or cancel anytime before then.
+              </div>
+
+              <div style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+                {PLANS.map(p => {
+                  const active = plan === p.id
+                  return (
+                    <button type="button" key={p.id}
+                      onClick={() => { setPlan(p.id); trackEvent('plan_selected', { plan: p.id }) }}
+                      style={{
+                        textAlign: 'left', padding: '15px 16px', borderRadius: 14, cursor: 'pointer',
+                        border: `1.5px solid ${active ? 'var(--text)' : 'var(--border-2)'}`,
+                        background: active ? 'var(--bg-3)' : 'transparent',
+                        transition: 'all 0.15s',
+                      }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{
+                            width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            border: `1.5px solid ${active ? 'var(--text)' : 'var(--border-2)'}`,
+                            background: active ? 'var(--text)' : 'transparent',
+                            color: 'var(--bg-2)',
+                          }}>
+                            {active && <Check />}
+                          </span>
+                          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{p.name}</span>
+                          {p.popular && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                              padding: '3px 7px', borderRadius: 999,
+                              background: 'rgba(52,199,89,0.12)', color: 'var(--accent-text)',
+                            }}>Recommended</span>
+                          )}
+                        </span>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                          ${p.price}<span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-3)' }}>/mo</span>
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginTop: 6, paddingLeft: 24 }}>
+                        {p.minutes} minutes included · {p.note}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 16, lineHeight: 1.6 }}>
+                Billed monthly. You can move to annual billing (2 months free) from your
+                dashboard once your trial converts.
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" className="btn-ghost" onClick={() => setStage('review')}
+                  style={{ flex: '0 0 auto', padding: '13px 20px' }}>← Back</button>
+                <button type="button" className="btn-submit" style={{ flex: 1, margin: 0 }}
+                  onClick={() => {
+                    trackEvent('onboarding_step_completed', { step_number: 4, step_name: 'plan', plan })
+                    setStage('payment')
+                  }}>
+                  Continue →
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ───────── STAGE: PAYMENT ───────── */}
+          {stage === 'payment' && (
+            <motion.div key="payment" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
+                Start your free trial
+              </div>
+              <div className="ob-sub">
+                We&rsquo;ll create your AI receptionist and phone number next — this takes about a minute.
+              </div>
+
+              {error && <div className="error-msg" style={{ textAlign: 'left', marginBottom: 14 }}>{error}</div>}
+
+              <TrialCardStep
+                plan={plan}
+                email={form.email}
+                businessName={form.business_name}
+                onComplete={handleProvision}
+                onBack={() => setStage('plan')}
+              />
             </motion.div>
           )}
 
@@ -903,6 +1018,23 @@ export default function OnboardingPage() {
                   <div style={{ fontSize: 15, fontWeight: 600, color: '#22c55e' }}>Ready</div>
                 </div>
               </div>
+
+              {/* State the charge date on the success screen, not just in email —
+                  it is the last moment we have their full attention. */}
+              {result.trial?.trial_ends_at && (
+                <div style={{
+                  margin: '4px 0 10px', padding: '10px 13px', borderRadius: 10, textAlign: 'left',
+                  background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.25)',
+                  fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6,
+                }}>
+                  Your free trial runs until{' '}
+                  <strong style={{ color: 'var(--text)' }}>
+                    {new Date(result.trial.trial_ends_at).toLocaleDateString('en-CA', {
+                      month: 'long', day: 'numeric', year: 'numeric',
+                    })}
+                  </strong>. We&rsquo;ll email you before your first charge — cancel anytime from your dashboard.
+                </div>
+              )}
 
               <div style={{ margin: '10px 0 4px', fontSize: 13, color: 'var(--text-2, var(--text))', fontWeight: 600 }}>
                 Try it now — call your AI:

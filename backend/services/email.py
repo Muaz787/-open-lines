@@ -455,3 +455,100 @@ async def send_trial_reminder_email(
     if ok:
         logger.info("Trial reminder (%s) sent to %s for tenant %s", kind, to, tenant_id)
     return ok
+
+
+# ---------------------------------------------------------------------------
+# Card-trial notices (TRANSACTIONAL — no unsubscribe, sent regardless of
+# marketing opt-out)
+# ---------------------------------------------------------------------------
+# These are service messages about money leaving someone's card, not marketing.
+# CASL's commercial-electronic-message rules and US ROSCA both treat an advance
+# notice of an automatic charge as required disclosure, so unlike
+# send_trial_reminder_email() these carry NO unsubscribe link and callers must NOT
+# skip them for tenants with marketing_unsubscribed_at set. Suppressing the
+# "we're charging you tomorrow" email is precisely what turns a legitimate trial
+# into a negative-option billing complaint.
+
+async def send_card_trial_email(
+    *,
+    to: str,
+    business_name: str,
+    kind: str,                      # 'day3' | 'day6' | 'converted' | 'failed'
+    tenant_id: str,
+    plan_name: str = "",
+    amount_text: str = "",          # e.g. "$224.87 CAD (incl. tax)"
+    charge_date: str = "",          # e.g. "August 16, 2026"
+    card_last4: str = "",
+    days_remaining: int = 0,
+    minutes_used: int = 0,
+    minutes_total: int = 0,
+    converted_reason: str = "",     # 'time' | 'minutes' | 'manual'
+) -> bool:
+    sub_url = f"{FRONTEND_URL}/dashboard/{tenant_id}/subscription"
+    card    = f" ending in {card_last4}" if card_last4 else " on file"
+    plan    = plan_name or "your plan"
+    amount  = amount_text or "your plan price"
+
+    if kind == "day6":
+        # The one that legally matters: names the amount, the date and the card.
+        subject = f"Tomorrow: {amount} for Open Lines {plan}"
+        heading = "Your free trial ends tomorrow"
+        paras = [
+            f"Your 7-day free trial ends tomorrow. On <strong>{_esc(charge_date)}</strong> we&rsquo;ll charge "
+            f"<strong>{_esc(amount)}</strong> to the card{_esc(card)}, and your {_esc(plan)} plan continues "
+            f"month to month.",
+            "You don&rsquo;t need to do anything to continue. If you&rsquo;d rather not, you can cancel from "
+            "your dashboard before then and you won&rsquo;t be charged at all.",
+        ]
+        cta = "Manage my plan"
+    elif kind == "day3":
+        used = (f"You&rsquo;ve used {minutes_used} of your {minutes_total} trial minutes so far. "
+                if minutes_total else "")
+        subject = f"{days_remaining} days left in your Open Lines trial"
+        heading = f"{days_remaining} days left in your free trial"
+        paras = [
+            f"Your AI receptionist is live and answering calls. {used}"
+            f"Nothing has been charged yet.",
+            f"When the trial ends on <strong>{_esc(charge_date)}</strong>, your {_esc(plan)} plan starts at "
+            f"<strong>{_esc(amount)}</strong> per month on the card{_esc(card)}. Cancel anytime before then.",
+        ]
+        cta = "View my dashboard"
+    elif kind == "converted":
+        why = ("You used all your trial minutes, so your plan started early to keep your line answering "
+               "without interruption. " if converted_reason == "minutes" else "")
+        subject = f"You're now on Open Lines {plan}"
+        heading = f"Your {plan} plan is active"
+        paras = [
+            f"{why}Your free trial has ended and <strong>{_esc(amount)}</strong> has been charged to the "
+            f"card{_esc(card)}. Your receipt is in your dashboard.",
+            "Your minute allowance has reset for the new billing month, and your number, settings and "
+            "knowledge base are all unchanged.",
+        ]
+        cta = "View invoices"
+    else:  # failed
+        subject = "Action needed — your Open Lines payment didn't go through"
+        heading = "We couldn't process your payment"
+        paras = [
+            f"We tried to charge <strong>{_esc(amount)}</strong> to the card{_esc(card)} at the end of your "
+            f"free trial, but it was declined. <strong>Your AI receptionist is paused</strong> until the "
+            f"payment goes through.",
+            "Updating your card takes under a minute, and your line comes straight back on — your number, "
+            "settings and knowledge base are all still here.",
+        ]
+        cta = "Update my card"
+
+    body_html = "".join(
+        f'<p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#444">{p}</p>' for p in paras
+    )
+    html_body = _layout(
+        heading=heading,
+        body_html=body_html,
+        cta=cta,
+        cta_url=sub_url,
+        preheader=subject,
+        # Deliberately no unsubscribe_url — see the module note above.
+    )
+    ok = _send(to=to, subject=subject, html_body=html_body)
+    if ok:
+        logger.info("Card-trial email (%s) sent to %s for tenant %s", kind, to, tenant_id)
+    return ok

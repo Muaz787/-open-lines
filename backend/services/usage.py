@@ -20,6 +20,7 @@ import stripe
 from datetime import date, datetime, timedelta, timezone
 
 from db import supabase as db
+from services import trial
 
 logger = logging.getLogger(__name__)
 
@@ -232,3 +233,20 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
         await db.update_tenant(tenant_id, updates)
     except Exception as e:
         logger.error("Failed to persist usage for tenant %s: %s", tenant_id, e)
+
+    # Auto-convert a card trial that has just used up its trial minutes: charge the
+    # card and start the plan the tenant already picked, rather than cutting their
+    # line off mid-business-day. See services/trial.convert_card_trial.
+    #
+    # ORDER MATTERS — this runs AFTER the usage write above. Conversion resets
+    # minutes_used_this_period to 0 so the paid period starts clean, and doing it
+    # first would let the write above immediately restore the trial's 60 minutes
+    # into the customer's fresh, paid allocation.
+    if new_total >= trial.CARD_TRIAL_MINUTES and trial.is_card_trial(tenant) \
+            and not tenant.get("trial_converted_reason"):
+        try:
+            await trial.convert_card_trial(tenant, reason="minutes")
+        except Exception as e:
+            # convert_card_trial swallows its own errors; this is belt-and-braces
+            # so a surprise can never lose a recorded call.
+            logger.error("Auto-conversion raised for tenant %s: %s", tenant_id, e)

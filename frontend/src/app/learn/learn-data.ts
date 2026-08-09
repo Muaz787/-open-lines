@@ -63,14 +63,14 @@ export const ARTICLES: LearnArticle[] = [
       },
       {
         heading: 'Where Open Lines fits',
-        paras: ['Open Lines is an AI receptionist on a simple monthly plan: each plan includes a set number of minutes, with a per-minute overage rate only if you go over — and a call is never cut off mid-conversation. It answers every call in a natural voice, books appointments into your calendar, captures leads, and works 24/7. You can compare plans on the pricing page and start a 7-day free trial with no credit card.'],
+        paras: ['Open Lines is an AI receptionist on a simple monthly plan: each plan includes a set number of minutes, with a per-minute overage rate only if you go over — and a call is never cut off mid-conversation. It answers every call in a natural voice, books appointments into your calendar, captures leads, and works 24/7. You can compare plans on the pricing page and start a 7-day free trial — cancel anytime before you’re charged.'],
       },
     ],
     faqs: [
       { q: 'Is an AI receptionist cheaper than a live answering service?', a: 'For most small businesses past a few calls a day, yes. Live services meter every minute from the start, so cost rises with call volume, while an AI plan gives you a block of included minutes for a monthly fee — with overage only beyond it — and covers nights and weekends.' },
       { q: 'Does Open Lines charge per minute?', a: 'Each Open Lines plan includes a set number of minutes for a flat monthly price. If you go over your included minutes, the extra time is billed at your plan’s per-minute overage rate — and calls are never cut off mid-conversation. See the pricing page for current plans and rates.' },
       { q: 'What does a full-time receptionist cost?', a: 'In Canada, receptionist wages typically run about $40,000–$62,000 per year (roughly $18–$20+ per hour) before benefits and overhead — and that only covers working hours, not after-hours or weekend calls.' },
-      { q: 'Can I try it before paying?', a: 'Yes. Open Lines offers a 7-day free trial with no credit card, so you can see how it handles your calls before committing.' },
+      { q: 'Can I try it before paying?', a: 'Yes. Open Lines offers a 7-day free trial so you can see how it handles your calls before committing. You pick a plan and add a card up front, but nothing is charged until the trial ends, and you can cancel any time before then.' },
     ],
     sources: [
       { label: 'Housecall Pro — How Much Does an Answering Service Cost? (2026)', url: 'https://www.housecallpro.com/resources/how-much-does-an-answering-service-cost/' },
@@ -137,7 +137,7 @@ export const ARTICLES: LearnArticle[] = [
       { href: '/industries', label: 'See it for your industry', sub: 'Salons, trades, real estate, and more.' },
     ],
     ctaHeading: 'See what an AI receptionist does for you.',
-    ctaSub: 'Start a 7-day free trial — no credit card — and let it answer your next call.',
+    ctaSub: 'Start a 7-day free trial and let it answer your next call. Cancel anytime before you’re charged.',
   },
   {
     slug: 'missed-call-text-back',
@@ -223,7 +223,7 @@ export const ARTICLES: LearnArticle[] = [
       },
       {
         heading: 'Getting started with Open Lines',
-        paras: ['Open Lines is an AI virtual receptionist built for local, appointment-driven businesses. It learns from your website, books into Google Calendar, Outlook, or Square Appointments, and reports every call to your inbox, Slack, or HubSpot. Setup takes under 10 minutes and there’s a 7-day free trial with no credit card.'],
+        paras: ['Open Lines is an AI virtual receptionist built for local, appointment-driven businesses. It learns from your website, books into Google Calendar, Outlook, or Square Appointments, and reports every call to your inbox, Slack, or HubSpot. Setup takes under 10 minutes and there’s a 7-day free trial — nothing is charged until it ends.'],
       },
     ],
     faqs: [
@@ -238,7 +238,7 @@ export const ARTICLES: LearnArticle[] = [
       { href: '/pricing', label: 'See Open Lines pricing', sub: 'Monthly plans with included minutes.' },
     ],
     ctaHeading: 'Give your small business a receptionist that never clocks out.',
-    ctaSub: 'Start a 7-day free trial — no credit card — and let it answer every call.',
+    ctaSub: 'Start a 7-day free trial and let it answer every call. Cancel anytime before you’re charged.',
   },
   {
     slug: 'automate-your-workflow-2026-ai',
@@ -317,7 +317,7 @@ export const ARTICLES: LearnArticle[] = [
       { href: '/integrations', label: 'Connect your tools', sub: 'Calendar, CRM, payments, and Slack.' },
     ],
     ctaHeading: 'Automate the one workflow that pays for itself first.',
-    ctaSub: 'Put an AI receptionist on your phone in under 10 minutes. Start a 7-day free trial — no credit card.',
+    ctaSub: 'Put an AI receptionist on your phone in under 10 minutes. Start a 7-day free trial — cancel anytime before you’re charged.',
   },
   {
     slug: 'ai-call-routing',
@@ -375,7 +375,7 @@ export const ARTICLES: LearnArticle[] = [
       },
       {
         heading: 'Where Open Lines fits',
-        paras: ['Open Lines answers every call in a natural voice, handles the routine ones, and — on Pro and Business — warm-transfers the callers who need a person to the right teammate, with a safe callback if no one’s free. You set it up under Call Handling in a few minutes and preview it with the simulator before a single live call is affected. Compare plans on the pricing page and start a 7-day free trial with no credit card.'],
+        paras: ['Open Lines answers every call in a natural voice, handles the routine ones, and — on Pro and Business — warm-transfers the callers who need a person to the right teammate, with a safe callback if no one’s free. You set it up under Call Handling in a few minutes and preview it with the simulator before a single live call is affected. Compare plans on the pricing page and start a 7-day free trial — cancel anytime before you’re charged.'],
       },
     ],
     faqs: [
@@ -391,7 +391,7 @@ export const ARTICLES: LearnArticle[] = [
       { href: '/pricing', label: 'See Open Lines pricing', sub: 'Call routing is on Pro and Business.' },
     ],
     ctaHeading: 'Let AI handle the routine calls — and hand the rest to your team.',
-    ctaSub: 'Set up call routing on Pro or Business in a few minutes. Start a 7-day free trial — no credit card.',
+    ctaSub: 'Set up call routing on Pro or Business in a few minutes. Start a 7-day free trial — cancel anytime before you’re charged.',
   },
 ]
 

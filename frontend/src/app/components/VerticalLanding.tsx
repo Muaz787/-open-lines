@@ -77,7 +77,7 @@ function TrialCta({ slug, location, secondary = true }: { slug: string; location
         )}
       </div>
       <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 12 }}>
-        No credit card required. Live in under 10 minutes.
+        Free for 7 days, cancel anytime. Live in under 10 minutes.
       </p>
     </div>
   )

@@ -6,13 +6,27 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
-from services import analytics, provisioning, telephony, vapi, website_analysis
+from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def card_required() -> bool:
+    """Whether a signup must supply a card before we provision anything.
+
+    Read live so it can be flipped without a deploy, and OFF by default so the
+    backend can ship ahead of the onboarding UI that collects the card: until the
+    frontend sends these fields, signups behave exactly as they do today. Turning
+    it on is the switch that makes the trial card-required.
+    """
+    return os.getenv("TRIAL_REQUIRE_CARD", "false").strip().lower() in ("1", "true", "yes", "on")
+
 
 VALID_INDUSTRIES = {
     "realtor", "clinic", "parliament",
@@ -55,6 +69,22 @@ class ProvisionRequest(BaseModel):
     password: str = ""
     business_phone: str = ""
     analysis_token: str = ""
+    # Card-required trial. card_setup_token comes from /onboarding/setup-card and
+    # carries the Stripe customer id in authenticated encryption — the raw id is
+    # never accepted from the client, because this endpoint is unauthenticated.
+    plan: str = ""
+    card_setup_token: str = ""
+    payment_method_id: str = ""
+    address: dict | None = None
+    billing_name: str = ""
+
+    @field_validator("plan")
+    @classmethod
+    def plan_must_be_valid(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v and v not in subscriptions.PRICE_IDS:
+            raise ValueError(f"plan must be one of {sorted(subscriptions.PRICE_IDS)}")
+        return v
 
     @field_validator("industry")
     @classmethod
@@ -113,6 +143,76 @@ async def analyze_website(request: Request, body: AnalyzeWebsiteRequest):
     return result
 
 
+class SetupCardRequest(BaseModel):
+    plan: str
+    email: str = ""
+    business_name: str = ""
+
+    @field_validator("plan")
+    @classmethod
+    def plan_must_be_valid(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in subscriptions.PRICE_IDS:
+            raise ValueError(f"plan must be one of {sorted(subscriptions.PRICE_IDS)}")
+        return v
+
+
+@router.post("/setup-card")
+@limiter.limit("10/hour")
+async def setup_card(request: Request, body: SetupCardRequest):
+    """Create a Stripe Customer + SetupIntent so the signup can enter a card
+    BEFORE we provision anything. No charge is made here — the card is validated
+    and stored, then billed only when the 7-day trial ends.
+
+    ABUSE: this is a public endpoint that mints SetupIntents, which is a known
+    card-testing vector — an attacker can drive confirmations against it to check
+    stolen card numbers. Three things hold it down:
+      * the IP rate limit above,
+      * a valid plan + a plausible email, so it is not a bare oracle,
+      * Stripe Radar's card-testing rules, which must be enabled in the Dashboard
+        (see docs/stripe-go-live.md) — they are what actually blocks a distributed
+        attempt, since rate limiting alone only slows a single source.
+    """
+    import stripe
+
+    email = (body.email or "").strip()
+    if email and not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="Please enter a valid email address")
+
+    key = os.getenv("STRIPE_SECRET_KEY", "")
+    if not key:
+        logger.error("setup-card: STRIPE_SECRET_KEY not configured")
+        raise HTTPException(status_code=503, detail="Payments are not available right now")
+    stripe.api_key = key
+
+    try:
+        params: dict = {"metadata": {"signup_plan": body.plan, "source": "onboarding"}}
+        if email:
+            params["email"] = email
+        if body.business_name.strip():
+            params["name"] = body.business_name.strip()[:200]
+        customer = stripe.Customer.create(**params)
+
+        si = stripe.SetupIntent.create(
+            customer=customer.id,
+            payment_method_types=["card"],
+            # The card is charged later, with nobody at the keyboard, so the
+            # mandate has to be set up for off-session use now.
+            usage="off_session",
+            metadata={"signup_plan": body.plan, "source": "onboarding"},
+        )
+    except Exception as e:
+        logger.error("setup-card: Stripe failed (plan=%s): %s", body.plan, e)
+        raise HTTPException(status_code=502, detail="We couldn't start the payment step. Please try again.")
+
+    analytics.capture(email or customer.id, "card_setup_started", {"plan": body.plan})
+
+    return {
+        "client_secret":    si.client_secret,
+        "card_setup_token": subscriptions.issue_card_setup_token(customer.id),
+    }
+
+
 @router.post("/provision")
 @limiter.limit("3/hour")
 async def provision(request: Request, body: ProvisionRequest):
@@ -121,9 +221,36 @@ async def provision(request: Request, body: ProvisionRequest):
     # ever reach the assistant's system prompt.
     validate_business_instructions(body.extra_instructions, field="extra instructions")
     validate_business_instructions(body.business_description, field="business description")
+
+    # Resolve the card BEFORE provisioning. Everything below buys a real phone
+    # number and creates a Vapi assistant, so a bad payment session must fail here
+    # rather than after we have spent money on the tenant.
+    stripe_customer_id = ""
+    if body.card_setup_token:
+        try:
+            stripe_customer_id = subscriptions.read_card_setup_token(body.card_setup_token)
+        except Exception as e:
+            logger.warning("provision: rejected card setup token (%s)", e)
+            raise HTTPException(
+                status_code=400,
+                detail="Your payment session expired. Please re-enter your card details.",
+            )
+
+    has_card = bool(stripe_customer_id and body.payment_method_id and body.plan)
+    if card_required() and not has_card:
+        raise HTTPException(
+            status_code=400,
+            detail="A plan and payment method are required to start your free trial",
+        )
+
     _started = time.monotonic()
     try:
-        provision_data = body.model_dump(exclude={"email", "password"})
+        provision_data = body.model_dump(exclude={
+            "email", "password",
+            # Billing inputs are consumed here, not by the provisioner, and must
+            # never end up on the tenant row.
+            "plan", "card_setup_token", "payment_method_id", "address", "billing_name",
+        })
         result = await provisioning.provision_tenant(provision_data)
         _duration_ms = int((time.monotonic() - _started) * 1000)
         logger.info("Provisioned tenant %s (%s) in %dms", result.get("tenant_id"), body.business_name, _duration_ms)
@@ -145,6 +272,44 @@ async def provision(request: Request, body: ProvisionRequest):
             except Exception as e:
                 logger.error("Auth user creation failed for tenant %s: %s", result.get("tenant_id"), e)
 
+        # Start the trial subscription LAST, once the line actually exists. Doing
+        # it here rather than before provisioning means a provisioning failure can
+        # never leave a subscription attached to a tenant that does not work.
+        #
+        # Non-fatal by design: the tenant has a working AI receptionist at this
+        # point, so a Stripe outage must not fail the signup. They fall back to
+        # the card-free derived trial (services/trial) and keep a live line; the
+        # error below is the signal to reconcile them.
+        trial_sub: dict = {}
+        if has_card:
+            trial_sub = await subscriptions.create_trial_subscription(
+                tenant_id=result["tenant_id"],
+                plan=body.plan,
+                customer_id=stripe_customer_id,
+                payment_method_id=body.payment_method_id,
+                email=body.email,
+                business_name=body.billing_name.strip() or body.business_name,
+                address=subscriptions.clean_address(body.address),
+            )
+            if trial_sub.get("ok"):
+                analytics.capture(distinct_id, "trial_started", {
+                    "tenant_id": result.get("tenant_id"),
+                    "plan": body.plan,
+                    "trial_ends_at": trial_sub.get("trial_ends_at"),
+                })
+            else:
+                logger.error(
+                    "TRIAL SUBSCRIPTION FAILED for tenant %s (plan=%s, customer=%s, error=%s) "
+                    "— tenant is live on the card-free fallback trial and needs reconciling",
+                    result.get("tenant_id"), body.plan, stripe_customer_id, trial_sub.get("error"),
+                )
+                analytics.capture(distinct_id, "trial_subscription_failed", {
+                    "tenant_id": result.get("tenant_id"),
+                    "plan": body.plan,
+                    "error": trial_sub.get("error"),
+                })
+
+        if body.email and body.password:
             # Welcome email — non-fatal; the tenant is already provisioned.
             try:
                 from services.email import send_welcome_email
@@ -169,6 +334,15 @@ async def provision(request: Request, body: ProvisionRequest):
         analytics.capture(distinct_id, "provision_succeeded", {**common, "duration_ms": _duration_ms})
         if body.email:
             analytics.capture(distinct_id, "signup_completed", common)
+
+        # Let the success screen state the exact charge date without a second
+        # round-trip. Absent when the tenant fell back to the card-free trial.
+        if trial_sub.get("ok"):
+            result["trial"] = {
+                "plan":          trial_sub.get("plan"),
+                "status":        trial_sub.get("status"),
+                "trial_ends_at": trial_sub.get("trial_ends_at"),
+            }
 
         return result
     except HTTPException:

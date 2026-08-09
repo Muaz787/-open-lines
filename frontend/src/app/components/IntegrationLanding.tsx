@@ -42,7 +42,7 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
             <Link href="/onboarding"><button className="btn-trial">Start 7-Day Free Trial →</button></Link>
             <Link href="/integrations" style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-2)' }}>← All integrations</Link>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 16 }}>No credit card required. Live in under 10 minutes.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 16 }}>Free for 7 days, cancel anytime. Live in under 10 minutes.</p>
         </div>
       </section>
 
