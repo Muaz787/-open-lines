@@ -40,18 +40,22 @@ admin_router = APIRouter(prefix="/routing-admin", tags=["routing-admin"])
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
-async def _entitled(tenant_id: str, feature: str = "routing") -> dict:
-    """Fetch the tenant and require the capability. 404 if unknown, 403 if the
-    plan/flags don't grant it."""
+async def _entitled(tenant_id: str) -> dict:
+    """Fetch the tenant and require CONFIG access — PLAN-gated (Pro/Business + master
+    switch), independent of whether routing is switched on. 404 if unknown, 403 if the
+    plan doesn't grant it (Starter/free -> dashboard shows the locked card).
+
+    NOTE: this gates the config surface only. It does NOT mean routing is active on the
+    tenant's calls — that requires the tenant to opt in via /activate (which sets
+    tenants.routing_enabled). The runtime (assistant tools, transfer webhook, mid-call
+    tools) stays gated on that opt-in via entitlements.has_feature()."""
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception:
         tenant = None
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    try:
-        entitlements.require(tenant, feature)
-    except entitlements.EntitlementError:
+    if not entitlements.can_configure(tenant):
         raise HTTPException(status_code=403, detail="This feature isn't available on your plan yet")
     return tenant
 
@@ -160,6 +164,74 @@ async def put_profile(tenant_id: str, body: ProfileUpdate):
 
 
 # ---------------------------------------------------------------------------
+# activation status + self-serve on/off (plan-gated config surface; opt-in changes calls)
+# ---------------------------------------------------------------------------
+@router.get("/{tenant_id}/status")
+async def get_status(tenant_id: str):
+    """Config-surface status for the owner UI: whether routing is ACTIVE on this
+    tenant's calls (opt-in), the plan tier + limits, and whether the tenant has enough
+    config to switch on. Plan-gated like the rest of the config surface."""
+    tenant = await _entitled(tenant_id)
+    caps = entitlements.config_caps(tenant)
+    active_dests = [d for d in await rdb.list_destinations(tenant_id) if d.get("enabled", True)]
+    return {
+        "routing_active": entitlements.has_feature(tenant, "routing"),
+        "transfers_available": entitlements.transfer_execution_enabled(),
+        "tier": caps.get("tier"),
+        "max_destinations": caps.get("max_destinations", 0),
+        "max_routing_rules": caps.get("max_routing_rules", 0),
+        "active_destination_count": len(active_dests),
+        "can_activate": len(active_dests) >= 1,
+    }
+
+
+async def _sync_assistant_soft(tenant_id: str) -> bool:
+    """Re-patch the tenant's assistant after an activation change. Best-effort: the
+    per-call override also attaches tools + serverMessages, so a provider hiccup here
+    doesn't lose the activation. Returns True if the sync succeeded."""
+    fresh = await db.get_tenant_by_id(tenant_id)
+    from services import vapi as vapi_svc
+    try:
+        await vapi_svc.patch_assistant_tools(fresh)
+        return True
+    except httpx.HTTPStatusError as e:
+        logger.error("routing activation sync failed for tenant %s: %s %s",
+                     tenant_id, e.response.status_code, vapi_svc.redact_provider_error(e.response.text))
+    except httpx.RequestError as e:
+        logger.error("routing activation sync network error for tenant %s: %s", tenant_id, e)
+    return False
+
+
+@router.post("/{tenant_id}/activate")
+async def activate_routing(tenant_id: str):
+    """Owner self-serve: turn routing ON for this tenant's calls. Requires at least one
+    ENABLED destination (otherwise routing has nowhere to send callers). Sets
+    routing_enabled and re-syncs the assistant so the routing tools + serverMessages
+    attach. Idempotent."""
+    await _entitled(tenant_id)
+    active_dests = [d for d in await rdb.list_destinations(tenant_id) if d.get("enabled", True)]
+    if not active_dests:
+        raise HTTPException(status_code=400,
+                            detail="Add at least one destination before turning routing on")
+    await rdb.set_routing_enabled(tenant_id, True)
+    synced = await _sync_assistant_soft(tenant_id)
+    logger.info("routing ACTIVATED (self-serve) for tenant %s (assistant_synced=%s)", tenant_id, synced)
+    return {"routing_active": True, "assistant_synced": synced}
+
+
+@router.post("/{tenant_id}/deactivate")
+async def deactivate_routing(tenant_id: str):
+    """Owner self-serve: turn routing OFF for this tenant's calls. Clears
+    routing_enabled and re-syncs the assistant so the routing tools drop. Destinations
+    and rules are preserved for when they turn it back on. Idempotent."""
+    await _entitled(tenant_id)
+    await rdb.set_routing_enabled(tenant_id, False)
+    synced = await _sync_assistant_soft(tenant_id)
+    logger.info("routing DEACTIVATED (self-serve) for tenant %s (assistant_synced=%s)", tenant_id, synced)
+    return {"routing_active": False, "assistant_synced": synced}
+
+
+# ---------------------------------------------------------------------------
 # destinations
 # ---------------------------------------------------------------------------
 @router.get("/{tenant_id}/destinations")
@@ -191,7 +263,7 @@ async def create_destination(tenant_id: str, body: DestinationCreate):
 
     # per-plan limit (count active destinations) — last, for valid & unique numbers
     active = [d for d in await rdb.list_destinations(tenant_id) if d.get("enabled", True)]
-    if len(active) >= entitlements.limit_for(tenant, "max_destinations"):
+    if len(active) >= entitlements.config_limit_for(tenant, "max_destinations"):
         raise HTTPException(status_code=403, detail="Destination limit reached for your plan")
 
     row = await rdb.create_destination(tenant_id, {"type": body.type, "label": body.label, **secure})
@@ -228,7 +300,7 @@ async def list_rules(tenant_id: str, profile_id: str):
 @router.post("/{tenant_id}/rules")
 async def create_rule(tenant_id: str, body: RuleCreate):
     tenant = await _entitled(tenant_id)
-    if await rdb.count_rules(tenant_id, body.profile_id) >= entitlements.limit_for(tenant, "max_routing_rules"):
+    if await rdb.count_rules(tenant_id, body.profile_id) >= entitlements.config_limit_for(tenant, "max_routing_rules"):
         raise HTTPException(status_code=403, detail="Routing-rule limit reached for your plan")
     if body.destination_id and not await rdb.get_destination(tenant_id, body.destination_id):
         raise HTTPException(status_code=400, detail="destination_id does not belong to this tenant")
