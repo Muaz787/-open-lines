@@ -39,6 +39,7 @@ const PLANS = [
     features: [
       '400 minutes / month',
       'Everything in Starter',
+      'AI call routing & overflow — warm-transfer callers to your team',
       'Deposit collection — Stripe & Square',
       'Group & per-person deposits',
       'HubSpot CRM sync',
@@ -60,6 +61,7 @@ const PLANS = [
     features: [
       '900 minutes / month',
       'Everything in Pro',
+      'Call routing at scale — up to 50 destinations & rules',
       'Largest knowledge base — 50 MB / 1,000-page docs',
       'Priority support',
       'Dedicated onboarding & setup',
