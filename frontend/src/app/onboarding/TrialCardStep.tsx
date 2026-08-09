@@ -80,6 +80,7 @@ const Check = () => (
 function CardForm({
   plan,
   businessName,
+  country,
   cardSetupToken,
   onComplete,
   onBack,
@@ -87,6 +88,7 @@ function CardForm({
 }: {
   plan: PlanId
   businessName: string
+  country: string
   cardSetupToken: string
   onComplete: (r: CardResult) => void
   onBack: () => void
@@ -157,25 +159,56 @@ function CardForm({
       {/* What they are agreeing to, stated before the card fields rather than
           buried under them. */}
       <div style={{
-        margin: '0 0 18px', padding: '14px 16px', borderRadius: 12,
-        background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.25)',
+        margin: '0 0 18px', padding: '16px 18px', borderRadius: 12,
+        background: 'rgba(52,199,89,0.08)', border: '1.5px solid rgba(52,199,89,0.30)',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{p.name} plan</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>${p.price}/mo</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+          <span style={{ fontSize: 13.5, color: 'var(--text-2)' }}>{p.name} plan</span>
+          <span style={{ fontSize: 13.5, color: 'var(--text-2)' }}>${p.price}/mo after trial</span>
         </div>
+
+        {/* Someone is about to type a card number. The one thing they need to be
+            certain of is that pressing the button charges them nothing, so it gets
+            its own row and the largest type in the block. */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12,
+          margin: '10px 0', paddingTop: 10, borderTop: '1px solid rgba(52,199,89,0.25)',
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Due today</span>
+          <span style={{
+            fontSize: 20, fontWeight: 700, color: 'var(--accent-text)', letterSpacing: '-0.01em',
+            fontFamily: 'var(--font-syne), sans-serif',
+          }}>$0.00</span>
+        </div>
+
         <div style={{ fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.6 }}>
-          <strong style={{ color: 'var(--text)' }}>Free for 7 days.</strong> Your card
-          won&rsquo;t be charged today. On <strong style={{ color: 'var(--text)' }}>{charge}</strong> we&rsquo;ll
-          charge <strong style={{ color: 'var(--text)' }}>${p.price} + tax</strong> per month unless you cancel first.
+          Your card is saved but not charged. On <strong style={{ color: 'var(--text)' }}>{charge}</strong> your
+          7-day trial ends and we&rsquo;ll charge <strong style={{ color: 'var(--text)' }}>${p.price} + tax</strong> per
+          month — cancel any time before then and you pay nothing.
         </div>
       </div>
 
       <div className="form-group">
         <label className="form-label">Billing Address</label>
-        <AddressElement options={{ mode: 'billing', fields: { phone: 'never' } }} />
+        <AddressElement
+          options={{
+            mode: 'billing',
+            fields: { phone: 'never' },
+            // Type-ahead address suggestions. `automatic` is Stripe's default, but
+            // it's spelled out because the behaviour depends on context: Stripe
+            // supplies the Places lookup for free only when the Address Element
+            // shares an Elements group with the Payment Element, which it does
+            // here. Mounted standalone it would silently fall back to plain text
+            // inputs unless given a Google Maps key of our own.
+            autocomplete: { mode: 'automatic' },
+            // They already told us their country two steps ago — no reason to make
+            // them find it in the dropdown again. Editable, just pre-selected.
+            defaultValues: { address: { country: country || 'CA' } },
+          }}
+        />
         <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>
-          Required so we can calculate sales tax (GST/HST) on your invoice.
+          Start typing your street address and we&rsquo;ll fill in the rest. Required so we can
+          calculate sales tax (GST/HST) on your invoice.
         </div>
       </div>
 
@@ -217,6 +250,7 @@ export function TrialCardStep({
   plan,
   email,
   businessName,
+  country = 'CA',
   onComplete,
   onBack,
   busy = false,
@@ -224,6 +258,7 @@ export function TrialCardStep({
   plan: PlanId
   email: string
   businessName: string
+  country?: string
   onComplete: (r: CardResult) => void
   onBack: () => void
   busy?: boolean
@@ -290,6 +325,7 @@ export function TrialCardStep({
       <CardForm
         plan={plan}
         businessName={businessName}
+        country={country}
         cardSetupToken={token}
         onComplete={onComplete}
         onBack={onBack}

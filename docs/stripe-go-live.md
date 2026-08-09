@@ -63,15 +63,37 @@ Each live webhook has its **own** signing secret — copy it into the matching e
 
 ## 4b. Card-required free trial
 
-**Radar — do this BEFORE turning the trial on.** `/onboarding/setup-card` is a
-public endpoint that mints SetupIntents, which is a known card-testing vector:
-an attacker can drive confirmations against it to check stolen card numbers. The
-IP rate limit (10/hour) only slows a single source, so Radar is what actually
-stops a distributed attempt.
-- [ ] Radar → Rules: enable the built-in **card testing** protections
-- [ ] Block if `:card_testing_risk_level:` is `highest`
-- [ ] Watch Radar → Reviews for a spike in blocked SetupIntents after launch
-- [ ] Consider a rule blocking >3 distinct cards from one IP per hour
+**Radar.** `/onboarding/setup-card` is a public endpoint that mints SetupIntents,
+which is a known card-testing vector: an attacker can drive confirmations against
+it to check stolen card numbers. Our own IP rate limit (10/hour) only slows a
+single source.
+
+We are on **standard Radar**, not Radar for Fraud Teams — custom rules, lists and
+manual review are gated behind that upgrade, so anything referencing
+`:card_testing_risk_level:` or a custom "N cards from one IP" rule is not
+available to us. What we can use is the built-in rule set under Radar → Rules:
+
+- [x] Block if payment matches the default Stripe block lists *(on by default)*
+- [ ] Block if `:risk_level:` = `highest` — the single most useful toggle here
+- [ ] Block if CVC verification fails based on risk score — card testers usually
+      don't have the CVC, so this is cheap and well targeted
+- [ ] Block if postal code verification fails based on risk score
+- [ ] Leave **Request 3DS if supported** OFF for now. It would add a challenge
+      step to signup and cost conversion. Revisit only if trial-end charges start
+      failing — 3DS at setup time shifts liability and improves off-session
+      success, which matters more once there is real volume.
+- [ ] Leave **Review if `:risk_level:` = `elevated`** OFF unless someone will
+      actually work the queue. A held $0 SetupIntent just stalls a signup.
+
+Caveat worth confirming with Stripe: Radar's scoring is built around charges, and
+how much of it applies to a $0 SetupIntent is not something we have verified.
+Stripe applies its own account-level card-testing protections regardless, so the
+practical plan is to watch rather than over-engineer.
+
+- [ ] After launch, watch Radar → Overview for a spike in blocked or failed setup
+      attempts. If one appears, Radar for Fraud Teams is ~$0.02/screened
+      transaction — trivial at our volume, and the point at which a custom
+      per-IP card rule becomes available.
 
 **Trial emails:** Stripe sends its own "your trial is ending" email by default.
 We send our own with the exact amount and date, so turn Stripe's off:
