@@ -74,10 +74,16 @@ manual review are gated behind that upgrade, so anything referencing
 available to us. What we can use is the built-in rule set under Radar → Rules:
 
 - [x] Block if payment matches the default Stripe block lists *(on by default)*
-- [ ] Block if `:risk_level:` = `highest` — the single most useful toggle here
-- [ ] Block if CVC verification fails based on risk score — card testers usually
-      don't have the CVC, so this is cheap and well targeted
-- [ ] Block if postal code verification fails based on risk score
+- [x] Block if CVC verification fails based on risk score — card testers usually
+      have a number and expiry but not the CVC, so this is cheap and precisely
+      aimed at our threat model
+- [x] Block if postal code verification fails based on risk score — same
+      fingerprint
+- [n/a] Block if `:risk_level:` = `highest` (`block_if_high_risk`) — **retired by
+      Stripe**, not plan-gated. The rule page says risk controls for fraudulent
+      disputes and early fraud warnings replace it. Its successor lives under
+      Radar → **Risk controls**, which is a threshold model rather than a rule
+      you toggle; review what that tab offers instead of looking for this rule.
 - [ ] Leave **Request 3DS if supported** OFF for now. It would add a challenge
       step to signup and cost conversion. Revisit only if trial-end charges start
       failing — 3DS at setup time shifts liability and improves off-session
