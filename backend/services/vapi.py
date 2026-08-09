@@ -317,6 +317,41 @@ async def update_phone_number(phone_id: str, data: dict, api_key: str | None = N
         raise
 
 
+async def delete_phone_number(phone_id: str, api_key: str | None = None) -> bool:
+    """Remove a phone number from Vapi.
+
+    Pairs with releasing the underlying Twilio number: leaving the Vapi record
+    behind means it keeps pointing at a number Twilio has taken back and may have
+    reassigned to someone else entirely.
+
+    Returns True when the number is gone, INCLUDING when Vapi says it was never
+    there (404) — that is the desired end state, and treating it as an error
+    would strand the caller in a retry loop over an already-clean record.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.delete(
+                f"{VAPI_BASE_URL}/phone-number/{phone_id}",
+                headers=_headers(api_key),
+                timeout=30.0,
+            )
+            if res.status_code == 404:
+                logger.info("Vapi phone number %s already absent", phone_id)
+                return True
+            res.raise_for_status()
+            logger.info("Deleted Vapi phone number %s", phone_id)
+            return True
+    except httpx.HTTPStatusError as e:
+        logger.error(
+            "Failed to delete Vapi phone number %s: %s %s",
+            phone_id, e.response.status_code, e.response.text,
+        )
+        return False
+    except httpx.RequestError as e:
+        logger.error("Network error deleting Vapi phone number %s: %s", phone_id, e)
+        return False
+
+
 async def get_assistant(assistant_id: str, api_key: str | None = None) -> dict:
     try:
         async with httpx.AsyncClient() as client:

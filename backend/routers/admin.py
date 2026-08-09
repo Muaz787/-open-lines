@@ -15,6 +15,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 _TENANT_SUMMARY_FIELDS = "id, business_name, industry, twilio_phone_number, is_active, created_at"
 
 
+def _digits(value: str) -> str:
+    """Digits only, so a confirmation typed as +1 416 555 0100 still matches the
+    stored +14165550100."""
+    return "".join(c for c in str(value or "") if c.isdigit())
+
+
 def _check_admin_key(x_admin_key: str | None) -> None:
     admin_key = os.getenv("ADMIN_API_KEY", "")
     if not admin_key:
@@ -479,6 +485,49 @@ async def reconcile_transfer_durations(x_admin_key: str | None = Header(None)):
     _check_admin_key(x_admin_key)
     from services import transfer_reconcile
     return await transfer_reconcile.reconcile_pending()
+
+
+@router.post("/tenants/{tenant_id}/release-number")
+async def release_tenant_number_endpoint(
+    tenant_id: str,
+    confirm_number: str = "",
+    x_admin_key: str | None = Header(None),
+):
+    """Give a tenant's phone number back to Twilio. IRREVERSIBLE.
+
+    Twilio can reassign a released number, so the business loses it permanently
+    and its callers eventually reach a stranger. `confirm_number` must match the
+    number currently on the tenant — a mistyped tenant_id then releases nothing
+    instead of destroying the wrong business's line.
+    """
+    _check_admin_key(x_admin_key)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found (check the tenant_id is a valid UUID)")
+
+    current = str(tenant.get("twilio_phone_number") or "")
+    if not current:
+        return {"status": "no_number", "tenant_id": tenant_id}
+
+    # Compare on digits so +1 416… and 1416… don't fail a legitimate confirmation.
+    if _digits(confirm_number) != _digits(current):
+        raise HTTPException(
+            status_code=400,
+            detail=f"confirm_number must match this tenant's number ({current}) to release it",
+        )
+
+    from services.provisioning import release_tenant_number
+    result = await release_tenant_number(tenant)
+    logger.warning(
+        "ADMIN: release-number for tenant %s (%s) -> %s",
+        tenant_id, current, "released" if result.get("released") else result.get("reason"),
+    )
+    if not result.get("released"):
+        raise HTTPException(status_code=502, detail=f"Release failed: {result.get('reason')}")
+    return {"status": "released", "tenant_id": tenant_id, "number": current, **result}
 
 
 @router.post("/tenants/{tenant_id}/delete-data")
