@@ -147,6 +147,15 @@ async def run_reclaim() -> dict:
     from db import supabase as db
 
     if not enabled():
+        # Say so out loud. This returned a bare flag and logged nothing, so a
+        # sweep that was switched on but on the WRONG Railway service looked
+        # identical to one nobody had enabled yet — which is exactly how the
+        # first soak silently never started.
+        logger.info(
+            "number reclaim: NUMBER_RECLAIM_ENABLED is not set on this service — "
+            "sweep skipped. It must be set on the SCHEDULED cron service, which is "
+            "where this runs; setting it on the web service has no effect here."
+        )
         return {"enabled": False}
 
     is_dry = dry_run()
