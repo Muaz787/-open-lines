@@ -18,6 +18,8 @@ import logging
 import os
 import re
 
+from urllib.parse import urlparse
+
 import resend
 
 logger = logging.getLogger(__name__)
@@ -26,10 +28,56 @@ resend.api_key = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM    = os.getenv("EMAIL_FROM", "notifications@openlines.ai")
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@openlines.ai")
 
-_raw_frontend = os.getenv("FRONTEND_URL", "https://openlines.ai")
-FRONTEND_URL  = _raw_frontend if _raw_frontend.startswith("http") else f"https://{_raw_frontend}"
-_raw_backend  = os.getenv("APP_BACKEND_URL", "https://backend-production-71174.up.railway.app")
-BACKEND_URL   = _raw_backend if _raw_backend.startswith("http") else f"https://{_raw_backend}"
+_PROD_FRONTEND = "https://openlines.ai"
+_PROD_BACKEND  = "https://backend-production-71174.up.railway.app"
+_LOCAL_HOSTS   = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+
+
+def _resolve_public_url(env_var: str, default: str) -> str:
+    """Normalize a public URL from env, and refuse a LOCAL one when this process
+    is actually sending mail.
+
+    Every link in every email is built from these two constants. A local value is
+    harmless in dev — without RESEND_API_KEY, _send() no-ops — but in production
+    it mails dead localhost links to real customers.
+
+    That has now happened TWICE, on two different Railway services. The web
+    service and the scheduled cron service have INDEPENDENT env vars, so fixing
+    FRONTEND_URL on one leaves the other broken, and the two send different
+    emails: welcome from the web service, trial reminders from the cron. The
+    second failure was invisible until a customer clicked a reminder.
+
+    So: if Resend is configured we are sending real mail to real people, and a
+    localhost link is a misconfiguration rather than an intent. Fall back to the
+    production default and log loudly rather than mail a link that cannot work.
+    """
+    raw = (os.getenv(env_var, default) or "").strip()
+    # A var that exists but is blank is easy to create in the Railway UI, and
+    # would otherwise build the string "https://" — worse than no link at all.
+    if not raw:
+        raw = default
+    url  = raw if raw.startswith("http") else f"https://{raw}"
+    host = (urlparse(url).hostname or "").lower()
+
+    if host in _LOCAL_HOSTS or host.endswith(".local"):
+        if resend.api_key:
+            logger.error(
+                "%s is set to a local address (%s) on a process that sends real email — "
+                "falling back to %s. Fix %s on THIS Railway service; the web service and "
+                "the scheduled cron service have separate environment variables.",
+                env_var, url, default, env_var,
+            )
+            return default
+        logger.info(
+            "%s is local (%s), but email sending is disabled here (no RESEND_API_KEY), "
+            "so links are left pointing at the local dev server.",
+            env_var, url,
+        )
+    return url
+
+
+FRONTEND_URL = _resolve_public_url("FRONTEND_URL", _PROD_FRONTEND)
+BACKEND_URL  = _resolve_public_url("APP_BACKEND_URL", _PROD_BACKEND)
 
 COMPANY_NAME    = "Open Lines Technologies Inc."
 COMPANY_ADDRESS = "201-5255 Yonge St, North York, ON M2N 6P4, Canada"
