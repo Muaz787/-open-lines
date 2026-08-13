@@ -45,11 +45,27 @@ logger = logging.getLogger("recrawl_cron")
 # what this process can actually see. Secrets are reported only as set/MISSING —
 # never their values.
 
+# Names verified against the actual os.getenv() calls in this process's call
+# graph. A preflight that reports a correctly configured service as broken trains
+# people to ignore it, which is worse than having none — the first version of
+# this list said SUPABASE_SERVICE_KEY, which is not what db/supabase.py reads.
 _REQUIRED_SECRETS = [
-    "SUPABASE_URL", "SUPABASE_SERVICE_KEY",
-    "OPENAI_API_KEY", "PINECONE_API_KEY", "FIRECRAWL_API_KEY",
-    "VAPI_API_KEY", "RESEND_API_KEY", "STRIPE_SECRET_KEY",
-    "ENCRYPTION_KEY_HEX",
+    "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY",
+    "OPENAI_API_KEY",
+    "PINECONE_API_KEY", "PINECONE_INDEX_NAME", "PINECONE_INDEX_HOST",
+    "FIRECRAWL_API_KEY",
+    "VAPI_API_KEY", "ENCRYPTION_KEY_HEX",
+    "RESEND_API_KEY", "STRIPE_SECRET_KEY",
+    # Must be present AND IDENTICAL to the web service's. The re-crawl reprompt
+    # bakes this into each tenant's Vapi tool definitions (vapi._tool_server), and
+    # Vapi echoes it back as X-Vapi-Secret on every tool call — which routers/
+    # tools.py verifies against the WEB service's copy. A different value here
+    # means caller lookup, availability and booking all 401 mid-call. A missing
+    # one is just as bad: server_block() then emits the legacy secret-less shape,
+    # so Vapi sends no header at all and verification still fails.
+    # A single process cannot detect the mismatch, so this only checks presence —
+    # compare the values by hand across the two services.
+    "VAPI_SERVER_SECRET",
 ]
 
 # Non-secret config whose VALUE matters and is safe to print. A wrong value here
@@ -63,6 +79,11 @@ _VISIBLE_CONFIG = [
     "NUMBER_RECLAIM_ENABLED", "NUMBER_RECLAIM_DRY_RUN",
     "NUMBER_RECLAIM_TRIAL_GRACE_DAYS", "NUMBER_RECLAIM_CANCELED_GRACE_DAYS",
     "CLOSED_ACCOUNT_RETENTION_DAYS", "PLATFORM_ALERT_EMAIL",
+    # Safety-critical for the reclaim sweep: services.trial.is_billing_exempt
+    # consults this allow-list as well as the tenants.billing_exempt column. A
+    # tenant comped ONLY via this variable is invisible here if it is set on the
+    # web service and not this one — and would then be eligible for release.
+    "BILLING_EXEMPT_TENANT_IDS",
 ]
 
 
