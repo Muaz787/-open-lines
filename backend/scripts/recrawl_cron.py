@@ -6,9 +6,16 @@ Run as a SCHEDULED Railway service (not the always-on web service):
     Cron schedule : 0 8 * * *        (daily 08:00 UTC; staleness is checked inside)
 
 It calls the same logic as POST /admin/recrawl-stale-websites directly, so no
-HTTP round-trip and no ADMIN_API_KEY is needed. Reuses the backend env vars
-(SUPABASE_*, OPENAI_API_KEY, PINECONE_*, FIRECRAWL_API_KEY, VAPI_API_KEY for the
-post-crawl reprompt). Exits 0 on completion, non-zero only if it couldn't start.
+HTTP round-trip and no ADMIN_API_KEY is needed. Exits 0 on completion, non-zero
+only if it couldn't start.
+
+⚠ THIS SERVICE HAS ITS OWN ENVIRONMENT VARIABLES. It does NOT inherit the web
+service's — an earlier version of this docstring claimed it "reuses the backend
+env vars", and that wrong assumption caused three production faults (dead
+localhost links in trial emails, twice; and a feature flag set on the web service
+so the sweep it gated never ran). Anything this file touches must be set HERE
+too. _log_env_preflight() below prints what this process can actually see on
+every run — read it before trusting that a flag is on.
 """
 import os
 import sys
@@ -22,9 +29,75 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(name)s: %(messa
 logger = logging.getLogger("recrawl_cron")
 
 
+# ---------------------------------------------------------------------------
+# Environment preflight
+# ---------------------------------------------------------------------------
+# This service has its OWN environment variables on Railway — it does NOT
+# inherit the web service's, despite what this file's docstring used to claim.
+# That has now caused three separate production faults:
+#   * FRONTEND_URL left at localhost here, so trial-reminder emails shipped dead
+#     links while the welcome email (sent from the web service) worked;
+#   * NUMBER_RECLAIM_ENABLED set on the web service, so the reclaim sweep
+#     silently did nothing for days while appearing to be switched on;
+#   * and the same FRONTEND_URL fault once before, in July.
+#
+# Each one was invisible until a human happened to look. So every run now prints
+# what this process can actually see. Secrets are reported only as set/MISSING —
+# never their values.
+
+_REQUIRED_SECRETS = [
+    "SUPABASE_URL", "SUPABASE_SERVICE_KEY",
+    "OPENAI_API_KEY", "PINECONE_API_KEY", "FIRECRAWL_API_KEY",
+    "VAPI_API_KEY", "RESEND_API_KEY", "STRIPE_SECRET_KEY",
+    "ENCRYPTION_KEY_HEX",
+]
+
+# Non-secret config whose VALUE matters and is safe to print. A wrong value here
+# is exactly the failure mode above, so seeing it every run is the point.
+#
+# ONLY variables this process actually reads. Listing web-only flags such as
+# TRIAL_REQUIRE_CARD would invite the mirror-image mistake — someone setting them
+# here, where nothing consults them.
+_VISIBLE_CONFIG = [
+    "FRONTEND_URL", "APP_BACKEND_URL",
+    "NUMBER_RECLAIM_ENABLED", "NUMBER_RECLAIM_DRY_RUN",
+    "NUMBER_RECLAIM_TRIAL_GRACE_DAYS", "NUMBER_RECLAIM_CANCELED_GRACE_DAYS",
+    "CLOSED_ACCOUNT_RETENTION_DAYS", "PLATFORM_ALERT_EMAIL",
+]
+
+
+def _log_env_preflight() -> None:
+    missing = [name for name in _REQUIRED_SECRETS if not os.getenv(name, "").strip()]
+    if missing:
+        logger.error(
+            "cron preflight: MISSING on this service: %s — set them on the SCHEDULED "
+            "service, not only the web one; Railway does not share env vars between them",
+            ", ".join(missing),
+        )
+    else:
+        logger.info("cron preflight: all %d required secrets present", len(_REQUIRED_SECRETS))
+
+    logger.info(
+        "cron preflight: %s",
+        " ".join(f"{name}={os.getenv(name) or '<unset>'}" for name in _VISIBLE_CONFIG),
+    )
+
+    # The specific mistake that shipped dead links to a customer.
+    frontend = (os.getenv("FRONTEND_URL") or "").lower()
+    if "localhost" in frontend or "127.0.0.1" in frontend:
+        logger.error(
+            "cron preflight: FRONTEND_URL=%s — every link in every email this service "
+            "sends would point at a dev machine. services.email falls back to the "
+            "production default, but FIX THIS VARIABLE on the scheduled service.",
+            os.getenv("FRONTEND_URL"),
+        )
+
+
 async def main() -> int:
     from services import recrawl
     from db import supabase as db
+
+    _log_env_preflight()
 
     try:
         due = await recrawl.find_stale_tenants(limit=recrawl.MAX_TENANTS_PER_RUN)
