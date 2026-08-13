@@ -56,6 +56,16 @@ _REQUIRED_SECRETS = [
     "FIRECRAWL_API_KEY",
     "VAPI_API_KEY", "ENCRYPTION_KEY_HEX",
     "RESEND_API_KEY", "STRIPE_SECRET_KEY",
+    # Must be present AND IDENTICAL to the web service's. The re-crawl reprompt
+    # bakes this into each tenant's Vapi tool definitions (vapi._tool_server), and
+    # Vapi echoes it back as X-Vapi-Secret on every tool call — which routers/
+    # tools.py verifies against the WEB service's copy. A different value here
+    # means caller lookup, availability and booking all 401 mid-call. A missing
+    # one is just as bad: server_block() then emits the legacy secret-less shape,
+    # so Vapi sends no header at all and verification still fails.
+    # A single process cannot detect the mismatch, so this only checks presence —
+    # compare the values by hand across the two services.
+    "VAPI_SERVER_SECRET",
 ]
 
 # Non-secret config whose VALUE matters and is safe to print. A wrong value here
