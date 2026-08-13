@@ -1,6 +1,8 @@
 import os
 import re
 import logging
+from urllib.parse import urlparse
+
 import httpx
 from dotenv import load_dotenv
 
@@ -185,9 +187,42 @@ async def update_assistant(assistant_id: str, config: dict, api_key: str | None 
         raise
 
 
-def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
-    if not APP_BACKEND_URL:
+def _require_public_backend_url() -> str:
+    """Return APP_BACKEND_URL, refusing a local one.
+
+    Vapi is a cloud service: it can never reach localhost, not even in dev —
+    that is precisely why main.py swaps in the ngrok URL at startup. So a local
+    value here is ALWAYS a misconfiguration, and baking it into an assistant's
+    tool definitions silently breaks caller lookup and appointment booking on
+    live calls, with no error anywhere until a caller notices.
+
+    That is not hypothetical. The scheduled cron service had
+    APP_BACKEND_URL=http://localhost:8000 (a dev-shaped value, harmless in the web
+    service because main.py rewrites it, but the cron never runs main.py). Its
+    daily re-crawl calls rebuild_and_push_system_prompt, which pushes `tools` —
+    so every re-crawled tenant had localhost tool URLs written into their live
+    assistant.
+
+    Raising is deliberate. Callers such as the re-crawl reprompt treat a failure
+    as non-fatal and leave the assistant's existing, working tools untouched:
+    skipping an update beats shipping a broken one.
+    """
+    url = (APP_BACKEND_URL or "").strip()
+    if not url:
         raise RuntimeError("APP_BACKEND_URL must be set")
+    host = (urlparse(url).hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or host.endswith(".local"):
+        raise RuntimeError(
+            f"APP_BACKEND_URL is local ({url}) — Vapi cannot reach it, so refusing to "
+            f"write it into an assistant. Set APP_BACKEND_URL to the public backend URL "
+            f"on THIS service (the scheduled cron service has its own env vars), or run "
+            f"ngrok locally so main.py can substitute the tunnel URL."
+        )
+    return url
+
+
+def build_assistant_config(tenant: dict, system_prompt: str) -> dict:
+    _require_public_backend_url()
     tenant_id = tenant.get("id")
     tools = [build_caller_lookup_tool(tenant_id)] if tenant_id else []
     return {
@@ -666,8 +701,7 @@ RESCHEDULING RULES
 
 
 def build_caller_lookup_tool(tenant_id: str) -> dict:
-    if not APP_BACKEND_URL:
-        raise RuntimeError("APP_BACKEND_URL must be set")
+    _require_public_backend_url()
     return {
         "type": "function",
         "function": {
@@ -685,8 +719,7 @@ def build_caller_lookup_tool(tenant_id: str) -> dict:
 
 def build_calendar_tools(tenant_id: str) -> list[dict]:
     """Build all Vapi tool definitions: caller lookup + calendar booking."""
-    if not APP_BACKEND_URL:
-        raise RuntimeError("APP_BACKEND_URL must be set")
+    _require_public_backend_url()
     base = f"{APP_BACKEND_URL}/tools/{tenant_id}"
     return [
         build_caller_lookup_tool(tenant_id),
