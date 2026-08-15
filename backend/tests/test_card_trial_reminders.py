@@ -183,3 +183,70 @@ async def test_sweep_survives_a_db_failure():
     with patch("db.supabase.get_client", side_effect=RuntimeError("db down")):
         out = await trial.retry_stalled_conversions()
     assert out["error"] is True
+
+
+# ── Legacy nudge vs the card trial (no contradictory emails) ─────────────────
+
+def _legacy(**over):
+    """A pre-cutover tenant on the derived card-free trial, about to lapse."""
+    return {
+        "id": "t_legacy", "business_name": "Acme", "email": "info@acme.ai",
+        "subscription_status": "none", "created_at": _iso(days=-6),
+        "minutes_used_this_period": 2,
+        "trial_email_day3_sent": True, "trial_email_day6_sent": False,
+        "trial_email_ended_sent": False,
+        **over,
+    }
+
+
+async def _run_legacy(rows):
+    sends = []
+
+    async def _send(**kw):
+        sends.append(kw)
+        return True
+
+    with patch("db.supabase.get_client", return_value=_db_returning(rows)), \
+         patch("db.supabase.update_tenant", new=AsyncMock()), \
+         patch("services.email.send_trial_reminder_email", new=_send):
+        result = await trial.process_trial_reminders()
+    return result, sends
+
+
+@pytest.mark.asyncio
+async def test_a_lapsing_legacy_trial_still_gets_its_nudge():
+    result, sends = await _run_legacy([_legacy()])
+    assert result["ending"] == 1 and sends[0]["kind"] == "ending"
+
+
+@pytest.mark.asyncio
+async def test_no_contradictory_pair_when_one_person_owns_two_tenants():
+    """The real incident: an abandoned pre-cutover test account and the card trial
+    the same person later signed up for, sharing one email. Each row is judged
+    correctly on its own, so the human got 'we'll charge your card tomorrow' and
+    'add a plan to avoid interruption' in the same minute."""
+    card_trial = {
+        "id": "t_card", "business_name": "Acme", "email": "INFO@acme.ai",
+        "subscription_status": "trialing", "created_at": _iso(days=-6),
+        "minutes_used_this_period": 0,
+    }
+    result, sends = await _run_legacy([_legacy(), card_trial])
+
+    assert sends == []
+    assert result["ending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_comped_tenant_gets_no_legacy_nudge():
+    """billing_exempt was not in the select list, so has_active_subscription()
+    could not see it and comps were nudged to buy a plan they already have free."""
+    result, sends = await _run_legacy([_legacy(billing_exempt=True)])
+    assert sends == [] and result["ending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_an_unsubscribed_tenant_is_respected():
+    """CASL. The loop always tested marketing_unsubscribed_at, but the column was
+    never fetched — so the check silently passed for everyone."""
+    result, sends = await _run_legacy([_legacy(marketing_unsubscribed_at=_iso(days=-2))])
+    assert sends == [] and result["ending"] == 0

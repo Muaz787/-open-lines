@@ -40,10 +40,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userName, setUserName]   = useState('')
   const [userEmail, setUserEmail] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
+  // null = the session check hasn't resolved yet. Rendering children before it
+  // does painted the whole dashboard — including "Choose a plan" with real
+  // pricing — to a signed-out visitor for a moment before the redirect fired.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { router.replace('/login'); return }
+      if (!data.user) { setSignedIn(false); router.replace('/login'); return }
+      setSignedIn(true)
       setUserEmail(data.user.email ?? '')
       setUserName(data.user.user_metadata?.full_name ?? '')
       // Idempotent re-identify keeps returning sessions tied to the person
@@ -83,6 +88,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const sidebarProps = {
     tenantId, tenant, leadsCount, apptsCount, userName, userEmail, onLogout: handleLogout,
   }
+
+  // Hold everything until we know. A brief blank beats flashing an authenticated
+  // page at someone who is not.
+  if (signedIn !== true) return null
 
   return (
     <div className="db-root">
