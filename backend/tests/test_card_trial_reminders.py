@@ -250,3 +250,21 @@ async def test_an_unsubscribed_tenant_is_respected():
     never fetched — so the check silently passed for everyone."""
     result, sends = await _run_legacy([_legacy(marketing_unsubscribed_at=_iso(days=-2))])
     assert sends == [] and result["ending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_deactivated_tenant_gets_no_nudge():
+    """Deactivation is an explicit admin closure and already stops the line taking
+    calls. Continuing to email them 'add a plan' is noise, and for a commercial
+    message the wrong side of CASL."""
+    result, sends = await _run_legacy([_legacy(is_active=False)])
+    assert sends == [] and result["ending"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_null_is_active_does_not_silence_a_live_tenant():
+    """The column defaults true; an older row or partial select can yield None. A
+    falsy test would stop reminders for everyone."""
+    for value in (None, True):
+        result, sends = await _run_legacy([_legacy(is_active=value)])
+        assert result["ending"] == 1, value

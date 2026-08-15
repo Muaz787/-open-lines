@@ -538,7 +538,7 @@ async def process_trial_reminders(limit: int = 200) -> dict:
                 # line, and — worse — the CASL unsubscribe check could never fire,
                 # because the column it tests was never fetched.
                 "id, business_name, email, created_at, subscription_status, "
-                "minutes_used_this_period, billing_exempt, marketing_unsubscribed_at, "
+                "minutes_used_this_period, billing_exempt, marketing_unsubscribed_at, is_active, "
                 "trial_email_day3_sent, trial_email_day6_sent, trial_email_ended_sent"
             )
             .execute()
@@ -573,6 +573,13 @@ async def process_trial_reminders(limit: int = 200) -> dict:
         # different sequence, one that names the amount and date of an imminent
         # CHARGE rather than an expiring free trial. See process_card_trial_reminders.
         if not email or has_active_subscription(t):
+            continue
+        # A closed account is not a lead. Deactivation is an explicit admin act,
+        # and it already stops the line taking calls — continuing to nudge them to
+        # buy a plan is both noise and, for a commercial message, the wrong side of
+        # CASL. `is False` rather than a falsy test: the column defaults true and a
+        # None from an older row must not silence a live tenant.
+        if t.get("is_active") is False:
             continue
         if email.strip().lower() in covered:
             logger.info(
