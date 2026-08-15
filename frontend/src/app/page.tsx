@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
+import ElevenLabsGrantBadge from './components/ElevenLabsGrantBadge'
 import { motion, AnimatePresence, useScroll, useSpring, useReducedMotion } from 'framer-motion'
 import Link from 'next/link'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
@@ -813,6 +814,7 @@ export default function Home() {
             <div className="st-dot" />
             System Status: Online
           </div>
+          <ElevenLabsGrantBadge />
         </div>
       </footer>
     </>
