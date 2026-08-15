@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import Image from 'next/image'
+import ElevenLabsGrantBadge from './ElevenLabsGrantBadge'
 
 const LogoMark = () => (
   <svg width="24" height="24" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -45,36 +45,7 @@ export default function SiteFooter() {
           <div className="st-dot" />
           All systems operational
         </div>
-        {/* ElevenLabs Grants badge. Displaying this, linked back, is a condition of
-            the grant — not decoration, so it stays. Self-hosted rather than
-            hotlinked from their CDN: an asset move on their side would silently
-            break the logo, and with it our compliance.
-            Both variants ship and CSS picks one, matching how the rest of the site
-            handles [data-theme="dark"]. next/image here (unlike the SVG marquee, where
-            it adds nothing) because these are raster and worth optimising; explicit
-            width/height keeps CLS at zero. */}
-        <a
-          href="https://elevenlabs.io/startup-grants"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ft-grant"
-          aria-label="ElevenLabs Grants"
-        >
-          <Image
-            src="/elevenlabs-grants-light.webp"
-            alt="ElevenLabs Grants"
-            width={170}
-            height={15}
-            className="ft-grant-light"
-          />
-          <Image
-            src="/elevenlabs-grants-dark.webp"
-            alt="ElevenLabs Grants"
-            width={170}
-            height={15}
-            className="ft-grant-dark"
-          />
-        </a>
+        <ElevenLabsGrantBadge />
       </div>
     </footer>
   )

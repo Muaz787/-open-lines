@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import ElevenLabsGrantBadge from '../components/ElevenLabsGrantBadge'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -236,6 +237,7 @@ export default function SupportPage() {
           <Link href="/docs"    style={{ color: 'inherit', textDecoration: 'none' }}>Docs</Link>
           <a href="mailto:support@openlines.ai" style={{ color: 'inherit', textDecoration: 'none' }}>support@openlines.ai</a>
         </div>
+        <ElevenLabsGrantBadge />
       </footer>
     </div>
   )
