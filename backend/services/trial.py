@@ -532,9 +532,14 @@ async def process_trial_reminders(limit: int = 200) -> dict:
         res = (
             db.get_client().table("tenants")
             .select(
+                # billing_exempt and marketing_unsubscribed_at were missing here
+                # while the loop below reads both. That silently disabled two
+                # guards: comped tenants were not recognised as having a live
+                # line, and — worse — the CASL unsubscribe check could never fire,
+                # because the column it tests was never fetched.
                 "id, business_name, email, created_at, subscription_status, "
-                "minutes_used_this_period, trial_email_day3_sent, "
-                "trial_email_day6_sent, trial_email_ended_sent"
+                "minutes_used_this_period, billing_exempt, marketing_unsubscribed_at, "
+                "trial_email_day3_sent, trial_email_day6_sent, trial_email_ended_sent"
             )
             .execute()
         )
@@ -542,6 +547,18 @@ async def process_trial_reminders(limit: int = 200) -> dict:
     except Exception as e:
         logger.error("trial reminders: tenant fetch failed: %s", e)
         return {"active": 0, "ending": 0, "ended": 0, "error": True}
+
+    # Two tenant rows can share one email address — an abandoned pre-cutover test
+    # account and the real card trial the same person later signed up for. Each
+    # row is judged correctly on its own, but the human receives two contradictory
+    # emails in the same minute: "we'll charge your card tomorrow" alongside "add
+    # a plan to avoid interruption". So suppress the legacy nudge for anyone who
+    # already has a live subscription on ANY of their tenants.
+    covered = {
+        (t.get("email") or "").strip().lower()
+        for t in rows
+        if t.get("email") and has_active_subscription(t)
+    }
 
     now  = datetime.now(timezone.utc)
     sent = {"active": 0, "ending": 0, "ended": 0}
@@ -556,6 +573,13 @@ async def process_trial_reminders(limit: int = 200) -> dict:
         # different sequence, one that names the amount and date of an imminent
         # CHARGE rather than an expiring free trial. See process_card_trial_reminders.
         if not email or has_active_subscription(t):
+            continue
+        if email.strip().lower() in covered:
+            logger.info(
+                "trial reminders: skipping legacy nudge for tenant %s — %s already has a "
+                "live subscription on another tenant, and would get contradictory emails",
+                t.get("id"), email,
+            )
             continue
         # CASL: trial nudges are commercial messages — respect an unsubscribe.
         if t.get("marketing_unsubscribed_at"):
