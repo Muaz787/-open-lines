@@ -558,6 +558,16 @@ footer {
 .ft-links a { font-size: 12px; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
 .ft-links a:hover { color: var(--text-2); }
 .ft-right { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+/* ElevenLabs Grants badge — a grant condition, so it must stay visible in both
+   themes. Two assets, one shown at a time; the dark (white-ink) variant is for
+   the dark background. Slight dim at rest so it sits with the muted footer text
+   rather than competing with it. */
+.ft-grant { display: inline-flex; align-items: center; opacity: 0.75; transition: opacity 0.2s; }
+.ft-grant:hover { opacity: 1; }
+.ft-grant img { display: block; height: auto; max-width: 170px; }
+.ft-grant-dark { display: none; }
+[data-theme="dark"] .ft-grant-light { display: none; }
+[data-theme="dark"] .ft-grant-dark { display: block; }
 .ft-social { display: flex; align-items: center; gap: 14px; }
 .ft-social a { color: var(--text-3); text-decoration: none; display: flex; align-items: center; transition: color 0.2s; }
 .ft-social a:hover { color: var(--text); }
