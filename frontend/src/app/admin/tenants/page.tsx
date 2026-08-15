@@ -56,6 +56,11 @@ export default function TenantsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  // Bulk assistant repair — deliberate two-step, since it makes one Vapi
+  // round-trip per tenant.
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rebuildArmed, setRebuildArmed] = useState(false)
+  const [rebuildMsg, setRebuildMsg] = useState('')
   const [hasCalendar, setHasCalendar] = useState('')
   const [hasKb, setHasKb] = useState('')
   const [token, setToken] = useState('')
@@ -89,6 +94,27 @@ export default function TenantsPage() {
   useEffect(() => { if (token) load(page) }, [token, page, load])
 
   function handleSearch() { setPage(1); load(1) }
+
+  async function rebuildAllPrompts() {
+    if (rebuilding) return
+    setRebuilding(true)
+    setRebuildMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin/reprompt-all', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      setRebuildMsg(res.ok
+        ? `Rebuilt ${json.rebuilt} of ${json.total}${json.failed ? ` — ${json.failed} failed` : ''}`
+        : `Failed: ${json.error ?? res.statusText}`)
+      setRebuildArmed(false)
+    } catch {
+      setRebuildMsg('Network error — the run may still be in progress; check the backend logs')
+    }
+    setRebuilding(false)
+  }
 
   const perPage = 50
   const totalPages = Math.max(1, Math.ceil(total / perPage))
@@ -125,6 +151,32 @@ export default function TenantsPage() {
           <option value="no">No KB</option>
         </select>
         <button className="adm-btn adm-btn-secondary" onClick={handleSearch}>Search</button>
+      </div>
+
+      {/* Bulk assistant repair. Re-pushes every tenant's Vapi config from THIS
+          service, which has the correct APP_BACKEND_URL and VAPI_SERVER_SECRET —
+          the fix after the cron wrote its own (wrong) values into live
+          assistants. Idempotent, so it is safe to run on everyone. */}
+      <div className="adm-toolbar" style={{ alignItems: 'center', gap: 10 }}>
+        {!rebuildArmed ? (
+          <button className="adm-btn adm-btn-secondary" onClick={() => setRebuildArmed(true)} disabled={rebuilding}>
+            Rebuild all assistant configs
+          </button>
+        ) : (
+          <>
+            <span style={{ fontSize: 12.5, color: 'var(--db-text-2)' }}>
+              Re-pushes tool URLs + server secret for every tenant. One Vapi call each, so it
+              takes a while. Safe to repeat.
+            </span>
+            <button className="adm-btn adm-btn-primary" onClick={rebuildAllPrompts} disabled={rebuilding}>
+              {rebuilding ? 'Rebuilding…' : 'Run it'}
+            </button>
+            <button className="adm-btn adm-btn-secondary" onClick={() => setRebuildArmed(false)} disabled={rebuilding}>
+              Cancel
+            </button>
+          </>
+        )}
+        {rebuildMsg && <span style={{ fontSize: 12.5, color: 'var(--db-text-2)' }}>{rebuildMsg}</span>}
       </div>
 
       <div className="adm-section" style={{ padding: 0 }}>
