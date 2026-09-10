@@ -202,6 +202,9 @@ class _Book:
             patch("services.square_booking.resolve_customer",
                   new=AsyncMock(return_value=("ok", "cust-1"))),
             patch("services.square_booking.create_booking", new=self.create),
+            # W6A2-prereq: the booking path now CLAIMS the slot before Square.
+            patch("db.locations.claim_slot_offer", new=AsyncMock(return_value=True)),
+            patch("db.locations.release_slot_offer", new=AsyncMock()),
             patch("db.locations.consume_slot_offer", new=self.consume),
             patch("db.supabase.insert_appointment", new=self.insert),
         ]

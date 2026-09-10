@@ -696,6 +696,14 @@ async def _multi_location_book(
                     slot_ref, offer.get("booking_id"))
         return _result(tc_id, _booked_message(offer, tenant, pending=False, again=True))
 
+    if status == slot_offers.IN_PROGRESS:
+        # Claimed and still in flight, or an attempt whose outcome we never learned.
+        # Either way a second CreateBooking is the one thing that must not happen.
+        logger.warning("tools/book[multi]: slot %s is claimed and unfinalized — refusing", slot_ref)
+        return _result(tc_id,
+            "I'm still confirming that time with the calendar. Give me a moment and "
+            "check with the caller before trying again — don't book it twice.")
+
     if status == slot_offers.NOT_FOUND:
         return _result(tc_id,
             "I couldn't find that time among the ones I offered. Please check "
@@ -743,6 +751,16 @@ async def _multi_location_book(
     if cust_status != customer_identity.OK or not customer_id:
         return _result(tc_id, _customer_problem_message(cust_status))
 
+    # THE DESTRUCTIVE BOUNDARY. Two concurrent tool calls holding this slot_ref
+    # compete on this CAS and only one can pass. Before this, both read consumed_at
+    # as NULL and both reached CreateBooking — and because the idempotency key is a
+    # fresh uuid4 per request, Square happily made two bookings.
+    if not await slot_offers.claim(call_id, slot_ref, tenant_id):
+        logger.warning("tools/book[multi]: lost the claim race on slot %s", slot_ref)
+        return _result(tc_id,
+            "I'm still confirming that time with the calendar. Give me a moment and "
+            "check with the caller before trying again — don't book it twice.")
+
     try:
         booking = await square_booking.create_booking(
             token, location_id=offer["provider_location_id"],
@@ -754,10 +772,24 @@ async def _multi_location_book(
             duration_minutes=seg.get("duration_minutes") or offer.get("duration_minutes"),
             note=f"Booked via Open Lines AI receptionist — {offer.get('service_name') or ''}".strip(),
         )
+    except square_booking.BookingOutcomeUnknown as e:
+        # The booking MAY exist. The slot stays claimed on purpose: releasing it
+        # would let a retry issue a second CreateBooking under a fresh idempotency
+        # key, turning one uncertain booking into two certain ones. The ordinary
+        # booking body is rebuilt from a live resolve_slot, so it cannot be replayed
+        # byte-identically either — replay is not available to us here.
+        logger.error("tools/book[multi]: RECONCILIATION REQUIRED — CreateBooking "
+                     "outcome unknown for tenant %s slot %s: %s", tenant_id, slot_ref, e)
+        return _result(tc_id,
+            "I couldn't confirm whether that booking went through, so I haven't "
+            "tried again. Take the caller's details and let them know the team will "
+            "confirm the appointment — do not book it a second time.")
     except Exception as e:
-        # Offer deliberately NOT consumed: the caller should be able to try the
-        # same time again rather than be told it has gone.
+        # Definitive rejection: Square told us no, so nothing exists. Give the slot
+        # back so the caller can try the same time again rather than be told it has
+        # gone.
         logger.error("tools/book[multi]: CreateBooking failed for %s: %s", tenant_id, e)
+        await slot_offers.release(call_id, slot_ref)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
     booking_id = booking.get("id", "")
