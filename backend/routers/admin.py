@@ -752,3 +752,89 @@ async def system_health(x_admin_key: str | None = Header(None)):
         checks.append({"name": n, "status": s, "message": m})
 
     return {"checks": checks, "generated_at": datetime.now(timezone.utc).isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# W2.5 — explicit adoption of discovered provider locations
+#
+# Operator-driven only. Nothing here runs on a sync, a schedule, or a callback.
+# All of it is dark: no runtime path reads tenant_locations yet, and adopted
+# locations are created booking_enabled=false (activation arrives in W4).
+#
+# There is deliberately no parameter for "make this the default". While
+# tenants.square_location_id is still authoritative, the default is whichever
+# provider location that pointer names — derived, never chosen. That is the
+# safety rule from W2.5 decision 1, enforced by the absence of the knob.
+# ---------------------------------------------------------------------------
+
+@router.get("/tenants/{tenant_id}/locations")
+async def review_tenant_locations(tenant_id: str, x_admin_key: str | None = Header(None)):
+    """What has been discovered, what has been adopted, and what the legacy
+    pointer names. Read-only."""
+    _check_admin_key(x_admin_key)
+    from services import location_adoption
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return await location_adoption.review(tenant)
+
+
+@router.post("/tenants/{tenant_id}/locations/adopt")
+async def adopt_tenant_location(
+    tenant_id: str, body: dict, x_admin_key: str | None = Header(None),
+):
+    """Adopt ONE discovered Square location into a real OpenLines location.
+
+    body: {provider_location_id, name?, slug?, aliases?, timezone?, dry_run?}
+    """
+    _check_admin_key(x_admin_key)
+    from services import location_adoption
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    try:
+        return await location_adoption.adopt_location(
+            tenant,
+            str(body.get("provider_location_id") or ""),
+            name=body.get("name"),
+            slug=body.get("slug"),
+            aliases=body.get("aliases"),
+            timezone=body.get("timezone"),
+            dry_run=bool(body.get("dry_run")),
+        )
+    except location_adoption.AdoptionError as e:
+        status = 404 if e.code == "binding_not_found" else 409
+        raise HTTPException(status_code=status, detail={"code": e.code, "message": e.message})
+
+
+@router.post("/tenants/{tenant_id}/locations/detach")
+async def detach_tenant_location(
+    tenant_id: str, body: dict, x_admin_key: str | None = Header(None),
+):
+    """Undo an adoption: unbind the provider location and deactivate the
+    OpenLines location. Never deletes."""
+    _check_admin_key(x_admin_key)
+    from services import location_adoption
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    try:
+        return await location_adoption.detach_location(
+            tenant,
+            str(body.get("provider_location_id") or ""),
+            dry_run=bool(body.get("dry_run")),
+        )
+    except location_adoption.AdoptionError as e:
+        status = 404 if e.code == "binding_not_found" else 409
+        raise HTTPException(status_code=status, detail={"code": e.code, "message": e.message})

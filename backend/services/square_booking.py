@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from services import square_service as sq_svc
+from services import location_scope
 from services.security import decrypt
 from db import supabase as db
 
@@ -109,6 +110,11 @@ async def list_services(token: str) -> list[dict]:
                     "variation_version": v.get("version"),
                     "team_member_ids": vd.get("team_member_ids") or [],
                     "available_for_booking": bool(vd.get("available_for_booking", True)),
+                    # W3: where this variation may actually be booked. Presence lives
+                    # on BOTH the item and the variation in Square, so the effective
+                    # scope is their intersection — resolved once here rather than by
+                    # every future consumer. Dark: nothing filters on it yet.
+                    **location_scope.resolve_service_scope(o, v),
                 })
     return out
 
@@ -124,7 +130,14 @@ async def list_team_members(token: str) -> list[dict]:
         members = []
         for m in res.json().get("team_members", []):
             name = f"{m.get('given_name', '')} {m.get('family_name', '')}".strip()
-            members.append({"square_team_member_id": m["id"], "display_name": name or "Team member"})
+            members.append({
+                "square_team_member_id": m["id"],
+                "display_name": name or "Team member",
+                # W3: where this member may be booked. ALL_CURRENT_AND_FUTURE stays a
+                # flag rather than today's id list, so a location opened later is
+                # still covered. Dark: no roster filters on it yet.
+                **location_scope.resolve_staff_scope(m),
+            })
         return members
 
 
@@ -313,14 +326,31 @@ async def sync(tenant_id: str) -> dict:
 
     location_id = tenant.get("square_location_id") or ""
     location_tz = tenant.get("square_location_timezone")
+    locations: list[dict] = []
     try:
         locations = await sq_svc.list_locations(token)
         if locations:
+            # LEGACY COMPATIBILITY PATH (unchanged, deliberately). Runtime still
+            # reads a single tenants.square_location_id, so a first connect still
+            # settles on locations[0] exactly as it always has. W2 does not rely on
+            # this choice — services/location_sync keys off the stored pointer, never
+            # off list order — and W4 is where the single pointer stops being the
+            # authority. Do not build anything new on this line.
             location_id = location_id or locations[0].get("id", "")
             location_tz = next((l.get("timezone") for l in locations if l.get("id") == location_id), None) \
                 or locations[0].get("timezone") or location_tz
     except Exception as e:
         logger.warning("Square sync: locations failed for %s: %s", tenant_id, e)
+
+    # W2: persist EVERY location, not just the one runtime uses. Dark — nothing
+    # reads these rows yet. Best-effort: a failure here must never break the
+    # catalog/team sync or the OAuth callback that fires it.
+    if locations:
+        try:
+            from services import location_sync
+            await location_sync.sync_square_locations(tenant, locations)
+        except Exception as e:
+            logger.warning("Square sync: location persistence failed for %s: %s", tenant_id, e)
 
     profile = await retrieve_booking_profile(token)
     bookable = bool(profile.get("booking_enabled"))
@@ -385,11 +415,30 @@ async def available_slot_strings(
 # ---------------------------------------------------------------------------
 
 async def handle_catalog_update(event: dict) -> None:
-    """A service was added/edited/removed in Square → refresh our cached menu."""
+    """A service was added/edited/removed in Square → refresh our cached menu.
+
+    Gated on square_appointments_enabled, matching handle_booking_event below.
+    Without that gate ANY catalog edit on a merchant rewrites the service and team
+    caches of EVERY tenant connected to it, whether or not that tenant books through
+    Square. That is not hypothetical: it fired during W3 fixture work and wrote an
+    unrelated merchant's services into a live tenant that has Square booking
+    switched off.
+
+    Deliberately narrower than the explicit paths. The manual sync endpoint and the
+    OAuth callback still sync an unenabled tenant, because a merchant must be able
+    to connect and preview its catalog before turning booking on. What changes is
+    that an *unsolicited* provider event can no longer do it.
+    """
     tenant = await db.get_tenant_by_square_merchant_id(event.get("merchant_id", ""))
-    if tenant and tenant.get("square_access_token"):
-        await sync(tenant["id"])
-        logger.info("Square sync: catalog refreshed for tenant %s", tenant["id"])
+    if not tenant or not tenant.get("square_access_token"):
+        return
+    if not tenant.get("square_appointments_enabled"):
+        logger.info(
+            "Square sync: catalog event for tenant %s ignored — appointments not "
+            "enabled for this tenant", tenant["id"])
+        return
+    await sync(tenant["id"])
+    logger.info("Square sync: catalog refreshed for tenant %s", tenant["id"])
 
 
 async def handle_booking_event(event: dict) -> None:
