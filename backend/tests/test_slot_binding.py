@@ -195,8 +195,12 @@ class _Book:
             patch("services.call_location.get_or_create", new=AsyncMock(return_value=self.state)),
             patch("services.square_booking.get_access_token", new=AsyncMock(return_value="tok")),
             patch("services.square_booking.resolve_slot", new=self.resolve_slot),
-            patch("services.square_booking.find_or_create_customer",
-                  new=AsyncMock(return_value="cust-1")),
+            # W6B: the multi-location path resolves the customer through the
+            # durable mapping now. Patching the old function left this step
+            # unpatched and running against the stubbed Supabase MagicMock, which
+            # returned a truthy id and made these tests pass for the wrong reason.
+            patch("services.square_booking.resolve_customer",
+                  new=AsyncMock(return_value=("ok", "cust-1"))),
             patch("services.square_booking.create_booking", new=self.create),
             patch("db.locations.consume_slot_offer", new=self.consume),
             patch("db.supabase.insert_appointment", new=self.insert),

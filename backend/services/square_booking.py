@@ -13,6 +13,7 @@ P1 is read-only. CreateBooking/Cancel land in P2. The live dispatch switch
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime, timedelta, date as date_type, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
@@ -142,43 +143,102 @@ async def list_team_members(token: str) -> list[dict]:
         return members
 
 
-async def find_or_create_customer(token: str, *, given_name: str, phone: str) -> str | None:
-    """Return a Square customer id for the caller, searching by phone first."""
+async def search_customers_by_phone(token: str, phone: str) -> list[dict]:
+    """Every Square customer with this exact phone. Raises on transport failure.
+
+    W6B needs the FULL list, not the first hit. Several customers sharing a phone
+    is an ambiguity to refuse, and the old code could not tell that apart from a
+    clean single match because it returned found[0] either way.
+
+    The exception is deliberate: a search that failed is not the same as a search
+    that found nothing, and collapsing them is how uncertainty becomes a duplicate.
+    """
+    if not phone:
+        return []
     async with httpx.AsyncClient() as client:
-        if phone:
-            res = await client.post(
-                f"{sq_svc._api_base()}/v2/customers/search",
-                json={"query": {"filter": {"phone_number": {"exact": phone}}}},
-                headers=sq_svc._sq_headers(token), timeout=15.0,
-            )
-            if res.is_success:
-                found = res.json().get("customers") or []
-                if found:
-                    return found[0]["id"]
-        # W5.2: no invented name. Square accepts a customer identified by phone
-        # alone (verified against the live API), and an absent name is honest where
-        # "Caller" is an echo of our own prompt masquerading as identity.
-        #
-        # The placeholder check is repeated here rather than left to the caller: the
-        # tool layer resolves the name properly, but this is the last point before
-        # the value becomes a permanent customer record, and an invariant enforced
-        # only by convention is one call site away from being untrue.
-        payload: dict = {}
-        if given_name and not caller_identity.is_placeholder_name(given_name):
-            payload["given_name"] = given_name.strip()
-        if phone:
-            payload["phone_number"] = phone
-        if not payload:
-            logger.warning("Square create customer: no name and no phone — refusing")
-            return None
+        res = await client.post(
+            f"{sq_svc._api_base()}/v2/customers/search",
+            json={"query": {"filter": {"phone_number": {"exact": phone}}}},
+            headers=sq_svc._sq_headers(token), timeout=15.0,
+        )
+        res.raise_for_status()
+        return res.json().get("customers") or []
+
+
+async def create_customer(
+    token: str, *, phone: str, given_name: str = "", idempotency_key: str = "",
+) -> str | None:
+    """CreateCustomer. Returns the id, or None on a DEFINITIVE provider rejection.
+
+    Raises on an ambiguous outcome (timeout, dropped connection, 5xx) so the caller
+    can tell "Square said no" from "we don't know" — the second must never be
+    retried under a fresh identity.
+
+    idempotency_key is supplied by the caller, never invented here: W6B derives it
+    from the durable provider_customers row id, which survives takeover and crash.
+    Square honours it, so replaying a request that may already have been committed
+    converges on the original customer instead of making a second one.
+    """
+    payload: dict = {}
+    # W5.2: no invented name. Square accepts a customer identified by phone alone
+    # (verified against the live API), and an absent name is honest where "Caller"
+    # is an echo of our own prompt masquerading as identity. Re-checked here rather
+    # than left to the caller: this is the last point before the value becomes a
+    # permanent customer record.
+    if given_name and not caller_identity.is_placeholder_name(given_name):
+        payload["given_name"] = given_name.strip()
+    if phone:
+        payload["phone_number"] = phone
+    if not payload:
+        logger.warning("Square create customer: no name and no phone — refusing")
+        return None
+    if idempotency_key:
+        payload["idempotency_key"] = idempotency_key
+
+    async with httpx.AsyncClient() as client:
         res = await client.post(
             f"{sq_svc._api_base()}/v2/customers",
             json=payload, headers=sq_svc._sq_headers(token), timeout=15.0,
         )
+        if res.status_code >= 500:
+            res.raise_for_status()          # unknown: may or may not have committed
         if not res.is_success:
             logger.warning("Square create customer %s: %s", res.status_code, res.text[:300])
             return None
         return (res.json().get("customer") or {}).get("id")
+
+
+async def resolve_customer(
+    *, tenant_id: str, token: str, phone: str, given_name: str = "",
+) -> tuple[str, str | None]:
+    """W6B entry point: (status, customer_id) via the durable local mapping."""
+    from services import customer_identity
+    return await customer_identity.resolve_customer_id(
+        tenant_id=tenant_id, token=token, phone=phone,
+        given_name=given_name, square=sys.modules[__name__])
+
+
+async def find_or_create_customer(token: str, *, given_name: str, phone: str) -> str | None:
+    """LEGACY shim — search-then-create, with W6B's race still present.
+
+    Kept only for paths that have no tenant context. Anything with a tenant_id
+    must use resolve_customer(); this function cannot own an identity because it
+    has nowhere to write one down.
+    """
+    try:
+        found = await search_customers_by_phone(token, phone)
+    except Exception as e:
+        # Fail closed. A search that errored is not a search that found nothing,
+        # and creating on that uncertainty is how duplicates are born.
+        logger.warning("Square customer search failed: %s", e)
+        return None
+    if found:
+        return found[0]["id"]
+    try:
+        return await create_customer(token, phone=phone, given_name=given_name)
+    except Exception as e:
+        logger.warning("Square create customer failed: %s", e)
+        return None
 
 
 async def get_customer(token: str, customer_id: str) -> dict:
