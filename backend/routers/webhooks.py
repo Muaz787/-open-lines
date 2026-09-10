@@ -308,6 +308,15 @@ async def _handle_assistant_request(msg: dict) -> dict:
     except Exception as e:
         logger.warning("assistant-request: location block failed for %s: %s", tenant_id, e)
 
+    # W4.1: the bookable service menu. Built in provisioning but only appended to
+    # the PUSHED config, never to last_system_prompt — so before this it never
+    # reached a live call, and the model had no idea what the services were called.
+    try:
+        from services import square_booking as _square_booking
+        system_prompt += await _square_booking.service_menu_block(tenant)
+    except Exception as e:
+        logger.warning("assistant-request: service menu failed for %s: %s", tenant_id, e)
+
     system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale

@@ -773,6 +773,18 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                                 "caller has no preference."
                             ),
                         },
+                        "service": {
+                            "type": "string",
+                            "description": (
+                                "The service the caller asked for, in their own words — "
+                                "'a dress fitting', 'consultation'. Pass it whenever the caller "
+                                "has named one, so availability reflects that service rather than "
+                                "an arbitrary one. The SERVICES section of your instructions lists "
+                                "what is bookable. Omit only when the caller genuinely has not said "
+                                "which service they want. NEVER invent a service and never pass a "
+                                "code or identifier."
+                            ),
+                        },
                         "location": {
                             "type": "string",
                             "description": (

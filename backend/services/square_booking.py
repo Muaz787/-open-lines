@@ -511,3 +511,77 @@ async def handle_booking_event(event: dict) -> None:
         appt["staff_name"] = sm
     await db.insert_appointment(appt)
     logger.info("Square sync: mirrored external booking %s for tenant %s", booking_id, tid)
+
+
+# ---------------------------------------------------------------------------
+# W4.1 — the bookable service menu, as the assistant should see it
+# ---------------------------------------------------------------------------
+
+def _display_service_name(cached_name: str) -> str:
+    """'Dress Fitting — Regular' -> 'Dress Fitting'.
+
+    Square names a bookable thing as item + variation. A caller says the item
+    ("a dress fitting"), never the variation, so the variation suffix is noise in
+    a spoken menu. Matching is unaffected: _match_square_service does containment,
+    and 'dress fitting' is contained in 'dress fitting — regular'.
+    """
+    return (cached_name or "").split(" — ")[0].strip() or (cached_name or "").strip()
+
+
+async def service_menu_block(tenant: dict) -> str:
+    """Human-readable bookable services for a Square Appointments tenant.
+
+    Exists because the menu built in provisioning.rebuild_and_push_system_prompt is
+    appended to the pushed config but NOT to last_system_prompt, and the per-call
+    assistant-request override rebuilds from last_system_prompt — so the menu never
+    reached a live call. The location block has the same shape for the same reason.
+
+    Multi-location tenants get the menu grouped BY LOCATION, so the model can tell
+    a caller what is bookable where without a tool round-trip.
+
+    Names only. Never a variation id, catalog id or provider location id.
+    """
+    tenant_id = str(tenant.get("id") or "")
+    if not tenant_id or not tenant.get("square_appointments_enabled"):
+        return ""
+    try:
+        services = await db.get_square_services(tenant_id, bookable_only=True)
+        if not services:
+            return ""
+
+        from services import call_location, location_scope
+        multi, adopted = await call_location.is_multi_location(tenant_id)
+        eligible = call_location.eligible_for_availability(adopted) if multi else []
+
+        if multi and eligible:
+            lines = []
+            for loc in eligible:
+                pid = (loc.get("_binding") or {}).get("provider_location_id") or ""
+                here = location_scope.services_at_location(services, pid)
+                names = sorted({_display_service_name(s.get("name")) for s in here if s.get("name")})
+                if names:
+                    lines.append(f"- {loc.get('name')}: {', '.join(names)}")
+            if not lines:
+                return ""
+            return (
+                "\n\nSERVICES (Square Appointments)\n"
+                "These are the only bookable services, and they differ by location:\n"
+                + "\n".join(lines) +
+                "\n- Pass what the caller asked for in the `service` argument of "
+                "check_availability, in their own words.\n"
+                "- If a caller asks for something not offered at their chosen location, say so "
+                "and offer what IS available there, or offer another location. Never quietly "
+                "substitute a different service.\n"
+                "- Availability is read live from the business's own calendar."
+            )
+
+        names = sorted({_display_service_name(s.get("name")) for s in services if s.get("name")})
+        return (
+            "\n\nSERVICES (Square Appointments)\n"
+            f"Offer only these bookable services: {', '.join(names)}.\n"
+            "- Pass the caller's chosen service in the `service` argument of check_availability.\n"
+            "- Availability is read live from the business's own calendar."
+        )
+    except Exception as e:
+        logger.warning("service_menu_block failed for %s: %s", tenant_id, e)
+        return ""
