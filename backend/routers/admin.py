@@ -838,3 +838,60 @@ async def detach_tenant_location(
     except location_adoption.AdoptionError as e:
         status = 404 if e.code == "binding_not_found" else 409
         raise HTTPException(status_code=status, detail={"code": e.code, "message": e.message})
+
+
+@router.patch("/tenants/{tenant_id}/locations/{location_id}")
+async def set_location_booking_enabled(
+    tenant_id: str, location_id: str, body: dict, x_admin_key: str | None = Header(None),
+):
+    """W4 operator activation: turn phone booking on or off for ONE location.
+
+    ENABLING FAILS CLOSED. booking_enabled=true is permitted only when the location
+    belongs to this tenant, is active, and has a healthy provider binding owned by
+    the same tenant. Anything else is refused rather than half-activated — an
+    enabled location with a broken binding would look bookable to a caller and
+    error at Square.
+
+    DISABLING is always permitted, including when the binding is unhealthy: turning
+    something off must never be blocked by the reason you want it off.
+
+    Admin-key gated. No customer-facing toggle in W4.
+    """
+    _check_admin_key(x_admin_key)
+    if "booking_enabled" not in body:
+        raise HTTPException(status_code=400, detail="booking_enabled is required")
+    enabled = bool(body["booking_enabled"])
+
+    from db import locations as db_loc
+    from services import call_location
+
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Tenant-scoped lookup: a location id from another tenant simply is not found.
+    location = await db_loc.get_location_by_id(tenant_id, location_id)
+    if not location:
+        raise HTTPException(status_code=404, detail="Location not found for this tenant")
+
+    if enabled:
+        if not location.get("active"):
+            raise HTTPException(status_code=409, detail={
+                "code": "location_inactive",
+                "message": "Reactivate the location before enabling booking."})
+        binding = await db_loc.get_binding_for_location(tenant_id, location_id)
+        if not call_location.binding_is_usable(binding):
+            raise HTTPException(status_code=409, detail={
+                "code": "no_usable_binding",
+                "message": ("This location has no healthy Square binding. Re-sync "
+                            "Square and confirm the location still exists there.")})
+
+    updated = await db_loc.update_location(tenant_id, location_id,
+                                           {"booking_enabled": enabled})
+    logger.info("ADMIN: tenant %s location %s booking_enabled=%s",
+                tenant_id, location_id, enabled)
+    return {"tenant_id": tenant_id, "location_id": location_id,
+            "booking_enabled": enabled, "location": updated or location}

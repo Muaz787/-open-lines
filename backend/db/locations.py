@@ -127,3 +127,56 @@ async def list_all_tenants_for_backfill() -> list:
                    "square_location_id, square_location_timezone, square_currency")
            .order("created_at").execute())
     return res.data or []
+
+
+# ---------------------------------------------------------------------------
+# call_location_state (migration 014) — authoritative per-call location
+# ---------------------------------------------------------------------------
+
+async def get_call_state(vapi_call_id: str) -> dict | None:
+    if not vapi_call_id:
+        return None
+    res = (get_client().table("call_location_state").select("*")
+           .eq("vapi_call_id", vapi_call_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def insert_call_state(data: dict) -> dict:
+    res = get_client().table("call_location_state").insert(
+        {**data, "created_at": _now_iso(), "updated_at": _now_iso()}).execute()
+    return (res.data or [{}])[0]
+
+
+async def update_call_state(vapi_call_id: str, tenant_id: str, data: dict) -> dict:
+    """Tenant-scoped on purpose: a call id from one tenant must never be able to
+    mutate another tenant's state, even if an id were guessed."""
+    res = (get_client().table("call_location_state")
+           .update({**data, "updated_at": _now_iso()})
+           .eq("vapi_call_id", vapi_call_id).eq("tenant_id", tenant_id).execute())
+    return (res.data or [{}])[0]
+
+
+async def delete_call_state(vapi_call_id: str) -> None:
+    if not vapi_call_id:
+        return
+    (get_client().table("call_location_state").delete()
+     .eq("vapi_call_id", vapi_call_id).execute())
+
+
+async def purge_expired_call_state(now_iso: str) -> int:
+    res = (get_client().table("call_location_state").delete()
+           .lt("expires_at", now_iso).execute())
+    return len(res.data or [])
+
+
+# ---------------------------------------------------------------------------
+# Bindings by location (W4 availability needs the provider id for one location)
+# ---------------------------------------------------------------------------
+
+async def get_binding_for_location(tenant_id: str, tenant_location_id: str,
+                                   provider: str = "square") -> dict | None:
+    res = (get_client().table("location_provider_bindings").select("*")
+           .eq("tenant_id", tenant_id)
+           .eq("tenant_location_id", tenant_location_id)
+           .eq("provider", provider).limit(1).execute())
+    return (res.data or [None])[0]

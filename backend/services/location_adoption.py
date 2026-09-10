@@ -33,9 +33,9 @@ State B is not hypothetical: every tenant onboarded from now on starts there.
 from __future__ import annotations
 
 import logging
-import re
 
 from db import locations as db_loc
+from services import location_normalization as norm
 from services.location_sync import SQUARE, STATUS_MISSING
 
 logger = logging.getLogger(__name__)
@@ -50,30 +50,14 @@ class AdoptionError(Exception):
         self.message = message
 
 
-# Words that carry no location meaning once the business name is stripped.
-_NOISE = {"the", "a", "at", "of", "location", "store", "shop", "branch",
-          "showroom", "office", "clinic", "studio", "salon"}
-
-
-def _slugify(value: str) -> str:
-    slug = (value or "").lower().strip()
-    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
-    slug = re.sub(r"\s+", "-", slug)
-    return re.sub(r"-+", "-", slug).strip("-")
-
-
 def derive_slug(provider_name: str, business_name: str = "") -> str:
     """'Dani Cork' for a tenant called 'DANI' -> 'cork'.
 
-    The business name is stripped because it repeats across every location and
-    carries no distinguishing information: three locations would otherwise slug to
-    dani-cork / dani-dublin / dani-limerick, which is noise in every log line.
-    If stripping leaves nothing, the full name is kept rather than returning empty.
+    Delegates to services/location_normalization so adoption and the W4 resolver
+    cannot drift apart on what a location name reduces to. Re-exported here because
+    it is part of this module's public surface.
     """
-    biz_tokens = {t for t in _slugify(business_name).split("-") if t}
-    tokens = [t for t in _slugify(provider_name).split("-")
-              if t and t not in biz_tokens and t not in _NOISE]
-    return "-".join(tokens) or _slugify(provider_name)
+    return norm.derive_slug(provider_name, business_name)
 
 
 def location_payload(

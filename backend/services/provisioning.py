@@ -213,6 +213,15 @@ async def rebuild_and_push_system_prompt(tenant: dict) -> dict:
                 f"- Availability is read live from the business's Square calendar."
             )
 
+    # W4: multi-location tenants learn their own location NAMES (never ids) so the
+    # assistant can ask which one before checking availability. Empty string for a
+    # single-location tenant, so their prompt is byte-identical to before.
+    try:
+        from services import call_location
+        system_prompt += await call_location.location_prompt_block_for(tenant)
+    except Exception as e:
+        logger.warning("Location prompt block failed for %s: %s", tenant_id, e)
+
     tools = (
         build_calendar_tools(tenant_id)
         if _has_booking

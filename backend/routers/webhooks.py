@@ -298,6 +298,16 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
     # even if this tenant's stored prompt predates it. The receptionist voice/manner
     # guidance is applied on every call so ALL tenants (incl. pre-existing) get it.
+    # W4: inject the multi-location block per call, so an existing assistant gets it
+    # without re-provisioning — same mechanism as the date and schedule notes.
+    # Location names are tenant configuration, not per-call state, so this needs no
+    # call id. Empty for single-location tenants.
+    try:
+        from services import call_location as _call_location
+        system_prompt += await _call_location.location_prompt_block_for(tenant)
+    except Exception as e:
+        logger.warning("assistant-request: location block failed for %s: %s", tenant_id, e)
+
     system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
@@ -477,6 +487,16 @@ async def vapi_call_ended(
     # end-of-call-report: store durably and ack immediately.
     # The background processor handles the slow work (GPT-4o, lead update, WhatsApp).
     call_id: str = (msg.get("call") or {}).get("id") or msg.get("call_id") or ""
+
+    # W4: drop this call's location state. Best effort — a cleanup failure must
+    # never affect call completion, and the TTL sweep is the backstop.
+    if call_id:
+        try:
+            from services import call_location as _call_location
+            await _call_location.clear(call_id)
+        except Exception as e:
+            logger.warning("end-of-call: location state cleanup failed for %s: %s", call_id, e)
+
     try:
         enqueued = await db.enqueue_webhook_event("end-of-call-report", call_id or None, payload)
         if enqueued:
