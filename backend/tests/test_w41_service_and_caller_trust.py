@@ -59,7 +59,12 @@ class _Ctx:
                       "switch_count": 0, "location_source": "caller_selected"}
         self.adopted = adopted
         self.services = services
-        self.slots = AsyncMock(return_value=["2:00 PM", "2:30 PM"])
+        self.slots = AsyncMock(return_value=[
+            {"start_at_utc": "2026-09-14T18:00:00Z", "display": "2:00 PM",
+             "team_member_id": "TM-MUAZ", "service_variation_version": 1, "duration_minutes": 60},
+            {"start_at_utc": "2026-09-14T18:30:00Z", "display": "2:30 PM",
+             "team_member_id": "TM-MUAZ", "service_variation_version": 1, "duration_minutes": 60},
+        ])
 
     def __enter__(self):
         self._p = [
@@ -67,7 +72,12 @@ class _Ctx:
             patch("db.supabase.get_square_staff", new=AsyncMock(return_value=STAFF)),
             patch("services.call_location.get_or_create", new=AsyncMock(return_value=self.state)),
             patch("db.locations.update_call_state", new=AsyncMock()),
-            patch("services.square_booking.available_slot_strings", new=self.slots),
+            patch("services.square_booking.available_slots", new=self.slots),
+            patch("services.slot_offers.create_offers", new=AsyncMock(
+                return_value=[{"slot_ref": "slot_1", "display": "2:00 PM"},
+                              {"slot_ref": "slot_2", "display": "2:30 PM"}])),
+            patch("services.call_location.set_active_service",
+                  new=AsyncMock(side_effect=lambda st, svc: st)),
         ]
         for p in self._p:
             p.start()
@@ -147,7 +157,7 @@ async def test_turn4_consultation_at_dublin_uses_dublin():
 
 
 @pytest.mark.asyncio
-async def test_turn5_booking_guard_still_fires_and_promises_nothing():
+async def test_turn5_booking_without_a_slot_ref_promises_nothing():
     body = {"message": {"toolCallList": [{"id": "tc-1", "function": {
         "name": "book_appointment", "arguments":
         '{"caller_name":"A","caller_phone":"+353871234567","service":"Dress Fitting",'
@@ -162,8 +172,7 @@ async def test_turn5_booking_guard_still_fires_and_promises_nothing():
     book.assert_not_awaited()
     create.assert_not_awaited()
     spoken = out["results"][0]["result"].lower()
-    assert "cannot complete bookings" in spoken
-    assert "nothing has been reserved" in spoken
+    assert "check availability first" in spoken
     for word in ("confirmed", "held", "pending"):
         assert f"has been {word}" not in spoken
 

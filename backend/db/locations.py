@@ -180,3 +180,49 @@ async def get_binding_for_location(tenant_id: str, tenant_location_id: str,
            .eq("tenant_location_id", tenant_location_id)
            .eq("provider", provider).limit(1).execute())
     return (res.data or [None])[0]
+
+
+# ---------------------------------------------------------------------------
+# call_slot_offers (migration 016) — what availability actually offered
+# ---------------------------------------------------------------------------
+
+async def insert_slot_offers(rows: list[dict]) -> list:
+    if not rows:
+        return []
+    res = get_client().table("call_slot_offers").insert(rows).execute()
+    return res.data or []
+
+
+async def get_slot_offer(vapi_call_id: str, slot_ref: str, tenant_id: str) -> dict | None:
+    """Tenant-scoped as well as call-scoped: a slot ref is only meaningful inside
+    the call that issued it, and only for the tenant that owns that call."""
+    if not (vapi_call_id and slot_ref and tenant_id):
+        return None
+    res = (get_client().table("call_slot_offers").select("*")
+           .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
+           .eq("tenant_id", tenant_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def count_slot_offers(vapi_call_id: str) -> int:
+    res = (get_client().table("call_slot_offers").select("slot_ref", count="exact")
+           .eq("vapi_call_id", vapi_call_id).execute())
+    return res.count or 0
+
+
+async def consume_slot_offer(vapi_call_id: str, slot_ref: str, booking_id: str) -> dict:
+    res = (get_client().table("call_slot_offers")
+           .update({"consumed_at": _now_iso(), "booking_id": booking_id})
+           .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref).execute())
+    return (res.data or [{}])[0]
+
+
+async def delete_slot_offers(vapi_call_id: str) -> None:
+    if not vapi_call_id:
+        return
+    get_client().table("call_slot_offers").delete().eq("vapi_call_id", vapi_call_id).execute()
+
+
+async def purge_expired_slot_offers(now_iso: str) -> int:
+    res = get_client().table("call_slot_offers").delete().lt("expires_at", now_iso).execute()
+    return len(res.data or [])

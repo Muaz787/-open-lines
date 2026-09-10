@@ -274,3 +274,45 @@ async def location_prompt_block_for(tenant: dict) -> str:
     except Exception as e:
         logger.warning("call_location: prompt block failed for %s: %s", tenant_id, e)
         return ""
+
+
+# ---------------------------------------------------------------------------
+# W5 — per-call service context
+# ---------------------------------------------------------------------------
+
+async def set_active_service(state: dict, service: dict) -> dict:
+    """Remember which service this call is about, so it survives a location switch.
+
+    "Dress fitting Saturday" -> Cork -> "what about Dublin?" must still mean dress
+    fitting. Without this the second question arrives with no service and the
+    caller gets asked again, which is exactly the loop W4.1 was fixing.
+
+    The variation id is authoritative; the name exists for speech and is never
+    matched against.
+    """
+    variation_id = str(service.get("square_variation_id") or "")
+    if not variation_id or state.get("active_service_variation_id") == variation_id:
+        return state
+    update = {"active_service_variation_id": variation_id,
+              "active_service_name": service.get("name")}
+    await db_loc.update_call_state(state["vapi_call_id"], state["tenant_id"], update)
+    return {**state, **update}
+
+
+def active_service_from(state: dict, services_here: list[dict]) -> dict | None:
+    """The call's remembered service, but ONLY if it is offered at this location.
+
+    Returning None when the remembered service is not available here is the whole
+    point: the caller must be told "we don't do that in Dublin", never quietly
+    given a different service. The context itself is retained by the caller, so
+    they can ask about another location naturally.
+    """
+    variation_id = str(state.get("active_service_variation_id") or "")
+    if not variation_id:
+        return None
+    return next((s for s in services_here
+                 if str(s.get("square_variation_id")) == variation_id), None)
+
+
+def remembered_service_name(state: dict) -> str:
+    return (state.get("active_service_name") or "").strip()

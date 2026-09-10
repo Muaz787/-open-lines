@@ -175,8 +175,18 @@ async def run_retention() -> dict:
         logger.error("retention: call location state purge failed: %s", e)
         purged_call_state = 0
 
+    # W5: expired slot offers. Same reasoning as the call state above — normal
+    # cleanup is the end-of-call delete, this catches calls whose report never came.
+    try:
+        from services import slot_offers
+        purged_slot_offers = await slot_offers.purge_expired()
+    except Exception as e:
+        logger.error("retention: slot offer purge failed: %s", e)
+        purged_slot_offers = 0
+
     return {
         "webhook_events_purged": await purge_old_webhook_events(),
         "closed_accounts_purged": await purge_closed_accounts(),
         "call_location_state_purged": purged_call_state,
+        "call_slot_offers_purged": purged_slot_offers,
     }
