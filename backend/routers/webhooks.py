@@ -501,9 +501,12 @@ async def vapi_call_ended(
     # never affect call completion, and the TTL sweep is the backstop.
     if call_id:
         try:
-            from services import call_location as _call_location, slot_offers as _slot_offers
+            from services import (call_location as _call_location,
+                                  slot_offers as _slot_offers,
+                                  appointment_refs as _appt_refs)
             await _call_location.clear(call_id)
             await _slot_offers.clear(call_id)
+            await _appt_refs.clear(call_id)
         except Exception as e:
             logger.warning("end-of-call: location state cleanup failed for %s: %s", call_id, e)
 

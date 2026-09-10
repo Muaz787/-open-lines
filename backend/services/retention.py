@@ -184,9 +184,19 @@ async def run_retention() -> dict:
         logger.error("retention: slot offer purge failed: %s", e)
         purged_slot_offers = 0
 
+    # W6A1: expired appointment refs. Same reasoning as the two above — normal
+    # cleanup is the end-of-call delete, this catches calls whose report never came.
+    try:
+        from services import appointment_refs
+        purged_appt_refs = await appointment_refs.purge_expired()
+    except Exception as e:
+        logger.error("retention: appointment ref purge failed: %s", e)
+        purged_appt_refs = 0
+
     return {
         "webhook_events_purged": await purge_old_webhook_events(),
         "closed_accounts_purged": await purge_closed_accounts(),
         "call_location_state_purged": purged_call_state,
         "call_slot_offers_purged": purged_slot_offers,
+        "call_appointment_refs_purged": purged_appt_refs,
     }

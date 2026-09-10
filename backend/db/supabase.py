@@ -420,6 +420,33 @@ async def get_tenant_by_stripe_customer(customer_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
+async def get_active_appointments_by_phone(tenant_id: str, phone: str) -> list:
+    """ALL cancellable appointments for this caller, earliest first.
+
+    The singular get_active_appointment_by_phone() applies .limit(1), which is
+    fine for the non-destructive uses (excluding a caller's own slot from a busy
+    list) and catastrophic for cancellation: a DANI caller with a Cork
+    consultation and a Dublin fitting loses whichever happens to be sooner.
+
+    Same window and statuses as the singular version so the two agree about what
+    "active" means; only the limit differs.
+    """
+    from datetime import timedelta
+    window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    res = (
+        get_client()
+        .table("appointments")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("caller_phone", phone)
+        .in_("status", ["confirmed", "pending_payment"])
+        .gte("appointment_datetime", window_start)
+        .order("appointment_datetime", desc=False)
+        .execute()
+    )
+    return res.data or []
+
+
 async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (
