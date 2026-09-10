@@ -345,8 +345,8 @@ async def test_a_square_location_mismatch_fails_closed_before_cancelling():
         await c.call()
         res = await c.call(ref="appt_1")
     assert c.cancel_calls == [], "must refuse before CancelBooking"
-    assert c.cancelled_ids() == []
-    assert "left the appointment unchanged" in c.text(res)
+    assert c.updates == [], "and write nothing — the booking is still live"
+    assert "remains in place" in c.text(res)
 
 
 @pytest.mark.asyncio
@@ -380,16 +380,24 @@ async def test_success_marks_the_row_cancelled_and_consumes_the_ref():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_provider_cancel_does_not_mark_the_row_cancelled():
-    """The lie W6A1 removes: the row used to be marked cancelled regardless."""
+async def test_a_failed_provider_cancel_leaves_the_status_completely_untouched():
+    """The lie W6A1 removes: the row used to be marked cancelled regardless.
+
+    And the status is left EXACTLY as it was — not moved to some third value.
+    appointments.status is business state, not an operation result, and the
+    codebase reads it two incompatible ways: the cancellation enumeration and the
+    reschedule lookups filter IN ('confirmed','pending_payment'), while the
+    capacity guard filters != 'cancelled'. A third value is invisible to the first
+    group and active to the second, so a caller could never retry a cancellation
+    that failed.
+    """
     with Ctx(candidates=[CORK], cancel=(sb.CANCEL_FAILED, {})) as c:
         await c.call()
         res = await c.call(ref="appt_1")
-    assert c.cancelled_ids() == []
-    assert ("a-cork", {"status": "cancel_failed"}) in c.updates
+    assert c.updates == [], "an unproven cancellation must write nothing at all"
     spoken = c.text(res).lower()
     assert "couldn't confirm the cancellation" in spoken
-    assert "left the appointment unchanged" in spoken
+    assert "appointment remains in place" in spoken
     assert "has been cancelled" not in spoken
 
 
@@ -398,8 +406,136 @@ async def test_an_unknown_provider_outcome_is_also_not_reported_as_cancelled():
     with Ctx(candidates=[CORK], cancel=(sb.CANCEL_UNKNOWN, {})) as c:
         await c.call()
         res = await c.call(ref="appt_1")
-    assert c.cancelled_ids() == []
+    assert c.updates == []
     assert "couldn't confirm" in c.text(res).lower()
+
+
+# ── status is business state, never an operation result ──────────────────────
+
+@pytest.mark.parametrize("outcome", [sb.CANCEL_FAILED, sb.CANCEL_UNKNOWN, sb.CANCEL_NOT_FOUND])
+@pytest.mark.asyncio
+async def test_1_a_confirmed_appointment_stays_confirmed_when_the_provider_fails(outcome):
+    with Ctx(candidates=[CORK], cancel=(outcome, {})) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+    assert c.updates == []
+    assert c.appts["a-cork"]["status"] == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_2_a_pending_payment_appointment_stays_pending_payment():
+    held = appt("a-held", status="pending_payment")
+    with Ctx(candidates=[held], cancel=(sb.CANCEL_FAILED, {})) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+    assert c.updates == []
+    assert c.appts["a-held"]["status"] == "pending_payment"
+
+
+@pytest.mark.asyncio
+async def test_3_a_location_mismatch_leaves_the_status_untouched():
+    with Ctx(candidates=[CORK],
+             booking={"id": "BK-CORK", "status": "ACCEPTED",
+                      "location_id": DUBLIN_PID, "version": 0}) as c:
+        await c.call()
+        res = await c.call(ref="appt_1")
+    assert c.cancel_calls == [] and c.updates == []
+    assert "remains in place" in c.text(res)
+
+
+@pytest.mark.asyncio
+async def test_4_a_provider_fetch_failure_leaves_the_status_untouched():
+    with Ctx(candidates=[CORK], get_booking_error=RuntimeError("connection reset")) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+    assert c.cancel_calls == [] and c.updates == []
+
+
+@pytest.mark.asyncio
+async def test_5_a_failed_cancellation_still_appears_in_the_next_enumeration():
+    """The retry path only exists if the appointment is still visible. This is the
+    concrete consequence of not inventing a third status."""
+    with Ctx(candidates=[CORK], cancel=(sb.CANCEL_FAILED, {})) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+        listing = c.text(await c.call())
+    assert "Consultation" in listing and "Cork" in listing
+
+
+@pytest.mark.asyncio
+async def test_6_the_same_unconsumed_ref_can_be_retried_after_a_provider_failure():
+    with Ctx(candidates=[CORK], cancel=(sb.CANCEL_FAILED, {})) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+        assert c.refs.rows[(CALL, "appt_1")]["consumed_at"] is None
+        c.cancel_result = (sb.CANCEL_OK, {})
+        res = await c.call(ref="appt_1")
+    assert c.cancelled_ids() == ["a-cork"]
+    assert "cancelled" in c.text(res).lower()
+
+
+@pytest.mark.asyncio
+async def test_7_the_caller_can_retry_from_a_completely_fresh_call():
+    """Refs die with the call, so recovery must work from durable state alone."""
+    with Ctx(candidates=[CORK], cancel=(sb.CANCEL_FAILED, {})) as c:
+        await c.call()
+        await c.call(ref="appt_1")
+        c.refs.rows.clear()                       # the first call ended
+        c.cancel_result = (sb.CANCEL_OK, {})
+        listing = c.text(await c.call(call_id="call-2"))
+        assert "Consultation" in listing
+        await c.call(ref="appt_1", call_id="call-2")
+    assert c.cancelled_ids() == ["a-cork"]
+
+
+def test_8_and_9_active_lookups_still_treat_a_failed_cancellation_as_active():
+    """Audited rather than asserted at runtime: the deposit/reschedule/busy-list
+    lookups whitelist ('confirmed','pending_payment') and the capacity guard
+    blacklists 'cancelled'. Leaving the status alone is the only value that both
+    groups agree is active — which is precisely why no third value is written."""
+    import ast
+    import inspect
+    from db import supabase as dbs
+
+    for fn in (dbs.get_active_appointment_by_phone, dbs.get_active_appointments_by_phone):
+        code = ast.unparse(ast.parse(inspect.getsource(fn).lstrip()))
+        assert "'confirmed', 'pending_payment'" in code
+
+    guard = ast.unparse(ast.parse(inspect.getsource(dbs.get_active_appointments_between).lstrip()))
+    assert "neq('status', 'cancelled')" in guard
+
+    # And the cancellation path writes no status other than 'cancelled'.
+    cancel_src = ast.unparse(ast.parse(inspect.getsource(tools.cancel_appointment).lstrip()))
+    assert "cancel_failed" not in cancel_src
+
+
+@pytest.mark.asyncio
+async def test_11_provider_success_with_a_failed_local_write_tells_the_truth():
+    """Square is cancelled; our record is not. Saying the appointment remains in
+    place would be the opposite lie to the one W6A1 removed."""
+    with Ctx(candidates=[CORK]) as c:
+        await c.call()
+        with patch("db.supabase.update_appointment",
+                   new=AsyncMock(side_effect=RuntimeError("db down"))):
+            res = await c.call(ref="appt_1")
+    spoken = c.text(res).lower()
+    assert "has been cancelled with the business" in spoken
+    assert "remains in place" not in spoken
+    assert c.cancel_calls == ["BK-CORK"]
+    # The ref stays CONSUMED so nothing can re-enter the destructive path.
+    assert c.refs.rows[(CALL, "appt_1")]["consumed_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_11b_after_a_partial_failure_the_ref_cannot_drive_another_mutation():
+    with Ctx(candidates=[CORK]) as c:
+        await c.call()
+        with patch("db.supabase.update_appointment",
+                   new=AsyncMock(side_effect=RuntimeError("db down"))):
+            await c.call(ref="appt_1")
+        res = await c.call(ref="appt_1")
+    assert c.cancel_calls == ["BK-CORK"], "no second provider mutation"
+    assert "already been cancelled" in c.text(res)
 
 
 @pytest.mark.asyncio

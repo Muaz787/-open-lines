@@ -1957,20 +1957,27 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     if tenant.get("square_appointments_enabled"):
         outcome = await _cancel_square_booking(tenant, appt, event_id, tenant_id)
         if outcome != "ok":
+            # The booking is NOT proven cancelled, so the appointment is still a
+            # real appointment. appointments.status is business state, not the
+            # result of an operation, and writing a failure into it would be read
+            # inconsistently across the codebase: the enumeration and reschedule
+            # lookups filter IN ('confirmed','pending_payment') and would stop
+            # seeing it — so the caller could never retry — while the capacity
+            # guard filters != 'cancelled' and would keep counting it. Leave the
+            # status exactly as it was and let the logs carry the failure.
             await appointment_refs.release(call_id, ref_arg)
-            try:
-                await db.update_appointment(appt["id"], {"status": "cancel_failed"})
-            except Exception as e:
-                logger.error("tools/cancel: could not record cancel_failure for %s: %s", appt["id"], e)
+            logger.error("tools/cancel: provider cancellation NOT confirmed (%s) for "
+                         "appointment %s / booking %s (tenant %s) — leaving status %r",
+                         outcome, appt.get("id"), event_id, tenant_id, appt.get("status"))
             if outcome == "mismatch":
                 return _result(tc_id,
-                    "I couldn't safely confirm that booking, so I've left the "
-                    "appointment unchanged. Take the caller's details and let them "
-                    "know the team will confirm the cancellation.")
+                    "I couldn't safely confirm that booking, so the appointment "
+                    "remains in place. Take the caller's details and let them know "
+                    "the team will confirm the cancellation.")
             return _result(tc_id,
-                "I couldn't confirm the cancellation, so I've left the appointment "
-                "unchanged. Take the caller's details and let them know the team "
-                "will confirm it.")
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
     elif refresh_token and event_id:
         # W6A1: a failed provider cancel used to be logged and stepped over, after
         # which the row was still marked cancelled — so the caller was told it was
@@ -1989,21 +1996,19 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
                 pass
             await appointment_refs.release(call_id, ref_arg)
             return _result(tc_id,
-                "I couldn't confirm the cancellation, so I've left the appointment "
-                "unchanged. Take the caller's details and let them know the team "
-                "will confirm it.")
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
         except Exception as e:
-            logger.error("tools/cancel: provider cancel FAILED for event %s (tenant %s): %s",
-                         event_id, tenant_id, e)
+            # Same rule as Square: unproven cancellation leaves business state alone.
+            logger.error("tools/cancel: provider cancellation NOT confirmed for event %s "
+                         "(tenant %s) — leaving status %r: %s",
+                         event_id, tenant_id, appt.get("status"), e)
             await appointment_refs.release(call_id, ref_arg)
-            try:
-                await db.update_appointment(appt["id"], {"status": "cancel_failed"})
-            except Exception as e2:
-                logger.error("tools/cancel: could not record cancel_failure for %s: %s", appt["id"], e2)
             return _result(tc_id,
-                "I couldn't confirm the cancellation, so I've left the appointment "
-                "unchanged. Take the caller's details and let them know the team "
-                "will confirm it.")
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
     else:
         # No provider to cancel against and no way to verify. Refuse rather than
         # mark our own row cancelled and call it done.
@@ -2022,6 +2027,11 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         # Square says cancelled, we failed to write it down. Do NOT retry the
         # provider: it is already done, and a second attempt only risks acting on
         # something else. Say the true thing and leave a loud trail.
+        # The ref is deliberately NOT released here. The provider mutation already
+        # happened; handing the ref back would invite a second destructive attempt
+        # at an appointment that is already cancelled. Square's re-fetch behaviour
+        # would make that harmless, but "harmless by luck" is not the property we
+        # want at a destructive boundary. Reconciliation is a human/queue job.
         logger.error("tools/cancel: RECONCILIATION REQUIRED — provider cancelled "
                      "booking %s but appointment %s could not be updated (tenant %s): %s",
                      event_id, appt["id"], tenant_id, e)
