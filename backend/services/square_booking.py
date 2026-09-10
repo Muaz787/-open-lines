@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from services import square_service as sq_svc
+from services import caller_identity
 from services import location_scope
 from services.security import decrypt
 from db import supabase as db
@@ -154,9 +155,22 @@ async def find_or_create_customer(token: str, *, given_name: str, phone: str) ->
                 found = res.json().get("customers") or []
                 if found:
                     return found[0]["id"]
-        payload: dict = {"given_name": given_name or "Caller"}
+        # W5.2: no invented name. Square accepts a customer identified by phone
+        # alone (verified against the live API), and an absent name is honest where
+        # "Caller" is an echo of our own prompt masquerading as identity.
+        #
+        # The placeholder check is repeated here rather than left to the caller: the
+        # tool layer resolves the name properly, but this is the last point before
+        # the value becomes a permanent customer record, and an invariant enforced
+        # only by convention is one call site away from being untrue.
+        payload: dict = {}
+        if given_name and not caller_identity.is_placeholder_name(given_name):
+            payload["given_name"] = given_name.strip()
         if phone:
             payload["phone_number"] = phone
+        if not payload:
+            logger.warning("Square create customer: no name and no phone — refusing")
+            return None
         res = await client.post(
             f"{sq_svc._api_base()}/v2/customers",
             json=payload, headers=sq_svc._sq_headers(token), timeout=15.0,
