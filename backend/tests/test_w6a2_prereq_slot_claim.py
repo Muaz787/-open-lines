@@ -227,8 +227,12 @@ async def test_an_unknown_outcome_keeps_the_slot_and_never_retries():
         res = await c.book()
         assert c.offers.row["consumed_at"] == "claimed", "slot must stay claimed"
         spoken = c.text(res).lower()
-        assert "couldn't confirm whether that booking went through" in spoken
-        assert "do not book it a second time" in spoken
+        assert "couldn't confirm whether the booking went through" in spoken
+        assert "won't retry it during this request" in spoken
+        assert "verify the appointment before trying again" in spoken
+        # Must NOT promise protection that ends with the call: the claimed row is
+        # deleted at end of call, so any wording implying a lasting guard is false.
+        assert "do not book it a second time" not in spoken
         # a retry in the same call must not reach Square either
         c.create_impl = None
         res2 = await c.book()

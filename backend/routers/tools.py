@@ -778,12 +778,29 @@ async def _multi_location_book(
         # key, turning one uncertain booking into two certain ones. The ordinary
         # booking body is rebuilt from a live resolve_slot, so it cannot be replayed
         # byte-identically either — replay is not available to us here.
+        #
+        # SCOPE OF THAT PROTECTION — read before relying on it:
+        #   * The claim blocks a duplicate CreateBooking for THIS slot_ref during
+        #     THIS call, and nothing more.
+        #   * call_slot_offers rows are deleted unconditionally at end of call
+        #     (webhooks.vapi_call_ended -> slot_offers.clear) and by the TTL sweep,
+        #     regardless of consumed_at or booking_id.
+        #   * The claim is therefore NOT durable reconciliation state. It does not
+        #     survive the call and must never be described as if it did.
+        #   * An unknown outcome can leave a real Square booking with NO OpenLines
+        #     appointment row: invisible to caller_lookup, to cancellation
+        #     enumeration and to the busy list. The caller's details captured below
+        #     are the merchant's only thread to pull on.
+        #   * Durable unknown-outcome reconciliation is deliberately DEFERRED (it
+        #     belongs with the reschedule operation table and its sweeper). Do not
+        #     infer that it already exists from the presence of this claim.
         logger.error("tools/book[multi]: RECONCILIATION REQUIRED — CreateBooking "
                      "outcome unknown for tenant %s slot %s: %s", tenant_id, slot_ref, e)
         return _result(tc_id,
-            "I couldn't confirm whether that booking went through, so I haven't "
-            "tried again. Take the caller's details and let them know the team will "
-            "confirm the appointment — do not book it a second time.")
+            "I couldn't confirm whether the booking went through. I won't retry it "
+            "during this request. Take the caller's name and number so the team can "
+            "check, and ask them to let the business verify the appointment before "
+            "trying again.")
     except Exception as e:
         # Definitive rejection: Square told us no, so nothing exists. Give the slot
         # back so the caller can try the same time again rather than be told it has
