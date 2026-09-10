@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
+from services import caller_identity
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
@@ -257,6 +258,23 @@ def _match_square_service(requested: str, services: list) -> dict | None:
             return s
     close = difflib.get_close_matches(requested, list(names.keys()), n=1, cutoff=0.5)
     return names[close[0]] if close else services[0]
+
+
+async def _trusted_caller_name(tenant_id: str, supplied: str, phone: str) -> str:
+    """Resolve a caller name we are willing to persist, or ''.
+
+    The lead lookup is best-effort: failing to read history must never block a
+    booking, and its absence simply means we hold no name — which is the correct
+    outcome, not a degraded one.
+    """
+    persisted = ""
+    if phone and caller_identity.is_placeholder_name(supplied):
+        try:
+            lead = await db.get_lead_by_phone(tenant_id, phone)
+            persisted = (lead or {}).get("name") or ""
+        except Exception as e:
+            logger.warning("caller name: lead lookup failed for %s: %s", tenant_id, e)
+    return caller_identity.resolve_caller_name(supplied, persisted)
 
 
 async def _multi_location_availability(
@@ -621,7 +639,7 @@ async def _multi_location_book(
 
     try:
         await db.insert_appointment({
-            "tenant_id": tenant_id, "caller_name": caller_name, "caller_phone": caller_phone,
+            "tenant_id": tenant_id, "caller_name": caller_name or None, "caller_phone": caller_phone,
             "service": offer.get("service_name") or "Appointment",
             "appointment_datetime": offer["start_at_utc"],
             "duration_minutes": offer.get("duration_minutes") or 60,
@@ -764,7 +782,7 @@ async def _square_book_appointment(
                 service, tenant_id, booking_id, booking.get("status"))
 
     appt_data = {
-        "tenant_id": tenant_id, "caller_name": caller_name, "caller_phone": caller_phone,
+        "tenant_id": tenant_id, "caller_name": caller_name or None, "caller_phone": caller_phone,
         "service": service, "appointment_datetime": start_dt.isoformat(),
         "duration_minutes": seg.get("duration_minutes") or duration, "party_size": party_size,
         "status": "confirmed", "vapi_call_id": call_id, "google_event_id": booking_id,
@@ -1067,8 +1085,12 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
     # Prefer caller phone from Vapi call metadata (more reliable than AI-provided)
     msg = body.get("message", body)
-    caller_name  = args.get("caller_name", "")
     caller_phone = trusted_caller_phone(body, args)
+    # W5.2: the model may hand back a phrase it read in its own prompt
+    # ("Returning Caller"). Resolve against trusted history, then fall to no name
+    # at all — never write conversational filler down as a person.
+    caller_name  = await _trusted_caller_name(
+        tenant_id, args.get("caller_name", ""), caller_phone)
     service      = args.get("service", "Appointment")
     date_str     = args.get("date", "")
     time_str     = args.get("time", "")  # HH:MM 24-hour
