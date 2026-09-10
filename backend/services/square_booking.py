@@ -256,6 +256,18 @@ async def get_customer(token: str, customer_id: str) -> dict:
         return res.json().get("customer", {})
 
 
+class BookingOutcomeUnknown(Exception):
+    """CreateBooking may or may not have been committed.
+
+    Raised for a transport failure or a 5xx — the cases where Square never told us
+    what happened. A definitive 4xx raises the ordinary httpx error instead. The
+    distinction matters because the two demand opposite recoveries: a rejection can
+    be retried, an unknown outcome must not be, since the current booking body is
+    rebuilt from a live resolve_slot and carries a fresh idempotency key, so a
+    "retry" would be a second, different request.
+    """
+
+
 async def create_booking(
     token: str, *, location_id: str, start_at_iso: str, customer_id: str,
     team_member_id: str, service_variation_id: str, service_variation_version,
@@ -283,13 +295,21 @@ async def create_booking(
     if note:
         body["booking"]["customer_note"] = note
     async with httpx.AsyncClient() as client:
-        res = await client.post(
-            f"{sq_svc._api_base()}/v2/bookings",
-            json=body, headers=sq_svc._sq_headers(token), timeout=20.0,
-        )
+        try:
+            res = await client.post(
+                f"{sq_svc._api_base()}/v2/bookings",
+                json=body, headers=sq_svc._sq_headers(token), timeout=20.0,
+            )
+        except Exception as e:
+            # Timeout or dropped connection: the request may already be committed.
+            raise BookingOutcomeUnknown(str(e)) from e
+        if res.status_code >= 500:
+            logger.error("Square create_booking %s (unknown outcome): %s",
+                         res.status_code, res.text[:400])
+            raise BookingOutcomeUnknown(f"HTTP {res.status_code}")
         if not res.is_success:
             logger.warning("Square create_booking %s: %s", res.status_code, res.text[:400])
-            res.raise_for_status()
+            res.raise_for_status()          # definitive rejection
         return res.json().get("booking", {})
 
 

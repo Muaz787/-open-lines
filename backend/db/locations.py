@@ -210,10 +210,46 @@ async def count_slot_offers(vapi_call_id: str) -> int:
     return res.count or 0
 
 
+async def claim_slot_offer(vapi_call_id: str, slot_ref: str, tenant_id: str) -> bool:
+    """Take a slot for a booking attempt. True only if WE took it.
+
+    `consumed_at IS NULL` is in the predicate, so this is the destructive
+    boundary: two concurrent tool calls holding the same slot_ref compete here and
+    only one can pass. Before this existed the pair was read-then-act — both saw
+    NULL, both reached CreateBooking, and the random idempotency key meant Square
+    made two bookings.
+
+    booking_id stays NULL, which is what distinguishes "claimed, in flight" from
+    "booked" without needing another column.
+    """
+    res = (get_client().table("call_slot_offers")
+           .update({"consumed_at": _now_iso()})
+           .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
+           .eq("tenant_id", tenant_id).is_("consumed_at", "null").execute())
+    return len(res.data or []) == 1
+
+
+async def release_slot_offer(vapi_call_id: str, slot_ref: str) -> None:
+    """Hand a claimed slot back after a DEFINITIVE provider rejection.
+
+    Guarded on booking_id IS NULL so a successful booking can never be un-consumed
+    by a late release.
+    """
+    (get_client().table("call_slot_offers").update({"consumed_at": None})
+     .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
+     .is_("booking_id", "null").execute())
+
+
 async def consume_slot_offer(vapi_call_id: str, slot_ref: str, booking_id: str) -> dict:
+    """Finalize a claimed slot with the booking Square actually made.
+
+    Conditional on booking_id IS NULL so a retry cannot overwrite the id of an
+    existing booking with a different one.
+    """
     res = (get_client().table("call_slot_offers")
            .update({"consumed_at": _now_iso(), "booking_id": booking_id})
-           .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref).execute())
+           .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
+           .is_("booking_id", "null").execute())
     return (res.data or [{}])[0]
 
 

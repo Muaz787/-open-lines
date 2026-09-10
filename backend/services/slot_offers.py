@@ -43,6 +43,10 @@ NOT_FOUND = "not_found"
 EXPIRED = "expired"
 WRONG_LOCATION = "wrong_location"
 ALREADY_BOOKED = "already_booked"
+# Claimed by another worker (or by this call's own earlier attempt) and still in
+# flight at Square. Distinct from ALREADY_BOOKED, which means we know the booking
+# id — here we do not, and guessing either way would be wrong.
+IN_PROGRESS = "in_progress"
 
 
 def _now() -> datetime:
@@ -124,6 +128,13 @@ async def resolve_for_booking(
         # A retried tool call. Idempotency: hand back what already exists.
         return ALREADY_BOOKED, offer
 
+    if offer.get("consumed_at"):
+        # Claimed but not yet finalized: somebody is at Square with this slot right
+        # now, or an attempt ended without a known outcome. Either way a second
+        # CreateBooking is exactly what must not happen. Previously this state was
+        # unreachable, so it fell through to OK.
+        return IN_PROGRESS, offer
+
     try:
         expires = datetime.fromisoformat(str(offer["expires_at"]).replace("Z", "+00:00"))
         if expires.tzinfo is None:
@@ -140,6 +151,29 @@ async def resolve_for_booking(
         return WRONG_LOCATION, offer
 
     return OK, offer
+
+
+async def claim(vapi_call_id: str, slot_ref: str, tenant_id: str) -> bool:
+    """Atomically take the slot before calling Square. See db_loc.claim_slot_offer."""
+    try:
+        return await db_loc.claim_slot_offer(vapi_call_id, slot_ref, tenant_id)
+    except Exception as e:
+        # Fail closed: if we cannot prove we own the slot, we do not book.
+        logger.error("slot_offers: claim failed for %s/%s: %s", vapi_call_id, slot_ref, e)
+        return False
+
+
+async def release(vapi_call_id: str, slot_ref: str) -> None:
+    """Give a claimed slot back after a DEFINITIVE provider rejection only.
+
+    Never call this on an unknown outcome: the booking may exist, and a released
+    slot would be re-bookable under a fresh idempotency key, which is how one
+    caller ends up with two appointments.
+    """
+    try:
+        await db_loc.release_slot_offer(vapi_call_id, slot_ref)
+    except Exception as e:
+        logger.warning("slot_offers: release failed for %s/%s: %s", vapi_call_id, slot_ref, e)
 
 
 async def mark_consumed(vapi_call_id: str, slot_ref: str, booking_id: str) -> None:

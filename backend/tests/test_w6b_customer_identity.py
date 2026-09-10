@@ -573,6 +573,8 @@ async def test_the_appointment_record_still_keeps_the_caller_name():
              "duration_minutes": 60, "start_at": "2026-10-01T13:00:00Z"})), \
          patch("services.square_booking.create_booking",
                new=AsyncMock(return_value={"id": "BK1", "status": "ACCEPTED"})), \
+         patch("services.slot_offers.claim", new=AsyncMock(return_value=True)), \
+         patch("services.slot_offers.release", new=AsyncMock()), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
          patch("db.supabase.insert_appointment", new=insert), \
          patch("services.analytics.capture"):
@@ -620,6 +622,8 @@ async def test_the_multi_location_booking_path_receives_a_usable_customer_id():
              "team_member_id": "TM1", "service_variation_version": 1,
              "duration_minutes": 60, "start_at": "2026-10-01T13:00:00Z"})), \
          patch("services.square_booking.create_booking", new=create), \
+         patch("services.slot_offers.claim", new=AsyncMock(return_value=True)), \
+         patch("services.slot_offers.release", new=AsyncMock()), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
          patch("db.supabase.insert_appointment", new=AsyncMock()), \
          patch("services.analytics.capture"):

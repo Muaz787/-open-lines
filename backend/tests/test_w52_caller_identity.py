@@ -231,6 +231,8 @@ async def test_the_booked_appointment_row_carries_no_placeholder():
                new=AsyncMock(return_value=("ok", "CUST"))) as cust, \
          patch("services.square_booking.create_booking",
                new=AsyncMock(return_value={"id": "BK1", "status": "ACCEPTED"})), \
+         patch("services.slot_offers.claim", new=AsyncMock(return_value=True)), \
+         patch("services.slot_offers.release", new=AsyncMock()), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
          patch("db.supabase.insert_appointment", new=insert), \
          patch("services.analytics.capture"):
@@ -293,6 +295,8 @@ async def test_multi_location_booking_still_succeeds_with_a_real_name():
          patch("services.square_booking.resolve_customer",
                new=AsyncMock(return_value=("ok", "CUST"))) as cust, \
          patch("services.square_booking.create_booking", new=create), \
+         patch("services.slot_offers.claim", new=AsyncMock(return_value=True)), \
+         patch("services.slot_offers.release", new=AsyncMock()), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
          patch("db.supabase.insert_appointment", new=insert), \
          patch("services.analytics.capture"):
