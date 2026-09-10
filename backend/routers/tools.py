@@ -16,6 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
 from services import caller_identity
+from services import customer_identity
 from services import calendar as cal_svc
 from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
@@ -258,6 +259,23 @@ def _match_square_service(requested: str, services: list) -> dict | None:
             return s
     close = difflib.get_close_matches(requested, list(names.keys()), n=1, cutoff=0.5)
     return names[close[0]] if close else services[0]
+
+
+def _customer_problem_message(status: str) -> str:
+    """What to say when we cannot settle who the caller is, without booking anyway.
+
+    Every branch here ends in no booking. Creating a second customer record to get
+    past an ambiguity is the failure W6B exists to remove, so ambiguity has to cost
+    us a booking rather than cost the merchant a clean customer list.
+    """
+    if status == customer_identity.AMBIGUOUS:
+        return ("There are several customer records with this phone number, so I can't "
+                "safely tell which one is the caller. Take their details and let them "
+                "know the team will confirm the booking shortly.")
+    if status == customer_identity.UNAVAILABLE:
+        return ("I'm still confirming this caller's details — give me a moment and try "
+                "booking that same time again.")
+    return _CALENDAR_ERROR_MSG
 
 
 async def _trusted_caller_name(tenant_id: str, supplied: str, phone: str) -> str:
@@ -611,10 +629,13 @@ async def _multi_location_book(
             "I'm sorry — that time has just been taken. Would you like me to check "
             "what else is free?")
 
-    customer_id = await square_booking.find_or_create_customer(
-        token, given_name=caller_name, phone=caller_phone)
-    if not customer_id:
-        return _result(tc_id, _CALENDAR_ERROR_MSG)
+    # caller_name is deliberately NOT passed: the Square customer is created from
+    # phone alone so a retry replays byte-identically. The name still reaches the
+    # OpenLines appointment record below, where W5.2's rules apply.
+    cust_status, customer_id = await square_booking.resolve_customer(
+        tenant_id=tenant_id, token=token, phone=caller_phone)
+    if cust_status != customer_identity.OK or not customer_id:
+        return _result(tc_id, _customer_problem_message(cust_status))
 
     try:
         booking = await square_booking.create_booking(
@@ -760,9 +781,13 @@ async def _square_book_appointment(
         except Exception as e:
             logger.warning("tools/book[square]: existing-appt lookup failed for %s: %s", tenant_id, e)
 
-    customer_id = await square_booking.find_or_create_customer(token, given_name=caller_name, phone=caller_phone)
-    if not customer_id:
-        return _result(tc_id, _CALENDAR_ERROR_MSG)
+    # caller_name is deliberately NOT passed: the Square customer is created from
+    # phone alone so a retry replays byte-identically. The name still reaches the
+    # OpenLines appointment record below, where W5.2's rules apply.
+    cust_status, customer_id = await square_booking.resolve_customer(
+        tenant_id=tenant_id, token=token, phone=caller_phone)
+    if cust_status != customer_identity.OK or not customer_id:
+        return _result(tc_id, _customer_problem_message(cust_status))
 
     try:
         booking = await square_booking.create_booking(

@@ -119,6 +119,10 @@ class _FakeResponse:
     def json(self):
         return self._p
 
+    def raise_for_status(self):
+        if not self.is_success:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
 
 class _FakeClient:
     """Records what we actually send to Square."""
@@ -223,8 +227,8 @@ async def test_the_booked_appointment_row_carries_no_placeholder():
          patch("services.square_booking.resolve_slot", new=AsyncMock(return_value={
              "team_member_id": "TM1", "service_variation_version": 1,
              "duration_minutes": 60, "start_at": "2026-09-14T13:00:00Z"})), \
-         patch("services.square_booking.find_or_create_customer",
-               new=AsyncMock(return_value="CUST")) as cust, \
+         patch("services.square_booking.resolve_customer",
+               new=AsyncMock(return_value=("ok", "CUST"))) as cust, \
          patch("services.square_booking.create_booking",
                new=AsyncMock(return_value={"id": "BK1", "status": "ACCEPTED"})), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
@@ -237,7 +241,9 @@ async def test_the_booked_appointment_row_carries_no_placeholder():
     row = insert.await_args.args[0]
     assert row["caller_name"] is None, "an absent name must be NULL, not a placeholder"
     assert row["caller_phone"] == PHONE
-    assert cust.await_args.kwargs["given_name"] == ""
+    # W6B made this stronger than W5.2 could: Square customer creation no longer
+    # accepts a name at all, so a placeholder cannot reach it by any route.
+    assert "given_name" not in cust.await_args.kwargs
 
 
 # ── 9. caller phone is untouched by W5.2 ─────────────────────────────────────
@@ -284,8 +290,8 @@ async def test_multi_location_booking_still_succeeds_with_a_real_name():
          patch("services.square_booking.resolve_slot", new=AsyncMock(return_value={
              "team_member_id": "TM1", "service_variation_version": 1,
              "duration_minutes": 60, "start_at": "2026-09-14T13:00:00Z"})), \
-         patch("services.square_booking.find_or_create_customer",
-               new=AsyncMock(return_value="CUST")) as cust, \
+         patch("services.square_booking.resolve_customer",
+               new=AsyncMock(return_value=("ok", "CUST"))) as cust, \
          patch("services.square_booking.create_booking", new=create), \
          patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
          patch("db.supabase.insert_appointment", new=insert), \
@@ -295,8 +301,8 @@ async def test_multi_location_booking_still_succeeds_with_a_real_name():
             caller_name=REAL_NAME, caller_phone=PHONE, adopted=adopted)
 
     assert create.await_count == 1
-    assert cust.await_args.kwargs["given_name"] == REAL_NAME
-    assert insert.await_args.args[0]["caller_name"] == REAL_NAME
+    assert "given_name" not in cust.await_args.kwargs, "identity creation is phone-only"
+    assert insert.await_args.args[0]["caller_name"] == REAL_NAME, "our own record keeps the name"
     assert "confirmed" in out["results"][0]["result"].lower()
 
 
