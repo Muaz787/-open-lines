@@ -693,17 +693,20 @@ CANCELLING
 - Then call cancel_appointment again with the appointment_ref for the one they chose.
 - Never say an appointment is cancelled until the tool result says so.
 
-BOOKING — CALLING THE TOOL IS MANDATORY (new bookings AND reschedules)
+BOOKING — CALLING THE TOOL IS MANDATORY
 - The appointment ONLY changes when you call the book_appointment tool. Your words book nothing on their own.
 - The MOMENT the caller agrees to a specific date and time, your VERY NEXT action MUST be a book_appointment tool call — in the SAME turn, before you say anything else and before you confirm.
 - You must NEVER say "I'm booking that", "I'll book that", "booking that now", "let me get that booked", "I've booked", "you're all set", or any similar wording UNLESS you are calling book_appointment in that exact same response. Saying any of these without the tool call is a hard failure: the appointment will NOT change and the caller will get no confirmation.
 - Only AFTER book_appointment returns successfully may you confirm the booking to the caller. Do not confirm, summarise, or move on before the tool has returned.
 - If book_appointment fails or times out, tell the caller there was a brief technical issue and call book_appointment again. Never end the call right after promising to book without a successful tool call.
 
-RESCHEDULING RULES
-- If a caller wants to change or reschedule an existing appointment, call check_availability for that date first (pass caller_phone so their existing slot is excluded from the busy list).
+SPECIFIC TIMES
 - If the caller requests a specific time (e.g. "3:45 PM"), call check_availability for that date to verify the slot is free. If the exact time is not listed but the period is generally open, you may still proceed to book it — the backend accepts any time within business hours.
-- Once the caller confirms the new date and time, call book_appointment immediately (see BOOKING rules above). The backend cancels the old appointment and creates the new one.
+
+MOVING AN EXISTING APPOINTMENT
+- book_appointment creates a NEW appointment. It does NOT move or replace an existing one, and calling it will never cancel anything.
+- If a caller wants to move an appointment, do NOT book over it. Say that changing an existing appointment isn't something you can do on this call, offer to cancel it and book a fresh time if that suits them, and otherwise take a message for the team.
+- Never tell a caller their appointment has been moved, changed or rescheduled.
 - Never tell a caller a specific time is unavailable without first calling check_availability."""
 
 
@@ -736,7 +739,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 "name": "check_availability",
                 "description": (
                     "Check available appointment slots in the business calendar for a given date. "
-                    "Use this when the caller wants to book OR reschedule an appointment."
+                    "Use this when the caller wants to book an appointment."
                 ),
                 "parameters": {
                     "type": "object",
@@ -767,9 +770,7 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                             "type": "string",
                             "description": (
                                 "The caller's phone number (E.164 format, e.g. '+16471234567'). "
-                                "REQUIRED when the caller is rescheduling — pass the phone from the CALLER CONTEXT "
-                                "so the backend can remove their existing appointment from the busy list and show "
-                                "their current slot as available. Omit for new bookings."
+                                "Pass the phone from the CALLER CONTEXT when you have it. Optional."
                             ),
                         },
                         "staff": {
@@ -818,7 +819,8 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
             "function": {
                 "name": "book_appointment",
                 "description": (
-                    "Book or reschedule a confirmed appointment in the business calendar. "
+                    "Book a NEW confirmed appointment in the business calendar. This never "
+                    "moves, replaces or cancels an existing appointment. "
                     "You MUST call this the MOMENT the caller agrees to a specific date AND time — "
                     "in the same turn, before you confirm anything out loud. "
                     "Saying you will book (or that you have booked) WITHOUT calling this tool does NOT "

@@ -335,29 +335,59 @@ async def test_missing_slot_ref_creates_nothing():
 # ── reschedule safety (L, M, N) ──────────────────────────────────────────────
 
 def test_L_a_new_booking_never_looks_for_an_appointment_to_cancel():
-    """Phone equality is not reschedule intent. The lookup must be gated on an
-    explicit flag, not merely on the caller having a number."""
+    """SUPERSEDED by the W6A2 prerequisite, and deliberately made STRICTER.
+
+    W5 asserted that the reschedule lookup was GATED on an explicit flag rather
+    than on phone equality. That flag — args.get("reschedule") — was never exposed
+    by any tool schema, so the branch could not run, and dead destructive code is
+    its own hazard: the next person to add the argument would have shipped
+    implicit rescheduling without meaning to. The branch is now gone, so the
+    assertion becomes that it cannot exist at all.
+    """
+    import ast
     import inspect
-    src = inspect.getsource(tools._square_book_appointment)
-    assert "wants_reschedule = bool(args.get(\"reschedule\"))" in src
-    i = src.index("get_active_appointment_by_phone")
-    guard = src[max(0, i - 400):i]
-    assert "if wants_reschedule and caller_phone:" in guard
+    code = _executable(tools._square_book_appointment)
+    assert "get_active_appointment_by_phone" not in code
+    assert "reschedule" not in code
+    assert "cancel_booking" not in code
 
 
-def test_M_cancel_happens_only_after_a_successful_create():
-    """Ordering is the safety property: a failed create must leave the original
-    appointment intact rather than losing the caller both."""
+def test_M_a_legacy_square_booking_cancels_nothing_at_all():
+    """W5 pinned the ORDER of create-then-cancel. There is no cancel here now, so
+    the property to protect is its absence — ordering safety for a real reschedule
+    moves to the explicit reschedule tool."""
+    import ast
     import inspect
-    src = inspect.getsource(tools._square_book_appointment)
-    assert src.index("booking_id = booking.get(\"id\"") < src.index("cancel_booking(token, existing_appt")
+    code = _executable(tools._square_book_appointment)
+    calls = [ast.unparse(n.func) for n in ast.walk(ast.parse(code)) if isinstance(n, ast.Call)]
+    for destructive in ("square_booking.cancel_booking", "square_booking.cancel_booking_detailed",
+                        "cal_svc.cancel_event", "ms_cal_svc.cancel_event"):
+        assert destructive not in calls, f"legacy booking must not call {destructive}"
 
 
-def test_partial_reschedule_failure_is_reported_not_claimed_clean():
+def test_legacy_square_booking_only_ever_inserts():
+    """The other half: it must not UPDATE an existing appointment row either, which
+    is how a booking silently overwrote one the caller still wanted."""
+    import ast
     import inspect
-    src = inspect.getsource(tools._square_book_appointment)
-    assert "reschedule PARTIAL" in src
-    assert "existing_appt = None" in src.split("reschedule PARTIAL")[1][:400]
+    code = _executable(tools._square_book_appointment)
+    calls = [ast.unparse(n.func) for n in ast.walk(ast.parse(code)) if isinstance(n, ast.Call)]
+    assert "db.insert_appointment" in calls
+    assert "db.update_appointment" not in calls
+
+
+def _executable(fn):
+    """Source with docstrings stripped — prose about what a function does NOT do
+    must not satisfy or fail a guard about what it does."""
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(fn).lstrip())
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
+            if node.body and isinstance(node.body[0], ast.Expr) \
+                    and isinstance(node.body[0].value, ast.Constant):
+                node.body.pop(0)
+    return ast.unparse(tree)
 
 
 # ── caller identity (O) and legacy (P, Q) ────────────────────────────────────

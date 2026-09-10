@@ -928,14 +928,6 @@ async def _square_book_appointment(
     # Ordering matters too. The cancel now happens AFTER a successful create, so a
     # failed booking leaves the original appointment intact rather than losing the
     # caller both.
-    wants_reschedule = bool(args.get("reschedule"))
-    existing_appt = None
-    if wants_reschedule and caller_phone:
-        try:
-            existing_appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
-        except Exception as e:
-            logger.warning("tools/book[square]: existing-appt lookup failed for %s: %s", tenant_id, e)
-
     # caller_name is deliberately NOT passed: the Square customer is created from
     # phone alone so a retry replays byte-identically. The name still reaches the
     # OpenLines appointment record below, where W5.2's rules apply.
@@ -969,28 +961,19 @@ async def _square_book_appointment(
     }
     if staff_name:
         appt_data["staff_name"] = staff_name
-    # Cancel the old booking only now that the new one exists.
-    if existing_appt and existing_appt.get("google_event_id"):
-        try:
-            await square_booking.cancel_booking(token, existing_appt["google_event_id"])
-        except Exception as e:
-            # New booking stands; the old one did not go away. Report it rather than
-            # claim a clean reschedule, and never retry the create.
-            logger.error("tools/book[square]: reschedule PARTIAL for %s — new booking %s "
-                         "created but old %s could not be cancelled: %s",
-                         tenant_id, booking_id, existing_appt["google_event_id"], e)
-            existing_appt = None
 
+    # W6A2-prereq: booking CREATES. It never cancels an existing appointment.
+    # This path used to gate on args.get("reschedule") — a field no tool schema
+    # ever exposed, so the branch could not run — and the presence of dead
+    # destructive code is itself the hazard: the next person to add the argument
+    # would have shipped implicit rescheduling without meaning to. Moving an
+    # appointment will arrive as an explicit reschedule_appointment tool.
     try:
-        if existing_appt:
-            await db.update_appointment(existing_appt["id"], appt_data)
-        else:
-            await db.insert_appointment(appt_data)
+        await db.insert_appointment(appt_data)
     except Exception as e:
         logger.error("tools/book[square]: failed to save appointment mirror for %s: %s", tenant_id, e)
     analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "appointment_booked",
-                      {"tenant_id": tenant_id, "service": service, "provider": "square_appointments",
-                       "is_reschedule": bool(existing_appt)})
+                      {"tenant_id": tenant_id, "service": service, "provider": "square_appointments"})
 
     h = start_dt.hour % 12 or 12
     ampm = "AM" if start_dt.hour < 12 else "PM"
@@ -1372,12 +1355,12 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
     # Look up the caller's existing appointment (reschedule flow) — needed both
     # for the capacity guard and to cancel the old calendar event.
-    existing_appt = None
-    if caller_phone:
-        try:
-            existing_appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
-        except Exception as e:
-            logger.warning("tools/book: appointment lookup failed for tenant %s: %s", tenant_id, e)
+    # W6A2-prereq: this path used to look up the caller's earliest active
+    # appointment and cancel it before creating the new one — with no flag, no
+    # confirmation, and a limit(1) guess about which appointment was meant. A
+    # caller with two bookings who asked for a third lost one of them silently.
+    # Booking CREATES. Moving an appointment will arrive as an explicit
+    # reschedule_appointment tool; until then it is simply not offered here.
 
     # Capacity + staff guard. Named-staff mode (tenant has active staff) sets the
     # slot capacity to the staff count and assigns the booking to a staff member
@@ -1402,8 +1385,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         taken = 0
         busy_staff_ids: set[str] = set()
         for _a in _day_appts:
-            if existing_appt and _a.get("id") == existing_appt.get("id"):
-                continue
+            # No self-exclusion any more: without a reschedule there is no "own"
+            # appointment to discount, and a slot the caller already holds is
+            # genuinely occupied. Capacity may now refuse the booking — which is a
+            # booking rule refusing, not a cancellation happening.
             _s = datetime.fromisoformat(_a["appointment_datetime"])
             if _s.tzinfo is None:
                 _s = _s.replace(tzinfo=tz)
@@ -1444,27 +1429,6 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 return _result(tc_id, _slot_full_msg)
     except Exception as e:
         logger.warning("tools/book: capacity/staff check failed for tenant %s (allowing booking): %s", tenant_id, e)
-
-    # Reschedule: cancel the old calendar event now that the new slot has room.
-    if existing_appt:
-        old_event_id = existing_appt.get("google_event_id", "")
-        if old_event_id:
-            try:
-                if cal_provider == "microsoft":
-                    await ms_cal_svc.cancel_event(refresh_token, old_event_id)
-                else:
-                    await cal_svc.cancel_event(refresh_token, old_event_id)
-                logger.info("Cancelled old event %s for reschedule (tenant %s)", old_event_id, tenant_id)
-            except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
-                logger.error("tools/book: calendar token expired during reschedule for tenant %s — auto-disconnecting", tenant_id)
-                clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
-                try:
-                    await db.update_tenant(tenant_id, {clear_field: None})
-                except Exception:
-                    pass
-                return _result(tc_id, _CALENDAR_ERROR_MSG)
-            except Exception as e:
-                logger.warning("tools/book: could not delete old calendar event %s: %s", old_event_id, e)
 
     try:
         _staff_line = f"\nTeam member: {chosen_staff['name']}" if chosen_staff else ""
@@ -1514,17 +1478,13 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     from routers.payments import _deposit_provider
     _dep_provider = _deposit_provider(tenant)
 
-    # Rescheduling an appointment whose deposit was already paid must NOT require
-    # another deposit. The deposit stays linked to the same appointment row (we
-    # update it in place), so a succeeded payment on the existing appointment
-    # means the reschedule is already covered.
+    # W6A2-prereq: this used to waive the deposit when the caller already had a
+    # paid appointment, because the booking was silently a reschedule and reused
+    # that appointment's row. A NEW booking is a new commitment and carries its
+    # own deposit; waiving it here would have let one paid deposit cover any
+    # number of bookings. Deposit waiving for a genuine reschedule belongs with
+    # the explicit reschedule tool, which keeps the original appointment row.
     already_paid = False
-    if existing_appt:
-        try:
-            _existing_payment = await db.get_payment_by_appointment_id(existing_appt["id"])
-            already_paid = _existing_payment is not None
-        except Exception as e:
-            logger.warning("tools/book: deposit lookup failed for tenant %s (assuming unpaid): %s", tenant_id, e)
 
     # Conditional/group deposits: a deposit is due for ALL bookings, or only for
     # group bookings of N+ people. (Provider must be active and not already paid.)
@@ -1541,7 +1501,7 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     logger.info("tools/book: tenant %s provider=%s needs_deposit=%s already_paid=%s status=%s",
                 tenant_id, _dep_provider, needs_deposit, already_paid, appt_status)
 
-    appt_id = existing_appt["id"] if existing_appt else None
+    appt_id = None
     try:
         appt_data = {
             "tenant_id":             tenant_id,
@@ -1558,11 +1518,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         if chosen_staff:
             appt_data["staff_id"]   = chosen_staff["id"]
             appt_data["staff_name"] = chosen_staff.get("name", "")
-        if existing_appt:
-            await db.update_appointment(existing_appt["id"], appt_data)
-        else:
-            _inserted = await db.insert_appointment(appt_data)
-            appt_id = (_inserted or {}).get("id")
+        # Always an insert. Updating an existing row in place is what made an
+        # ordinary booking overwrite an appointment the caller still wanted.
+        _inserted = await db.insert_appointment(appt_data)
+        appt_id = (_inserted or {}).get("id")
         # PRIVACY: no caller name/phone/datetime — service type + duration only
         analytics.capture(
             analytics.distinct_id_for(tenant, tenant_id),
@@ -1571,7 +1530,6 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 "tenant_id": tenant_id,
                 "service": service,
                 "duration_minutes": duration_minutes,
-                "is_reschedule": bool(existing_appt),
             },
         )
         try:
@@ -1583,7 +1541,6 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 "datetime": start_dt.isoformat(),
                 "duration_minutes": duration_minutes,
                 "status": appt_status,
-                "is_reschedule": bool(existing_appt),
             })
         except Exception as e:
             logger.warning("tools/book: Zapier emit failed for tenant %s (non-fatal): %s", tenant_id, e)
