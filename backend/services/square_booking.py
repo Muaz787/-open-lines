@@ -377,10 +377,17 @@ async def sync(tenant_id: str) -> dict:
 async def available_slot_strings(
     tenant: dict, *, date_str: str, timezone: str,
     service_variation_id: str, team_member_ids: list[str],
+    provider_location_id: str | None = None,
 ) -> list[str]:
-    """Return Square-computed open slots for a single day as ['2:00 PM', ...]."""
+    """Return Square-computed open slots for a single day as ['2:00 PM', ...].
+
+    provider_location_id is the W4 multi-location path: the caller has named a
+    location, the backend resolved it to an immutable Square id, and THAT is what
+    Square is asked about. When it is None we are on the legacy single-location
+    path and fall back to the tenant pointer, byte-identical to before.
+    """
     token = await get_access_token(tenant)
-    location_id = tenant.get("square_location_id") or ""
+    location_id = (provider_location_id or "").strip() or (tenant.get("square_location_id") or "")
     if not token or not location_id:
         return []
     tz = ZoneInfo(timezone)

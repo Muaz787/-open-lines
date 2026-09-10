@@ -20,6 +20,7 @@ from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 from services import square_booking
+from services import call_location, location_resolver, location_scope
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
@@ -216,6 +217,176 @@ def _match_square_service(requested: str, services: list) -> dict | None:
     return names[close[0]] if close else services[0]
 
 
+async def _multi_location_availability(
+    tc_id: str, tenant: dict, tenant_id: str, args: dict, date_str: str, prefix: str,
+    adopted: list[dict],
+):
+    """W4 — availability for a tenant with >= 2 adopted locations.
+
+    Fails closed at every step: an unresolved, ambiguous, disabled, unbound or
+    wrong-location request makes ZERO Square calls and returns something the
+    assistant can say out loud. There is no fallback branch here on purpose —
+    tenants.square_location_id, is_default and locations[0] are all unreachable
+    from this function.
+    """
+    call_id = args.get("_call_id", "")
+    if not call_id:
+        # Without a proven call id there is no authoritative state, and an
+        # anonymous shared row would be worse than refusing.
+        logger.error("tools/availability[multi]: no vapi call id for tenant %s", tenant_id)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    eligible = call_location.eligible_for_availability(adopted)
+    if not eligible:
+        logger.warning("tools/availability[multi]: tenant %s has no bookable location", tenant_id)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    state = await call_location.get_or_create(call_id, tenant_id)
+    if not state:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    location, resolution, state = await call_location.resolve_active_location(
+        state, args.get("location", ""), eligible, tenant.get("business_name") or "")
+
+    if not location:
+        # NO LOCATION -> NO SQUARE REQUEST. Ask instead.
+        lead = ("I'm not sure which location you meant. Which would you like"
+                if resolution and resolution.status == location_resolver.AMBIGUOUS
+                else "Which location would you like")
+        return _result(tc_id, prefix + location_resolver.clarification_text(
+            (resolution.candidates if resolution else eligible), lead=lead))
+
+    loc_name = location.get("name") or location.get("slug") or "that location"
+    binding = location.get("_binding") or {}
+    provider_location_id = (binding.get("provider_location_id") or "").strip()
+    if not provider_location_id:
+        logger.error("tools/availability[multi]: %s has no usable binding", loc_name)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # Timezone: the location's own, then the provider's. No tenant fallback —
+    # answering an Irish caller in Toronto time would be silently wrong.
+    timezone = (location.get("timezone") or binding.get("provider_timezone") or "").strip()
+    if not timezone:
+        logger.error("tools/availability[multi]: no timezone for %s (tenant %s)",
+                     loc_name, tenant_id)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # W3 scope: only what is genuinely offered at this location.
+    all_services = await db.get_square_services(tenant_id, bookable_only=True)
+    services = location_scope.services_at_location(all_services, provider_location_id)
+    if not services:
+        return _result(tc_id, prefix +
+            f"We don't have any bookable services at {loc_name} at the moment.")
+
+    requested_service = (args.get("service") or "").strip()
+    chosen = _match_square_service(requested_service, services) if requested_service else None
+    if requested_service and (chosen is None or not _service_matches(requested_service, chosen)):
+        offered = ", ".join(s["name"] for s in services[:6] if s.get("name"))
+        return _result(tc_id, prefix +
+            f"{requested_service} isn't offered at the {loc_name} location. "
+            f"There we do: {offered}. Would one of those work, or would you like a "
+            f"different location?")
+    if chosen is None:
+        chosen = services[0] if len(services) == 1 else None
+        if chosen is None:
+            offered = ", ".join(s["name"] for s in services[:6] if s.get("name"))
+            return _result(tc_id, prefix +
+                f"Which service would you like at {loc_name}? We offer: {offered}.")
+
+    all_staff = await db.get_square_staff(tenant_id)
+    staff_rows = location_scope.staff_at_location(all_staff, provider_location_id)
+    team_ids = [t for t in (chosen.get("team_member_ids") or [])
+                if any(s["square_team_member_id"] == t for s in staff_rows)]
+
+    requested_staff = (args.get("staff") or "").strip()
+    if requested_staff:
+        roster = [{"name": s.get("display_name"), "id": s.get("square_team_member_id")}
+                  for s in staff_rows]
+        matched = _match_staff(requested_staff, roster)
+        if not matched or not _staff_matches(requested_staff, matched.get("name") or ""):
+            names = ", ".join(r["name"] for r in roster if r["name"])
+            return _result(tc_id, prefix +
+                f"{requested_staff} isn't available at {loc_name}. "
+                f"There we have: {names}. Would one of them work?")
+        team_ids = [matched["id"]]
+
+    if not team_ids:
+        team_ids = [s["square_team_member_id"] for s in staff_rows]
+    if not team_ids:
+        return _result(tc_id, prefix +
+            f"We don't have anyone available for that at {loc_name} right now.")
+
+    try:
+        slots = await square_booking.available_slot_strings(
+            tenant, date_str=date_str, timezone=timezone,
+            service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
+            provider_location_id=provider_location_id,
+        )
+    except Exception as e:
+        logger.error("tools/availability[multi]: Square failed for %s at %s: %s",
+                     tenant_id, loc_name, e)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    try:
+        _fmt_date = date_type.fromisoformat(date_str).strftime("%B %d, %Y")
+    except ValueError:
+        _fmt_date = date_str
+
+    # Always name the location back. It is the caller's audible check that we
+    # heard the right city, and it makes a mid-call switch obvious.
+    if not slots:
+        return _result(tc_id, prefix +
+            f"{loc_name} has no availability on {_fmt_date}. Would another day work, "
+            f"or would you like me to try a different location?")
+    times_text = ", ".join(slots)
+    return _result(tc_id, prefix +
+        f"{loc_name} has availability on {_fmt_date} (full list — {slots[0]} through "
+        f"{slots[-1]}): {times_text}. Say the location name when you confirm. "
+        "If the caller asked for a specific time, check this exact list: confirm it if "
+        "present, otherwise offer the closest available times. Only read a few options "
+        "aloud, not the whole list.")
+
+
+def _staff_matches(requested: str, matched_name: str) -> bool:
+    """Did _match_staff find the requested person, or a same-surname neighbour?
+
+    _match_staff fuzzy-matches whole names at cutoff 0.6, which is right for a
+    mis-transcription ('Shayd' -> 'Shahid') but wrong across a shared surname:
+    'Niamh Test' vs 'Aoife Test' scores exactly 0.600 and matches. Their FIRST
+    names score 0.200, while shayd/shahid score 0.727 — so the first name is what
+    separates a mis-hearing from a different person.
+
+    Applied in the multi-location branch only. Legacy single-location matching is
+    unchanged: there, offering the wrong colleague is a correction in the next
+    sentence, not a caller sent to the wrong city.
+    """
+    import difflib as _dl
+    req = (requested or "").strip().lower()
+    name = (matched_name or "").strip().lower()
+    if not req or not name:
+        return False
+    if req in name or name in req:
+        return True
+    return _dl.SequenceMatcher(None, req.split()[0], name.split()[0]).ratio() >= 0.6
+
+
+def _service_matches(requested: str, service: dict) -> bool:
+    """Did the fuzzy matcher genuinely find the requested service, or fall back?
+
+    _match_square_service returns services[0] when nothing matches, which is safe
+    enough for a single-location tenant but must never stand in for "we don't do
+    that here" at a specific location.
+    """
+    import difflib as _dl
+    name = (service.get("name") or "").lower()
+    req = requested.lower().strip()
+    if not req or not name:
+        return False
+    if req in name or name in req:
+        return True
+    return _dl.SequenceMatcher(None, req, name).ratio() >= 0.6
+
+
 async def _square_availability_response(
     tc_id: str, tenant: dict, tenant_id: str, args: dict, date_str: str, prefix: str,
 ):
@@ -410,7 +581,7 @@ async def _square_book_appointment(
 async def check_availability(request: Request, tenant_id: str, body: dict):
     logger.info("tools/availability raw payload for tenant %s: %s", tenant_id, body)
     try:
-        tc_id, _, args = _parse_tool_call(body)
+        tc_id, _call_id, args = _parse_tool_call(body)
     except Exception as e:
         logger.error("tools/availability: bad payload for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=400, detail="Malformed tool-call payload")
@@ -464,6 +635,19 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     # Square Appointments provider — Square owns availability (pass-through).
     # Gated on square_appointments_enabled, which stays OFF until P2 wires booking.
     if tenant.get("square_appointments_enabled"):
+        # W4 cutover: a tenant with >= 2 adopted locations takes the location-scoped
+        # path and can never reach tenants.square_location_id. Everyone else stays
+        # on the legacy branch below, unchanged. See services/call_location.
+        try:
+            multi, adopted = await call_location.is_multi_location(tenant_id)
+        except Exception as e:
+            logger.error("tools/availability: location mode check failed for %s: %s",
+                         tenant_id, e)
+            multi, adopted = False, []
+        if multi:
+            return await _multi_location_availability(
+                tc_id, tenant, tenant_id, {**args, "_call_id": _call_id},
+                date_str, _year_correction_prefix, adopted)
         return await _square_availability_response(
             tc_id, tenant, tenant_id, args, date_str, _year_correction_prefix)
 
@@ -680,6 +864,29 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     except Exception as e:
         logger.error("tools/book: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # W4 BOOKING BOUNDARY — deliberately fail closed.
+    #
+    # _square_book_appointment re-derives location, service, staff and slot from
+    # scratch and reads tenants.square_location_id. For a multi-location tenant that
+    # means a caller could hear Dublin availability and be booked into whatever the
+    # legacy pointer names. The tool stays exposed on the assistant, so declining to
+    # modify the booking path is NOT by itself a safeguard — this guard is.
+    #
+    # Removed in W5, when slot binding makes the offered slot and the booked
+    # location provably the same thing. Legacy single-location booking is untouched.
+    try:
+        _multi, _ = await call_location.is_multi_location(tenant_id)
+    except Exception as e:
+        logger.error("tools/book: location mode check failed for %s: %s", tenant_id, e)
+        _multi = False
+    if _multi:
+        logger.warning("tools/book: BLOCKED multi-location booking for tenant %s "
+                       "(no slot binding until W5) — zero CreateBooking calls", tenant_id)
+        return _result(tc_id,
+            "I can see what's available, but I'm not able to complete the booking on "
+            "this call just yet. Let me take your name and number and the team will "
+            "confirm it with you shortly.")
 
     # Square Appointments: write the booking into the merchant's Square calendar.
     if tenant.get("square_appointments_enabled"):

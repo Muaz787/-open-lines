@@ -773,6 +773,17 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                                 "caller has no preference."
                             ),
                         },
+                        "location": {
+                            "type": "string",
+                            "description": (
+                                "Which of the business's locations the caller wants, in their own "
+                                "words — 'Cork', 'the Dublin showroom'. Only relevant when the "
+                                "BUSINESS LOCATIONS section of your instructions lists more than "
+                                "one; omit entirely otherwise. Pass the caller's own words: the "
+                                "backend matches them. NEVER invent a location, never pass a code "
+                                "or identifier, and never guess when the caller has not said."
+                            ),
+                        },
                     },
                     "required": ["date"],
                 },

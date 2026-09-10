@@ -238,10 +238,21 @@ def test_scope_module_is_pure_no_db_or_http():
 
 
 def test_helpers_are_not_wired_into_the_booking_path():
-    """W3 must not change runtime behaviour. The availability and booking code is
-    allowed to know nothing about location scope yet."""
+    """Superseded by W4 and deliberately made STRICTER, not weaker.
+
+    In W3 this asserted the helpers appeared nowhere in routers/tools. W4 wires
+    them into the multi-location AVAILABILITY branch on purpose, so the blanket
+    assertion no longer describes intended behaviour. What must still hold — and
+    what actually protects a caller — is that the BOOKING path knows nothing about
+    them: booking still re-derives everything from tenants.square_location_id, and
+    scoping it without W5 slot binding is what would let offered and booked
+    locations diverge.
+    """
     from routers import tools
-    src = inspect.getsource(tools)
-    assert "location_scope" not in src
-    assert "service_is_available_at_location" not in src
-    assert "staff_is_available_at_location" not in src
+    booking_src = inspect.getsource(tools._square_book_appointment)
+    for forbidden in ("location_scope", "service_is_available_at_location",
+                      "staff_is_available_at_location", "provider_location_id",
+                      "call_location"):
+        assert forbidden not in booking_src, (
+            f"_square_book_appointment must stay location-unaware until W5: "
+            f"found {forbidden!r}")

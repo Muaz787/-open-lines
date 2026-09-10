@@ -166,7 +166,17 @@ async def purge_closed_accounts() -> list[str]:
 
 async def run_retention() -> dict:
     """Daily maintenance entry point."""
+    # W4: expire orphaned per-call location state. Normal cleanup is the
+    # end-of-call delete; this catches calls whose report never arrived.
+    try:
+        from services import call_location
+        purged_call_state = await call_location.purge_expired()
+    except Exception as e:
+        logger.error("retention: call location state purge failed: %s", e)
+        purged_call_state = 0
+
     return {
         "webhook_events_purged": await purge_old_webhook_events(),
         "closed_accounts_purged": await purge_closed_accounts(),
+        "call_location_state_purged": purged_call_state,
     }
