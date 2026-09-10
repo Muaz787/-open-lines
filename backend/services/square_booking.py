@@ -304,8 +304,64 @@ async def get_booking(token: str, booking_id: str) -> dict:
         return res.json().get("booking", {})
 
 
+# Cancellation outcomes. A bool cannot carry the difference between "we cancelled
+# it", "it was already cancelled" and "we do not know" — and the third of those
+# must never be written down as the first.
+CANCEL_OK = "cancelled"
+CANCEL_ALREADY = "already_cancelled"
+CANCEL_NOT_FOUND = "not_found"
+CANCEL_FAILED = "failed"
+CANCEL_UNKNOWN = "unknown"
+
+
+async def cancel_booking_detailed(token: str, booking_id: str) -> tuple[str, dict]:
+    """Cancel, and say precisely what happened. Returns (status, booking).
+
+    Square's CancelBooking is naturally idempotent PROVIDED the current version is
+    re-fetched first — measured, not assumed: cancelling an already-cancelled
+    booking with its current version returns 200 and leaves the version untouched,
+    while the same call with a stale version is rejected as VERSION_MISMATCH. So a
+    retry is safe and needs no stable operation identity of its own; re-reading is
+    the whole mechanism.
+
+    The already-cancelled case is detected before any request is sent, so a caller
+    asking twice never issues a second mutation.
+    """
+    booking = await get_booking(token, booking_id)
+    if not booking:
+        return CANCEL_NOT_FOUND, {}
+    status = (booking.get("status") or "").upper()
+    if "CANCELLED" in status or status == "DECLINED":
+        return CANCEL_ALREADY, booking
+
+    import uuid
+    body: dict = {"idempotency_key": str(uuid.uuid4())}
+    if booking.get("version") is not None:
+        body["booking_version"] = booking["version"]
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"{sq_svc._api_base()}/v2/bookings/{booking_id}/cancel",
+                json=body, headers=sq_svc._sq_headers(token), timeout=15.0,
+            )
+        except Exception as e:
+            # The request may or may not have been committed. Saying "cancelled"
+            # here is the exact lie W6A1 exists to stop telling.
+            logger.error("Square cancel_booking transport failure for %s: %s", booking_id, e)
+            return CANCEL_UNKNOWN, booking
+        if res.is_success:
+            return CANCEL_OK, res.json().get("booking", {})
+        if res.status_code >= 500:
+            logger.error("Square cancel_booking %s (unknown outcome): %s",
+                         res.status_code, res.text[:300])
+            return CANCEL_UNKNOWN, booking
+        logger.warning("Square cancel_booking %s: %s", res.status_code, res.text[:300])
+        return CANCEL_FAILED, booking
+
+
 async def cancel_booking(token: str, booking_id: str) -> bool:
-    """Cancel a Square booking (retrieves current version first). Returns True on success."""
+    """LEGACY bool shim. Prefer cancel_booking_detailed(), which distinguishes
+    'already cancelled' and 'unknown' from success — a difference a bool destroys."""
     import uuid
     booking = await get_booking(token, booking_id)
     version = booking.get("version")

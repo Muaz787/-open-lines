@@ -686,6 +686,13 @@ CALLER RECOGNITION
   • Do NOT call caller_lookup.
 Never say "I'm looking up your records" or anything that reveals a system lookup.
 
+CANCELLING
+- To cancel, call cancel_appointment with NO arguments first. It returns the caller's appointments and changes nothing.
+- Read the appointments back — service, place, day and time. NEVER read the appt_ references aloud; they are internal.
+- Ask the caller which one they want cancelled, and confirm before acting. Even when there is only one appointment, confirm it first.
+- Then call cancel_appointment again with the appointment_ref for the one they chose.
+- Never say an appointment is cancelled until the tool result says so.
+
 BOOKING — CALLING THE TOOL IS MANDATORY (new bookings AND reschedules)
 - The appointment ONLY changes when you call the book_appointment tool. Your words book nothing on their own.
 - The MOMENT the caller agrees to a specific date and time, your VERY NEXT action MUST be a book_appointment tool call — in the SAME turn, before you say anything else and before you confirm.
@@ -888,11 +895,31 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
             "function": {
                 "name": "cancel_appointment",
                 "description": (
-                    "Cancel the caller's upcoming appointment. "
-                    "Call this ONLY after the caller has explicitly confirmed they want to cancel. "
-                    "Do not call this speculatively."
+                    "Cancel an appointment. This takes TWO calls. "
+                    "First call it with no arguments to see the caller's appointments — "
+                    "that changes nothing. Read the appointments back to the caller and "
+                    "ask which one they want cancelled. Then call it a second time with "
+                    "the appointment_ref for the one they chose. "
+                    "Nothing is cancelled until the second call, even when there is only "
+                    "one appointment."
                 ),
-                "parameters": {"type": "object", "properties": {}, "required": []},
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "appointment_ref": {
+                            "type": "string",
+                            "description": (
+                                "The appt_ reference shown beside the appointment the caller "
+                                "chose, from the most recent cancel_appointment result — e.g. "
+                                "'appt_2'. Omit it on your FIRST call. Never invent one, never "
+                                "read one aloud, and never reuse one from earlier in the call. "
+                                "If you are not certain which appointment the caller means, ask "
+                                "them instead of guessing — this cancels a real booking."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
             },
             "server": _tool_server(f"{base}/cancel", 20),
         },

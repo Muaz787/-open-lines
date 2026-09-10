@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
+from services import appointment_refs
 from services import caller_identity
 from services import customer_identity
 from services import calendar as cal_svc
@@ -259,6 +260,111 @@ def _match_square_service(requested: str, services: list) -> dict | None:
             return s
     close = difflib.get_close_matches(requested, list(names.keys()), n=1, cutoff=0.5)
     return names[close[0]] if close else services[0]
+
+
+async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone):
+    """Stage 1 of cancellation: enumerate, label, and mutate NOTHING.
+
+    Returns human-readable choices — location, service, date, time — with an
+    opaque ref beside each. One candidate is listed too, not cancelled: a single
+    match is still an assumption about which appointment the caller meant.
+    """
+    try:
+        candidates = await db.get_active_appointments_by_phone(tenant_id, caller_phone)
+    except Exception as e:
+        logger.error("tools/cancel: candidate lookup failed for tenant %s: %s", tenant_id, e)
+        return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
+
+    if not candidates:
+        return _result(tc_id,
+            "I don't see any upcoming appointment for this caller's number. Ask "
+            "whether it might be under a different number.")
+
+    # Location names for speech. Never an id — anything the model can see it can
+    # say out loud or hand back to a tool.
+    names: dict[str, str] = {}
+    try:
+        _multi, adopted = await call_location.is_multi_location(tenant_id)
+        names = {str(l.get("id")): (l.get("name") or "") for l in adopted}
+    except Exception as e:
+        logger.warning("tools/cancel: location names unavailable for %s: %s", tenant_id, e)
+
+    rows = await appointment_refs.create_refs(
+        vapi_call_id=call_id, tenant_id=tenant_id,
+        caller_phone=caller_phone, appointments=candidates)
+    if not rows:
+        return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
+
+    tz = tenant.get("calendar_timezone") or "UTC"
+    described = [
+        (r["appointment_ref"],
+         appointment_refs.describe(r, names.get(str(r.get("tenant_location_id")), ""), tz))
+        for r in rows
+    ]
+
+    if len(described) == 1:
+        return _result(tc_id,
+            f"This caller has one upcoming appointment: {described[0][1]} "
+            f"[{described[0][0]}]. Read the appointment back WITHOUT the reference "
+            f"and ask them to confirm they want it cancelled. If they confirm, call "
+            f"cancel_appointment again with that reference.")
+
+    return _result(tc_id,
+        f"This caller has {len(described)} upcoming appointments: "
+        f"{appointment_refs.spoken_list(described)}. Read them out WITHOUT the "
+        f"references — those are internal — and ask which one they want cancelled. "
+        f"Then call cancel_appointment again with the matching reference. If you "
+        f"are not certain which they meant, ask rather than guess.")
+
+
+async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
+    """Verify against Square, then cancel. Returns 'ok' | 'mismatch' | 'failed'.
+
+    The location check is the point. A local row can drift — from a bad backfill,
+    a manual edit, a bug we have not found yet — and cancelling on the strength of
+    a phone match alone would then destroy a booking at a location the caller never
+    mentioned. Square's own copy of the booking is the authority, and if the two
+    disagree we stop.
+    """
+    token = await square_booking.get_access_token(tenant)
+    if not token:
+        logger.error("tools/cancel[square]: no access token for tenant %s", tenant_id)
+        return "failed"
+
+    try:
+        booking = await square_booking.get_booking(token, event_id)
+    except Exception as e:
+        logger.error("tools/cancel[square]: could not read booking %s: %s", event_id, e)
+        return "failed"
+    if not booking:
+        logger.error("tools/cancel[square]: booking %s not found for tenant %s", event_id, tenant_id)
+        return "failed"
+
+    expected = str(appt.get("provider_location_id") or "")
+    actual = str(booking.get("location_id") or "")
+    if expected and actual and expected != actual:
+        logger.error(
+            "tools/cancel[square]: INTEGRITY FAILURE — appointment %s says location %s "
+            "but Square booking %s is at %s. Refusing to cancel (tenant %s).",
+            appt.get("id"), expected, event_id, actual, tenant_id)
+        return "mismatch"
+    if expected and not actual:
+        logger.error("tools/cancel[square]: booking %s exposes no location_id; refusing "
+                     "to cancel against expected %s (tenant %s)", event_id, expected, tenant_id)
+        return "mismatch"
+
+    status, _ = await square_booking.cancel_booking_detailed(token, event_id)
+    if status in (square_booking.CANCEL_OK, square_booking.CANCEL_ALREADY):
+        # ALREADY counts as success: the caller's intent is satisfied and our own
+        # record is the thing still out of date. Reconciling it is the right move,
+        # and it issues no second mutation — the detailed helper checked first.
+        if status == square_booking.CANCEL_ALREADY:
+            logger.info("tools/cancel[square]: booking %s was already cancelled — "
+                        "reconciling local state", event_id)
+        return "ok"
+    logger.error("tools/cancel[square]: cancel of %s returned %s (tenant %s)",
+                 event_id, status, tenant_id)
+    return "failed"
 
 
 def _customer_problem_message(status: str) -> str:
@@ -1755,46 +1861,127 @@ async def _create_and_send_deposit(
 @router.post("/{tenant_id}/cancel")
 @limiter.limit("10/minute", key_func=tenant_key)
 async def cancel_appointment(request: Request, tenant_id: str, body: dict):
+    """W6A1 — cancel exactly the appointment the caller chose, or nothing.
+
+    Two stages on purpose. With no appointment_ref this LISTS and mutates nothing,
+    even when there is only one candidate: a single match is still a guess about
+    which appointment the caller meant, and the whole point is to stop guessing at
+    a destructive boundary. With a ref, every identifier used comes from the stored
+    row rather than from anything the model said.
+    """
     try:
-        tc_id, _, _ = _parse_tool_call(body)
+        tc_id, call_id, args = _parse_tool_call(body)
     except Exception as e:
         logger.error("tools/cancel: bad payload for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=400, detail="Malformed tool-call payload")
 
-    msg = body.get("message", body)
-    caller_phone = (msg.get("call") or {}).get("customer", {}).get("number", "")
-
+    caller_phone = trusted_caller_phone(body, args)
     if not caller_phone:
         return _result(tc_id, "I wasn't able to find your phone number to look up the appointment. Could you confirm the number on file?")
+    if not call_id:
+        # Without a call there is nowhere to scope a ref, so nothing can be
+        # verified — and an unverifiable cancellation must not happen.
+        return _result(tc_id, "I can't look that up right now. Please call back and we'll get that sorted.")
 
-    try:
-        appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
-    except Exception as e:
-        logger.error("tools/cancel: appointment lookup failed for tenant %s: %s", tenant_id, e)
-        return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
-
-    if not appt:
-        return _result(tc_id, "I don't see any upcoming appointment for your number. Is it possible it's under a different phone number?")
-
-    # Cancel Google Calendar event
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
         logger.error("tools/cancel: tenant lookup failed %s: %s", tenant_id, e)
         return _result(tc_id, "I had trouble processing the cancellation. Please call back and we'll get that sorted.")
+    tenant = tenant or {}
 
-    refresh_token, cal_provider = _calendar_provider(tenant or {})
+    ref_arg = (args.get("appointment_ref") or "").strip()
+
+    # ---- STAGE 1: list the caller's appointments, mutate nothing --------------
+    if not ref_arg:
+        return await _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone)
+
+    # ---- STAGE 2: resolve the ref, verify, then cancel ------------------------
+    status, ref = await appointment_refs.resolve_for_cancel(
+        vapi_call_id=call_id, appointment_ref=ref_arg,
+        tenant_id=tenant_id, caller_phone=caller_phone)
+
+    if status == appointment_refs.NOT_FOUND:
+        return _result(tc_id,
+            "I couldn't find that appointment among the ones I listed. Let me look "
+            "up the caller's appointments again and confirm which one they mean.")
+    if status == appointment_refs.EXPIRED:
+        return _result(tc_id,
+            "That list is out of date now. Let me look up the caller's appointments "
+            "again before cancelling anything.")
+    if status == appointment_refs.ALREADY_CONSUMED:
+        # Idempotent: a retried tool call must never issue a second cancellation.
+        return _result(tc_id,
+            "That appointment has already been cancelled. Tell the caller it is "
+            "done and do not cancel it again.")
+
+    appt = await db.get_appointment_by_id(ref["appointment_id"])
+    if not appt or str(appt.get("tenant_id")) != str(tenant_id):
+        return _result(tc_id, "I couldn't find that appointment. Please call back and we'll get that sorted.")
+    if (appt.get("status") or "") not in ("confirmed", "pending_payment"):
+        return _result(tc_id,
+            "That appointment isn't active any more — it may already have been "
+            "cancelled. Tell the caller there's nothing further to do.")
+    if str(appt.get("caller_phone") or "") != caller_phone:
+        logger.error("tools/cancel: INTEGRITY — ref %s resolved to an appointment "
+                     "belonging to another caller (tenant %s)", ref_arg, tenant_id)
+        return _result(tc_id, "I couldn't verify that appointment. Please call back and we'll get that sorted.")
+
     event_id = appt.get("google_event_id", "")
+    if not event_id:
+        return _result(tc_id,
+            "I can't cancel that one automatically. Take the caller's details and "
+            "let them know the team will confirm the cancellation.")
 
-    # Square Appointments: cancel the booking in the merchant's Square calendar.
-    if (tenant or {}).get("square_appointments_enabled") and event_id:
-        try:
-            _sq_tok = await square_booking.get_access_token(tenant)
-            if _sq_tok:
-                await square_booking.cancel_booking(_sq_tok, event_id)
-        except Exception as e:
-            logger.warning("tools/cancel[square]: could not cancel booking %s: %s", event_id, e)
+    # The snapshot taken at listing time must still describe the row we are about
+    # to act on. A drift between them means something moved underneath us.
+    if str(ref.get("provider_location_id") or "") != str(appt.get("provider_location_id") or "") \
+            or str(ref.get("tenant_location_id") or "") != str(appt.get("tenant_location_id") or ""):
+        logger.error("tools/cancel: INTEGRITY — ref %s snapshot no longer matches appointment %s "
+                     "(ref loc %s/%s vs appt %s/%s)", ref_arg, appt.get("id"),
+                     ref.get("tenant_location_id"), ref.get("provider_location_id"),
+                     appt.get("tenant_location_id"), appt.get("provider_location_id"))
+        return _result(tc_id,
+            "Something doesn't line up with that appointment, so I haven't changed "
+            "it. Take the caller's details and let them know the team will confirm.")
+
+    # Claim the ref BEFORE touching the provider. Two concurrent tool calls holding
+    # the same ref compete here, and only one can win.
+    if not await appointment_refs.claim(call_id, ref_arg):
+        return _result(tc_id,
+            "That appointment has already been cancelled. Tell the caller it is "
+            "done and do not cancel it again.")
+
+    refresh_token, cal_provider = _calendar_provider(tenant)
+
+    if tenant.get("square_appointments_enabled"):
+        outcome = await _cancel_square_booking(tenant, appt, event_id, tenant_id)
+        if outcome != "ok":
+            # The booking is NOT proven cancelled, so the appointment is still a
+            # real appointment. appointments.status is business state, not the
+            # result of an operation, and writing a failure into it would be read
+            # inconsistently across the codebase: the enumeration and reschedule
+            # lookups filter IN ('confirmed','pending_payment') and would stop
+            # seeing it — so the caller could never retry — while the capacity
+            # guard filters != 'cancelled' and would keep counting it. Leave the
+            # status exactly as it was and let the logs carry the failure.
+            await appointment_refs.release(call_id, ref_arg)
+            logger.error("tools/cancel: provider cancellation NOT confirmed (%s) for "
+                         "appointment %s / booking %s (tenant %s) — leaving status %r",
+                         outcome, appt.get("id"), event_id, tenant_id, appt.get("status"))
+            if outcome == "mismatch":
+                return _result(tc_id,
+                    "I couldn't safely confirm that booking, so the appointment "
+                    "remains in place. Take the caller's details and let them know "
+                    "the team will confirm the cancellation.")
+            return _result(tc_id,
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
     elif refresh_token and event_id:
+        # W6A1: a failed provider cancel used to be logged and stepped over, after
+        # which the row was still marked cancelled — so the caller was told it was
+        # done while the event stayed in the merchant's calendar.
         try:
             if cal_provider == "microsoft":
                 await ms_cal_svc.cancel_event(refresh_token, event_id)
@@ -1807,14 +1994,51 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
                 await db.update_tenant(tenant_id, {clear_field: None})
             except Exception:
                 pass
+            await appointment_refs.release(call_id, ref_arg)
+            return _result(tc_id,
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
         except Exception as e:
-            logger.warning("tools/cancel: could not delete calendar event %s: %s", event_id, e)
+            # Same rule as Square: unproven cancellation leaves business state alone.
+            logger.error("tools/cancel: provider cancellation NOT confirmed for event %s "
+                         "(tenant %s) — leaving status %r: %s",
+                         event_id, tenant_id, appt.get("status"), e)
+            await appointment_refs.release(call_id, ref_arg)
+            return _result(tc_id,
+                "I couldn't confirm the cancellation, so the appointment remains in "
+                "place. Take the caller's details and let them know the team will "
+                "confirm it.")
+    else:
+        # No provider to cancel against and no way to verify. Refuse rather than
+        # mark our own row cancelled and call it done.
+        logger.error("tools/cancel: no usable provider for appointment %s (tenant %s)",
+                     appt.get("id"), tenant_id)
+        await appointment_refs.release(call_id, ref_arg)
+        return _result(tc_id,
+            "I can't cancel that one automatically. Take the caller's details and "
+            "let them know the team will confirm the cancellation.")
 
-    # Mark appointment cancelled in DB
+    # Provider has confirmed. Only now does our own record change — and with a
+    # targeted patch, not a whole-row write-back of a value read seconds ago.
     try:
-        await db.update_appointment(appt["id"], {**appt, "status": "cancelled"})
+        await db.update_appointment(appt["id"], {"status": "cancelled"})
     except Exception as e:
-        logger.error("tools/cancel: failed to update appointment status for tenant %s: %s", tenant_id, e)
+        # Square says cancelled, we failed to write it down. Do NOT retry the
+        # provider: it is already done, and a second attempt only risks acting on
+        # something else. Say the true thing and leave a loud trail.
+        # The ref is deliberately NOT released here. The provider mutation already
+        # happened; handing the ref back would invite a second destructive attempt
+        # at an appointment that is already cancelled. Square's re-fetch behaviour
+        # would make that harmless, but "harmless by luck" is not the property we
+        # want at a destructive boundary. Reconciliation is a human/queue job.
+        logger.error("tools/cancel: RECONCILIATION REQUIRED — provider cancelled "
+                     "booking %s but appointment %s could not be updated (tenant %s): %s",
+                     event_id, appt["id"], tenant_id, e)
+        return _result(tc_id,
+            "The appointment has been cancelled with the business, but I couldn't "
+            "update our own record. Tell the caller the cancellation is confirmed, "
+            "and let the team know the booking needs checking.")
 
     service  = appt.get("service", "appointment")
     appt_dt_raw = appt.get("appointment_datetime", "")
