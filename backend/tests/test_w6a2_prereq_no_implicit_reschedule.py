@@ -273,6 +273,92 @@ def test_the_prompt_no_longer_promises_the_backend_cancels_the_old_appointment()
 def test_the_prompt_tells_the_model_moving_is_unsupported_rather_than_silent():
     from services import vapi
     src = inspect.getsource(vapi)
-    assert "MOVING AN EXISTING APPOINTMENT" in src
-    assert "It does NOT move or replace an existing one" in src
+    assert "MOVING AN EXISTING APPOINTMENT — NOT SUPPORTED" in src
+    assert "It never moves, replaces or cancels an existing one" in src
     assert "Never tell a caller their appointment has been moved" in src
+
+
+def test_the_prompt_does_not_offer_cancel_then_book_as_a_way_to_move():
+    """Cancel-then-book is the UNSAFE ordering, not a safe interim.
+
+    Cancel succeeds, the replacement booking then fails or the slot disappears,
+    and the caller is left with nothing. W6A2's whole lifecycle exists to create
+    the replacement FIRST and cancel second. Offering the reverse sequence in the
+    prompt would ship exactly the failure the workstream is being built to
+    prevent — so the model must not be told to chain them at all.
+    """
+    from services import vapi
+    src = inspect.getsource(vapi).lower()
+    for workflow in ("offer to cancel it and book", "cancel then book", "cancel and rebook",
+                     "cancel the old appointment before booking",
+                     "cancel it and book a fresh time"):
+        assert workflow not in src, f"prompt must not sequence cancellation into a rebooking: {workflow!r}"
+    assert "never offer cancelling as a way to move one" in src
+    assert "you must not chain them" in src
+
+
+def test_the_prompt_keeps_the_two_operations_separate_and_says_moving_is_unavailable():
+    from services import vapi
+    src = inspect.getsource(vapi)
+    assert "only ever creates a NEW appointment" in src
+    assert "only ever cancels the one appointment the caller explicitly chose" in src
+    assert "not something you can do" in src
+
+
+# ── the availability self-exclusion remnant ──────────────────────────────────
+
+def test_availability_no_longer_excludes_the_callers_own_appointment():
+    """That exclusion only made sense while booking replaced the old appointment.
+    It doesn't any more, so the slot is simply occupied — and advertising it would
+    offer a time the booking path then refuses on capacity."""
+    code = _executable(tools.check_availability)
+    assert "get_active_appointment_by_phone" not in code
+    assert "exclude_event_id" not in code
+    assert "exclude_range" not in code
+
+
+def test_availability_cancels_nothing():
+    calls = _calls(tools.check_availability)
+    for destructive in ("cal_svc.cancel_event", "ms_cal_svc.cancel_event",
+                        "square_booking.cancel_booking", "db.update_appointment",
+                        "db.insert_appointment"):
+        assert destructive not in calls
+
+
+def test_the_singular_lookup_is_gone_from_the_tools_router_entirely():
+    import routers.tools as t
+    src = ast.unparse(ast.parse(inspect.getsource(t)))
+    assert "get_active_appointment_by_phone" not in src
+
+
+def test_the_plural_cancellation_lookup_is_untouched():
+    """W6A1 enumeration must survive: removing the singular lookup must not take
+    the plural one with it."""
+    from db import supabase as dbs
+    assert hasattr(dbs, "get_active_appointments_by_phone")
+    code = _executable(tools._list_cancellable)
+    assert "get_active_appointments_by_phone" in code
+
+
+@pytest.mark.asyncio
+async def test_a_caller_holding_a_slot_is_not_offered_that_slot_back():
+    """End to end: the caller's own 15:00 must count as busy like anyone else's."""
+    seen = {}
+
+    async def _slots(**kw):
+        seen.update(kw)
+        return ["3:00 PM", "3:30 PM"]
+
+    own = appt("a-own", "2026-10-05T14:00:00+00:00", "EV-OWN")
+    with CalCtx("google", existing=[own]) as c, \
+         patch("services.calendar.list_free_slots", new=AsyncMock(side_effect=_slots)):
+        body = {"message": {"toolCallList": [{"id": "tc-1", "function": {
+            "name": "check_availability", "arguments": json.dumps(
+                {"date": "2026-10-05", "caller_phone": PHONE})}}],
+            "call": {"id": CALL, "customer": {"number": PHONE}}}}
+        await tools.check_availability(_Req(), TID, body)
+
+    assert seen, "list_free_slots was not reached"
+    assert "exclude_event_id" not in seen, "the caller's own event must not be excluded"
+    assert "exclude_range" not in seen
+    assert c.cancelled == []

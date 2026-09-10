@@ -1101,27 +1101,11 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     except ValueError:
         pass
 
-    # If the caller already has an appointment, exclude it from the busy list so the
-    # agent doesn't falsely report the rescheduled slot as unavailable.
-    # Primary: match by Google event ID (exact). Fallback: match by time range.
-    exclude_event_id = None
-    exclude_range    = None
-    if caller_phone:
-        try:
-            existing = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
-            if existing:
-                exclude_event_id = existing.get("google_event_id") or None
-                ex_start = datetime.fromisoformat(existing["appointment_datetime"])
-                if ex_start.tzinfo is None:
-                    ex_start = ex_start.replace(tzinfo=ZoneInfo(timezone))
-                ex_end = ex_start + timedelta(minutes=duration_minutes)
-                exclude_range = (ex_start, ex_end)
-                logger.info(
-                    "tools/availability: reschedule detected for %s — excluding event_id=%s (%s to %s)",
-                    caller_phone, exclude_event_id, ex_start.isoformat(), ex_end.isoformat(),
-                )
-        except Exception as e:
-            logger.warning("tools/availability: existing-appt check failed: %s", e)
+    # W6A2-prereq: the caller's own appointment used to be excluded from the busy
+    # list, on the assumption that booking would replace it. Booking no longer
+    # replaces anything, so that slot is simply occupied — advertising it because
+    # of who holds it would offer a time the booking path then refuses on
+    # capacity. It counts like every other appointment now.
 
     # Capacity per slot. Named-staff mode (tenant has active staff) sets it to the
     # staff count; otherwise it's the pooled slot_capacity. > 1 counts our own
@@ -1156,9 +1140,6 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
                 _eid = _a.get("google_event_id")
                 if _eid:
                     our_event_ids.add(_eid)
-                # Free the seat of the appointment being rescheduled.
-                if exclude_event_id and _eid and _eid == exclude_event_id:
-                    continue
                 # For a specific requested staff member, only THEIR bookings count.
                 if requested_staff and _a.get("staff_id") != requested_staff["id"]:
                     continue
@@ -1177,8 +1158,6 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         duration_minutes=duration_minutes,
         timezone=timezone,
         period=period,
-        exclude_event_id=exclude_event_id,
-        exclude_range=exclude_range,
         business_hours_start=business_hours_start,
         business_hours_end=business_hours_end,
         business_days=business_days,
