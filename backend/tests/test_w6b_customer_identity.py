@@ -662,3 +662,142 @@ async def test_customer_ambiguity_refuses_the_booking_rather_than_guessing():
     assert "several customer records" in spoken
     for word in ("confirmed", "booked"):
         assert f"is {word}" not in spoken
+
+
+# ── the HTTP boundary ────────────────────────────────────────────────────────
+
+class _Captured:
+    """Intercepts httpx at the point square_booking hands it a body, so the
+    assertion is about the outgoing JSON rather than about Python kwargs."""
+
+    def __init__(self):
+        self.bodies: list[dict] = []
+        self.n = 0
+
+    def client(self):
+        outer = self
+
+        class _Resp:
+            def __init__(self, payload):
+                self._p, self.is_success, self.status_code, self.text = payload, True, 200, ""
+
+            def json(self):
+                return self._p
+
+            def raise_for_status(self):
+                pass
+
+        class _Client:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, url, **kw):
+                if url.endswith("/v2/customers/search"):
+                    return _Resp({"customers": []})
+                outer.bodies.append(kw["json"])          # the literal outgoing body
+                # Square dedupes on the key: the same key yields the same customer.
+                key = kw["json"].get("idempotency_key")
+                return _Resp({"customer": {"id": f"SQ-{key}"}})
+
+        return _Client
+
+
+@pytest.mark.asyncio
+async def test_the_outgoing_http_body_is_key_and_phone_only():
+    """The claim the report made, checked where it is actually true or false.
+
+    given_name="" never reaches the wire because the payload dict only gains the
+    field when the name is truthy — but that is a property of the serialization,
+    not of the call signature, so it has to be asserted at the boundary.
+    """
+    from services import square_booking
+    cap = _Captured()
+    store = Store()
+    row = await store.try_create_claim(T1, "square", IE, "worker-A")
+    row_uuid = str(row["id"])
+
+    with patch("services.square_booking.httpx.AsyncClient", cap.client()):
+        cid = await square_booking.create_customer(
+            "tok", phone=IE, idempotency_key=row_uuid)
+
+    assert cap.bodies == [{"phone_number": IE, "idempotency_key": row_uuid}]
+    assert "given_name" not in cap.bodies[0]
+    assert cid == f"SQ-{row_uuid}"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_name_is_omitted_from_the_wire_not_sent_as_empty():
+    from services import square_booking
+    cap = _Captured()
+    with patch("services.square_booking.httpx.AsyncClient", cap.client()):
+        await square_booking.create_customer("tok", phone=IE, given_name="", idempotency_key="K")
+    assert cap.bodies[0] == {"phone_number": IE, "idempotency_key": "K"}
+    assert "given_name" not in cap.bodies[0]
+
+
+@pytest.mark.asyncio
+async def test_a_placeholder_name_is_omitted_from_the_wire_too():
+    """W5.2's sink guard, asserted on the body rather than on the argument. The
+    legacy no-tenant shim still passes names, so this protection must stay real."""
+    from services import square_booking
+    cap = _Captured()
+    with patch("services.square_booking.httpx.AsyncClient", cap.client()):
+        await square_booking.create_customer(
+            "tok", phone=IE, given_name="Returning Caller", idempotency_key="K")
+    assert "given_name" not in cap.bodies[0]
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_real_name_still_reaches_the_wire():
+    """The other half: W6B must not silently disarm the legacy path's ability to
+    send a genuine name."""
+    from services import square_booking
+    cap = _Captured()
+    with patch("services.square_booking.httpx.AsyncClient", cap.client()):
+        await square_booking.create_customer(
+            "tok", phone=IE, given_name=REAL_NAME, idempotency_key="K")
+    assert cap.bodies[0]["given_name"] == REAL_NAME
+
+
+@pytest.mark.asyncio
+async def test_attempt_A_and_takeover_B_send_byte_identical_http_bodies():
+    """The whole point, end to end at the wire.
+
+    A resolves while the caller is known as "Daniel"; A crashes; B takes over while
+    the caller is known as "Dan". Both drive the real resolution path, and the two
+    captured HTTP bodies must be equal — not merely equivalent.
+    """
+    from services import square_booking
+    import json as _json
+
+    cap = _Captured()
+    store = Store()
+
+    with install(store), patch("services.square_booking.httpx.AsyncClient", cap.client()):
+        # Attempt A — the tool layer knows this caller as "Daniel"; the resolution
+        # layer has no parameter through which that could travel.
+        await ci.resolve_customer_id(
+            tenant_id=T1, token="tok", phone=IE, square=square_booking)
+
+        row = await store.get_mapping(T1, "square", IE)
+        row_uuid = str(row["id"])
+        # A "crashes": undo the finalize and abandon the claim.
+        store.rows[row["id"]]["provider_customer_id"] = None
+        store.rows[row["id"]]["claim_token"] = "worker-A"
+        store.mark_stale(row["id"])
+
+        # Attempt B — the caller is now known as "Dan".
+        status, cid = await ci.resolve_customer_id(
+            tenant_id=T1, token="tok", phone=IE, square=square_booking)
+
+    assert status == ci.OK
+    assert len(cap.bodies) == 2, f"expected two CreateCustomer bodies, got {len(cap.bodies)}"
+    body_a, body_b = cap.bodies
+    assert body_a == body_b, f"A={body_a} B={body_b}"
+    assert _json.dumps(body_a, sort_keys=True) == _json.dumps(body_b, sort_keys=True)
+    assert body_a == {"phone_number": IE, "idempotency_key": row_uuid}
+    assert "given_name" not in body_a and "given_name" not in body_b
+    assert cid == f"SQ-{row_uuid}", "Square dedupes on the key, so B gets A's customer"
