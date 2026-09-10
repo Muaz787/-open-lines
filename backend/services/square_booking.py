@@ -279,15 +279,32 @@ def _fmt_slot(dt: datetime) -> str:
     return f"{h}:{dt.minute:02d} {ampm}"
 
 
+# Square rejects a narrower SearchAvailability range outright:
+#   400 INVALID_REQUEST_ERROR / INVALID_TIME_RANGE "Min query range is 1 hour."
+# The original 2-minute window meant resolve_slot() raised on every real call and
+# every booking was refused as "just taken". The window is a Square API floor, NOT
+# a widening of what we will book: the match below still accepts only the exact
+# requested start, so the extra slots this returns are read and discarded.
+RESOLVE_QUERY_WINDOW_MINUTES = 60
+
+
 async def resolve_slot(
     token: str, location_id: str, service_variation_id: str,
     team_member_ids: list[str], start_dt: datetime,
 ) -> dict | None:
     """Confirm the exact requested time is bookable and return the segment to book
     {team_member_id, service_variation_version, duration_minutes, start_at}. Square is
-    the source of truth — this also picks a free team member when several are eligible."""
+    the source of truth — this also picks a free team member when several are eligible.
+
+    Square's minimum query range is an hour, so the request necessarily covers times
+    we were not asked about. Everything after the query is a filter, never a choice:
+    a caller asking for 13:15 when Square offers 13:00 and 13:30 gets None, not the
+    nearest one. Location, variation and team member are re-checked on the returned
+    segment rather than trusted to the query filter, so a widened window cannot turn
+    into a substitution.
+    """
     start_utc = start_dt.astimezone(dt_timezone.utc)
-    end_utc = start_utc + timedelta(minutes=2)
+    end_utc = start_utc + timedelta(minutes=RESOLVE_QUERY_WINDOW_MINUTES)
 
     def _z(dt: datetime) -> str:
         return dt.isoformat().replace("+00:00", "Z")
@@ -303,14 +320,25 @@ async def resolve_slot(
             sdt = datetime.fromisoformat(a["start_at"].replace("Z", "+00:00"))
         except Exception:
             continue
-        if abs((sdt - start_utc).total_seconds()) < 60:
-            seg = (a.get("appointment_segments") or [{}])[0]
-            return {
-                "team_member_id": seg.get("team_member_id"),
-                "service_variation_version": seg.get("service_variation_version"),
-                "duration_minutes": seg.get("duration_minutes"),
-                "start_at": a["start_at"],
-            }
+        if abs((sdt - start_utc).total_seconds()) >= 60:
+            continue                                   # not the time we asked for
+        # Square filtered on these already; re-checking them here is what keeps the
+        # wider window from becoming a different location, service or person.
+        if a.get("location_id") and a["location_id"] != location_id:
+            continue
+        seg = (a.get("appointment_segments") or [{}])[0]
+        if seg.get("service_variation_id") and seg["service_variation_id"] != service_variation_id:
+            continue
+        if team_member_ids and seg.get("team_member_id") not in team_member_ids:
+            continue                                   # exact member required
+        if not seg.get("team_member_id"):
+            continue                                   # nothing to book against
+        return {
+            "team_member_id": seg.get("team_member_id"),
+            "service_variation_version": seg.get("service_variation_version"),
+            "duration_minutes": seg.get("duration_minutes"),
+            "start_at": a["start_at"],
+        }
     return None
 
 
@@ -372,6 +400,59 @@ async def sync(tenant_id: str) -> dict:
         "ok": True, "bookable": bookable, "booking_policy": profile.get("booking_policy"),
         "services": services, "staff": staff, "location_timezone": location_tz,
     }
+
+
+async def available_slots(
+    tenant: dict, *, date_str: str, timezone: str,
+    service_variation_id: str, team_member_ids: list[str],
+    provider_location_id: str,
+) -> list[dict]:
+    """Square's open slots for one day, with the identifiers a booking needs.
+
+    available_slot_strings() returns display strings and throws the rest away —
+    fine when booking re-derived everything, useless once booking must use exactly
+    what was offered. Each entry here carries the team member and variation version
+    Square itself chose for that slot, so CreateBooking can replay it verbatim.
+    """
+    token = await get_access_token(tenant)
+    location_id = (provider_location_id or "").strip()
+    if not token or not location_id:
+        return []
+    tz = ZoneInfo(timezone)
+    day = date_type.fromisoformat(date_str)
+    day_start = datetime(day.year, day.month, day.day, tzinfo=tz)
+    now = datetime.now(dt_timezone.utc)
+    start = max(day_start.astimezone(dt_timezone.utc), now + timedelta(minutes=1))
+    end = (day_start + timedelta(days=1)).astimezone(dt_timezone.utc)
+    if start >= end:
+        return []
+
+    def _z(dt: datetime) -> str:
+        return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+    avails = await search_availability(
+        token, location_id, service_variation_id, team_member_ids, _z(start), _z(end))
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for a in avails:
+        raw = a.get("start_at")
+        if not raw or raw in seen:
+            continue          # several staff can yield the same time; offer it once
+        seen.add(raw)
+        try:
+            sdt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        seg = (a.get("appointment_segments") or [{}])[0]
+        out.append({
+            "start_at_utc": raw,
+            "display": _fmt_slot(sdt.astimezone(tz)),
+            "team_member_id": seg.get("team_member_id"),
+            "service_variation_version": seg.get("service_variation_version"),
+            "duration_minutes": seg.get("duration_minutes"),
+        })
+    return out
 
 
 async def available_slot_strings(

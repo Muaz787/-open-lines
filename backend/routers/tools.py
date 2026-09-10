@@ -20,7 +20,7 @@ from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 from services import square_booking
-from services import call_location, location_resolver, location_scope
+from services import call_location, location_resolver, location_scope, slot_offers
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
@@ -328,12 +328,31 @@ async def _multi_location_availability(
             f"{requested_service} isn't offered at the {loc_name} location. "
             f"There we do: {offered}. Would one of those work, or would you like a "
             f"different location?")
-    if chosen is None:
-        chosen = services[0] if len(services) == 1 else None
+
+    if chosen is not None:
+        # An explicit choice replaces whatever the call was about before.
+        state = await call_location.set_active_service(state, chosen)
+    else:
+        # W5: fall back to what this call is already about, so "what about Dublin?"
+        # still means dress fitting. Only accepted if it is offered HERE.
+        chosen = call_location.active_service_from(state, services)
         if chosen is None:
+            remembered = call_location.remembered_service_name(state)
             offered = ", ".join(s["name"] for s in services[:6] if s.get("name"))
-            return _result(tc_id, prefix +
-                f"Which service would you like at {loc_name}? We offer: {offered}.")
+            if remembered:
+                # Carried a service in, but this location does not do it. Say so —
+                # never substitute — and keep the context so the caller can ask
+                # about somewhere else naturally.
+                return _result(tc_id, prefix +
+                    f"{remembered} isn't offered at the {loc_name} location. "
+                    f"There we do: {offered}. Would one of those work, or would you "
+                    f"like to try another location?")
+            if len(services) == 1:
+                chosen = services[0]
+                state = await call_location.set_active_service(state, chosen)
+            else:
+                return _result(tc_id, prefix +
+                    f"Which service would you like at {loc_name}? We offer: {offered}.")
 
     all_staff = await db.get_square_staff(tenant_id)
     staff_rows = location_scope.staff_at_location(all_staff, provider_location_id)
@@ -359,7 +378,7 @@ async def _multi_location_availability(
             f"We don't have anyone available for that at {loc_name} right now.")
 
     try:
-        slots = await square_booking.available_slot_strings(
+        slots = await square_booking.available_slots(
             tenant, date_str=date_str, timezone=timezone,
             service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
             provider_location_id=provider_location_id,
@@ -376,17 +395,37 @@ async def _multi_location_availability(
 
     # Always name the location back. It is the caller's audible check that we
     # heard the right city, and it makes a mid-call switch obvious.
+    service_label = chosen.get("name") or "that"
     if not slots:
         return _result(tc_id, prefix +
-            f"{loc_name} has no availability on {_fmt_date}. Would another day work, "
-            f"or would you like me to try a different location?")
-    times_text = ", ".join(slots)
+            f"{loc_name} has no {service_label} availability on {_fmt_date}. Would "
+            f"another day work, or would you like me to try a different location?")
+
+    # W5: write down exactly what we are offering, so booking can replay it rather
+    # than re-derive it. Refs are for the model; the caller only ever hears times.
+    offers = await slot_offers.create_offers(
+        vapi_call_id=call_id, tenant_id=tenant_id,
+        tenant_location_id=str(location.get("id") or ""),
+        provider_location_id=provider_location_id,
+        service_variation_id=chosen["square_variation_id"],
+        service_name=chosen.get("name") or "",
+        slots=slots,
+    )
+    if not offers:
+        # Persisting failed. The times are real, so read them out, but do not let
+        # booking proceed from an unrecorded offer.
+        times = ", ".join(s["display"] for s in slots[:6])
+        return _result(tc_id, prefix +
+            f"{loc_name} has {service_label} availability on {_fmt_date}: {times}. "
+            "Ask the caller which time suits, then check availability again before booking.")
+
+    listed = slot_offers.spoken_offer_list(offers)
     return _result(tc_id, prefix +
-        f"{loc_name} has availability on {_fmt_date} (full list — {slots[0]} through "
-        f"{slots[-1]}): {times_text}. Say the location name when you confirm. "
-        "If the caller asked for a specific time, check this exact list: confirm it if "
-        "present, otherwise offer the closest available times. Only read a few options "
-        "aloud, not the whole list.")
+        f"{loc_name} has {service_label} availability on {_fmt_date}: {listed}. "
+        "Read only the TIMES aloud — never the slot_ references, they are internal. "
+        "When the caller picks a time, call book_appointment with the slot_ref shown "
+        "beside that exact time. If the caller's choice is unclear, ask which time "
+        "they meant; never guess a slot.")
 
 
 def _staff_matches(requested: str, matched_name: str) -> bool:
@@ -478,6 +517,153 @@ async def _square_availability_response(
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list.")
 
 
+async def _multi_location_book(
+    tc_id: str, call_id: str, tenant: dict, tenant_id: str, args: dict, *,
+    caller_name: str, caller_phone: str, adopted: list[dict],
+):
+    """W5 — book exactly what was offered, or refuse.
+
+    Replaces the W4 guard. Every Square identifier comes from the stored slot
+    offer; none comes from the model. There is no branch here that reconstructs a
+    booking from arguments, so an invalid slot_ref can only ever mean "ask the
+    caller to pick again".
+    """
+    if not call_id:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    slot_ref = (args.get("slot_ref") or "").strip()
+    if not slot_ref:
+        return _result(tc_id,
+            "I need to check availability first so I can hold the right time. "
+            "Ask the caller which location and service they want, check availability, "
+            "then book the exact time they choose.")
+
+    state = await call_location.get_or_create(call_id, tenant_id)
+    if not state:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+    active_location_id = str(state.get("active_location_id") or "")
+
+    status, offer = await slot_offers.resolve_for_booking(
+        vapi_call_id=call_id, slot_ref=slot_ref, tenant_id=tenant_id,
+        active_location_id=active_location_id)
+
+    if status == slot_offers.ALREADY_BOOKED:
+        # A retried tool call. Return the existing booking rather than making a
+        # second one — Vapi retries are normal and must not double-book.
+        logger.info("tools/book[multi]: slot %s already booked (%s) — idempotent return",
+                    slot_ref, offer.get("booking_id"))
+        return _result(tc_id, _booked_message(offer, tenant, pending=False, again=True))
+
+    if status == slot_offers.NOT_FOUND:
+        return _result(tc_id,
+            "I couldn't find that time among the ones I offered. Please check "
+            "availability again and pick from the times returned.")
+    if status == slot_offers.EXPIRED:
+        return _result(tc_id,
+            "That time has been held too long to be sure it's still free. Let me "
+            "check availability again before booking.")
+    if status == slot_offers.WRONG_LOCATION:
+        offered_at = next((l.get("name") for l in adopted
+                           if str(l.get("id")) == str(offer.get("tenant_location_id"))), "another location")
+        current = next((l.get("name") for l in adopted
+                        if str(l.get("id")) == active_location_id), "the current location")
+        return _result(tc_id,
+            f"That time was offered for {offered_at}, but we're now looking at "
+            f"{current}. Ask the caller which location they want, then check "
+            f"availability there before booking.")
+
+    location = next((l for l in adopted if str(l.get("id")) == str(offer.get("tenant_location_id"))), None)
+    if not location or not location.get("active") or not location.get("booking_enabled"):
+        return _result(tc_id,
+            "That location isn't taking bookings at the moment. Would another "
+            "location work?")
+
+    token = await square_booking.get_access_token(tenant)
+    if not token:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    # Re-check with Square immediately before creating. The offer may be minutes
+    # old and someone else may have taken it; Square is the source of truth.
+    start_dt = datetime.fromisoformat(str(offer["start_at_utc"]).replace("Z", "+00:00"))
+    seg = await square_booking.resolve_slot(
+        token, offer["provider_location_id"], offer["service_variation_id"],
+        [offer["team_member_id"]] if offer.get("team_member_id") else [], start_dt)
+    if not seg or not seg.get("team_member_id"):
+        return _result(tc_id,
+            "I'm sorry — that time has just been taken. Would you like me to check "
+            "what else is free?")
+
+    customer_id = await square_booking.find_or_create_customer(
+        token, given_name=caller_name, phone=caller_phone)
+    if not customer_id:
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    try:
+        booking = await square_booking.create_booking(
+            token, location_id=offer["provider_location_id"],
+            start_at_iso=seg.get("start_at") or offer["start_at_utc"],
+            customer_id=customer_id, team_member_id=seg["team_member_id"],
+            service_variation_id=offer["service_variation_id"],
+            service_variation_version=(seg.get("service_variation_version")
+                                       or offer.get("service_variation_version")),
+            duration_minutes=seg.get("duration_minutes") or offer.get("duration_minutes"),
+            note=f"Booked via Open Lines AI receptionist — {offer.get('service_name') or ''}".strip(),
+        )
+    except Exception as e:
+        # Offer deliberately NOT consumed: the caller should be able to try the
+        # same time again rather than be told it has gone.
+        logger.error("tools/book[multi]: CreateBooking failed for %s: %s", tenant_id, e)
+        return _result(tc_id, _CALENDAR_ERROR_MSG)
+
+    booking_id = booking.get("id", "")
+    pending = (booking.get("status") or "").upper() == "PENDING"
+    await slot_offers.mark_consumed(call_id, slot_ref, booking_id)
+
+    try:
+        await db.insert_appointment({
+            "tenant_id": tenant_id, "caller_name": caller_name, "caller_phone": caller_phone,
+            "service": offer.get("service_name") or "Appointment",
+            "appointment_datetime": offer["start_at_utc"],
+            "duration_minutes": offer.get("duration_minutes") or 60,
+            "status": "confirmed", "vapi_call_id": call_id,
+            "google_event_id": booking_id,
+            "tenant_location_id": offer.get("tenant_location_id"),
+            "provider_location_id": offer.get("provider_location_id"),
+        })
+    except Exception as e:
+        logger.error("tools/book[multi]: appointment mirror failed for %s: %s", tenant_id, e)
+
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "appointment_booked",
+                      {"tenant_id": tenant_id, "provider": "square_appointments",
+                       "multi_location": True})
+    logger.info("tools/book[multi]: booked %s at %s (booking %s, status %s)",
+                offer.get("service_name"), offer["provider_location_id"], booking_id,
+                booking.get("status"))
+    return _result(tc_id, _booked_message(offer, tenant, pending=pending))
+
+
+def _booked_message(offer: dict, tenant: dict, *, pending: bool, again: bool = False) -> str:
+    """Say booked only once Square says booked, and say pending when it is pending."""
+    from zoneinfo import ZoneInfo as _ZI
+    loc_name = offer.get("_loc_name") or ""
+    try:
+        tz = _ZI(offer.get("_tz") or tenant.get("calendar_timezone") or "UTC")
+        dt = datetime.fromisoformat(str(offer["start_at_utc"]).replace("Z", "+00:00")).astimezone(tz)
+        h = dt.hour % 12 or 12
+        when = f"{dt.strftime('%A, %B')} {dt.day} at {h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+    except Exception:
+        when = str(offer.get("start_at_utc"))
+    svc = offer.get("service_name") or "appointment"
+    where = f" at {loc_name}" if loc_name else ""
+    if again:
+        return (f"That's already booked — {svc}{where} on {when}. Tell the caller it is "
+                "confirmed and do not book it again.")
+    if pending:
+        return (f"Your {svc}{where} is requested for {when}. Tell the caller the shop "
+                "will confirm shortly — do NOT say it is already confirmed.")
+    return f"Done! Your {svc}{where} is confirmed for {when}."
+
+
 async def _square_book_appointment(
     tc_id: str, call_id: str, tenant: dict, tenant_id: str, args: dict, *,
     caller_name: str, caller_phone: str, service: str, date_str: str,
@@ -538,18 +724,23 @@ async def _square_book_appointment(
     team_member_id = seg["team_member_id"]
     staff_name = requested_name or staff_by_id.get(team_member_id)
 
-    # Reschedule: cancel the caller's existing Square booking first.
+    # RESCHEDULE, ONLY WHEN THE CALLER ASKED FOR ONE.
+    #
+    # This used to cancel any active appointment whose phone number matched, on the
+    # assumption that a second booking meant a reschedule. Phone equality is not
+    # intent: a caller may legitimately hold two appointments, on different days or
+    # at different locations, and the old behaviour silently destroyed one of them.
+    #
+    # Ordering matters too. The cancel now happens AFTER a successful create, so a
+    # failed booking leaves the original appointment intact rather than losing the
+    # caller both.
+    wants_reschedule = bool(args.get("reschedule"))
     existing_appt = None
-    if caller_phone:
+    if wants_reschedule and caller_phone:
         try:
             existing_appt = await db.get_active_appointment_by_phone(tenant_id, caller_phone)
         except Exception as e:
             logger.warning("tools/book[square]: existing-appt lookup failed for %s: %s", tenant_id, e)
-    if existing_appt and existing_appt.get("google_event_id"):
-        try:
-            await square_booking.cancel_booking(token, existing_appt["google_event_id"])
-        except Exception as e:
-            logger.warning("tools/book[square]: could not cancel old booking for %s: %s", tenant_id, e)
 
     customer_id = await square_booking.find_or_create_customer(token, given_name=caller_name, phone=caller_phone)
     if not customer_id:
@@ -580,6 +771,18 @@ async def _square_book_appointment(
     }
     if staff_name:
         appt_data["staff_name"] = staff_name
+    # Cancel the old booking only now that the new one exists.
+    if existing_appt and existing_appt.get("google_event_id"):
+        try:
+            await square_booking.cancel_booking(token, existing_appt["google_event_id"])
+        except Exception as e:
+            # New booking stands; the old one did not go away. Report it rather than
+            # claim a clean reschedule, and never retry the create.
+            logger.error("tools/book[square]: reschedule PARTIAL for %s — new booking %s "
+                         "created but old %s could not be cancelled: %s",
+                         tenant_id, booking_id, existing_appt["google_event_id"], e)
+            existing_appt = None
+
     try:
         if existing_appt:
             await db.update_appointment(existing_appt["id"], appt_data)
@@ -907,18 +1110,16 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
     # Removed in W5, when slot binding makes the offered slot and the booked
     # location provably the same thing. Legacy single-location booking is untouched.
     try:
-        _multi, _ = await call_location.is_multi_location(tenant_id)
+        _multi, _adopted = await call_location.is_multi_location(tenant_id)
     except Exception as e:
         logger.error("tools/book: location mode check failed for %s: %s", tenant_id, e)
-        _multi = False
+        _multi, _adopted = False, []
     if _multi:
-        logger.warning("tools/book: BLOCKED multi-location booking for tenant %s "
-                       "(no slot binding until W5) — zero CreateBooking calls", tenant_id)
-        return _result(tc_id,
-            "Tell the caller you cannot complete bookings on this line yet, so nothing "
-            "has been reserved, and that they should book through the usual channel. "
-            "Do NOT say the appointment is confirmed, held, pending, or passed to "
-            "anyone. Do not offer to take their details.")
+        # W5: the guard is replaced by the slot-bound path. CreateBooking is now
+        # reachable ONLY through a validated slot offer — see _multi_location_book.
+        return await _multi_location_book(
+            tc_id, call_id, tenant, tenant_id, args,
+            caller_name=caller_name, caller_phone=caller_phone, adopted=_adopted)
 
     # Square Appointments: write the booking into the merchant's Square calendar.
     if tenant.get("square_appointments_enabled"):

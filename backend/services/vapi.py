@@ -852,6 +852,19 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                                 "the roster). Keep the service field free of names. Omit if no preference."
                             ),
                         },
+                        "slot_ref": {
+                            "type": "string",
+                            "description": (
+                                "REQUIRED for a business with more than one location. The slot_ "
+                                "reference shown beside the time the caller chose in the most "
+                                "recent check_availability result — e.g. 'slot_2'. It is how the "
+                                "booking is tied to the exact time, service and location that "
+                                "were offered. Never invent one, never reuse one from earlier in "
+                                "the call after checking a different location, and never read it "
+                                "aloud. If you are not certain which time the caller meant, ask "
+                                "them instead of guessing."
+                            ),
+                        },
                         "party_size": {
                             "type": "integer",
                             "description": (

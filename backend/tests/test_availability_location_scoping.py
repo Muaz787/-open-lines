@@ -73,7 +73,12 @@ class _Ctx:
                                "active_location_id": None, "initial_location_id": None,
                                "switch_count": 0, "location_source": "unknown"}
         self.adopted = adopted
-        self.slots = AsyncMock(return_value=["2:30 PM", "4:00 PM"])
+        self.slots = AsyncMock(return_value=[
+            {"start_at_utc": "2026-09-14T18:00:00Z", "display": "2:00 PM",
+             "team_member_id": "TM-MUAZ", "service_variation_version": 1, "duration_minutes": 60},
+            {"start_at_utc": "2026-09-14T18:30:00Z", "display": "2:30 PM",
+             "team_member_id": "TM-MUAZ", "service_variation_version": 1, "duration_minutes": 60},
+        ])
 
     def __enter__(self):
         self._p = [
@@ -82,7 +87,12 @@ class _Ctx:
             patch("services.call_location.get_or_create",
                   new=AsyncMock(return_value=self.state)),
             patch("db.locations.update_call_state", new=AsyncMock()),
-            patch("services.square_booking.available_slot_strings", new=self.slots),
+            patch("services.square_booking.available_slots", new=self.slots),
+            patch("services.slot_offers.create_offers", new=AsyncMock(
+                return_value=[{"slot_ref": "slot_1", "display": "2:00 PM"},
+                              {"slot_ref": "slot_2", "display": "2:30 PM"}])),
+            patch("services.call_location.set_active_service",
+                  new=AsyncMock(side_effect=lambda st, svc: st)),
         ]
         for p in self._p:
             p.start()
@@ -122,7 +132,8 @@ async def test_success_response_names_the_location_back():
     """The caller's audible check that we heard the right city."""
     with _Ctx() as ctx:
         res = await ctx.run(location="the Cork shop", service="Consultation")
-    assert "Cork has availability" in ctx.text(res)
+    assert ctx.text(res).startswith("Cork has")
+    assert "availability" in ctx.text(res)
 
 
 @pytest.mark.asyncio
@@ -311,9 +322,13 @@ class _FakeReq:
 # ── the booking boundary ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_multi_location_booking_is_blocked_with_zero_create_booking_calls():
-    """The tool stays exposed on the assistant, so 'we did not modify booking' is
-    not a safeguard. This guard is."""
+async def test_multi_location_booking_without_a_slot_ref_creates_nothing():
+    """Superseded by W5 and kept as the fail-closed floor.
+
+    In W4 this asserted the blanket guard. W5 replaces that with the slot-bound
+    path, so booking is reachable — but ONLY through a validated slot offer. With
+    no slot_ref there is still no route to CreateBooking, and crucially no route
+    that reconstructs a booking from what the model said."""
     body = {"message": {"toolCallList": [{"id": "tc-1", "function": {
         "name": "book_appointment", "arguments":
         '{"caller_name":"A","caller_phone":"+353871234567","service":"Consultation",'
@@ -327,11 +342,10 @@ async def test_multi_location_booking_is_blocked_with_zero_create_booking_calls(
 
     book.assert_not_awaited()
     create.assert_not_awaited()
-    spoken = out["results"][0]["result"]
-    assert "cannot complete bookings" in spoken
-    # must not imply anything was reserved or handed on
+    spoken = out["results"][0]["result"].lower()
+    assert "check availability first" in spoken
     for implied in ("confirmed", "held", "pending", "passed to"):
-        assert f"has been {implied}" not in spoken.lower()
+        assert f"has been {implied}" not in spoken
 
 
 @pytest.mark.asyncio
