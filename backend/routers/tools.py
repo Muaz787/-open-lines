@@ -202,6 +202,48 @@ async def caller_lookup(request: Request, tenant_id: str, body: dict):
 # POST /tools/{tenant_id}/availability
 # ---------------------------------------------------------------------------
 
+# Obvious model inventions. Vapi delivers a real E.164 for an inbound PSTN call,
+# so these only ever appear when the LLM filled the field in itself — as it did
+# during the W4 rehearsal, offering "+00000000000" for a Square customer record.
+_IMPLAUSIBLE_CALLER_PHONES = {"", "+00000000000", "+10000000000", "+0000000000",
+                              "0000000000", "+1234567890", "1234567890"}
+
+
+def _plausible_caller_phone(value: str) -> bool:
+    v = (value or "").strip()
+    if v in _IMPLAUSIBLE_CALLER_PHONES:
+        return False
+    digits = "".join(c for c in v if c.isdigit())
+    if len(digits) < 8 or len(set(digits)) <= 1:      # all-same-digit is never real
+        return False
+    return not digits.startswith("555555")
+
+
+def trusted_caller_phone(body: dict, args: dict) -> str:
+    """The caller's number, preferring what the telephony provider told us.
+
+    The model is NEVER authoritative for caller identity. Vapi's call metadata is
+    signed-adjacent — it comes from the authenticated webhook, not from generated
+    text — so when it is present it wins outright. A model-supplied value is used
+    only when metadata is genuinely absent, and even then it must look like a real
+    number: the rehearsal showed the model inventing "+00000000000", which would
+    have become a Square customer's phone number.
+    """
+    msg = body.get("message", body)
+    cust = (msg.get("call") or {}).get("customer") or {}
+    for candidate in (cust.get("number"), cust.get("phoneNumber"),
+                      (msg.get("customer") or {}).get("number"),
+                      (msg.get("customer") or {}).get("phoneNumber")):
+        if (candidate or "").strip():
+            return candidate.strip()
+    supplied = (args.get("caller_phone") or "").strip()
+    if supplied and _plausible_caller_phone(supplied):
+        return supplied
+    if supplied:
+        logger.warning("tools: discarded implausible model-supplied caller_phone")
+    return ""
+
+
 def _match_square_service(requested: str, services: list) -> dict | None:
     """Resolve a spoken service name to a cached Square service variation."""
     requested = (requested or "").strip().lower()
@@ -613,18 +655,9 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     except ValueError:
         pass
 
-    # Prefer AI-provided caller_phone from tool args (explicit, most reliable for reschedules).
-    # Fall back to Vapi payload extraction for new bookings where the AI didn't pass it.
-    msg_body   = body.get("message", body)
-    _call_obj  = msg_body.get("call") or {}
-    _customer  = _call_obj.get("customer") or {}
-    caller_phone = (
-        args.get("caller_phone", "")
-        or _customer.get("number", "")
-        or _customer.get("phoneNumber", "")
-        or (msg_body.get("customer") or {}).get("number", "")
-        or (msg_body.get("customer") or {}).get("phoneNumber", "")
-    )
+    # Trusted call metadata wins over anything the model supplied. This used to be
+    # the other way round; the model is not authoritative for caller identity.
+    caller_phone = trusted_caller_phone(body, args)
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -831,10 +864,8 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
     # Prefer caller phone from Vapi call metadata (more reliable than AI-provided)
     msg = body.get("message", body)
-    caller_phone_from_meta = (msg.get("call") or {}).get("customer", {}).get("number", "")
-
     caller_name  = args.get("caller_name", "")
-    caller_phone = caller_phone_from_meta or args.get("caller_phone", "")
+    caller_phone = trusted_caller_phone(body, args)
     service      = args.get("service", "Appointment")
     date_str     = args.get("date", "")
     time_str     = args.get("time", "")  # HH:MM 24-hour
@@ -884,9 +915,10 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         logger.warning("tools/book: BLOCKED multi-location booking for tenant %s "
                        "(no slot binding until W5) — zero CreateBooking calls", tenant_id)
         return _result(tc_id,
-            "I can see what's available, but I'm not able to complete the booking on "
-            "this call just yet. Let me take your name and number and the team will "
-            "confirm it with you shortly.")
+            "Tell the caller you cannot complete bookings on this line yet, so nothing "
+            "has been reserved, and that they should book through the usual channel. "
+            "Do NOT say the appointment is confirmed, held, pending, or passed to "
+            "anyone. Do not offer to take their details.")
 
     # Square Appointments: write the booking into the merchant's Square calendar.
     if tenant.get("square_appointments_enabled"):

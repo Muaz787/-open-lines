@@ -327,7 +327,11 @@ async def test_multi_location_booking_is_blocked_with_zero_create_booking_calls(
 
     book.assert_not_awaited()
     create.assert_not_awaited()
-    assert "not able to complete the booking" in out["results"][0]["result"]
+    spoken = out["results"][0]["result"]
+    assert "cannot complete bookings" in spoken
+    # must not imply anything was reserved or handed on
+    for implied in ("confirmed", "held", "pending", "passed to"):
+        assert f"has been {implied}" not in spoken.lower()
 
 
 @pytest.mark.asyncio
