@@ -209,13 +209,17 @@ async def create_customer(
 
 
 async def resolve_customer(
-    *, tenant_id: str, token: str, phone: str, given_name: str = "",
+    *, tenant_id: str, token: str, phone: str,
 ) -> tuple[str, str | None]:
-    """W6B entry point: (status, customer_id) via the durable local mapping."""
+    """W6B entry point: (status, customer_id) via the durable local mapping.
+
+    Takes no name on purpose. Identity here is the phone number; a name would make
+    the idempotent creation payload vary between attempts, which is the one thing
+    a stable idempotency key cannot survive.
+    """
     from services import customer_identity
     return await customer_identity.resolve_customer_id(
-        tenant_id=tenant_id, token=token, phone=phone,
-        given_name=given_name, square=sys.modules[__name__])
+        tenant_id=tenant_id, token=token, phone=phone, square=sys.modules[__name__])
 
 
 async def find_or_create_customer(token: str, *, given_name: str, phone: str) -> str | None:

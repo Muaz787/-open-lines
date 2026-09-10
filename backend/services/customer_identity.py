@@ -17,6 +17,16 @@ An unfinished row says the mapping is incomplete. It does not say who is entitle
 to complete it. The token makes ownership provable, so a worker that lost its
 claim to a takeover cannot overwrite the new owner's result.
 
+WHY THE CREATE PAYLOAD CARRIES NO NAME
+A stable key is only half of idempotency: the retry must also be the same
+request. Caller names are not stable — "Daniel" on the first attempt and "Dan"
+after a takeover, or absent then present once a lead row fills in — so letting a
+name into the creation payload means a replay is a DIFFERENT logical mutation
+under a key that promises it isn't. The body is therefore a pure function of the
+two values that provably survive takeover, crash and a later call: the row id and
+the normalized phone. Names are display data and belong to enrichment, never to
+identity.
+
 WHY THE ROW ID IS THE IDEMPOTENCY KEY
 provider_customers.id exists before the Square call and is untouched by takeover,
 retry or crash. claim_token changes hands, so it is exactly the wrong thing to
@@ -74,7 +84,7 @@ def normalize_e164(phone: str | None) -> str:
 
 
 async def resolve_customer_id(
-    *, tenant_id: str, token: str, phone: str, given_name: str = "",
+    *, tenant_id: str, token: str, phone: str,
     provider: str = db_pc.PROVIDER_SQUARE, square=None,
 ) -> tuple[str, str | None]:
     """Return (status, provider_customer_id).
@@ -112,14 +122,14 @@ async def resolve_customer_id(
                 logger.error("customer_identity: claim insert failed for %s: %s", tenant_id, e)
                 return FAILED, None
             if claimed:
-                return await _reconcile(claimed, mine, token, normalized, given_name, square)
+                return await _reconcile(claimed, mine, token, normalized, square)
             continue                                    # lost the race — re-read
 
         # STATE 3 — unresolved and unowned. Available immediately.
         if not row.get("claim_token"):
             if await db_pc.acquire_unowned_claim_cas(row["id"], mine):
                 fresh = await db_pc.get_by_id(row["id"]) or row
-                return await _reconcile(fresh, mine, token, normalized, given_name, square)
+                return await _reconcile(fresh, mine, token, normalized, square)
             continue
 
         # STATE 5 — unresolved, owned, but abandoned.
@@ -128,7 +138,7 @@ async def resolve_customer_id(
                     row["id"], row["claim_token"], row["claimed_at"], mine):
                 logger.warning("customer_identity: took over a stale claim on %s", row["id"])
                 fresh = await db_pc.get_by_id(row["id"]) or row
-                return await _reconcile(fresh, mine, token, normalized, given_name, square)
+                return await _reconcile(fresh, mine, token, normalized, square)
             continue
 
         # STATE 4 — someone else is actively working. Never call Square here.
@@ -138,7 +148,7 @@ async def resolve_customer_id(
     return UNAVAILABLE, None
 
 
-async def _reconcile(row, mine, token, normalized, given_name, square):
+async def _reconcile(row, mine, token, normalized, square):
     """Owner-only. Search for an existing customer, else create exactly one.
 
     The search here is RECOVERY — it adopts customers that predate this table, and
@@ -170,8 +180,13 @@ async def _reconcile(row, mine, token, normalized, given_name, square):
         customer_id = matches[0].get("id")
     else:
         try:
+            # Phone-only, deliberately. Together with the key this makes the whole
+            # request a pure function of (row_id, normalized_phone) — both of which
+            # a takeover, a crash and a later call all leave untouched. Adding a
+            # name here would make a replay a different mutation under a key that
+            # promises it is the same one.
             customer_id = await square.create_customer(
-                token, phone=normalized, given_name=given_name,
+                token, phone=normalized,
                 idempotency_key=str(row_id))       # bare UUID, stable across takeover
         except Exception as e:
             # Ambiguous outcome: the request may have been committed. Keep the

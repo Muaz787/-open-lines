@@ -629,8 +629,11 @@ async def _multi_location_book(
             "I'm sorry — that time has just been taken. Would you like me to check "
             "what else is free?")
 
+    # caller_name is deliberately NOT passed: the Square customer is created from
+    # phone alone so a retry replays byte-identically. The name still reaches the
+    # OpenLines appointment record below, where W5.2's rules apply.
     cust_status, customer_id = await square_booking.resolve_customer(
-        tenant_id=tenant_id, token=token, phone=caller_phone, given_name=caller_name)
+        tenant_id=tenant_id, token=token, phone=caller_phone)
     if cust_status != customer_identity.OK or not customer_id:
         return _result(tc_id, _customer_problem_message(cust_status))
 
@@ -778,8 +781,11 @@ async def _square_book_appointment(
         except Exception as e:
             logger.warning("tools/book[square]: existing-appt lookup failed for %s: %s", tenant_id, e)
 
+    # caller_name is deliberately NOT passed: the Square customer is created from
+    # phone alone so a retry replays byte-identically. The name still reaches the
+    # OpenLines appointment record below, where W5.2's rules apply.
     cust_status, customer_id = await square_booking.resolve_customer(
-        tenant_id=tenant_id, token=token, phone=caller_phone, given_name=caller_name)
+        tenant_id=tenant_id, token=token, phone=caller_phone)
     if cust_status != customer_identity.OK or not customer_id:
         return _result(tc_id, _customer_problem_message(cust_status))
 

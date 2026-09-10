@@ -138,6 +138,8 @@ class Square:
         self.searches = 0
         self.creates = 0
         self.keys: list[str] = []
+        self.payloads: list[dict] = []
+        self.last_given_name = ""
         self.by_key: dict[str, str] = {}
 
     async def search_customers_by_phone(self, token, phone):
@@ -150,6 +152,9 @@ class Square:
         self.creates += 1
         self.keys.append(idempotency_key)
         self.last_given_name = given_name
+        # The exact logical request, so a test can compare two attempts field by field.
+        self.payloads.append({"phone": phone, "given_name": given_name,
+                              "idempotency_key": idempotency_key})
         if self.create_error:
             raise self.create_error
         if self.create_returns_none:
@@ -176,10 +181,10 @@ def install(store):
     )
 
 
-async def resolve(store, sq, tenant=T1, phone=IE, name=""):
+async def resolve(store, sq, tenant=T1, phone=IE):
     with install(store):
         return await ci.resolve_customer_id(
-            tenant_id=tenant, token="tok", phone=phone, given_name=name, square=sq)
+            tenant_id=tenant, token="tok", phone=phone, square=sq)
 
 
 # ── 17 & 18. phone normalization ─────────────────────────────────────────────
@@ -473,18 +478,109 @@ async def test_finalize_with_the_wrong_token_never_overwrites():
 # ── 15 & 16. W5.2 name protections still hold ────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_a_placeholder_name_is_still_omitted():
+async def test_the_create_payload_is_phone_and_key_only():
+    """1. A stable key is only half of idempotency — the retry must also be the
+    same request. So the body carries nothing but the two values that provably
+    survive takeover, crash and a later call."""
     store, sq = Store(), Square()
-    await resolve(store, sq, name="Returning Caller")
-    from services import caller_identity
-    assert caller_identity.is_placeholder_name(sq.last_given_name)
+    await resolve(store, sq)
+    row = await store.get_mapping(T1, "square", IE)
+    assert sq.payloads == [{"phone": IE, "given_name": "", "idempotency_key": str(row["id"])}]
+
+
+def test_the_resolution_layer_cannot_even_accept_a_name():
+    """2 & 3, structurally rather than by assertion: no signature in the idempotent
+    path takes a name, so no future edit can quietly reintroduce one."""
+    import inspect
+    from services import square_booking
+    assert "given_name" not in inspect.signature(ci.resolve_customer_id).parameters
+    assert "given_name" not in inspect.signature(square_booking.resolve_customer).parameters
+    assert "given_name" not in inspect.getsource(ci._reconcile)
 
 
 @pytest.mark.asyncio
-async def test_a_real_trusted_name_is_still_passed_through():
+async def test_a_changed_caller_name_cannot_alter_the_create_payload():
+    """4. "Daniel" on the first attempt, "Dan" after takeover. The tool layer now
+    has no way to pass either into creation, so both attempts are byte-identical."""
     store, sq = Store(), Square()
-    await resolve(store, sq, name=REAL_NAME)
-    assert sq.last_given_name == REAL_NAME
+    row = await store.try_create_claim(T1, "square", IE, "worker-A")
+    key = str(row["id"])
+    await sq.create_customer("tok", phone=IE, idempotency_key=key)      # A, as "Daniel"
+    store.mark_stale(row["id"])
+    sq.customers = []                                                    # search still blind
+
+    with install(store):                                                 # B, as "Dan"
+        status, cid = await ci.resolve_customer_id(
+            tenant_id=T1, token="tok", phone=IE, square=sq)
+
+    assert status == ci.OK and cid == "SQ-1"
+    assert sq.payloads[0] == sq.payloads[1], "the replay must be the same logical request"
+    assert len(sq.by_key) == 1, "one Square customer"
+
+
+@pytest.mark.asyncio
+async def test_a_name_becoming_available_later_cannot_alter_the_payload():
+    """5. First attempt had no name; by the takeover a lead row has filled one in.
+    Identity creation never sees either."""
+    store, sq = Store(), Square()
+    row = await store.try_create_claim(T1, "square", IE, "worker-A")
+    await sq.create_customer("tok", phone=IE, idempotency_key=str(row["id"]))
+    store.mark_stale(row["id"])
+    sq.customers = []
+    with install(store):
+        status, cid = await ci.resolve_customer_id(
+            tenant_id=T1, token="tok", phone=IE, square=sq)
+    assert (status, cid) == (ci.OK, "SQ-1")
+    assert {p["given_name"] for p in sq.payloads} == {""}
+    assert len({p["idempotency_key"] for p in sq.payloads}) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_mapped_caller_with_a_new_name_triggers_no_provider_call():
+    """6. Once mapped, a different name is simply not a reason to talk to Square."""
+    store, sq = Store(), Square()
+    await resolve(store, sq)
+    sq2 = Square()
+    status, cid = await resolve(store, sq2)
+    assert (status, cid) == (ci.OK, "SQ-1")
+    assert sq2.searches == 0 and sq2.creates == 0
+
+
+@pytest.mark.asyncio
+async def test_the_appointment_record_still_keeps_the_caller_name():
+    """7. W5.2 is untouched: the name still reaches the OpenLines appointment even
+    though it never reaches Square. Dropping it from identity must not drop it
+    from our own records."""
+    from routers import tools
+    from services import slot_offers
+
+    offer = {"tenant_location_id": "loc-cork", "provider_location_id": "L0Q8GTAZCHD42",
+             "service_variation_id": "V1", "service_variation_version": 1,
+             "start_at_utc": "2026-10-01T13:00:00Z", "team_member_id": "TM1",
+             "service_name": "Consultation", "duration_minutes": 60}
+    adopted = [{"id": "loc-cork", "name": "Cork", "active": True, "booking_enabled": True}]
+    insert = AsyncMock()
+
+    with patch("services.call_location.get_or_create",
+               new=AsyncMock(return_value={"vapi_call_id": "c1", "active_location_id": "loc-cork"})), \
+         patch("services.slot_offers.resolve_for_booking",
+               new=AsyncMock(return_value=(slot_offers.OK, offer))), \
+         patch("services.square_booking.get_access_token", new=AsyncMock(return_value="tok")), \
+         patch("services.square_booking.resolve_customer",
+               new=AsyncMock(return_value=(ci.OK, "SQ-1"))), \
+         patch("services.square_booking.resolve_slot", new=AsyncMock(return_value={
+             "team_member_id": "TM1", "service_variation_version": 1,
+             "duration_minutes": 60, "start_at": "2026-10-01T13:00:00Z"})), \
+         patch("services.square_booking.create_booking",
+               new=AsyncMock(return_value={"id": "BK1", "status": "ACCEPTED"})), \
+         patch("services.slot_offers.mark_consumed", new=AsyncMock()), \
+         patch("db.supabase.insert_appointment", new=insert), \
+         patch("services.analytics.capture"):
+        await tools._multi_location_book(
+            "tc-1", "c1", {"id": T1}, T1, {"slot_ref": "slot_1"},
+            caller_name=REAL_NAME, caller_phone=IE, adopted=adopted)
+
+    assert insert.await_args.args[0]["caller_name"] == REAL_NAME
 
 
 def test_the_low_level_create_still_strips_placeholders_itself():
