@@ -106,7 +106,17 @@ alter table provider_webhook_events enable row level security;
 -- the evidence of what arrived first, and a later identical delivery has nothing
 -- new to say. Shadow resolution is written by a separate call.
 -- ---------------------------------------------------------------------------
-create or replace function record_provider_webhook_event(
+-- SECURITY INVOKER, not DEFINER.
+--
+-- The only role granted EXECUTE below is service_role, which already bypasses RLS
+-- and holds table privileges. A DEFINER function would run as its owner -- a
+-- superuser -- which is strictly more privilege than this needs, for no benefit
+-- whatsoever. The least-privilege version does the same job.
+--
+-- search_path is pinned EMPTY and every object is schema-qualified, so no object
+-- name inside this body can be shadowed by anything created in a searchable
+-- schema. (pg_catalog remains implicitly searched, but now() is qualified anyway.)
+create or replace function public.record_provider_webhook_event(
     p_provider             text,
     p_provider_event_id    text,
     p_event_type           text,
@@ -118,15 +128,15 @@ create or replace function record_provider_webhook_event(
     p_provider_status      text default null,
     p_provider_updated_at  timestamptz default null,
     p_raw_envelope         jsonb default null
-) returns provider_webhook_events
+) returns public.provider_webhook_events
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
 declare
-    result provider_webhook_events;
+    result public.provider_webhook_events;
 begin
-    insert into provider_webhook_events (
+    insert into public.provider_webhook_events (
         provider, provider_event_id, event_type, merchant_id, object_type,
         object_id, provider_location_id, provider_version, provider_status,
         provider_updated_at, raw_envelope
@@ -135,10 +145,12 @@ begin
         p_object_id, p_provider_location_id, p_provider_version, p_provider_status,
         p_provider_updated_at, p_raw_envelope
     )
+    -- provider_webhook_events here is the INSERT's implicit alias, not a schema
+    -- lookup, so it needs no qualification.
     on conflict (provider, provider_event_id) do update
         set delivery_count   = provider_webhook_events.delivery_count + 1,
-            last_received_at = now(),
-            updated_at       = now()
+            last_received_at = pg_catalog.now(),
+            updated_at       = pg_catalog.now()
     returning * into result;
 
     return result;
@@ -147,15 +159,19 @@ $$;
 
 -- Server-internal only. PostgREST would otherwise expose /rpc/ to any role that
 -- can execute it.
-revoke all on function record_provider_webhook_event(
+revoke all on function public.record_provider_webhook_event(
     text, text, text, text, text, text, text, bigint, text, timestamptz, jsonb
 ) from public;
-revoke all on function record_provider_webhook_event(
+revoke all on function public.record_provider_webhook_event(
     text, text, text, text, text, text, text, bigint, text, timestamptz, jsonb
 ) from anon, authenticated;
-grant execute on function record_provider_webhook_event(
+grant execute on function public.record_provider_webhook_event(
     text, text, text, text, text, text, text, bigint, text, timestamptz, jsonb
 ) to service_role;
+
+-- Explicit rather than relying on Supabase's default privileges for new tables:
+-- a SECURITY INVOKER function needs the CALLER to hold these.
+grant select, insert, update on public.provider_webhook_events to service_role;
 
 
 -- ===========================================================================
