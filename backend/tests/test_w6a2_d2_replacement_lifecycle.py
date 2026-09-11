@@ -984,19 +984,23 @@ async def test_U2_a_refund_cannot_steal_a_replacement_created_claim_either():
 # §16 — still internal
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_16_no_reschedule_tool_is_exposed():
-    """The assistant's tool contract is the thing that must not have grown."""
+def test_16_the_tool_surface_is_exactly_the_five_known_tools():
+    """D3 added reschedule_appointment. Nothing else may appear alongside it."""
     from services import vapi
 
     names = {t["function"]["name"] for t in vapi.build_calendar_tools("t1")}
-    assert "reschedule_appointment" not in names
     assert names == {"book_appointment", "caller_lookup", "cancel_appointment",
-                     "check_availability"}
+                     "check_availability", "reschedule_appointment"}
 
 
-def test_16a_the_request_path_does_not_reach_the_executor_yet():
-    """D2 is reachable only from recovery. Prose mentioning the future tool is
-    fine; an import or a call is not, so this asks the AST, not the text."""
+def test_16a_the_request_path_reaches_the_executor_only_through_the_intent_layer():
+    """D2's executor is not a tool handler, and must not become one.
+
+    routers/tools.py may reach the lifecycle only via services.reschedule_intent,
+    which owns the outcome vocabulary the assistant is allowed to speak. A direct
+    call to reschedule_execute from the router would be a second opinion about
+    what a caller may be told, and two opinions drift.
+    """
     import ast
     from pathlib import Path
 
@@ -1009,8 +1013,11 @@ def test_16a_the_request_path_does_not_reach_the_executor_yet():
               if isinstance(n, ast.Import) for a in n.names}
     assert "services.reschedule_execute" not in modules
     assert "reschedule_execute" not in names
+    assert "reschedule_intent" in names
+
     called = {ast.unparse(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)}
-    assert not any("reschedule" in c for c in called)
+    assert not any("reschedule_execute" in c or "run_operation" in c
+                   or "begin_reschedule" in c for c in called)
 
 
 def test_16b_the_recovery_worker_is_actually_scheduled():

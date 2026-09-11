@@ -18,6 +18,7 @@ from services import analytics
 from services import appointment_cancellation
 from services import appointment_refs
 from services import mutation_ownership
+from services import reschedule_intent
 from db import mutation_claims as db_mc
 from services import caller_identity
 from services import customer_identity
@@ -265,13 +266,21 @@ def _match_square_service(requested: str, services: list) -> dict | None:
     return names[close[0]] if close else services[0]
 
 
-async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone):
-    """Stage 1 of cancellation: enumerate, label, and mutate NOTHING.
+async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone,
+                            *, action: str = "cancel"):
+    """Stage 1 of cancellation OR of a move: enumerate, label, and mutate NOTHING.
 
     Returns human-readable choices — location, service, date, time — with an
-    opaque ref beside each. One candidate is listed too, not cancelled: a single
+    opaque ref beside each. One candidate is listed too, not acted on: a single
     match is still an assumption about which appointment the caller meant.
+
+    W6A2-D3 shares this with the reschedule tool rather than duplicating it. The
+    enumeration and the refs it mints are identical; only the closing instruction
+    differs, because telling the model to "call cancel_appointment again" when the
+    caller asked to MOVE something is how a move becomes a cancellation.
     """
+    verb, tool_name = (("cancelled", "cancel_appointment") if action == "cancel"
+                       else ("moved", "reschedule_appointment"))
     try:
         candidates = await db.get_active_appointments_by_phone(tenant_id, caller_phone)
     except Exception as e:
@@ -305,19 +314,23 @@ async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone):
         for r in rows
     ]
 
+    tail = ("" if action == "cancel" else
+            " Then check_availability for that same service at that same location, "
+            "and only call reschedule_appointment once the caller has chosen a new time.")
+
     if len(described) == 1:
         return _result(tc_id,
             f"This caller has one upcoming appointment: {described[0][1]} "
             f"[{described[0][0]}]. Read the appointment back WITHOUT the reference "
-            f"and ask them to confirm they want it cancelled. If they confirm, call "
-            f"cancel_appointment again with that reference.")
+            f"and ask them to confirm they want it {verb}. If they confirm, call "
+            f"{tool_name} again with that reference.{tail}")
 
     return _result(tc_id,
         f"This caller has {len(described)} upcoming appointments: "
         f"{appointment_refs.spoken_list(described)}. Read them out WITHOUT the "
-        f"references — those are internal — and ask which one they want cancelled. "
-        f"Then call cancel_appointment again with the matching reference. If you "
-        f"are not certain which they meant, ask rather than guess.")
+        f"references — those are internal — and ask which one they want {verb}. "
+        f"Then call {tool_name} again with the matching reference. If you are not "
+        f"certain which they meant, ask rather than guess.{tail}")
 
 
 async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
@@ -1798,6 +1811,95 @@ async def _create_and_send_deposit(
         out["error"] = "exception"
         return out
 
+
+
+# ---------------------------------------------------------------------------
+# POST /tools/{tenant_id}/reschedule
+# ---------------------------------------------------------------------------
+
+@router.post("/{tenant_id}/reschedule")
+@limiter.limit("10/minute", key_func=tenant_key)
+async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
+    """W6A2-D3 — move ONE chosen appointment to ONE chosen time, or nothing.
+
+    Deliberately thin. Every decision that matters lives behind
+    services.reschedule_intent: selection prechecks, the D1 freeze, the D2
+    provider lifecycle, and the mapping from an internal state to the one
+    sentence the assistant is allowed to say. Duplicating any of that here would
+    give the reschedule path a second opinion about safety, and two opinions is
+    how they drift.
+
+    Two stages, matching cancellation. With no appointment_ref this LISTS and
+    mutates nothing. With both references it moves exactly that appointment to
+    exactly that offered time.
+
+    The model supplies only two opaque, call-scoped references. It cannot name a
+    date, a time, a location, a service, a provider id or a phone number, so it
+    cannot ask for a booking that was never offered to this caller in this call.
+    """
+    try:
+        tc_id, call_id, args = _parse_tool_call(body)
+    except Exception as e:
+        logger.error("tools/reschedule: bad payload for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=400, detail="Malformed tool-call payload")
+
+    caller_phone = trusted_caller_phone(body, args)
+    if not caller_phone:
+        return _result(tc_id, "I wasn't able to find your phone number to look up the appointment. Could you confirm the number on file?")
+    if not call_id:
+        # Both references are call-scoped, so without a call there is nothing to
+        # scope them to and nothing can be verified.
+        return _result(tc_id, "I can't look that up right now. Please call back and we'll get that sorted.")
+
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        logger.error("tools/reschedule: tenant lookup failed %s: %s", tenant_id, e)
+        return _result(tc_id, "I had trouble looking that up. Please call back and we'll get that sorted.")
+    tenant = tenant or {}
+
+    ref_arg = (args.get("appointment_ref") or "").strip()
+    slot_arg = (args.get("slot_ref") or "").strip()
+
+    # ---- STAGE 1: list the caller's appointments, mutate nothing -------------
+    if not ref_arg:
+        return await _list_cancellable(tc_id, call_id, tenant, tenant_id,
+                                       caller_phone, action="reschedule")
+
+    if not slot_arg:
+        # A chosen appointment but no chosen time. Asking for availability is the
+        # only safe next step; acting on half a decision is not.
+        return _result(tc_id,
+            "I have the appointment but not a new time. Call check_availability "
+            "for the same service at the same location, read the times back, and "
+            "call reschedule_appointment again once the caller has picked one.")
+
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id),
+                      "reschedule_requested", {"tenant_id": tenant_id})
+
+    outcome, message = await reschedule_intent.move_appointment(
+        vapi_call_id=call_id, tenant_id=tenant_id, caller_phone=caller_phone,
+        appointment_ref=ref_arg, slot_ref=slot_arg)
+
+    # Success analytics fire ONLY on a proven completion. An uncertain outcome is
+    # not a quieter success, and counting it as one would hide exactly the cases
+    # that need a human.
+    if outcome == reschedule_intent.COMPLETED:
+        event = "reschedule_completed"
+    elif outcome == reschedule_intent.CREATE_FAILED:
+        event = "reschedule_create_failed"
+    elif outcome in (reschedule_intent.SOURCE_CHANGED, reschedule_intent.CANCEL_FAILED,
+                     reschedule_intent.UNRESOLVED):
+        event = "reschedule_partial"
+    else:
+        event = ""
+    if event:
+        analytics.capture(analytics.distinct_id_for(tenant, tenant_id), event,
+                          {"tenant_id": tenant_id, "outcome": outcome,
+                           "provider": "square_appointments"})
+
+    logger.info("tools/reschedule: tenant %s outcome %s", tenant_id, outcome)
+    return _result(tc_id, message)
 
 
 # ---------------------------------------------------------------------------

@@ -254,10 +254,16 @@ def test_book_appointment_still_carries_slot_ref_and_no_location():
     assert "slot_ref" in props and "location" not in props
 
 
-def test_reschedule_appointment_does_not_exist_yet():
+def test_reschedule_appointment_now_exists_and_takes_only_opaque_refs():
+    """Prereq B held the line until the engine existed. D3 opened it -- with the
+    contract B was protecting: two opaque, call-scoped references and nothing
+    else. No date, time, location, service, provider id or phone number."""
     from services import vapi
-    names = {x["function"]["name"] for x in vapi.build_calendar_tools("t1")}
-    assert "reschedule_appointment" not in names
+    tool = next(x for x in vapi.build_calendar_tools("t1")
+                if x["function"]["name"] == "reschedule_appointment")
+    props = tool["function"]["parameters"]["properties"]
+    assert set(props) == {"appointment_ref", "slot_ref"}
+    assert tool["function"]["parameters"]["required"] == []
 
 
 # ── prompt truthfulness ──────────────────────────────────────────────────────
@@ -279,12 +285,13 @@ def test_the_prompt_no_longer_promises_the_backend_cancels_the_old_appointment()
     assert "new bookings AND reschedules" not in src
 
 
-def test_the_prompt_tells_the_model_moving_is_unsupported_rather_than_silent():
+def test_the_prompt_tells_the_model_how_to_move_without_improvising():
     from services import vapi
     src = inspect.getsource(vapi)
-    assert "MOVING AN EXISTING APPOINTMENT — NOT SUPPORTED" in src
-    assert "It never moves, replaces or cancels an existing one" in src
-    assert "Never tell a caller their appointment has been moved" in src
+    assert "MOVING AN EXISTING APPOINTMENT" in src
+    assert "NEVER use it to move an existing one" in src
+    # the enduring one: success may never be claimed ahead of the tool
+    assert "NEVER say an appointment has been moved until the tool result says it is done" in src
 
 
 def test_the_prompt_does_not_offer_cancel_then_book_as_a_way_to_move():
@@ -302,16 +309,19 @@ def test_the_prompt_does_not_offer_cancel_then_book_as_a_way_to_move():
                      "cancel the old appointment before booking",
                      "cancel it and book a fresh time"):
         assert workflow not in src, f"prompt must not sequence cancellation into a rebooking: {workflow!r}"
-    assert "never offer cancelling as a way to move one" in src
-    assert "you must not chain them" in src
+    assert "never cancel an appointment as a way of moving it" in src
+    assert "you must never chain them" in src
 
 
-def test_the_prompt_keeps_the_two_operations_separate_and_says_moving_is_unavailable():
+def test_the_prompt_keeps_booking_moving_and_cancelling_separate():
     from services import vapi
     src = inspect.getsource(vapi)
     assert "only ever creates a NEW appointment" in src
-    assert "only ever cancels the one appointment the caller explicitly chose" in src
-    assert "not something you can do" in src
+    # cross-location is still not emulated by cancel+rebook
+    assert "do NOT cancel or rebook to fake it" in src
+    # and the model is told not to improvise a recovery
+    assert ("Do NOT call reschedule_appointment, book_appointment or "
+            "cancel_appointment again to try to fix it") in src
 
 
 # ── the availability self-exclusion remnant ──────────────────────────────────

@@ -703,12 +703,19 @@ BOOKING — CALLING THE TOOL IS MANDATORY
 SPECIFIC TIMES
 - If the caller requests a specific time (e.g. "3:45 PM"), call check_availability for that date to verify the slot is free. If the exact time is not listed but the period is generally open, you may still proceed to book it — the backend accepts any time within business hours.
 
-MOVING AN EXISTING APPOINTMENT — NOT SUPPORTED
-- book_appointment only ever creates a NEW appointment. It never moves, replaces or cancels an existing one.
-- cancel_appointment only ever cancels the one appointment the caller explicitly chose.
-- Changing or moving an existing appointment is not something you can do. Say so simply — "I'm not able to change an existing appointment on this call, but I can take a message for the team and they'll sort it out" — and take their details.
-- NEVER cancel an appointment because the caller wants a different time, and never offer cancelling as a way to move one. Those are two separate things and you must not chain them.
-- Never tell a caller their appointment has been moved, changed or rescheduled.
+MOVING AN EXISTING APPOINTMENT
+- book_appointment only ever creates a NEW appointment. NEVER use it to move an existing one.
+- NEVER cancel an appointment as a way of moving it. Cancelling and rebooking is not a reschedule and you must never chain them.
+- To move an appointment, call reschedule_appointment with NO arguments first. It returns the caller's appointments and changes nothing.
+- Read the appointments back — service, place, day and time. NEVER read the appt_ or slot_ references aloud; they are internal.
+- Ask which appointment they want moved. Even when there is only one, confirm it with them first.
+- Then call check_availability for the SAME service at the SAME location as that appointment, and offer the times it returns.
+- Once the caller has explicitly chosen a new time, call reschedule_appointment again with BOTH the appointment_ref and the slot_ref.
+- An appointment keeps its SAME service when it moves. If the caller wants a different service, that is a new booking — do not move it.
+- Moving an appointment to a DIFFERENT location is not supported. Say the team can arrange that, and do NOT cancel or rebook to fake it.
+- NEVER say an appointment has been moved until the tool result says it is done.
+- If the tool says the outcome is uncertain, that the original was changed, or that the old appointment could not be cancelled: say exactly that, tell the caller the team will confirm, and take a contact number. Do NOT call reschedule_appointment, book_appointment or cancel_appointment again to try to fix it. The team already has it.
+- If a reference has expired, list the appointments again or call check_availability again. Never invent a reference and never reuse an old one.
 - Never tell a caller a specific time is unavailable without first calling check_availability."""
 
 
@@ -926,6 +933,55 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
                 },
             },
             "server": _tool_server(f"{base}/cancel", 20),
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reschedule_appointment",
+                "description": (
+                    "Move an EXISTING appointment to a different time at the SAME "
+                    "location, keeping the same service. This takes TWO calls. "
+                    "First call it with no arguments to see the caller's appointments — "
+                    "that changes nothing. Read them back, ask which one they want moved, "
+                    "then call check_availability for the same service at the same "
+                    "location. Once the caller has chosen a new time, call this again "
+                    "with BOTH the appointment_ref and the slot_ref. "
+                    "Never use book_appointment to move an appointment, and never "
+                    "cancel one as a way of moving it."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "appointment_ref": {
+                            "type": "string",
+                            "description": (
+                                "The appt_ reference beside the appointment the caller "
+                                "chose to move, from the most recent "
+                                "reschedule_appointment result — e.g. 'appt_2'. Omit it "
+                                "on your FIRST call. Never invent one, never read one "
+                                "aloud, and never reuse one from earlier in the call. If "
+                                "you are not certain which appointment they mean, ask."
+                            ),
+                        },
+                        "slot_ref": {
+                            "type": "string",
+                            "description": (
+                                "The slot_ reference beside the NEW time the caller chose, "
+                                "from the most recent check_availability result — e.g. "
+                                "'slot_3'. Omit it on your FIRST call. Never invent one and "
+                                "never read one aloud. If the caller has not chosen a new "
+                                "time yet, ask them first."
+                            ),
+                        },
+                    },
+                    "required": [],
+                },
+            },
+            "server": _tool_server(f"{base}/reschedule", 45),
+            "messages": [
+                {"type": "request-start", "content": "Let me move that for you."},
+                {"type": "request-response-delayed", "content": "Still working on that — one moment.", "timingMilliseconds": 3000},
+            ],
         },
     ]
 
