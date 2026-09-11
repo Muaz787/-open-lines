@@ -16,6 +16,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
 from services import appointment_refs
+from services import mutation_ownership
+from db import mutation_claims as db_mc
 from services import caller_identity
 from services import customer_identity
 from services import calendar as cal_svc
@@ -334,12 +336,16 @@ async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
     fetch_status, booking = await square_booking.get_booking_detailed(token, event_id)
     if fetch_status == square_booking.FETCH_UNKNOWN:
         # We could not read Square, so we cannot verify the location and must not
-        # cancel. Distinct from NOT_FOUND, which is an actual answer.
+        # cancel — and we equally cannot say the cancellation failed. Nothing was
+        # sent, but the appointment's provider state is unverified, so this is
+        # unknown rather than a definitive rejection.
         logger.error("tools/cancel[square]: booking %s unreadable for tenant %s", event_id, tenant_id)
-        return "failed"
+        return "unknown"
     if fetch_status == square_booking.FETCH_NOT_FOUND:
-        logger.error("tools/cancel[square]: booking %s not found for tenant %s", event_id, tenant_id)
-        return "failed"
+        # A definitive answer: the booking is gone. See the NOT_FOUND note below.
+        logger.warning("tools/cancel[square]: booking %s absent at the provider "
+                       "(tenant %s) — reconciling local state", event_id, tenant_id)
+        return "ok"
 
     expected = str(appt.get("provider_location_id") or "")
     actual = str(booking.get("location_id") or "")
@@ -363,6 +369,21 @@ async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
             logger.info("tools/cancel[square]: booking %s was already cancelled — "
                         "reconciling local state", event_id)
         return "ok"
+    if status == square_booking.CANCEL_NOT_FOUND:
+        # Square definitively says the booking does not exist. Absence is terminal
+        # provider truth: there is nothing left to cancel, and our row is simply
+        # stale. Treated as success so the local record catches up — the caller's
+        # intent is already satisfied. Distinct from UNKNOWN, where absence is not
+        # established and assuming it would be a guess.
+        logger.warning("tools/cancel[square]: booking %s reported NOT_FOUND — "
+                       "reconciling local state (tenant %s)", event_id, tenant_id)
+        return "ok"
+    if status == square_booking.CANCEL_UNKNOWN:
+        # C1's whole point: we do not know. Kept distinct from "failed" so the
+        # caller can retain ownership and reconcile instead of releasing.
+        logger.error("tools/cancel[square]: cancel of %s outcome UNKNOWN (tenant %s)",
+                     event_id, tenant_id)
+        return "unknown"
     logger.error("tools/cancel[square]: cancel of %s returned %s%s (tenant %s)",
                  event_id, status, f" [{err_code}]" if err_code else "", tenant_id)
     return "failed"
@@ -1901,20 +1922,44 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
             "That appointment has already been cancelled. Tell the caller it is "
             "done and do not cancel it again.")
 
+    # C3: GLOBAL OWNERSHIP, before any authoritative validation.
+    #
+    # Appointment refs are call-scoped, so two simultaneous calls hold two
+    # different ref rows for one appointment and both claim successfully. This
+    # claim is keyed on the durable appointment id, so exactly one destructive
+    # workflow can hold it — a cancel in one call and a reschedule in another can
+    # no longer both reach Square.
+    own_status, claim = await mutation_ownership.acquire_for_cancel(
+        ref["appointment_id"], tenant_id)
+    if own_status == mutation_ownership.BUSY:
+        return _result(tc_id,
+            "That appointment is being updated right now, so I can't safely cancel "
+            "it at the moment. Ask the caller to give us a minute, or take their "
+            "details so the team can confirm.")
+    if own_status != mutation_ownership.ACQUIRED or claim is None:
+        return _result(tc_id, "I had trouble processing the cancellation. Please call back and we'll get that sorted.")
+
+    # AUTHORITATIVE re-read, under ownership. Everything checked before the claim
+    # was advisory: the row could have changed between reading it and owning it,
+    # and acting on the earlier read is the TOCTOU this ordering removes.
     appt = await db.get_appointment_by_id(ref["appointment_id"])
     if not appt or str(appt.get("tenant_id")) != str(tenant_id):
+        await mutation_ownership.release(claim)
         return _result(tc_id, "I couldn't find that appointment. Please call back and we'll get that sorted.")
     if (appt.get("status") or "") not in ("confirmed", "pending_payment"):
+        await mutation_ownership.release(claim)
         return _result(tc_id,
             "That appointment isn't active any more — it may already have been "
             "cancelled. Tell the caller there's nothing further to do.")
     if str(appt.get("caller_phone") or "") != caller_phone:
         logger.error("tools/cancel: INTEGRITY — ref %s resolved to an appointment "
                      "belonging to another caller (tenant %s)", ref_arg, tenant_id)
+        await mutation_ownership.release(claim)
         return _result(tc_id, "I couldn't verify that appointment. Please call back and we'll get that sorted.")
 
     event_id = appt.get("google_event_id", "")
     if not event_id:
+        await mutation_ownership.release(claim)
         return _result(tc_id,
             "I can't cancel that one automatically. Take the caller's details and "
             "let them know the team will confirm the cancellation.")
@@ -1927,6 +1972,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
                      "(ref loc %s/%s vs appt %s/%s)", ref_arg, appt.get("id"),
                      ref.get("tenant_location_id"), ref.get("provider_location_id"),
                      appt.get("tenant_location_id"), appt.get("provider_location_id"))
+        await mutation_ownership.release(claim)
         return _result(tc_id,
             "Something doesn't line up with that appointment, so I haven't changed "
             "it. Take the caller's details and let them know the team will confirm.")
@@ -1934,6 +1980,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     # Claim the ref BEFORE touching the provider. Two concurrent tool calls holding
     # the same ref compete here, and only one can win.
     if not await appointment_refs.claim(call_id, ref_arg):
+        await mutation_ownership.release(claim)
         return _result(tc_id,
             "That appointment has already been cancelled. Tell the caller it is "
             "done and do not cancel it again.")
@@ -1942,6 +1989,21 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
 
     if tenant.get("square_appointments_enabled"):
         outcome = await _cancel_square_booking(tenant, appt, event_id, tenant_id)
+
+        if outcome == "unknown":
+            # C3's most important invariant. The cancellation MAY have landed, so
+            # the appointment's status stays exactly as it was AND ownership is
+            # retained — releasing here would let another workflow mutate an
+            # appointment whose real provider state nobody knows. The claim moves
+            # to cancel_reconcile and a recovery pass settles it against Square.
+            await appointment_refs.release(call_id, ref_arg)
+            await mutation_ownership.to_reconcile(
+                claim, db_mc.REASON_PROVIDER_UNKNOWN)
+            return _result(tc_id,
+                "I couldn't confirm whether the cancellation went through, so I "
+                "haven't changed the appointment. Take the caller's details — the "
+                "team will check and confirm it with them.")
+
         if outcome != "ok":
             # The booking is NOT proven cancelled, so the appointment is still a
             # real appointment. appointments.status is business state, not the
@@ -1955,6 +2017,9 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
             logger.error("tools/cancel: provider cancellation NOT confirmed (%s) for "
                          "appointment %s / booking %s (tenant %s) — leaving status %r",
                          outcome, appt.get("id"), event_id, tenant_id, appt.get("status"))
+            # Definitive: the booking is known NOT cancelled, so there is nothing
+            # to reconcile and ownership is released for a later retry.
+            await mutation_ownership.release(claim)
             if outcome == "mismatch":
                 return _result(tc_id,
                     "I couldn't safely confirm that booking, so the appointment "
@@ -1981,6 +2046,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
             except Exception:
                 pass
             await appointment_refs.release(call_id, ref_arg)
+            await mutation_ownership.release(claim)
             return _result(tc_id,
                 "I couldn't confirm the cancellation, so the appointment remains in "
                 "place. Take the caller's details and let them know the team will "
@@ -1991,6 +2057,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
                          "(tenant %s) — leaving status %r: %s",
                          event_id, tenant_id, appt.get("status"), e)
             await appointment_refs.release(call_id, ref_arg)
+            await mutation_ownership.release(claim)
             return _result(tc_id,
                 "I couldn't confirm the cancellation, so the appointment remains in "
                 "place. Take the caller's details and let them know the team will "
@@ -2001,6 +2068,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         logger.error("tools/cancel: no usable provider for appointment %s (tenant %s)",
                      appt.get("id"), tenant_id)
         await appointment_refs.release(call_id, ref_arg)
+        await mutation_ownership.release(claim)
         return _result(tc_id,
             "I can't cancel that one automatically. Take the caller's details and "
             "let them know the team will confirm the cancellation.")
@@ -2009,6 +2077,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     # targeted patch, not a whole-row write-back of a value read seconds ago.
     try:
         await db.update_appointment(appt["id"], {"status": "cancelled"})
+        await mutation_ownership.release(claim)
     except Exception as e:
         # Square says cancelled, we failed to write it down. Do NOT retry the
         # provider: it is already done, and a second attempt only risks acting on
@@ -2018,6 +2087,10 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         # at an appointment that is already cancelled. Square's re-fetch behaviour
         # would make that harmless, but "harmless by luck" is not the property we
         # want at a destructive boundary. Reconciliation is a human/queue job.
+        # Provider truth is settled; our record is not. Ownership is RETAINED and
+        # moved to cancel_reconcile so no other workflow can act on a row that
+        # still reads 'confirmed' while its booking is gone.
+        await mutation_ownership.to_reconcile(claim, db_mc.REASON_LOCAL_WRITE_FAILED)
         logger.error("tools/cancel: RECONCILIATION REQUIRED — provider cancelled "
                      "booking %s but appointment %s could not be updated (tenant %s): %s",
                      event_id, appt["id"], tenant_id, e)

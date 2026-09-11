@@ -286,14 +286,27 @@ async def test_the_cancel_request_carries_the_freshly_read_version():
 # ── 17-19. W6A1 behaviour is unchanged ───────────────────────────────────────
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("outcome", [sb.CANCEL_FAILED, sb.CANCEL_UNKNOWN, sb.CANCEL_NOT_FOUND])
-async def test_17_and_18_w6a1_writes_no_cancelled_status_for_any_non_success(outcome):
+async def test_17_a_definitive_rejection_writes_no_cancelled_status():
     from tests.test_w6a1_safe_cancellation import Ctx, CORK
-    with Ctx(candidates=[CORK], cancel=(outcome, {})) as c:
+    with Ctx(candidates=[CORK], cancel=(sb.CANCEL_FAILED, {})) as c:
+        await c.call()
+        res = await c.call(ref="appt_1")
+    assert c.updates == [], "a definitively rejected cancellation must write nothing"
+    assert "remains in place" in c.text(res)
+
+
+@pytest.mark.asyncio
+async def test_18_an_unknown_outcome_writes_no_cancelled_status_either():
+    """C3 changed only the WORDING here, not the invariant: the status is still
+    untouched, and the appointment is now additionally held for reconciliation."""
+    from tests.test_w6a1_safe_cancellation import Ctx, CORK
+    with Ctx(candidates=[CORK], cancel=(sb.CANCEL_UNKNOWN, {})) as c:
         await c.call()
         res = await c.call(ref="appt_1")
     assert c.updates == [], "an unproven cancellation must write nothing"
-    assert "remains in place" in c.text(res)
+    spoken = c.text(res).lower()
+    assert "couldn't confirm whether the cancellation went through" in spoken
+    assert "has been cancelled" not in spoken
 
 
 @pytest.mark.asyncio
@@ -303,7 +316,7 @@ async def test_18b_an_unreadable_provider_leaves_the_appointment_untouched():
         await c.call()
         res = await c.call(ref="appt_1")
     assert c.cancel_calls == [] and c.updates == []
-    assert "remains in place" in c.text(res)
+    assert "couldn't confirm" in c.text(res).lower()
 
 
 @pytest.mark.asyncio
