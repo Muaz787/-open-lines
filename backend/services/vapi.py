@@ -673,7 +673,7 @@ def wrap_untrusted_kb(text: str) -> str:
     )
 
 
-_CALLER_LOOKUP_NOTE = """
+_CALLER_LOOKUP_BASE = """
 
 CALLER RECOGNITION
 - If this prompt already contains a CALLER CONTEXT section: this is a RETURNING caller.
@@ -703,6 +703,33 @@ BOOKING — CALLING THE TOOL IS MANDATORY
 SPECIFIC TIMES
 - If the caller requests a specific time (e.g. "3:45 PM"), call check_availability for that date to verify the slot is free. If the exact time is not listed but the period is generally open, you may still proceed to book it — the backend accepts any time within business hours.
 
+- Never tell a caller a specific time is unavailable without first calling check_availability."""
+
+
+# ---------------------------------------------------------------------------
+# MOVING AN EXISTING APPOINTMENT — two mutually exclusive policies.
+#
+# W6A2's reschedule flow needs an opaque slot_ref, and slot_refs are minted ONLY
+# by the multi-location Square Appointments availability path. A tenant on
+# Google or Outlook can begin the flow and then never obtain one, which walks a
+# real caller into a dead end while the assistant has already promised a move.
+#
+# So the policy the model receives is chosen from the tenant's ACTUAL capability,
+# and the unsupported text is the pre-D3 wording: truthful, and identical to what
+# those tenants hear today.
+# ---------------------------------------------------------------------------
+
+_MOVE_UNSUPPORTED_NOTE = """
+
+MOVING AN EXISTING APPOINTMENT — NOT SUPPORTED
+- book_appointment only ever creates a NEW appointment. It never moves, replaces or cancels an existing one.
+- cancel_appointment only ever cancels the one appointment the caller explicitly chose.
+- Changing or moving an existing appointment is not something you can do. Say so simply — "I'm not able to change an existing appointment on this call, but I can take a message for the team and they'll sort it out" — and take their details.
+- NEVER cancel an appointment because the caller wants a different time, and never offer cancelling as a way to move one. Those are two separate things and you must not chain them.
+- Never tell a caller their appointment has been moved, changed or rescheduled."""
+
+_RESCHEDULE_NOTE = """
+
 MOVING AN EXISTING APPOINTMENT
 - book_appointment only ever creates a NEW appointment. NEVER use it to move an existing one.
 - NEVER cancel an appointment as a way of moving it. Cancelling and rebooking is not a reschedule and you must never chain them.
@@ -715,8 +742,50 @@ MOVING AN EXISTING APPOINTMENT
 - Moving an appointment to a DIFFERENT location is not supported. Say the team can arrange that, and do NOT cancel or rebook to fake it.
 - NEVER say an appointment has been moved until the tool result says it is done.
 - If the tool says the outcome is uncertain, that the original was changed, or that the old appointment could not be cancelled: say exactly that, tell the caller the team will confirm, and take a contact number. Do NOT call reschedule_appointment, book_appointment or cancel_appointment again to try to fix it. The team already has it.
-- If a reference has expired, list the appointments again or call check_availability again. Never invent a reference and never reuse an old one.
-- Never tell a caller a specific time is unavailable without first calling check_availability."""
+- If a reference has expired, list the appointments again or call check_availability again. Never invent a reference and never reuse an old one."""
+
+
+def caller_lookup_note(*, supports_reschedule: bool = False) -> str:
+    """The caller-recognition block plus whichever moving policy is TRUE here.
+
+    Defaults to the unsupported policy on purpose: a caller that has not proven
+    the tenant can complete a move must not be told the model may attempt one.
+    """
+    return _CALLER_LOOKUP_BASE + (_RESCHEDULE_NOTE if supports_reschedule
+                                  else _MOVE_UNSUPPORTED_NOTE)
+
+
+# Back-compatible constant. Every existing call site keeps the safe policy
+# without being edited; only a site that has PROVEN capability opts in.
+_CALLER_LOOKUP_NOTE = caller_lookup_note()
+
+
+async def supports_safe_reschedule(tenant: dict) -> bool:
+    """Can this tenant actually complete a W6A2 move?
+
+    Exactly the condition under which a slot_ref can exist: Square Appointments
+    enabled AND the multi-location availability path active (>= 2 adopted
+    locations, i.e. active locations carrying a usable Square binding). That is
+    the only branch in routers/tools.py that calls slot_offers.create_offers, and
+    D1 independently refuses any source appointment predating location tracking.
+
+    Not a new abstraction -- it is the existing pair of capability checks the
+    availability and booking dispatchers already use, asked in one place.
+
+    Fails closed on any error: no proven capability, no tool.
+    """
+    if not tenant.get("square_appointments_enabled"):
+        return False
+    tenant_id = str(tenant.get("id") or "")
+    if not tenant_id:
+        return False
+    try:
+        from services import call_location
+        multi, _adopted = await call_location.is_multi_location(tenant_id)
+        return bool(multi)
+    except Exception as e:
+        logger.warning("vapi: reschedule capability check failed for %s: %s", tenant_id, e)
+        return False
 
 
 def build_caller_lookup_tool(tenant_id: str) -> dict:
@@ -736,11 +805,20 @@ def build_caller_lookup_tool(tenant_id: str) -> dict:
     }
 
 
-def build_calendar_tools(tenant_id: str) -> list[dict]:
-    """Build all Vapi tool definitions: caller lookup + calendar booking."""
+def build_calendar_tools(tenant_id: str, *,
+                        supports_reschedule: bool = False) -> list[dict]:
+    """Build all Vapi tool definitions: caller lookup + calendar booking.
+
+    supports_reschedule defaults to FALSE deliberately. reschedule_appointment is
+    only completable by a tenant whose availability path mints slot_refs (see
+    supports_safe_reschedule), so a caller that has not proven that capability
+    gets a tool set without it rather than one the tenant cannot honour. A call
+    site that forgets to pass the flag therefore degrades to today's behaviour
+    instead of shipping a dead end.
+    """
     _require_public_backend_url()
     base = f"{APP_BACKEND_URL}/tools/{tenant_id}"
-    return [
+    tools = [
         build_caller_lookup_tool(tenant_id),
         {
             "type": "function",
@@ -934,56 +1012,63 @@ def build_calendar_tools(tenant_id: str) -> list[dict]:
             },
             "server": _tool_server(f"{base}/cancel", 20),
         },
-        {
-            "type": "function",
-            "function": {
-                "name": "reschedule_appointment",
-                "description": (
-                    "Move an EXISTING appointment to a different time at the SAME "
-                    "location, keeping the same service. This takes TWO calls. "
-                    "First call it with no arguments to see the caller's appointments — "
-                    "that changes nothing. Read them back, ask which one they want moved, "
-                    "then call check_availability for the same service at the same "
-                    "location. Once the caller has chosen a new time, call this again "
-                    "with BOTH the appointment_ref and the slot_ref. "
-                    "Never use book_appointment to move an appointment, and never "
-                    "cancel one as a way of moving it."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "appointment_ref": {
-                            "type": "string",
-                            "description": (
-                                "The appt_ reference beside the appointment the caller "
-                                "chose to move, from the most recent "
-                                "reschedule_appointment result — e.g. 'appt_2'. Omit it "
-                                "on your FIRST call. Never invent one, never read one "
-                                "aloud, and never reuse one from earlier in the call. If "
-                                "you are not certain which appointment they mean, ask."
-                            ),
-                        },
-                        "slot_ref": {
-                            "type": "string",
-                            "description": (
-                                "The slot_ reference beside the NEW time the caller chose, "
-                                "from the most recent check_availability result — e.g. "
-                                "'slot_3'. Omit it on your FIRST call. Never invent one and "
-                                "never read one aloud. If the caller has not chosen a new "
-                                "time yet, ask them first."
-                            ),
-                        },
-                    },
-                    "required": [],
-                },
-            },
-            "server": _tool_server(f"{base}/reschedule", 45),
-            "messages": [
-                {"type": "request-start", "content": "Let me move that for you."},
-                {"type": "request-response-delayed", "content": "Still working on that — one moment.", "timingMilliseconds": 3000},
-            ],
-        },
     ]
+
+    if supports_reschedule:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "reschedule_appointment",
+                    "description": (
+                        "Move an EXISTING appointment to a different time at the SAME "
+                        "location, keeping the same service. This takes TWO calls. "
+                        "First call it with no arguments to see the caller's appointments — "
+                        "that changes nothing. Read them back, ask which one they want moved, "
+                        "then call check_availability for the same service at the same "
+                        "location. Once the caller has chosen a new time, call this again "
+                        "with BOTH the appointment_ref and the slot_ref. "
+                        "Never use book_appointment to move an appointment, and never "
+                        "cancel one as a way of moving it."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "appointment_ref": {
+                                "type": "string",
+                                "description": (
+                                    "The appt_ reference beside the appointment the caller "
+                                    "chose to move, from the most recent "
+                                    "reschedule_appointment result — e.g. 'appt_2'. Omit it "
+                                    "on your FIRST call. Never invent one, never read one "
+                                    "aloud, and never reuse one from earlier in the call. If "
+                                    "you are not certain which appointment they mean, ask."
+                                ),
+                            },
+                            "slot_ref": {
+                                "type": "string",
+                                "description": (
+                                    "The slot_ reference beside the NEW time the caller chose, "
+                                    "from the most recent check_availability result — e.g. "
+                                    "'slot_3'. Omit it on your FIRST call. Never invent one and "
+                                    "never read one aloud. If the caller has not chosen a new "
+                                    "time yet, ask them first."
+                                ),
+                            },
+                        },
+                        "required": [],
+                    },
+                },
+                "server": _tool_server(f"{base}/reschedule", 45),
+                "messages": [
+                    {"type": "request-start", "content": "Let me move that for you."},
+                    {"type": "request-response-delayed", "content": "Still working on that — one moment.", "timingMilliseconds": 3000},
+                ],
+            }
+        )
+
+    return tools
+
 
 
 _DEPOSIT_NOTE = """

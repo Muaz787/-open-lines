@@ -988,7 +988,8 @@ def test_16_the_tool_surface_is_exactly_the_five_known_tools():
     """D3 added reschedule_appointment. Nothing else may appear alongside it."""
     from services import vapi
 
-    names = {t["function"]["name"] for t in vapi.build_calendar_tools("t1")}
+    names = {t["function"]["name"]
+             for t in vapi.build_calendar_tools("t1", supports_reschedule=True)}
     assert names == {"book_appointment", "caller_lookup", "cancel_appointment",
                      "check_availability", "reschedule_appointment"}
 
