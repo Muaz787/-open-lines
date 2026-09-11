@@ -735,8 +735,19 @@ def test_Y_reconciliation_does_not_read_the_ledger_for_routing():
     assert "provider_webhook_events" not in code
     assert "set_shadow_resolution" not in code
     assert "ledger" not in code
-    # the resolver is called in-request; its result is never read back from storage
-    assert "resolve_square_tenant_location" in code
+
+    # W7D.1 moved the two routing reads and the resolver call one module along,
+    # into square_webhook_identity, so that W7B and W7D share ONE computation.
+    # The invariant is unchanged but now spans two modules, so follow the call:
+    # the reconciler must resolve through identity, and identity must reach the
+    # pure resolver without touching the ledger either.
+    from services import square_webhook_identity as ident
+    assert "identity.load_and_resolve" in code
+    ident_code = _executable_source(ident)
+    assert "resolve_square_tenant_location" in ident_code
+    assert "provider_webhook_events" not in ident_code
+    assert "set_shadow_resolution" not in ident_code
+    assert "ledger" not in ident_code
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -801,7 +812,9 @@ def test_Z6_the_booking_case_now_uses_the_W7_resolver():
 
     from routers import payments
     src = inspect.getsource(payments.square_webhook)
-    assert "square_booking_reconcile.reconcile_booking_event(event)" in src
+    # W7D.1: the call now carries the shared Resolution.
+    assert "square_booking_reconcile.reconcile_booking_event(" in src
+    assert "resolution=_resolution" in src
     assert "square_booking.handle_booking_event(event)" not in src
 
 

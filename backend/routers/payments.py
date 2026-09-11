@@ -404,7 +404,22 @@ async def square_webhook(request: Request):
     # Fail-open on purpose: an observability outage must not become a webhook
     # outage. observe() never raises.
     from services import square_webhook_observability as _w7b
-    _observation = await _w7b.observe(event)
+    from services import square_webhook_identity as _w7id
+
+    # W7D.1 resolve-once. Identity is computed ONCE per delivery, here, from DB
+    # inputs, and handed to both consumers below: telemetry persists it, W7D
+    # routes on it. Before this, each resolved independently and issued the same
+    # two PostgREST reads microseconds apart -- four routing reads per booking
+    # delivery instead of two, on the exact code path whose call volume turned
+    # the pre-W7T transport fault from intermittent into every-time.
+    #
+    # This is an in-memory, immutable Resolution. It is NEVER read back off the
+    # ledger row: provider_webhook_events stays evidence, never authority.
+    # resolve_event() fails open to None -- for non-booking events, and for a
+    # routing-read failure -- and None is not a decision. Telemetry then records
+    # no shadow and W7D resolves for itself, exactly as before W7D.1.
+    _resolution = await _w7id.resolve_event(event)
+    _observation = await _w7b.observe(event, resolution=_resolution)
 
     try:
         match event_type:
@@ -417,7 +432,8 @@ async def square_webhook(request: Request):
                 # refusal must never become an endless Square retry, because the
                 # same subscription also carries payments.
                 from services import square_booking_reconcile
-                _outcome = await square_booking_reconcile.reconcile_booking_event(event)
+                _outcome = await square_booking_reconcile.reconcile_booking_event(
+                    event, resolution=_resolution)
                 await _w7b.record_legacy_result(
                     _observation, _outcome.result, _outcome.detail)
                 if _outcome.should_retry:

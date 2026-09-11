@@ -41,8 +41,8 @@ import logging
 import db.supabase as db
 from db import mutation_claims as db_mc
 from db import reschedule_ops as db_ops
-from db import square_routing
 from services import square_booking, square_webhook_resolution as resolver
+from services import square_webhook_identity as identity
 from services import square_webhook_observability as obs
 
 logger = logging.getLogger(__name__)
@@ -102,29 +102,45 @@ class Outcome:
 
 
 async def _resolve_identity(meta: dict) -> tuple[resolver.Resolution, dict]:
-    """W7A resolution, in-request. The ledger is never the routing authority."""
-    merchant_candidates = await square_routing.list_tenants_by_square_merchant_id(
-        meta.get("merchant_id") or "")
-    location_bindings = await square_routing.load_location_candidates(
-        meta.get("provider_location_id") or "")
-    res = resolver.resolve_square_tenant_location(
-        merchant_id=meta.get("merchant_id") or "",
-        merchant_candidates=merchant_candidates,
-        provider_location_id=meta.get("provider_location_id") or "",
-        location_bindings=location_bindings)
-    binding = next((c for c in location_bindings
-                    if str((c.get("binding") or {}).get("id") or "") == res.binding_id), {})
-    return res, binding
+    """W7A resolution, in-request. The ledger is never the routing authority.
+
+    Since W7D.1 the computation lives in square_webhook_identity, shared with
+    W7B telemetry so one delivery costs one pair of routing reads instead of
+    two. What did NOT change is where authority comes from: the two DB reads
+    and the pure resolver, in this request. Nothing is read back from
+    provider_webhook_events, then or now.
+    """
+    return await identity.load_and_resolve(meta)
 
 
-async def reconcile_booking_event(event: dict) -> Outcome:
-    """Route and reconcile one booking webhook. Makes NO provider mutation."""
+async def reconcile_booking_event(
+        event: dict, *, resolution: resolver.Resolution | None = None) -> Outcome:
+    """Route and reconcile one booking webhook. Makes NO provider mutation.
+
+    `resolution` is the W7D.1 resolve-once hand-off. The caller may pass the
+    Resolution already computed for this delivery, saving the two routing reads
+    telemetry has just made with identical inputs.
+
+    CORRECTNESS NEVER DEPENDS ON BEING GIVEN ONE. If the caller passes nothing
+    -- because it is not the webhook endpoint, or because the shared
+    computation failed open -- this resolves for itself and behaves exactly as
+    it did before W7D.1. A telemetry path that is allowed to fail must never be
+    able to change what a booking event may mutate, and the only way to
+    guarantee that is for the fallback to be real.
+
+    What is passed is an immutable in-memory Resolution computed from DB inputs
+    in this request. It is NOT read back from the ledger, which stays evidence
+    and never routing authority.
+    """
     meta = obs.extract(event)
     if meta["event_type"] not in BOOKING_EVENTS:
         return Outcome(NOT_BOOKING_EVENT)
 
     # ── identity ────────────────────────────────────────────────────────────
-    res, _binding = await _resolve_identity(meta)
+    if resolution is not None:
+        res = resolution
+    else:
+        res, _binding = await _resolve_identity(meta)
     if not res.may_mutate:
         # Every refusal is permanent for this event: the same payload resolved
         # again would refuse again. Recorded loudly, never retried.

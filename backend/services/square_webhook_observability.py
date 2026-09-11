@@ -30,6 +30,7 @@ import os
 
 from db import provider_webhook_events as ledger
 from db import square_routing
+from services import square_webhook_identity as identity
 from services import square_webhook_resolution as resolver
 
 logger = logging.getLogger(__name__)
@@ -128,29 +129,33 @@ def extract(event: dict) -> dict:
 async def shadow_resolve(meta: dict) -> resolver.Resolution:
     """What WOULD W7A decide for this event? Reads only; decides nothing.
 
-    Scoped to booking events for now: they are the only family whose envelope
-    carries an authoritative location, and the only one W7D will route first.
+    Scoped to booking events: they are the only family whose envelope carries
+    an authoritative location, and the only one W7D routes.
+
+    Since W7D.1 the computation itself lives in square_webhook_identity, which
+    W7D also uses -- one implementation, one pair of DB reads. This remains the
+    entry point telemetry calls when it was handed no Resolution.
     """
-    merchant_id = meta.get("merchant_id") or ""
-    provider_location_id = meta.get("provider_location_id") or ""
-
-    merchant_candidates = await square_routing.list_tenants_by_square_merchant_id(
-        merchant_id)
-    location_bindings = await square_routing.load_location_candidates(
-        provider_location_id)
-
-    return resolver.resolve_square_tenant_location(
-        merchant_id=merchant_id,
-        merchant_candidates=merchant_candidates,
-        provider_location_id=provider_location_id,
-        location_bindings=location_bindings)
+    res, _binding = await identity.load_and_resolve(meta)
+    return res
 
 
-async def observe(event: dict) -> dict | None:
+async def observe(event: dict, *, resolution: resolver.Resolution | None = None) -> dict | None:
     """Record one delivery, and shadow-resolve it when it is a booking event.
 
     Returns the ledger row, or None when nothing could be recorded. Never raises:
     the caller is a webhook endpoint whose real job is payments and bookings.
+
+    `resolution` is the W7D.1 resolve-once hand-off: the caller may pass the
+    Resolution it already computed for this delivery, and telemetry then
+    persists that exact decision instead of recomputing an identical one. It is
+    the SAME immutable object W7D routes on, so the ledger cannot describe a
+    decision other than the one that was acted upon -- previously the two were
+    separate computations that merely agreed by construction.
+
+    Passing nothing keeps the original behaviour: telemetry resolves for
+    itself. That path is still live for any caller outside the webhook endpoint
+    and for the case where the shared computation failed open.
     """
     try:
         meta = extract(event)
@@ -189,7 +194,7 @@ async def observe(event: dict) -> dict | None:
 
     if meta["event_type"] in BOOKING_EVENTS:
         try:
-            res = await shadow_resolve(meta)
+            res = resolution if resolution is not None else await shadow_resolve(meta)
             await ledger.set_shadow_resolution(
                 row["id"], resolution=res.outcome, resolution_detail=res.detail,
                 merchant_status=res.merchant_status,

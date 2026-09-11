@@ -541,23 +541,67 @@ def test_the_dispatch_table_is_intact_after_the_W7D_cutover():
         assert case in src
     assert "_handle_square_payment_completed(event)" in src
     assert "square_booking.handle_catalog_update(event)" in src
-    # booking now routes through the location-aware reconciler
-    assert "square_booking_reconcile.reconcile_booking_event(event)" in src
+    # booking now routes through the location-aware reconciler. W7D.1 added the
+    # resolve-once hand-off, so the call carries the shared Resolution.
+    assert "square_booking_reconcile.reconcile_booking_event(" in src
+    assert "resolution=_resolution" in src
     assert "square_booking.handle_booking_event(event)" not in src
 
 
 def test_the_observation_does_not_choose_what_the_handler_mutates():
-    """_observation is written to, and read only to attach the legacy result."""
+    """The LEDGER ROW never influences routing. Restated structurally for W7D.1.
+
+    Until W7D.1 this was a string check -- "resolution" must not appear in the
+    endpoint at all -- which worked only because the endpoint held no routing
+    value of any kind. Resolve-once changes that: the endpoint now computes ONE
+    in-memory Resolution and hands it to both consumers, so the literal appears
+    and the old check would fail for a reason that has nothing to do with the
+    invariant.
+
+    The invariant itself is unchanged and is now asserted directly: whatever
+    the endpoint routes on must NOT come from _observation. So every use of
+    _observation is enumerated, and each one must be a bare argument handed to
+    the telemetry recorder -- never subscripted, never attribute-accessed,
+    never branched on, never assigned from.
+    """
     import ast
     import inspect
 
     from routers import payments
     tree = ast.parse(inspect.getsource(payments.square_webhook).lstrip())
     code = ast.unparse(tree)
-    # no branch anywhere depends on the observation or its resolution
-    assert "if _observation" not in code
-    assert "resolution" not in code
-    assert "resolved_tenant" not in code
+
+    # 1. the ledger row is never read, only passed on
+    reads = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and ast.unparse(node.value) == "_observation":
+            reads.append(f"subscript {ast.unparse(node)}")
+        if isinstance(node, ast.Attribute) and ast.unparse(node.value) == "_observation":
+            reads.append(f"attribute {ast.unparse(node)}")
+        if isinstance(node, (ast.If, ast.While)) and "_observation" in ast.unparse(node.test):
+            reads.append(f"branch on {ast.unparse(node.test)}")
+    assert not reads, f"the endpoint reads the ledger row: {reads}"
+
+    # 2. every _observation use is an argument to record_legacy_result
+    passed, other = 0, []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if any(isinstance(a, ast.Name) and a.id == "_observation" for a in node.args):
+                if "record_legacy_result" in ast.unparse(node.func):
+                    passed += 1
+                else:
+                    other.append(ast.unparse(node.func))
+    assert passed >= 1, "the observation is never recorded against"
+    assert not other, f"_observation handed to something other than telemetry: {other}"
+
+    # 3. no ledger COLUMN is read anywhere in the endpoint
+    for column in ("resolved_tenant", "resolution_detail", "shadow_resolution",
+                   "merchant_status", "delivery_count"):
+        assert column not in code, f"the endpoint reads the ledger column {column!r}"
+
+    # 4. what the endpoint DOES route on comes from the resolver, not the ledger
+    assert "_w7id.resolve_event(event)" in code
+    assert "_resolution = await" in code
     # and there is no early return keyed on a duplicate
     assert "delivery_count" not in code
 

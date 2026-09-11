@@ -96,15 +96,34 @@ class Resolution:
                  provider_location_id: str = "", binding_id: str = "",
                  merchant_status: str = "", detail: str = "",
                  eligible_count: int = 0, candidate_count: int = 0):
-        self.outcome = outcome
-        self.tenant_id = tenant_id
-        self.tenant_location_id = tenant_location_id
-        self.provider_location_id = provider_location_id
-        self.binding_id = binding_id
-        self.merchant_status = merchant_status
-        self.detail = detail
-        self.eligible_count = eligible_count
-        self.candidate_count = candidate_count
+        # object.__setattr__ because __setattr__ below refuses everything. This
+        # is the only place a Resolution is ever written.
+        set_ = object.__setattr__
+        set_(self, "outcome", outcome)
+        set_(self, "tenant_id", tenant_id)
+        set_(self, "tenant_location_id", tenant_location_id)
+        set_(self, "provider_location_id", provider_location_id)
+        set_(self, "binding_id", binding_id)
+        set_(self, "merchant_status", merchant_status)
+        set_(self, "detail", detail)
+        set_(self, "eligible_count", eligible_count)
+        set_(self, "candidate_count", candidate_count)
+
+    # ── immutable after construction ────────────────────────────────────────
+    # Until W7D.1 each consumer computed its own Resolution, so a stray write
+    # could only corrupt one of them. Now ONE instance is shared between
+    # telemetry and booking correctness, and a mutation between the two reads
+    # would silently change what a webhook is allowed to mutate while leaving
+    # the ledger describing the original decision. Sharing is only defensible
+    # if the shared thing cannot change, so it cannot.
+    def __setattr__(self, name, value):
+        raise AttributeError(
+            f"Resolution is immutable: refusing to set {name!r}. A routing "
+            f"decision is computed once and shared; build a new Resolution "
+            f"instead of altering this one.")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"Resolution is immutable: refusing to delete {name!r}.")
 
     @property
     def ok(self) -> bool:
