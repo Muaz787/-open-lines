@@ -198,9 +198,40 @@ async def _sync_ngrok_url() -> None:
             logger.error("Failed to re-patch assistant %s: %s", assistant_id, e)
 
 
+def _log_supabase_transport() -> None:
+    """Prove at boot which HTTP transport Supabase will actually use.
+
+    W7D failed because every PostgREST call in the container spoke HTTP/2 over
+    a connection an intermediary had already retired, and nothing in the logs
+    said which protocol we were on -- the failure was only visible as an opaque
+    ConnectionTerminated. This line makes that answerable from the deploy log
+    alone, before any request has run. It carries protocol/pool/timeout shape
+    only: no url, no key, no header.
+    """
+    try:
+        from db.supabase import get_client
+        from db import supabase_transport
+        info = supabase_transport.assert_hardened(get_client())
+        logger.info("supabase transport at boot: %s", info)
+    except Exception as e:
+        logger.error("supabase transport diagnostic failed: %s", e)
+
+
 @app.on_event("startup")
 async def startup_event():
     print("Open Lines API running on port 8000")
+    _log_supabase_transport()
     await _sync_ngrok_url()
     from services.webhook_processor import start_background_processor
     start_background_processor()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close Supabase sockets on SIGTERM so a rolling Railway deploy does not
+    leave half-open connections behind the old revision."""
+    try:
+        from db.supabase import close_client
+        close_client()
+    except Exception as e:
+        logger.warning("supabase shutdown close failed: %s", e)

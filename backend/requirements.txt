@@ -3,6 +3,23 @@ uvicorn==0.29.0
 httpx==0.27.2
 twilio==9.0.4
 supabase==2.15.0
+# --- Supabase transport stack, pinned by W7T ----------------------------------
+# These four were transitive and UNPINNED. supabase only constrains them by
+# range (postgrest >0.19,<1.1; gotrue >=2.11,<3.0), so two Railway builds of the
+# same commit could ship different HTTP stacks -- and the W7D outage was a
+# transport bug. db/supabase_transport.py applies its policy by rebinding the
+# session constructor inside postgrest._sync.client and
+# gotrue._sync.gotrue_base_api; a minor release that moves either name would
+# silently drop us back to the HTTP/2 default that failed. Pinned so an upgrade
+# is a reviewed change, not a rebuild.
+#
+# httpcore and h2 are pinned for the same reason one layer down: they are where
+# the GOAWAY handling actually lives.
+postgrest==1.0.2
+gotrue==2.12.4
+httpcore==1.0.9
+h2==4.3.0
+# ------------------------------------------------------------------------------
 python-dotenv==1.0.1
 pinecone-client==3.2.2
 openai==1.30.0
