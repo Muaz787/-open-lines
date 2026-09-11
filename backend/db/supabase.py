@@ -1,25 +1,73 @@
 import os
 import logging
+import threading
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
+
+from db import supabase_transport
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 _client: Client | None = None
+# The check-then-construct in get_client() is not atomic. FastAPI runs sync
+# dependencies and BackgroundTasks in a threadpool, and the webhook processor
+# has its own thread, so two threads can both observe None. httpx.Client is
+# itself thread-safe, so the consequence was never corruption -- it was a
+# second connection pool that nothing would ever close, and a second
+# transport-policy assertion racing the first. One lock removes both.
+_client_lock = threading.Lock()
 
 
 def get_client() -> Client:
+    """The process-wide Supabase client.
+
+    One client, held for the life of the container, so its connection pool is
+    reused. That reuse is exactly what made the W7D HTTP/2 GOAWAY fatal, which
+    is why the transport policy below is installed BEFORE the client is built
+    -- see db/supabase_transport.py.
+    """
     global _client
-    if _client is None:
+    if _client is not None:
+        return _client
+    with _client_lock:
+        if _client is not None:
+            return _client
         url = os.getenv("SUPABASE_URL")
         key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not url or not key:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+        # MUST precede create_client: the policy is applied to the constructor
+        # each sub-client calls, so it only affects sessions built after this.
+        supabase_transport.install()
         _client = create_client(url, key)
-    return _client
+        return _client
+
+
+def close_client() -> None:
+    """Release the client's sockets. Shutdown only.
+
+    Measured, not assumed: httpx.Client.close() is terminal. A closed client
+    does not reopen -- it raises RuntimeError("Cannot send a request, as the
+    client has been closed") forever. So closing without dropping the reference
+    would turn any straggler (an in-flight background task, a request that
+    arrives between SIGTERM and the last worker exiting) from "slightly slow"
+    into a hard 500.
+
+    Dropping the reference is therefore part of closing, not a separate
+    feature: the next get_client() builds a fresh, equally hardened client. It
+    is NOT the error-driven client recreation of W7T section 16, which stays
+    designed-only -- nothing here reacts to a failed request.
+    """
+    global _client
+    with _client_lock:
+        client = _client
+        if client is None:
+            return
+        _client = None
+    supabase_transport.close_sessions(client)
 
 
 # ---------------------------------------------------------------------------
