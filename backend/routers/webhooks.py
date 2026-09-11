@@ -13,7 +13,8 @@ from db import routing as rdb
 from services.security import verify_tenant_owner, verify_vapi_server_secret
 from services import analytics, knowledge, vapi as vapi_svc
 from services import entitlements, transfer as transfer_svc, routing_destinations as rd
-from services.vapi import _CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools, ensure_safety_preamble
+from services.vapi import (_CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools,
+                           caller_lookup_note, ensure_safety_preamble, supports_safe_reschedule)
 from routers.calendar import _CALENDAR_NOTE
 
 # Injected when NO calendar is connected. The industry/custom templates tell the
@@ -286,15 +287,22 @@ async def _handle_assistant_request(msg: dict) -> dict:
         or tenant.get("square_appointments_enabled")
     )
 
-    # Assemble system prompt — always include _CALLER_LOOKUP_NOTE so returning-caller
-    # and rescheduling instructions are present even when the static Vapi config is stale.
+    # W6A2-D3.1: whether this tenant can actually COMPLETE a move decides both the
+    # tool list and the moving policy in the prompt. They must agree -- telling the
+    # model to call a tool it has not been given is how a caller reaches a dead end
+    # after being promised their appointment would be moved.
+    can_reschedule = await supports_safe_reschedule(tenant)
+
+    # Assemble system prompt — always include the caller-lookup note so
+    # returning-caller instructions are present even when the static Vapi config
+    # is stale.
     system_prompt = base_prompt + date_note + caller_context
     if has_calendar:
         system_prompt += _CALENDAR_NOTE + schedule_note
     else:
         # No calendar connected — stop the AI confirming appointments it can't book.
         system_prompt += _NO_BOOKING_NOTE
-    system_prompt += _CALLER_LOOKUP_NOTE
+    system_prompt += caller_lookup_note(supports_reschedule=can_reschedule)
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
     # even if this tenant's stored prompt predates it. The receptionist voice/manner
     # guidance is applied on every call so ALL tenants (incl. pre-existing) get it.
@@ -320,7 +328,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
     system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
-    tools = build_calendar_tools(tenant_id) if has_calendar else [build_caller_lookup_tool(tenant_id)]
+    tools = (build_calendar_tools(tenant_id, supports_reschedule=can_reschedule)
+             if has_calendar else [build_caller_lookup_tool(tenant_id)])
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
 
     logger.info(

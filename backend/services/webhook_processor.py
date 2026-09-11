@@ -7,6 +7,9 @@ so a mid-deploy restart or a slow GPT-4o call never loses a call event.
 """
 
 import asyncio
+import time as _time
+
+from services import appointment_cancel_intent as _appointment_cancel_intent
 import json
 import logging
 import os
@@ -381,11 +384,35 @@ async def process_end_of_call(payload: dict) -> None:
     logger.info("Processed end-of-call-report for call %s tenant %s", call_id, tenant_id)
 
 
+async def _dispatch(event: dict) -> None:
+    """Route a queued event by its type.
+
+    Previously every row was handed to process_end_of_call regardless of
+    event_type, which was harmless while Vapi reports were the only thing queued
+    and unsafe the moment anything else was. An unrecognised type now raises
+    rather than silently entering the Vapi handler.
+    """
+    event_type = (event.get("event_type") or "").strip()
+    payload = event["payload"]
+
+    if event_type in ("", "end-of-call-report"):
+        # "" preserves the historical shape: rows enqueued before event_type was
+        # meaningful were all end-of-call reports.
+        await process_end_of_call(payload)
+        return
+
+    if event_type == _appointment_cancel_intent.EVENT_TYPE:
+        await _appointment_cancel_intent.handle(payload)
+        return
+
+    raise ValueError(f"webhook processor: unknown event_type {event_type!r}")
+
+
 async def _process_one(event: dict) -> None:
     event_id = event["id"]
     attempts = event["attempts"] + 1
     try:
-        await process_end_of_call(event["payload"])
+        await _dispatch(event)
         await db.mark_webhook_done(event_id)
     except Exception as e:
         error_msg = str(e)
@@ -400,6 +427,61 @@ async def _process_one(event: dict) -> None:
             logger.info("Webhook event %s scheduled for retry in %ds", event_id, delay)
 
 
+# W6A2-C3: how often the loop also settles cancel_reconcile claims. The claims
+# themselves only become eligible after mutation_claims.RECONCILE_STALE_SECONDS,
+# so this is the scan cadence, not the recovery delay. Far faster than the daily
+# retention cron, which would leave an appointment globally locked for up to a
+# day; slow enough that an idle system is not scanning every few seconds.
+_RECONCILE_EVERY_SECONDS = 60
+_last_reconcile_at = 0.0
+
+
+async def _maybe_reconcile_cancellations() -> None:
+    """Settle any cancel_reconcile claims that are due.
+
+    Hosted on the existing webhook loop rather than a new scheduler: this process
+    already runs continuously, and C3 must not ship claims that can be stranded.
+    A failure here must never disturb webhook processing.
+    """
+    global _last_reconcile_at
+    now = _time.monotonic()
+    if now - _last_reconcile_at < _RECONCILE_EVERY_SECONDS:
+        return
+    _last_reconcile_at = now
+    try:
+        from services import cancel_reconcile
+        result = await cancel_reconcile.run_cancel_reconciliation()
+        if result.get("scanned"):
+            logger.info("cancel reconciliation: %s", result)
+    except Exception as e:
+        logger.error("cancel reconciliation pass failed: %s", e)
+
+    try:
+        # W6A2-D1: release reschedule claims whose operation row never landed.
+        # Safe because no provider call may precede operation persistence, so
+        # such a claim proves nothing was created. Real persisted operations are
+        # explicitly NOT recovered here — that is the D2 recovery worker's job.
+        from services import reschedule
+        orphans = await reschedule.cleanup_orphan_reschedule_claims()
+        if orphans.get("scanned"):
+            logger.info("orphan reschedule claims: %s", orphans)
+    except Exception as e:
+        logger.error("orphan reschedule claim pass failed: %s", e)
+
+    try:
+        # W6A2-D2: advance reschedule operations whose worker went quiet, and
+        # release claims whose operation has already finished. Hosted here for
+        # the same reason as the two passes above -- this process runs
+        # continuously, and an abandoned replacement_created operation means a
+        # caller has two live bookings until somebody finishes the job.
+        from services import reschedule_execute
+        recovered = await reschedule_execute.run_reschedule_recovery()
+        if recovered.get("scanned"):
+            logger.info("reschedule recovery: %s", recovered)
+    except Exception as e:
+        logger.error("reschedule recovery pass failed: %s", e)
+
+
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")
     interval = _POLL_INTERVAL_MIN
@@ -411,6 +493,8 @@ async def _processor_loop() -> None:
         except Exception as e:
             logger.error("Webhook processor loop error: %s", e)
             events = None
+
+        await _maybe_reconcile_cancellations()
 
         if events and len(events) >= _BATCH_LIMIT:
             # Full batch — more is likely queued; drain immediately without sleeping.

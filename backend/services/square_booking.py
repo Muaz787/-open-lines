@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import uuid as _uuid
 from datetime import datetime, timedelta, date as date_type, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
@@ -272,9 +273,44 @@ async def create_booking(
     token: str, *, location_id: str, start_at_iso: str, customer_id: str,
     team_member_id: str, service_variation_id: str, service_variation_version,
     duration_minutes: int | None, note: str = "",
+    idempotency_key: "str | _uuid.UUID | None" = None,
 ) -> dict:
-    """CreateBooking. Returns the booking object (id, status, ...). Raises on HTTP error."""
+    """CreateBooking. Returns the booking object (id, status, ...). Raises on HTTP error.
+
+    idempotency_key is OPTIONAL and defaults to a fresh UUID per request, which is
+    what ordinary booking wants: each call is a new logical booking, and a caller
+    that retries after an unknown outcome would be replaying a body rebuilt from a
+    live resolve_slot — a different request, which a stable key would turn into a
+    conflict rather than a no-op.
+
+    A caller may supply one only when it can also guarantee the BODY is frozen.
+    W6A2's reschedule operation will be the first: every provider-significant
+    field comes from appointment_reschedule_operations
+    (target_provider_location_id, target_provider_customer_id,
+    target_service_variation_id, target_service_variation_version,
+    target_team_member_id, target_start_at_utc, target_duration_minutes,
+    target_service_name) alongside provider_idempotency_key, and no retry may
+    call resolve_slot again. A stable key over a mutable body is worse than no
+    stable key at all.
+
+    Square requires idempotency_key on CreateBooking, so an absent key is
+    generated rather than omitted — unlike create_customer, where the field is
+    optional and simply left out.
+    """
     import uuid
+    if idempotency_key is None:
+        key = str(uuid.uuid4())
+    elif isinstance(idempotency_key, uuid.UUID):
+        # The operation row stores a uuid; canonical string form is the boundary.
+        key = str(idempotency_key)
+    else:
+        # Used EXACTLY as supplied — not stripped, not re-cased, not canonicalised.
+        # Silently repairing a caller's key would break the one property it exists
+        # to provide.
+        key = idempotency_key
+        if not key.strip():
+            raise ValueError("create_booking: idempotency_key must not be empty")
+
     seg: dict = {
         "team_member_id": team_member_id,
         "service_variation_id": service_variation_id,
@@ -284,7 +320,7 @@ async def create_booking(
     if duration_minutes:
         seg["duration_minutes"] = int(duration_minutes)
     body = {
-        "idempotency_key": str(uuid.uuid4()),
+        "idempotency_key": key,
         "booking": {
             "location_id": location_id,
             "start_at": start_at_iso,
@@ -303,7 +339,14 @@ async def create_booking(
         except Exception as e:
             # Timeout or dropped connection: the request may already be committed.
             raise BookingOutcomeUnknown(str(e)) from e
-        if res.status_code >= 500:
+        if res.status_code == 429 or res.status_code >= 500:
+            # 429 belongs here, not below. Square rate-limits at the edge, but a
+            # throttled request is not a REFUSED one: the platform does not
+            # promise the booking was never created, and raise_for_status() would
+            # assert exactly that. The cost of the old classification was a
+            # released slot plus a fresh idempotency key on the retry -- one
+            # uncertain booking turned into two certain ones. Matches
+            # cancel_booking_detailed, which already treats 429 as UNKNOWN.
             logger.error("Square create_booking %s (unknown outcome): %s",
                          res.status_code, res.text[:400])
             raise BookingOutcomeUnknown(f"HTTP {res.status_code}")
@@ -313,15 +356,79 @@ async def create_booking(
         return res.json().get("booking", {})
 
 
+# Provider READ outcomes. "Square says this booking is gone" and "we could not
+# reach Square" are different facts, and a caller that has to infer them from an
+# empty dict cannot tell them apart. Under global mutation ownership the two
+# demand opposite actions — release the claim, or hold it and reconcile — so the
+# distinction has to survive the call, not be reconstructed from `{}`.
+FETCH_FOUND = "found"
+FETCH_NOT_FOUND = "not_found"
+FETCH_UNKNOWN = "unknown"
+
+# Square's error code for a stale booking_version, measured against the live API:
+#   HTTP 400 {"errors":[{"category":"INVALID_REQUEST_ERROR",
+#                        "code":"VERSION_MISMATCH","detail":"Stale version"}]}
+# W6A2 needs to recognise this without parsing exception strings, because after a
+# frozen source fingerprint a version mismatch means the MERCHANT changed the
+# booking — which must never be resolved by re-fetching and cancelling anyway.
+ERR_VERSION_MISMATCH = "VERSION_MISMATCH"
+
+
+def _first_error_code(res) -> str:
+    """Square's first error code, or '' if the body isn't the shape we expect."""
+    try:
+        return ((res.json().get("errors") or [{}])[0].get("code") or "")
+    except Exception:
+        return ""
+
+
+async def get_booking_detailed(token: str, booking_id: str) -> tuple[str, dict]:
+    """Read a booking and say how confident we are. Returns (status, booking).
+
+    404 is a definitive answer; 5xx, 429, a timeout or a dropped connection are
+    not answers at all. Collapsing the second group into the first is what would
+    let a cancellation release its ownership claim on the strength of a provider
+    outage.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"{sq_svc._api_base()}/v2/bookings/{booking_id}",
+                headers=sq_svc._sq_headers(token), timeout=15.0,
+            )
+    except Exception as e:
+        logger.warning("Square get_booking transport failure for %s: %s", booking_id, e)
+        return FETCH_UNKNOWN, {}
+
+    if res.status_code == 404:
+        return FETCH_NOT_FOUND, {}
+    if res.status_code == 429 or res.status_code >= 500:
+        logger.warning("Square get_booking %s (unknown) for %s", res.status_code, booking_id)
+        return FETCH_UNKNOWN, {}
+    if not res.is_success:
+        # Any other 4xx is a definitive refusal to answer about this booking —
+        # auth, malformed id. We cannot claim it is absent, so it stays unknown.
+        logger.warning("Square get_booking %s: %s", res.status_code, res.text[:200])
+        return FETCH_UNKNOWN, {}
+
+    try:
+        booking = res.json().get("booking") or {}
+    except Exception:
+        logger.warning("Square get_booking returned an unparseable body for %s", booking_id)
+        return FETCH_UNKNOWN, {}
+    if not booking:
+        return FETCH_UNKNOWN, {}
+    return FETCH_FOUND, booking
+
+
 async def get_booking(token: str, booking_id: str) -> dict:
-    async with httpx.AsyncClient() as client:
-        res = await client.get(
-            f"{sq_svc._api_base()}/v2/bookings/{booking_id}",
-            headers=sq_svc._sq_headers(token), timeout=15.0,
-        )
-        if not res.is_success:
-            return {}
-        return res.json().get("booking", {})
+    """Compatibility shim: the booking, or {} for anything else.
+
+    Callers that must distinguish "gone" from "we don't know" should use
+    get_booking_detailed(); this collapses both to {}.
+    """
+    status, booking = await get_booking_detailed(token, booking_id)
+    return booking if status == FETCH_FOUND else {}
 
 
 # Cancellation outcomes. A bool cannot carry the difference between "we cancelled
@@ -334,30 +441,43 @@ CANCEL_FAILED = "failed"
 CANCEL_UNKNOWN = "unknown"
 
 
-async def cancel_booking_detailed(token: str, booking_id: str) -> tuple[str, dict]:
-    """Cancel, and say precisely what happened. Returns (status, booking).
+async def cancel_booking_detailed(
+    token: str, booking_id: str,
+) -> tuple[str, dict, str]:
+    """Cancel, and say precisely what happened. Returns (status, booking, error_code).
 
     Square's CancelBooking is naturally idempotent PROVIDED the current version is
     re-fetched first — measured, not assumed: cancelling an already-cancelled
     booking with its current version returns 200 and leaves the version untouched,
-    while the same call with a stale version is rejected as VERSION_MISMATCH. So a
-    retry is safe and needs no stable operation identity of its own; re-reading is
-    the whole mechanism.
+    while the same call with a stale version is rejected as VERSION_MISMATCH.
 
-    The already-cancelled case is detected before any request is sent, so a caller
-    asking twice never issues a second mutation.
+    error_code carries Square's own code for a definitive rejection (notably
+    ERR_VERSION_MISMATCH) so a later caller can recognise it structurally rather
+    than by matching on exception text.
+
+    The rule that governs every branch: UNKNOWN is never collapsed into FAILED.
+    FAILED asserts the booking was NOT cancelled by this request; UNKNOWN asserts
+    nothing, and under global ownership that difference decides whether a claim is
+    released or held for reconciliation.
     """
-    booking = await get_booking(token, booking_id)
-    if not booking:
-        return CANCEL_NOT_FOUND, {}
+    fetch_status, booking = await get_booking_detailed(token, booking_id)
+    if fetch_status == FETCH_NOT_FOUND:
+        return CANCEL_NOT_FOUND, {}, ""
+    if fetch_status == FETCH_UNKNOWN:
+        # We could not read the booking, so we cannot say whether it is
+        # cancellable, cancelled, or gone. Previously this returned NOT_FOUND,
+        # which reads as definitive.
+        return CANCEL_UNKNOWN, {}, ""
+
     status = (booking.get("status") or "").upper()
     if "CANCELLED" in status or status == "DECLINED":
-        return CANCEL_ALREADY, booking
+        return CANCEL_ALREADY, booking, ""
 
     import uuid
     body: dict = {"idempotency_key": str(uuid.uuid4())}
     if booking.get("version") is not None:
         body["booking_version"] = booking["version"]
+
     async with httpx.AsyncClient() as client:
         try:
             res = await client.post(
@@ -365,18 +485,32 @@ async def cancel_booking_detailed(token: str, booking_id: str) -> tuple[str, dic
                 json=body, headers=sq_svc._sq_headers(token), timeout=15.0,
             )
         except Exception as e:
-            # The request may or may not have been committed. Saying "cancelled"
-            # here is the exact lie W6A1 exists to stop telling.
             logger.error("Square cancel_booking transport failure for %s: %s", booking_id, e)
-            return CANCEL_UNKNOWN, booking
+            return CANCEL_UNKNOWN, booking, ""
+
         if res.is_success:
-            return CANCEL_OK, res.json().get("booking", {})
-        if res.status_code >= 500:
+            try:
+                cancelled = res.json().get("booking") or {}
+            except Exception:
+                cancelled = {}
+            if not cancelled:
+                # 2xx, but nothing we can read back. Success is probable and
+                # unproven, and unproven is exactly what UNKNOWN is for.
+                logger.warning("Square cancel_booking returned an unreadable body for %s", booking_id)
+                return CANCEL_UNKNOWN, booking, ""
+            return CANCEL_OK, cancelled, ""
+
+        if res.status_code == 429 or res.status_code >= 500:
+            # 429 used to fall through to FAILED because the test was >= 500. A
+            # rate-limited request may still have been processed.
             logger.error("Square cancel_booking %s (unknown outcome): %s",
                          res.status_code, res.text[:300])
-            return CANCEL_UNKNOWN, booking
-        logger.warning("Square cancel_booking %s: %s", res.status_code, res.text[:300])
-        return CANCEL_FAILED, booking
+            return CANCEL_UNKNOWN, booking, ""
+
+        code = _first_error_code(res)
+        logger.warning("Square cancel_booking %s (%s): %s",
+                       res.status_code, code or "no code", res.text[:300])
+        return CANCEL_FAILED, booking, code
 
 
 async def cancel_booking(token: str, booking_id: str) -> bool:

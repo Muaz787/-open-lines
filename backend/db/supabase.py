@@ -474,6 +474,27 @@ async def update_appointment(appointment_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def confirm_appointment_unless_cancelled(appointment_id: str) -> bool:
+    """Mark an appointment confirmed, but NEVER resurrect a cancelled one.
+
+    A deposit webhook can arrive after the appointment was cancelled — refunds
+    and payments race, and providers re-fire. An unconditional write would flip a
+    cancelled row back to 'confirmed' while its provider booking is gone, leaving
+    a phantom appointment nobody can cancel again.
+
+    Returns True if the row was confirmed, False if it was already cancelled.
+    """
+    res = (
+        get_client()
+        .table("appointments")
+        .update({"status": "confirmed"})
+        .eq("id", appointment_id)
+        .neq("status", "cancelled")
+        .execute()
+    )
+    return len(res.data or []) == 1
+
+
 async def get_appointment_by_id(appointment_id: str) -> dict | None:
     res = (
         get_client()
@@ -886,3 +907,25 @@ async def purge_expired_oauth_states() -> None:
     from datetime import datetime, timezone as _tz
     now_iso = datetime.now(_tz.utc).isoformat()
     get_client().table("oauth_states").delete().lt("expires_at", now_iso).execute()
+
+
+async def get_appointment_by_rescheduled_from(source_appointment_id: str) -> dict | None:
+    """The replacement created from this source, if one exists.
+
+    W6A2-D2 recovery depends on this being decidable without any call-scoped
+    state: appointments_rescheduled_from_unique (migration 018) guarantees at
+    most one, so a crash between CreateBooking succeeding and the operation row
+    learning about it is recoverable by asking the database what lineage already
+    exists rather than by asking Square for a second booking.
+    """
+    if not source_appointment_id:
+        return None
+    res = (
+        get_client()
+        .table("appointments")
+        .select("*")
+        .eq("rescheduled_from_appointment_id", source_appointment_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None

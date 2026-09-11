@@ -44,10 +44,19 @@ def _patches(payment=PAYMENT, appointment=APPOINTMENT, tenant=TENANT):
 async def test_process_refund_marks_payment_and_cancels_appointment():
     from routers import payments
 
+    # C4: the refund now cancels under global mutation ownership, through the
+    # shared provider helper, instead of calling the calendar directly. The
+    # outcomes this test protects are unchanged.
+    from services import mutation_ownership as mo
+    claim = mo.Claim("appt-1", "tok", "2026-09-11T12:00:00+00:00", "cancel")
     with patch("routers.payments.db.update_payment", AsyncMock()) as upd_pay, \
          patch("routers.payments.db.get_appointment_by_id", AsyncMock(return_value=dict(APPOINTMENT))), \
          patch("routers.payments.db.update_appointment", AsyncMock()) as upd_appt, \
-         patch("routers.payments._cancel_appointment_calendar", AsyncMock()) as cancel_cal, \
+         patch("services.mutation_ownership.acquire_for_cancel",
+               AsyncMock(return_value=(mo.ACQUIRED, claim))), \
+         patch("services.mutation_ownership.release", AsyncMock()) as release, \
+         patch("services.appointment_cancellation.cancel_at_provider",
+               AsyncMock(return_value="ok")) as cancel_cal, \
          patch("routers.payments._notify_refund", AsyncMock()) as notify, \
          patch("routers.payments._sms_caller_refund", AsyncMock()) as sms:
         await payments._process_refund(dict(PAYMENT), dict(TENANT))
@@ -58,8 +67,9 @@ async def test_process_refund_marks_payment_and_cancels_appointment():
     assert upd_pay.await_args.args[1]["status"] == "refunded"
     assert "refunded_at" in upd_pay.await_args.args[1]
 
-    # calendar event removed, appointment cancelled
+    # provider booking cancelled, appointment cancelled, ownership released
     cancel_cal.assert_awaited_once()
+    release.assert_awaited_once()
     upd_appt.assert_awaited_once()
     assert upd_appt.await_args.args[0] == "appt-1"
     assert upd_appt.await_args.args[1] == {"status": "cancelled"}
