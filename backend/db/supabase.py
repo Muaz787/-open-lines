@@ -907,3 +907,25 @@ async def purge_expired_oauth_states() -> None:
     from datetime import datetime, timezone as _tz
     now_iso = datetime.now(_tz.utc).isoformat()
     get_client().table("oauth_states").delete().lt("expires_at", now_iso).execute()
+
+
+async def get_appointment_by_rescheduled_from(source_appointment_id: str) -> dict | None:
+    """The replacement created from this source, if one exists.
+
+    W6A2-D2 recovery depends on this being decidable without any call-scoped
+    state: appointments_rescheduled_from_unique (migration 018) guarantees at
+    most one, so a crash between CreateBooking succeeding and the operation row
+    learning about it is recoverable by asking the database what lineage already
+    exists rather than by asking Square for a second booking.
+    """
+    if not source_appointment_id:
+        return None
+    res = (
+        get_client()
+        .table("appointments")
+        .select("*")
+        .eq("rescheduled_from_appointment_id", source_appointment_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None

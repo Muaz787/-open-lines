@@ -206,3 +206,31 @@ async def list_stale_reconcile_claims(limit: int = 20) -> list:
            .lt("claimed_at", stale_cutoff_iso())
            .order("claimed_at", desc=False).limit(limit).execute())
     return res.data or []
+
+
+async def takeover_stale_reschedule(
+    appointment_id: str, operation_id: str, prev_token: str, prev_claimed_at: str,
+    new_token: str,
+) -> bool:
+    """Take over an abandoned reschedule claim. Recovery only.
+
+    operation_type stays 'reschedule' and operation_id is in the predicate but is
+    never changed, so this cannot become a route by which one operation type — or
+    one operation — acquires another's appointment. It is the same election
+    takeover_stale_reconcile performs for cancellations, and it exists for the
+    same reason: the claim is deliberately NOT released while provider work is
+    outstanding, so without a takeover a crashed worker would hold an appointment
+    until a human intervened.
+
+    Both the previous token and its timestamp are required, so exactly one worker
+    can win, and a row that moved since we read it is not ours to take.
+    """
+    res = (get_client().table("appointment_mutation_claims")
+           .update({"claim_token": new_token, "claimed_at": _now_iso(),
+                    "updated_at": _now_iso()})
+           .eq("appointment_id", appointment_id)
+           .eq("operation_type", OP_RESCHEDULE)
+           .eq("operation_id", operation_id)
+           .eq("claim_token", prev_token).eq("claimed_at", prev_claimed_at)
+           .lt("claimed_at", stale_cutoff_iso()).execute())
+    return len(res.data or []) == 1

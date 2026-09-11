@@ -468,6 +468,19 @@ async def _maybe_reconcile_cancellations() -> None:
     except Exception as e:
         logger.error("orphan reschedule claim pass failed: %s", e)
 
+    try:
+        # W6A2-D2: advance reschedule operations whose worker went quiet, and
+        # release claims whose operation has already finished. Hosted here for
+        # the same reason as the two passes above -- this process runs
+        # continuously, and an abandoned replacement_created operation means a
+        # caller has two live bookings until somebody finishes the job.
+        from services import reschedule_execute
+        recovered = await reschedule_execute.run_reschedule_recovery()
+        if recovered.get("scanned"):
+            logger.info("reschedule recovery: %s", recovered)
+    except Exception as e:
+        logger.error("reschedule recovery pass failed: %s", e)
+
 
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")
