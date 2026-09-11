@@ -170,6 +170,17 @@ class Store:
             op_id, token, (db_ops.STATE_REPLACEMENT_CREATED, db_ops.STATE_CANCEL_FAILED),
             {"state": db_ops.STATE_COMPLETED})
 
+    async def set_replacement_booking_id(self, op_id, token, booking_id):
+        """Set-once and claim-fenced, exactly like the real UPDATE predicate."""
+        async with self.lock:
+            r = self.ops.get(op_id)
+            if not (r and r["claim_token"] == token):
+                return False
+            if r.get("replacement_provider_booking_id"):
+                return False              # already set -> caller re-reads
+            r["replacement_provider_booking_id"] = booking_id
+            return True
+
     async def adopt_claim_token(self, op_id, prev, new):
         async with self.lock:
             r = self.ops.get(op_id)
@@ -297,7 +308,9 @@ def env(store, *, wire=None, fetch=sb.FETCH_FOUND, sq_source=SQ_SOURCE,
                         mark_replacement_created=AsyncMock(side_effect=store.mark_replacement_created),
                         mark_cancel_failed=AsyncMock(side_effect=store.mark_cancel_failed),
                         mark_completed=AsyncMock(side_effect=store.mark_completed),
-                        adopt_claim_token=AsyncMock(side_effect=store.adopt_claim_token)), \
+                        adopt_claim_token=AsyncMock(side_effect=store.adopt_claim_token),
+                        set_replacement_booking_id=AsyncMock(
+                            side_effect=store.set_replacement_booking_id)), \
          patch("db.supabase.get_appointment_by_id", new=AsyncMock(side_effect=store.get_appointment)), \
          patch("db.supabase.get_appointment_by_rescheduled_from", new=AsyncMock(side_effect=store.by_lineage)), \
          patch("db.supabase.insert_appointment", new=AsyncMock(side_effect=store.insert_appointment)), \

@@ -507,6 +507,7 @@ def test_the_resolver_is_reachable_only_through_the_observability_layer():
 
     root = pathlib.Path(__file__).resolve().parent.parent
     allowed = {"services/square_webhook_observability.py",
+               "services/square_booking_reconcile.py",   # W7D: the cutover itself
                "routers/payments.py",
                "services/square_webhook_resolution.py",
                "db/square_routing.py"}

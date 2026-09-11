@@ -292,6 +292,16 @@ async def _create_phase(operation: dict, source: dict, token: str, claim_token: 
         await _release_claim(source_id, claim_token)
         return CREATE_FAILED
 
+    # Name the booking on the operation BEFORE the local insert. Between
+    # CreateBooking returning and that insert committing, the booking exists at
+    # Square and nothing local identifies it -- which is the window a
+    # booking.created webhook can land in. Writing it here gives that window an
+    # exact answer instead of an inference from tenant/location/start_at.
+    booking_id = str(booking.get("id") or "")
+    if booking_id and not await _record_replacement_booking(
+            operation_id, claim_token, booking_id):
+        return INCIDENT
+
     outcome, replacement = await _adopt_or_insert_replacement(
         operation, source, booking, vapi_call_id=vapi_call_id)
     if outcome != COMPLETED:
@@ -299,6 +309,34 @@ async def _create_phase(operation: dict, source: dict, token: str, claim_token: 
     return await _finish_create(operation, claim_token, replacement,
                                 str(booking.get("id") or ""),
                                 vapi_call_id=vapi_call_id, slot_ref=slot_ref)
+
+
+async def _record_replacement_booking(operation_id: str, claim_token: str,
+                                      booking_id: str) -> bool:
+    """Attach the provider booking id to the operation. Set-once, fenced.
+
+    A replay of the same operation replays the same frozen body with the same
+    idempotency key, so Square returns the SAME booking -- that converges and is
+    treated as success. A DIFFERENT booking id on an operation that already names
+    one means two provider bookings claim one operation, which is an incident, not
+    something to overwrite.
+    """
+    if await db_ops.set_replacement_booking_id(operation_id, claim_token, booking_id):
+        return True
+
+    current = await db_ops.get_operation(operation_id)
+    already = str((current or {}).get("replacement_provider_booking_id") or "")
+    if already == booking_id:
+        return True                      # idempotent replay, converged
+    if not already:
+        # The write was fenced rather than refused: our claim moved.
+        logger.info("reschedule_execute: replacement-id write fenced for operation %s",
+                    operation_id)
+        return False
+    logger.error("reschedule_execute: CONSISTENCY INCIDENT — operation %s already names "
+                 "booking %s but Square returned %s. Not overwriting.",
+                 operation_id, already, booking_id)
+    return False
 
 
 async def _finish_create(operation: dict, claim_token: str, replacement: dict,
