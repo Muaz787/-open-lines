@@ -33,6 +33,9 @@ from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
 from services import entitlements, routing_engine
 from db import supabase as db
+from db import locations as db_loc
+from services import location_sync
+from services.square_service import list_locations as _sq_list_locations
 from db import routing as rdb
 
 logger = logging.getLogger(__name__)
@@ -1583,6 +1586,15 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
                 f"The link expires in {dep['expiry_hours']} hours.' "
                 f"Do NOT call request_deposit — it has already been sent."
             )
+        elif dep["error"] == "location_required":
+            # W7E.2: multi-location business with no location context on the
+            # deposit. The booking stands; only the deposit link was withheld.
+            confirmation = (
+                f"The {service} on {friendly} is held, but I could not send the deposit link because "
+                f"the location for it is unclear. Tell the caller: 'Your appointment is held — our "
+                f"team will follow up shortly to arrange the {amt} deposit.' Then close warmly. "
+                f"Do NOT call request_deposit."
+            )
         else:
             confirmation = (
                 f"The {service} on {friendly} is held, but I couldn't text the payment link just now. "
@@ -1632,6 +1644,16 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
     )
     if dep["error"] == "no_provider":
         return _result(tc_id, "Payment collection is not set up for this business.")
+    if dep["error"] == "location_required":
+        # W7E.2: a multi-location business, and this deposit carries no location
+        # context. Guessing which of the caller's cities to charge against would
+        # be worse than asking, so nothing was created and nothing was sent.
+        return _result(
+            tc_id,
+            "I need to know which location this deposit is for before I can send the link. "
+            "Ask the caller which location their appointment is at, then book or confirm the "
+            "appointment for that location and try again. Do not invent a location.",
+        )
     if dep["already_paid"]:
         return _result(
             tc_id,
@@ -1664,6 +1686,90 @@ def _deposit_amount_cents(tenant: dict, party_size: int = 1) -> int:
     if tenant.get("deposit_per_person"):
         return base * max(1, int(party_size or 1))
     return base
+
+
+async def _resolve_square_deposit_location(
+        tenant: dict, appointment: dict | None, access_token: str) -> tuple[str, str]:
+    """Which Square location THIS ONE deposit link is created against.
+
+    Returns (provider_location_id, reason). An empty id means refuse.
+
+    WHY THIS EXISTS (W7E.2)
+    This path used to do:
+
+        location_id = tenant.get("square_location_id") or ""
+        if not location_id:
+            locs = await list_locations(access_token)
+            if locs:
+                location_id = locs[0].get("id", "")
+                await db.update_tenant(tenant_id, {"square_location_id": location_id})
+
+    Two separate mistakes, stacked. It picked `locs[0]` -- Square's list order,
+    which is not a business rule and does not even skip a closed location -- and
+    then it PERSISTED that guess as the tenant's permanent default. A
+    multi-location tenant could acquire a global default location merely because
+    someone asked for a deposit. W7E.1 closed exactly this defect in catalog
+    sync; this is the same defect on the payments path.
+
+    THE TWO DECISIONS ARE NOT THE SAME DECISION
+    "which location does this deposit belong to" and "what is this tenant's
+    permanent default location" are different questions, and answering the first
+    must never be allowed to invent an answer to the second. A deposit is always
+    FOR an appointment, and that appointment already names the location the
+    caller chose -- resolved through W4's trusted path, not guessed.
+
+    AUTHORITY ORDER
+      1. the appointment's own provider location, VERIFIED against this tenant's
+         own bindings. It came from our booking path rather than from the model,
+         and the verification is what stops a stale or cross-tenant id being
+         trusted.
+      2. the tenant's existing legacy pointer, unchanged -- backwards
+         compatibility for every single-location tenant already in production.
+      3. exactly one usable provider location, via the W7E.1 policy. One answer
+         means list order cannot matter.
+      4. otherwise refuse. Multiple usable locations and no context is a genuine
+         ambiguity, and guessing which city to charge against is worse than
+         asking.
+    """
+    tenant_id = str(tenant.get("id") or "")
+
+    provider_location_id = str((appointment or {}).get("provider_location_id") or "").strip()
+    if provider_location_id:
+        try:
+            binding = await db_loc.get_binding(tenant_id, "square", provider_location_id)
+        except Exception as e:
+            logger.warning("deposit location: binding lookup failed for tenant %s: %s", tenant_id, e)
+            binding = None
+        if binding:
+            return provider_location_id, "appointment"
+        # Not this tenant's location. Never charge against it.
+        logger.warning(
+            "deposit location: appointment names Square location %s which is not bound to "
+            "tenant %s — ignoring it", provider_location_id, tenant_id)
+
+    existing = str(tenant.get("square_location_id") or "").strip()
+    if existing:
+        return existing, "tenant_default"
+
+    try:
+        locations = await _sq_list_locations(access_token)
+    except Exception as e:
+        logger.warning("deposit location: could not list Square locations for tenant %s: %s",
+                       tenant_id, e)
+        return "", "provider_unavailable"
+
+    chosen = location_sync.choose_legacy_default_square_location(None, locations)
+    if chosen:
+        return chosen, "single_location"
+
+    usable = location_sync.usable_square_locations(locations)
+    if len(usable) > 1:
+        logger.warning(
+            "deposit location: tenant %s has %d usable Square locations and this deposit "
+            "carries no location context — refusing rather than guessing",
+            tenant_id, len(usable))
+        return "", "ambiguous"
+    return "", "no_location"
 
 
 async def _create_and_send_deposit(
@@ -1714,20 +1820,35 @@ async def _create_and_send_deposit(
         expires_at  = (datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)).isoformat()
 
         if _provider == "square":
-            from services.square_service import create_payment_link, list_locations
+            from services.square_service import create_payment_link
             from services.security import decrypt
             access_token = decrypt(tenant["square_access_token"])
-            location_id  = tenant.get("square_location_id") or ""
-            if not location_id:
+
+            # W7E.2: the deposit's location comes from the appointment it is for,
+            # never from Square's list order, and choosing one for THIS operation
+            # never writes a permanent default onto the tenant.
+            appointment = None
+            if appointment_id:
                 try:
-                    locs = await list_locations(access_token)
-                    if locs:
-                        location_id = locs[0].get("id", "")
-                        await db.update_tenant(tenant_id, {"square_location_id": location_id})
-                except Exception as _le:
-                    logger.warning("Could not fetch Square location for tenant %s: %s", tenant_id, _le)
+                    appointment = await db.get_appointment_by_id(appointment_id)
+                except Exception as _ae:
+                    logger.warning("deposit location: appointment lookup failed for %s: %s",
+                                   appointment_id, _ae)
+            location_id, _why = await _resolve_square_deposit_location(
+                tenant, appointment, access_token)
             if not location_id:
-                raise RuntimeError("No Square location found — re-connect your Square account")
+                # Fail closed: no Square call, no payment row, no tenant write.
+                out["error"] = ("location_required" if _why == "ambiguous" else _why)
+                return out
+            if _why == "single_location":
+                # The ONLY case that may still settle the legacy pointer: one
+                # usable location means there is nothing to guess. Best-effort --
+                # the deposit must not fail because a compatibility write did.
+                try:
+                    await db.update_tenant(tenant_id, {"square_location_id": location_id})
+                except Exception as _ue:
+                    logger.warning("deposit location: could not persist the single-location "
+                                   "pointer for tenant %s: %s", tenant_id, _ue)
             link_id, order_id, checkout_url = await create_payment_link(
                 access_token=access_token, location_id=location_id, amount_cents=deposit_cents,
                 currency=currency, name=f"Deposit — {service}",
