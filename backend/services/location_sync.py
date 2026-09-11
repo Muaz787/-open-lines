@@ -56,6 +56,74 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ── W7E.1 · the legacy single-pointer chooser ───────────────────────────────
+# Square reports INACTIVE for a location a merchant has closed. Everything else
+# -- ACTIVE, or a status we do not recognise -- counts as usable.
+#
+# The asymmetry is deliberate. Requiring status == "ACTIVE" exactly would be
+# stricter, but a location whose status Square stopped sending would then read
+# as zero-usable, and a legacy single-location tenant would lose its pointer and
+# start failing with "No Square location found". Excluding only what is
+# explicitly closed cannot cause that: an unrecognised status can only ever push
+# a tenant toward "ambiguous", and ambiguous means we decline to choose.
+_CLOSED = "INACTIVE"
+
+
+def usable_square_locations(locations: list[dict] | None) -> list[dict]:
+    """The Square locations a business could plausibly operate from.
+
+    Pure. Order-preserving but order-irrelevant: callers must use the COUNT and
+    the single element, never the position.
+    """
+    out = []
+    for location in (locations or []):
+        if not str((location or {}).get("id") or "").strip():
+            continue
+        if str(location.get("status") or "").strip().upper() == _CLOSED:
+            continue
+        out.append(location)
+    return out
+
+
+def choose_legacy_default_square_location(
+        existing: str | None, locations: list[dict] | None) -> str | None:
+    """Which Square location may be stamped into tenants.square_location_id.
+
+    Returns the existing pointer, or the ONE unambiguous usable location, or
+    None. It never makes an arbitrary choice.
+
+    WHY THIS EXISTS
+    `sync()` used to settle the pointer with `location_id or locations[0]`. For
+    a single-location merchant that is a fair compatibility default -- there is
+    only one answer and list order cannot matter. For a multi-location tenant it
+    is a guess: Square's list order is not a business rule, and stamping the
+    first element would make whichever city Square happened to return first look
+    like the tenant's default.
+
+    DANI is exactly that case. It has Cork, Dublin and Limerick, and it
+    deliberately has NO default -- multi-location topology lives in
+    tenant_locations and location_provider_bindings, and
+    resolve_active_location() refuses to guess a city for a caller. The W7E
+    catalog routing makes catalog events actually reach DANI, so without this
+    guard the first one would have invented a default that no one chose.
+
+    An existing pointer is returned untouched. A tenant that already resolved
+    this question does not get it re-decided because a catalog webhook fired.
+    """
+    current = str(existing or "").strip()
+    if current:
+        return current
+
+    usable = usable_square_locations(locations)
+    if len(usable) == 1:
+        return str(usable[0].get("id") or "").strip() or None
+
+    # Zero usable locations, or more than one: there is no single right answer,
+    # so the pointer stays unset and the multi-location tables remain the only
+    # description of this tenant's topology.
+    return None
+
+
 def binding_metadata(location: dict) -> dict:
     """Provider facts for one Square location. Everything here is descriptive;
     none of it is identity."""

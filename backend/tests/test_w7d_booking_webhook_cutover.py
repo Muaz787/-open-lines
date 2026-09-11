@@ -796,12 +796,17 @@ def test_Z5_catalog_and_payment_routing_are_untouched():
     from services import square_booking
     src = inspect.getsource(payments.square_webhook)
     assert 'case "catalog.version.updated"' in src
-    assert "square_booking.handle_catalog_update(event)" in src
     assert '"payment.updated" | "payment.created"' in src
     assert "_handle_square_payment_completed(event)" in src
-    # catalog still uses the legacy merchant lookup — documented remaining risk
-    assert "get_tenant_by_square_merchant_id" in inspect.getsource(
-        square_booking.handle_catalog_update)
+
+    # W7D left catalog on the legacy .limit(1) merchant lookup and called that
+    # out as a documented remaining risk. W7E is the gate that removed it: the
+    # catalog arm now routes to EVERY eligible tenant claiming the merchant.
+    # What matters for W7D is that this did not disturb booking or payments.
+    from services import square_catalog_routing as w7e
+    assert "_w7e.route_catalog_event(event)" in src
+    assert "get_tenant_by_square_merchant_id" not in _executable_source(w7e)
+    assert ".limit(1)" not in _executable_source(w7e)
     # payments still route by order id
     assert "get_payment_by_checkout_session(order_id)" in inspect.getsource(
         payments._handle_square_payment_completed)

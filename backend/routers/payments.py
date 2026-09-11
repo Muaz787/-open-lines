@@ -440,8 +440,23 @@ async def square_webhook(request: Request):
                     raise HTTPException(status_code=503, detail="provider unavailable")
                 return {"status": "ok"}
             case "catalog.version.updated":
-                from services import square_booking
-                await square_booking.handle_catalog_update(event)
+                # W7E: a catalog envelope carries NO location, so there is
+                # nothing for the W7A booking resolver to resolve. Catalog is
+                # merchant-level provider truth, and a merchant may legitimately
+                # be claimed by more than one tenant — so it routes to EVERY
+                # eligible tenant independently rather than to whichever row
+                # .limit(1) happened to return. One tenant's failure does not
+                # stop another from being attempted.
+                from services import square_catalog_routing as _w7e
+                _routing = await _w7e.route_catalog_event(event)
+                await _w7b.record_legacy_result(
+                    _observation, _routing.result, _routing.summary)
+                if _routing.should_retry:
+                    # Only a RAISED sync is retried. "no eligible tenant" is a
+                    # permanent fact about our data, and retrying it would make
+                    # Square redeliver forever over a state we chose.
+                    raise HTTPException(status_code=503, detail="catalog sync failed")
+                return {"status": "ok"}
             case _:
                 await _w7b.record_legacy_result(_observation, _w7b.LEGACY_UNHANDLED)
                 return {"status": "ok"}

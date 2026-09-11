@@ -646,15 +646,32 @@ async def sync(tenant_id: str) -> dict:
     try:
         locations = await sq_svc.list_locations(token)
         if locations:
-            # LEGACY COMPATIBILITY PATH (unchanged, deliberately). Runtime still
-            # reads a single tenants.square_location_id, so a first connect still
-            # settles on locations[0] exactly as it always has. W2 does not rely on
-            # this choice — services/location_sync keys off the stored pointer, never
-            # off list order — and W4 is where the single pointer stops being the
-            # authority. Do not build anything new on this line.
-            location_id = location_id or locations[0].get("id", "")
-            location_tz = next((l.get("timezone") for l in locations if l.get("id") == location_id), None) \
-                or locations[0].get("timezone") or location_tz
+            # LEGACY COMPATIBILITY PATH, now guarded (W7E.1).
+            #
+            # This used to be `location_id or locations[0]`, with the timezone
+            # falling back to locations[0] as well. For a single-location
+            # merchant that is a fair default — there is one answer and list
+            # order cannot matter. For a MULTI-LOCATION tenant it is a guess:
+            # Square's list order is not a business rule.
+            #
+            # That mattered the moment W7E made catalog events actually reach a
+            # multi-location tenant. DANI has Cork, Dublin and Limerick and
+            # deliberately has no default; the first catalog webhook would have
+            # stamped whichever city Square returned first into
+            # tenants.square_location_id and, through it, into which binding
+            # location_sync treats as the default. Nobody chose that.
+            #
+            # The chooser returns an existing pointer untouched, or the ONE
+            # unambiguous usable location, or None. It never picks a row.
+            from services import location_sync as _loc_sync
+            location_id = _loc_sync.choose_legacy_default_square_location(
+                location_id, locations) or ""
+            # The timezone follows the chosen location and nothing else. With no
+            # pointer to follow it stays as it was, rather than inheriting the
+            # timezone of a location we just declined to choose.
+            location_tz = next(
+                (l.get("timezone") for l in locations
+                 if l.get("id") == location_id and location_id), None) or location_tz
     except Exception as e:
         logger.warning("Square sync: locations failed for %s: %s", tenant_id, e)
 
