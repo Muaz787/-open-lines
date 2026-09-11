@@ -411,30 +411,14 @@ async def square_webhook(request: Request):
             case "payment.updated" | "payment.created":
                 await _handle_square_payment_completed(event)
             case "booking.created" | "booking.updated":
-                # W7D: booking events route by LOCATION through the W7A resolver,
-                # not by merchant through .limit(1). Ambiguity and identity
-                # conflicts change nothing and are not retried — a permanent
-                # refusal must never become an endless Square retry, because the
-                # same subscription also carries payments.
-                from services import square_booking_reconcile
-                _outcome = await square_booking_reconcile.reconcile_booking_event(event)
-                await _w7b.record_legacy_result(
-                    _observation, _outcome.result, _outcome.detail)
-                if _outcome.should_retry:
-                    raise HTTPException(status_code=503, detail="provider unavailable")
-                return {"status": "ok"}
+                from services import square_booking
+                await square_booking.handle_booking_event(event)
             case "catalog.version.updated":
                 from services import square_booking
                 await square_booking.handle_catalog_update(event)
             case _:
                 await _w7b.record_legacy_result(_observation, _w7b.LEGACY_UNHANDLED)
                 return {"status": "ok"}
-    except HTTPException:
-        # A deliberate status (W7D's 503 for a transient provider read) must reach
-        # Square as itself. Without this it would be caught below and rewritten to
-        # a 500, which is the same retry signal but a misleading one — and it
-        # would be logged as a processing failure it is not.
-        raise
     except Exception as e:
         await _w7b.record_legacy_result(_observation, _w7b.LEGACY_ERROR, str(e))
         logger.error("Square webhook processing failed for event %s: %s", event_id, e)
