@@ -157,3 +157,27 @@ async def list_recoverable_operations(stale_before_iso: str, limit: int = 20) ->
            .lt("claimed_at", stale_before_iso)
            .order("claimed_at", desc=False).limit(limit).execute())
     return res.data or []
+
+
+async def list_live_operations_for_target(tenant_id: str, provider_location_id: str,
+                                          target_start_at: str) -> list:
+    """Live operations whose FROZEN TARGET is exactly this booking.
+
+    W7D asks this before mirroring an unrecognised Square booking. D2 creates the
+    replacement at the provider BEFORE it persists the local row, so a
+    booking.created webhook can arrive in that gap; mirroring it then would leave
+    two local appointments for one provider booking, and migration 018's lineage
+    index would not catch it because a mirror carries no rescheduled_from.
+
+    Matched on the frozen target rather than on a provider booking id because the
+    operation row does not store the replacement's booking id -- only the payload
+    that produced it.
+    """
+    if not (tenant_id and provider_location_id and target_start_at):
+        return []
+    res = (get_client().table("appointment_reschedule_operations").select("*")
+           .eq("tenant_id", tenant_id)
+           .eq("target_provider_location_id", provider_location_id)
+           .eq("target_start_at_utc", target_start_at)
+           .in_("state", list(LIVE_STATES)).execute())
+    return res.data or []

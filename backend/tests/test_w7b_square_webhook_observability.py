@@ -349,11 +349,16 @@ class _Req:
 
 @contextlib.contextmanager
 def endpoint(ledger, *, good_sig=True, handler=None, merchants=None, bindings=None):
+    from services import square_booking_reconcile as rec
     from services import square_service as sq_svc
-    h = handler or AsyncMock()
+
+    # W7D moved booking dispatch from square_booking.handle_booking_event to the
+    # location-aware reconciler. These tests are about the LEDGER, not about which
+    # handler runs, so they follow the dispatch target.
+    h = handler or AsyncMock(return_value=rec.Outcome(rec.RECONCILED_CREATED))
     with patch.object(sq_svc, "SQUARE_WEBHOOK_SIGNATURE_KEY", "key"), \
          patch.object(sq_svc, "verify_webhook", return_value=good_sig), \
-         patch("services.square_booking.handle_booking_event", new=h), \
+         patch("services.square_booking_reconcile.reconcile_booking_event", new=h), \
          patch("services.square_booking.handle_catalog_update", new=AsyncMock()), \
          env(ledger, merchants=merchants, bindings=bindings):
         yield h
@@ -376,7 +381,7 @@ async def test_a_normal_booking_event_is_recorded_and_dispatched():
         res, err = await call_endpoint(booking_envelope())
     assert err is None and res == {"status": "ok"}
     assert handler.await_count == 1
-    assert led.only()["legacy_result"] == obs.LEGACY_COMPLETED
+    assert led.only()["legacy_result"] == "reconciled_created"
 
 
 @pytest.mark.asyncio
@@ -524,7 +529,8 @@ async def test_the_ledger_row_holds_no_token_or_contact_details():
 # §16 — zero behaviour change
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_the_legacy_dispatch_is_unchanged():
+def test_the_dispatch_table_is_intact_after_the_W7D_cutover():
+    """W7D replaced the BOOKING arm only. Payments and catalog are untouched."""
     import inspect
 
     from routers import payments
@@ -534,8 +540,10 @@ def test_the_legacy_dispatch_is_unchanged():
                  '"catalog.version.updated"'):
         assert case in src
     assert "_handle_square_payment_completed(event)" in src
-    assert "square_booking.handle_booking_event(event)" in src
     assert "square_booking.handle_catalog_update(event)" in src
+    # booking now routes through the location-aware reconciler
+    assert "square_booking_reconcile.reconcile_booking_event(event)" in src
+    assert "square_booking.handle_booking_event(event)" not in src
 
 
 def test_the_observation_does_not_choose_what_the_handler_mutates():
