@@ -474,6 +474,27 @@ async def update_appointment(appointment_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def confirm_appointment_unless_cancelled(appointment_id: str) -> bool:
+    """Mark an appointment confirmed, but NEVER resurrect a cancelled one.
+
+    A deposit webhook can arrive after the appointment was cancelled — refunds
+    and payments race, and providers re-fire. An unconditional write would flip a
+    cancelled row back to 'confirmed' while its provider booking is gone, leaving
+    a phantom appointment nobody can cancel again.
+
+    Returns True if the row was confirmed, False if it was already cancelled.
+    """
+    res = (
+        get_client()
+        .table("appointments")
+        .update({"status": "confirmed"})
+        .eq("id", appointment_id)
+        .neq("status", "cancelled")
+        .execute()
+    )
+    return len(res.data or []) == 1
+
+
 async def get_appointment_by_id(appointment_id: str) -> dict | None:
     res = (
         get_client()
