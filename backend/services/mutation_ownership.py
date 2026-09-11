@@ -63,6 +63,30 @@ async def acquire_for_cancel(appointment_id: str, tenant_id: str) -> tuple[str, 
                            row["operation_type"])
 
 
+async def acquire_for_reschedule(appointment_id: str, tenant_id: str,
+                                 operation_id: str) -> tuple[str, Claim | None]:
+    """Take global ownership for a reschedule, naming its operation up front.
+
+    The operation UUID is allocated by the caller BEFORE this call and written
+    into the claim atomically. Acquiring with NULL and patching later would leave
+    a window where the claim cannot say which operation owns it, and that window
+    is precisely where a crash becomes undecidable.
+    """
+    token = str(uuid.uuid4())
+    try:
+        row = await db_mc.acquire_reschedule_claim(
+            appointment_id, tenant_id, operation_id, token)
+    except Exception as e:
+        logger.error("mutation_ownership: reschedule claim insert failed for %s: %s",
+                     appointment_id, e)
+        return ERROR, None
+    if not row:
+        logger.info("mutation_ownership: appointment %s is already owned", appointment_id)
+        return BUSY, None
+    return ACQUIRED, Claim(appointment_id, row["claim_token"], row["claimed_at"],
+                           row["operation_type"])
+
+
 async def release(claim: Claim) -> bool:
     ok = await db_mc.release_claim(claim.appointment_id, claim.token, claim.claimed_at)
     if not ok:

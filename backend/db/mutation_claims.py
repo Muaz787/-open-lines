@@ -79,6 +79,60 @@ async def acquire_cancel_claim(appointment_id: str, tenant_id: str,
         raise
 
 
+async def acquire_reschedule_claim(appointment_id: str, tenant_id: str,
+                                   operation_id: str, claim_token: str) -> dict | None:
+    """Take global ownership for a reschedule. None means somebody else owns it.
+
+    operation_id is supplied by the caller and written at acquisition, never
+    patched in afterwards. That removes the ambiguous window in which a claim says
+    "a reschedule owns this" without saying which one — and it is what makes the
+    orphan rule decidable: a claim naming an operation row that does not exist
+    proves no provider mutation occurred, because nothing may call Square until
+    that row is persisted.
+    """
+    try:
+        res = get_client().table("appointment_mutation_claims").insert({
+            "appointment_id": appointment_id,
+            "tenant_id": tenant_id,
+            "operation_type": OP_RESCHEDULE,
+            "operation_id": operation_id,
+            "claim_token": claim_token,
+            "claimed_at": _now_iso(),
+        }).execute()
+        return (res.data or [None])[0]
+    except Exception as e:
+        if is_unique_violation(e):
+            return None
+        raise
+
+
+async def list_stale_reschedule_claims(limit: int = 20) -> list:
+    """Reschedule claims old enough to be inspected for orphanhood."""
+    res = (get_client().table("appointment_mutation_claims").select("*")
+           .eq("operation_type", OP_RESCHEDULE)
+           .lt("claimed_at", stale_cutoff_iso())
+           .order("claimed_at", desc=False).limit(limit).execute())
+    return res.data or []
+
+
+async def release_orphan_reschedule_claim(
+    appointment_id: str, operation_id: str, claim_token: str, claimed_at: str,
+) -> bool:
+    """Delete a reschedule claim whose operation row never landed.
+
+    Fenced on operation_id as well as token and timestamp, so a claim that has
+    since been re-acquired for a DIFFERENT operation cannot be removed by a
+    worker still holding the old one's identifiers.
+    """
+    res = (get_client().table("appointment_mutation_claims").delete()
+           .eq("appointment_id", appointment_id)
+           .eq("operation_type", OP_RESCHEDULE)
+           .eq("operation_id", operation_id)
+           .eq("claim_token", claim_token).eq("claimed_at", claimed_at)
+           .lt("claimed_at", stale_cutoff_iso()).execute())
+    return len(res.data or []) == 1
+
+
 async def transition_cancel_to_reconcile(
     appointment_id: str, claim_token: str, claimed_at: str, reason: str,
 ) -> bool:
