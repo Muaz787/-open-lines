@@ -7,6 +7,7 @@ so a mid-deploy restart or a slow GPT-4o call never loses a call event.
 """
 
 import asyncio
+import time as _time
 import json
 import logging
 import os
@@ -400,6 +401,36 @@ async def _process_one(event: dict) -> None:
             logger.info("Webhook event %s scheduled for retry in %ds", event_id, delay)
 
 
+# W6A2-C3: how often the loop also settles cancel_reconcile claims. The claims
+# themselves only become eligible after mutation_claims.RECONCILE_STALE_SECONDS,
+# so this is the scan cadence, not the recovery delay. Far faster than the daily
+# retention cron, which would leave an appointment globally locked for up to a
+# day; slow enough that an idle system is not scanning every few seconds.
+_RECONCILE_EVERY_SECONDS = 60
+_last_reconcile_at = 0.0
+
+
+async def _maybe_reconcile_cancellations() -> None:
+    """Settle any cancel_reconcile claims that are due.
+
+    Hosted on the existing webhook loop rather than a new scheduler: this process
+    already runs continuously, and C3 must not ship claims that can be stranded.
+    A failure here must never disturb webhook processing.
+    """
+    global _last_reconcile_at
+    now = _time.monotonic()
+    if now - _last_reconcile_at < _RECONCILE_EVERY_SECONDS:
+        return
+    _last_reconcile_at = now
+    try:
+        from services import cancel_reconcile
+        result = await cancel_reconcile.run_cancel_reconciliation()
+        if result.get("scanned"):
+            logger.info("cancel reconciliation: %s", result)
+    except Exception as e:
+        logger.error("cancel reconciliation pass failed: %s", e)
+
+
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")
     interval = _POLL_INTERVAL_MIN
@@ -411,6 +442,8 @@ async def _processor_loop() -> None:
         except Exception as e:
             logger.error("Webhook processor loop error: %s", e)
             events = None
+
+        await _maybe_reconcile_cancellations()
 
         if events and len(events) >= _BATCH_LIMIT:
             # Full batch — more is likely queued; drain immediately without sleeping.

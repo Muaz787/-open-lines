@@ -122,6 +122,11 @@ class Ctx:
 
     async def _update(self, aid, patch):
         self.updates.append((aid, patch))
+        # Apply it, so a later authoritative re-read sees the new status. Without
+        # this the fake lets a second worker cancel an appointment the first one
+        # already cancelled — which the real re-read would catch.
+        if aid in self.appts:
+            self.appts[aid] = {**self.appts[aid], **patch}
         return {}
 
     def __enter__(self):
@@ -415,9 +420,12 @@ async def test_an_unknown_provider_outcome_is_also_not_reported_as_cancelled():
 
 # ── status is business state, never an operation result ──────────────────────
 
-@pytest.mark.parametrize("outcome", [sb.CANCEL_FAILED, sb.CANCEL_UNKNOWN, sb.CANCEL_NOT_FOUND])
+@pytest.mark.parametrize("outcome", [sb.CANCEL_FAILED, sb.CANCEL_UNKNOWN])
 @pytest.mark.asyncio
 async def test_1_a_confirmed_appointment_stays_confirmed_when_the_provider_fails(outcome):
+    """CANCEL_NOT_FOUND is deliberately NOT in this list any more — see C3's
+    not-found decision in test_w6a2_prereq_mutation_ownership.py. Absence is
+    provider truth, not provider failure."""
     with Ctx(candidates=[CORK], cancel=(outcome, {})) as c:
         await c.call()
         await c.call(ref="appt_1")
