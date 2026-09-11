@@ -181,3 +181,57 @@ async def list_live_operations_for_target(tenant_id: str, provider_location_id: 
            .eq("target_start_at_utc", target_start_at)
            .in_("state", list(LIVE_STATES)).execute())
     return res.data or []
+
+
+async def get_operation_by_replacement_booking(booking_id: str) -> dict | None:
+    """The operation that created this exact Square booking, if any.
+
+    Exact provider identity, not an inference. Migration 026's partial unique
+    index guarantees at most one.
+    """
+    if not booking_id:
+        return None
+    res = (get_client().table("appointment_reschedule_operations").select("*")
+           .eq("replacement_provider_booking_id", booking_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def set_replacement_booking_id(operation_id: str, claim_token: str,
+                                     booking_id: str) -> bool:
+    """Record the booking Square just created, once. Fenced, and set-once.
+
+    `is_("replacement_provider_booking_id", "null")` is in the predicate so the
+    value can never be rewritten: a replay of the same operation converges on the
+    same booking id, and anything else is a conflict the caller must refuse.
+
+    True means WE wrote it. False means either a takeover moved the claim, or a
+    value is already present -- the caller re-reads to tell those apart.
+    """
+    if not (operation_id and claim_token and booking_id):
+        return False
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    res = (get_client().table("appointment_reschedule_operations")
+           .update({"replacement_provider_booking_id": booking_id, "updated_at": now})
+           .eq("id", operation_id).eq("claim_token", claim_token)
+           .is_("replacement_provider_booking_id", "null").execute())
+    return len(res.data or []) == 1
+
+
+async def list_unidentified_in_progress(tenant_id: str) -> list:
+    """in_progress operations that predate replacement-id tracking.
+
+    Transitional only. An operation created by pre-026 code may have made a Square
+    booking it cannot name, so an unmatched booking for that tenant might be its
+    replacement. W7D defers rather than mirrors while any such operation exists --
+    deferring is recoverable, a duplicate appointment is not.
+
+    Production has zero reschedule operations, so this returns nothing today; it
+    exists for the deploy window.
+    """
+    if not tenant_id:
+        return []
+    res = (get_client().table("appointment_reschedule_operations").select("id, state")
+           .eq("tenant_id", tenant_id).eq("state", STATE_IN_PROGRESS)
+           .is_("replacement_provider_booking_id", "null").execute())
+    return res.data or []

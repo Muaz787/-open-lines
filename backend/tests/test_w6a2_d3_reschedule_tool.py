@@ -236,6 +236,17 @@ class World:
                                         db_ops.STATE_CANCEL_FAILED),
                                  {"state": db_ops.STATE_COMPLETED})
 
+    async def set_replacement_booking_id(self, op_id, token, booking_id):
+        """Set-once and claim-fenced, mirroring migration 026's UPDATE predicate."""
+        async with self.lock:
+            r = self.ops.get(op_id)
+            if not (r and r["claim_token"] == token):
+                return False
+            if r.get("replacement_provider_booking_id"):
+                return False
+            r["replacement_provider_booking_id"] = booking_id
+            return True
+
     async def adopt(self, o, prev, new):
         r = self.ops.get(o)
         if r and r["claim_token"] == prev:
@@ -312,7 +323,9 @@ def env(w, *, create=None, cancel=(sb.CANCEL_OK, {}, ""), fetch=sb.FETCH_FOUND,
                         mark_replacement_created=AsyncMock(side_effect=w.mark_replacement_created),
                         mark_cancel_failed=AsyncMock(side_effect=w.mark_cancel_failed),
                         mark_completed=AsyncMock(side_effect=w.mark_completed),
-                        adopt_claim_token=AsyncMock(side_effect=w.adopt)), \
+                        adopt_claim_token=AsyncMock(side_effect=w.adopt),
+                        set_replacement_booking_id=AsyncMock(
+                            side_effect=w.set_replacement_booking_id)), \
          patch("services.call_location.is_multi_location",
                new=AsyncMock(return_value=(True, ADOPTED))), \
          patch("services.square_booking.get_access_token", new=AsyncMock(return_value="tok")), \

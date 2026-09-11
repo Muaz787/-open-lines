@@ -105,10 +105,11 @@ def appt(aid="a-1", *, tid=DANI, booking=BOOKING, status="confirmed",
 class World:
     """Appointments with the REAL conditional-update semantics of migration 025."""
 
-    def __init__(self, appointments=None, claims=None, live_ops=None):
+    def __init__(self, appointments=None, claims=None, operations=None):
         self.appts = {a["id"]: dict(a) for a in (appointments or [])}
         self.claims = dict(claims or {})
-        self.live_ops = list(live_ops or [])
+        # operations keyed by their EXACT replacement provider booking id
+        self.operations = list(operations or [])
         self.inserts = []
         self.lock = asyncio.Lock()
 
@@ -142,11 +143,16 @@ class World:
         c = self.claims.get(aid)
         return dict(c) if c else None
 
-    async def live_for_target(self, tid, pid, start):
-        return [o for o in self.live_ops
-                if o.get("tenant_id") == tid
-                and o.get("target_provider_location_id") == pid
-                and o.get("target_start_at_utc") == start]
+    async def op_by_booking(self, booking_id):
+        for o in self.operations:
+            if o.get("replacement_provider_booking_id") == booking_id:
+                return dict(o)
+        return None
+
+    async def unidentified_in_progress(self, tid):
+        return [o for o in self.operations
+                if o.get("tenant_id") == tid and o.get("state") == "in_progress"
+                and not o.get("replacement_provider_booking_id")]
 
 
 @contextlib.contextmanager
@@ -176,8 +182,10 @@ def env(w, *, merchants=None, bindings=None, fetch=sb.FETCH_FOUND, booking=None,
          patch("db.supabase.get_square_staff", new=AsyncMock(return_value=[
              {"square_team_member_id": "TM1", "display_name": "Aoife"}])), \
          patch("db.mutation_claims.get_claim", new=AsyncMock(side_effect=w.get_claim)), \
-         patch("db.reschedule_ops.list_live_operations_for_target",
-               new=AsyncMock(side_effect=w.live_for_target)), \
+         patch("db.reschedule_ops.get_operation_by_replacement_booking",
+               new=AsyncMock(side_effect=w.op_by_booking)), \
+         patch("db.reschedule_ops.list_unidentified_in_progress",
+               new=AsyncMock(side_effect=w.unidentified_in_progress)), \
          patch("services.square_booking.get_access_token", new=AsyncMock(return_value=token)), \
          patch("services.square_booking.get_booking_detailed",
                new=AsyncMock(return_value=(fetch, dict(auth) if auth else {}))), \
@@ -341,12 +349,19 @@ async def test_concurrent_workers_cannot_both_apply_the_same_version():
 # ═══════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_L_provider_not_found_cancels_an_existing_mirror():
+async def test_L_provider_not_found_does_NOT_cancel_a_local_appointment():
+    """Square signals cancellation as a STATUS CHANGE, never as deletion — proven
+    in the D2/D3 live proofs, where a cancelled booking stayed fully retrievable
+    as CANCELLED_BY_SELLER. So a 404 is anomalous, not informative, and
+    destroying a real appointment on it would be guessing."""
     w = World([appt(version=0)])
+    before = json.dumps(w.appts, sort_keys=True)
     with env(w, fetch=sb.FETCH_NOT_FOUND, booking={}):
         out = await run(version=1)
-    assert out.result == rec.RECONCILED_UPDATED
-    assert w.appts["a-1"]["status"] == "cancelled"
+    assert out.result == rec.PROVIDER_ABSENT
+    assert json.dumps(w.appts, sort_keys=True) == before
+    assert w.appts["a-1"]["status"] == "confirmed"
+    assert not out.should_retry
 
 
 @pytest.mark.asyncio
@@ -354,7 +369,7 @@ async def test_L2_provider_not_found_creates_nothing():
     w = World()
     with env(w, fetch=sb.FETCH_NOT_FOUND, booking={}):
         out = await run()
-    assert out.result == rec.NOOP_NO_CHANGE
+    assert out.result == rec.PROVIDER_ABSENT
     assert w.inserts == []
 
 
@@ -519,16 +534,91 @@ async def test_TU_an_owned_appointment_is_deferred_not_raced(op_type):
 
 
 @pytest.mark.asyncio
-async def test_V_a_live_reschedule_targeting_this_slot_defers_mirror_creation():
-    """D2 creates the replacement at Square BEFORE persisting locally. Mirroring
-    in that gap would leave two rows for one booking."""
-    w = World(live_ops=[{"tenant_id": DANI, "target_provider_location_id": CORK_PID,
-                         "target_start_at_utc": "2026-10-05T13:00:00Z",
-                         "state": db_ops.STATE_IN_PROGRESS}])
+async def test_V_the_exact_replacement_booking_is_deferred_to_W6A2():
+    """D2 names the booking on its operation the moment CreateBooking returns,
+    before inserting the local row. That window now has an exact answer."""
+    w = World(operations=[{"id": "op-1", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": BOOKING,
+                           "target_provider_location_id": CORK_PID}])
     with env(w):
         out = await run()
     assert out.result == rec.DEFERRED_RESCHEDULE
+    assert "op-1" in out.detail
     assert w.inserts == [], "no orphan duplicate for the W6A2 replacement"
+
+
+@pytest.mark.asyncio
+async def test_V_COLLISION_same_tenant_location_and_start_is_NOT_adopted():
+    """THE regression this fix exists for.
+
+    Operation A's replacement is BOOKING_A. An unrelated booking BOOKING_B shares
+    tenant, location AND start time — differing only in staff/service/customer.
+    The old tenant+location+start heuristic would have deferred BOOKING_B as if it
+    were A's replacement. Exact provider identity must not.
+    """
+    w = World(operations=[{"id": "op-A", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": "BOOKING_A",
+                           "target_provider_location_id": CORK_PID,
+                           "target_start_at_utc": "2026-10-05T13:00:00Z"}])
+    with env(w):
+        out = await run(booking_id="BOOKING_B")          # same tenant/location/start
+    assert out.result == rec.RECONCILED_CREATED, \
+        "an unrelated booking must be mirrored, not swallowed as someone's replacement"
+    assert len(w.inserts) == 1
+    assert w.inserts[0]["google_event_id"] == "BOOKING_B"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("differing", ["staff", "service"])
+async def test_V_same_start_differing_staff_or_service_is_still_not_adopted(differing):
+    w = World(operations=[{"id": "op-A", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": "BOOKING_A",
+                           "target_provider_location_id": CORK_PID,
+                           "target_start_at_utc": "2026-10-05T13:00:00Z",
+                           "target_team_member_id": "TM1",
+                           "target_service_variation_id": "VAR1"}])
+    auth = {"id": "BOOKING_B", "status": "ACCEPTED", "version": 0,
+            "location_id": CORK_PID, "start_at": "2026-10-05T13:00:00Z",
+            "appointment_segments": [{"team_member_id": "TM9" if differing == "staff" else "TM1",
+                                      "service_variation_id": "VAR9" if differing == "service" else "VAR1",
+                                      "duration_minutes": 60}]}
+    with env(w, booking=auth):
+        out = await run(booking_id="BOOKING_B")
+    assert out.result == rec.RECONCILED_CREATED
+    assert w.inserts[0]["google_event_id"] == "BOOKING_B"
+
+
+@pytest.mark.asyncio
+async def test_V_matching_provider_id_but_mismatched_location_fails_closed():
+    w = World(operations=[{"id": "op-1", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": BOOKING,
+                           "target_provider_location_id": DUB_PID}])
+    with env(w):
+        out = await run(location_id=CORK_PID)
+    assert out.result == rec.LOCATION_CONFLICT
+    assert w.inserts == []
+
+
+@pytest.mark.asyncio
+async def test_V_matching_provider_id_but_another_tenants_operation_fails_closed():
+    w = World(operations=[{"id": "op-1", "tenant_id": SHAHID, "state": "in_progress",
+                           "replacement_provider_booking_id": BOOKING,
+                           "target_provider_location_id": CORK_PID}])
+    with env(w):
+        out = await run()
+    assert out.result == rec.IDENTITY_CONFLICT_OP
+    assert w.inserts == []
+
+
+@pytest.mark.asyncio
+async def test_V_replaying_the_matching_provider_id_is_idempotent():
+    w = World(operations=[{"id": "op-1", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": BOOKING,
+                           "target_provider_location_id": CORK_PID}])
+    with env(w):
+        outs = [await run(), await run(), await run()]
+    assert {o.result for o in outs} == {rec.DEFERRED_RESCHEDULE}
+    assert w.inserts == []
 
 
 @pytest.mark.asyncio
@@ -544,13 +634,33 @@ async def test_V2_once_the_replacement_row_exists_it_is_adopted_not_duplicated()
 
 
 @pytest.mark.asyncio
-async def test_V3_the_live_operation_check_fails_closed_when_it_errors():
+async def test_V3_a_pre_026_in_progress_operation_defers_mirror_creation():
+    """Transitional guard for the deploy window: an operation created before the
+    replacement id existed may own a booking it cannot name."""
+    w = World(operations=[{"id": "op-old", "tenant_id": DANI, "state": "in_progress",
+                           "replacement_provider_booking_id": None}])
+    with env(w):
+        out = await run()
+    assert out.result == rec.DEFERRED_RESCHEDULE
+    assert w.inserts == []
+
+
+@pytest.mark.asyncio
+async def test_V4_the_pre_026_check_fails_closed_when_it_errors():
     w = World()
-    with env(w), patch("db.reschedule_ops.list_live_operations_for_target",
+    with env(w), patch("db.reschedule_ops.list_unidentified_in_progress",
                        new=AsyncMock(side_effect=RuntimeError("db down"))):
         out = await run()
     assert out.result == rec.DEFERRED_RESCHEDULE
     assert w.inserts == []
+
+
+def test_V5_no_tenant_location_start_heuristic_remains():
+    """The removed inference must not creep back."""
+    code = _executable_source(rec)
+    assert "list_live_operations_for_target" not in code
+    assert "target_start_at_utc" not in code
+    assert "get_operation_by_replacement_booking" in code
 
 
 # ═══════════════════════════════════════════════════════════════════════════

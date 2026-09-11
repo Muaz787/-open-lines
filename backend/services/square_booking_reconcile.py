@@ -58,7 +58,9 @@ NOOP_NO_CHANGE = "noop_no_change"             # nothing to bring into line
 DEFERRED_OWNED = "deferred_owned"             # another workflow owns the row
 DEFERRED_RESCHEDULE = "deferred_reschedule"   # a live W6A2 operation targets this
 LOCATION_CONFLICT = "location_conflict"       # event location != authoritative
+IDENTITY_CONFLICT_OP = "identity_conflict_operation"  # operation tenant disagrees
 PROVIDER_UNKNOWN = "provider_unknown"         # could not read provider truth
+PROVIDER_ABSENT = "provider_absent"           # 404 for an event Square just sent
 NOT_BOOKING_EVENT = "not_booking_event"
 NO_CREDENTIAL = "no_credential"
 
@@ -156,17 +158,31 @@ async def reconcile_booking_event(event: dict) -> Outcome:
     existing = await db.get_appointment_by_provider_booking(booking_id)
 
     if fetch_status == square_booking.FETCH_NOT_FOUND:
-        # Square says this booking does not exist. Same reading W6A1/D2 already
-        # take for a 404: definitive absence, reconcile a local mirror to
-        # cancelled. Nothing is created for a booking that is not there.
-        if not existing:
-            return Outcome(NOOP_NO_CHANGE, tenant_id=tenant_id,
-                           tenant_location_id=location_id,
-                           detail="provider reports the booking absent; nothing local")
-        return await _apply_terminal(existing, meta, tenant_id, location_id,
-                                     version=meta.get("provider_version"),
-                                     updated_at=meta.get("provider_updated_at"),
-                                     why="provider reports the booking absent")
+        # A 404 is definitive in C1's taxonomy, and D2 acts on it — but D2 is
+        # asking "did my cancellation land?", where absence answers the question.
+        # Here it would mean DESTROYING a local appointment, and the two are not
+        # the same risk.
+        #
+        # Measured evidence says a 404 is never how a booking ends: cancelling in
+        # the D2/D3 live proofs left the booking fully retrievable by GET with
+        # status CANCELLED_BY_SELLER. Square signals cancellation as a STATUS
+        # CHANGE, not as deletion. So a 404 on a booking we hold a mirror for is
+        # anomalous, not informative — and cancelling on it buys nothing, because
+        # a genuine cancellation arrives as booking.updated with a terminal
+        # status, which this path handles properly.
+        #
+        # Nothing is mutated either way. Loud, and safe.
+        logger.error("W7D: ANOMALY — booking %s not found at the provider, but a %s "
+                     "event was delivered for it%s. No local mutation.",
+                     booking_id, meta["event_type"],
+                     f" (local appointment {existing['id']})" if existing else
+                     " and nothing is mirrored locally")
+        return Outcome(PROVIDER_ABSENT, tenant_id=tenant_id,
+                       tenant_location_id=location_id,
+                       appointment_id=str(existing["id"]) if existing else "",
+                       detail="provider reports the booking absent; refusing to "
+                              "cancel a local row on an absence Square never uses "
+                              "to signal cancellation")
 
     # ── the authoritative copy must agree about WHERE it happened ───────────
     auth_location = str(booking.get("location_id") or "")
@@ -212,18 +228,47 @@ async def reconcile_booking_event(event: dict) -> Outcome:
         return await _update_existing(existing, booking, meta, tenant_id, location_id,
                                       auth_version, auth_updated, terminal)
 
-    # ── no local row: is a live W6A2 operation about to create one? ─────────
-    if await _reschedule_in_flight_for(tenant_id, meta["provider_location_id"],
-                                       booking.get("start_at") or ""):
-        # D2 has created this replacement at Square and has not yet persisted its
-        # local row. Mirroring it here would produce a second appointment for one
-        # provider booking -- the lineage index would not catch it, because a
-        # mirror carries no rescheduled_from.
-        logger.info("W7D: a live reschedule targets %s at %s — deferring mirror "
-                    "creation for booking %s", meta["provider_location_id"],
-                    booking.get("start_at"), booking_id)
+    # ── no local row: is this booking a W6A2 replacement mid-flight? ────────
+    # EXACT provider identity. D2 names the booking on its operation the moment
+    # CreateBooking returns, before inserting the local row, so the gap between
+    # those two writes has a definite answer. No inference from tenant, location,
+    # start time, staff or service — Square gave us a unique id and guessing when
+    # the provider has already told us is indefensible.
+    owner_op = await _operation_owning(booking_id)
+    if owner_op:
+        if str(owner_op.get("target_provider_location_id") or "") != meta["provider_location_id"]:
+            logger.error("W7D: CONSISTENCY INCIDENT — booking %s is named by operation %s "
+                         "targeting %s, but this event routed to %s. Refusing to attach it.",
+                         booking_id, owner_op.get("id"),
+                         owner_op.get("target_provider_location_id"),
+                         meta["provider_location_id"])
+            return Outcome(LOCATION_CONFLICT, tenant_id=tenant_id,
+                           tenant_location_id=location_id,
+                           detail="operation target location disagrees with the event")
+        if str(owner_op.get("tenant_id") or "") != tenant_id:
+            logger.error("W7D: CONSISTENCY INCIDENT — booking %s belongs to operation %s "
+                         "of tenant %s, but routed to tenant %s.",
+                         booking_id, owner_op.get("id"), owner_op.get("tenant_id"), tenant_id)
+            return Outcome(IDENTITY_CONFLICT_OP, tenant_id=tenant_id,
+                           tenant_location_id=location_id,
+                           detail="operation tenant disagrees with the routed tenant")
+        logger.info("W7D: booking %s is the replacement of operation %s — deferring to "
+                    "W6A2, which owns its local row", booking_id, owner_op.get("id"))
         return Outcome(DEFERRED_RESCHEDULE, tenant_id=tenant_id,
-                       tenant_location_id=location_id, provider_version=auth_version)
+                       tenant_location_id=location_id, provider_version=auth_version,
+                       detail=f"replacement of operation {owner_op.get('id')}")
+
+    # TRANSITIONAL: an operation created before migration 026 may have made a
+    # booking it cannot name. Deferring is recoverable; a duplicate appointment is
+    # not. Production has zero reschedule operations, so this is a no-op today and
+    # exists only for the deploy window.
+    if await _has_unidentified_operation(tenant_id):
+        logger.warning("W7D: tenant %s has an in_progress reschedule with no recorded "
+                       "replacement booking id — deferring mirror creation for %s",
+                       tenant_id, booking_id)
+        return Outcome(DEFERRED_RESCHEDULE, tenant_id=tenant_id,
+                       tenant_location_id=location_id, provider_version=auth_version,
+                       detail="a pre-026 operation may own this booking")
 
     if terminal:
         # A booking that is already cancelled has nothing worth mirroring.
@@ -235,19 +280,22 @@ async def reconcile_booking_event(event: dict) -> Outcome:
                                 auth_version, auth_updated)
 
 
-async def _reschedule_in_flight_for(tenant_id: str, provider_location_id: str,
-                                    start_at: str) -> bool:
-    """Is a live W6A2 operation about to create exactly this booking locally?"""
-    if not (tenant_id and provider_location_id and start_at):
-        return False
+async def _operation_owning(booking_id: str) -> dict | None:
+    """The W6A2 operation that created this exact booking, or None.
+
+    Fails CLOSED on error by raising: a lookup failure must not be read as
+    "no operation owns this", which would mirror a replacement and leave two local
+    rows for one provider booking.
+    """
+    return await db_ops.get_operation_by_replacement_booking(booking_id)
+
+
+async def _has_unidentified_operation(tenant_id: str) -> bool:
     try:
-        return bool(await db_ops.list_live_operations_for_target(
-            tenant_id, provider_location_id, start_at))
+        return bool(await db_ops.list_unidentified_in_progress(tenant_id))
     except Exception as e:
-        logger.warning("W7D: live-operation check failed for %s: %s", tenant_id, e)
-        # Fail closed: if we cannot rule out an in-flight reschedule, do not
-        # create a row that might duplicate its replacement.
-        return True
+        logger.warning("W7D: pre-026 operation check failed for %s: %s", tenant_id, e)
+        return True          # fail closed
 
 
 async def _apply_terminal(existing: dict, meta: dict, tenant_id: str, location_id: str,
