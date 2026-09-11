@@ -339,7 +339,14 @@ async def create_booking(
         except Exception as e:
             # Timeout or dropped connection: the request may already be committed.
             raise BookingOutcomeUnknown(str(e)) from e
-        if res.status_code >= 500:
+        if res.status_code == 429 or res.status_code >= 500:
+            # 429 belongs here, not below. Square rate-limits at the edge, but a
+            # throttled request is not a REFUSED one: the platform does not
+            # promise the booking was never created, and raise_for_status() would
+            # assert exactly that. The cost of the old classification was a
+            # released slot plus a fresh idempotency key on the retry -- one
+            # uncertain booking turned into two certain ones. Matches
+            # cancel_booking_detailed, which already treats 429 as UNKNOWN.
             logger.error("Square create_booking %s (unknown outcome): %s",
                          res.status_code, res.text[:400])
             raise BookingOutcomeUnknown(f"HTTP {res.status_code}")
