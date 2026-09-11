@@ -259,7 +259,7 @@ def test_reschedule_appointment_now_exists_and_takes_only_opaque_refs():
     contract B was protecting: two opaque, call-scoped references and nothing
     else. No date, time, location, service, provider id or phone number."""
     from services import vapi
-    tool = next(x for x in vapi.build_calendar_tools("t1")
+    tool = next(x for x in vapi.build_calendar_tools("t1", supports_reschedule=True)
                 if x["function"]["name"] == "reschedule_appointment")
     props = tool["function"]["parameters"]["properties"]
     assert set(props) == {"appointment_ref", "slot_ref"}

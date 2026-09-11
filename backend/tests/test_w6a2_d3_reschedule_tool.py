@@ -347,7 +347,7 @@ async def call(ref=None, slot=None, phone=PHONE, call_id=CALL):
 
 def test_A_schema_has_exactly_appointment_ref_and_slot_ref():
     from services import vapi
-    t = next(x for x in vapi.build_calendar_tools("t1")
+    t = next(x for x in vapi.build_calendar_tools("t1", supports_reschedule=True)
              if x["function"]["name"] == "reschedule_appointment")
     props = t["function"]["parameters"]["properties"]
     assert set(props) == {"appointment_ref", "slot_ref"}
@@ -356,7 +356,7 @@ def test_A_schema_has_exactly_appointment_ref_and_slot_ref():
 
 def test_B_no_provider_location_customer_date_or_time_arguments():
     from services import vapi
-    t = next(x for x in vapi.build_calendar_tools("t1")
+    t = next(x for x in vapi.build_calendar_tools("t1", supports_reschedule=True)
              if x["function"]["name"] == "reschedule_appointment")
     props = set(t["function"]["parameters"]["properties"])
     forbidden = {"date", "time", "location", "service", "staff", "caller_phone",
