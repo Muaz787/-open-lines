@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header, Depends
 from services import analytics
+from services import appointment_cancellation
 from services import appointment_refs
 from services import mutation_ownership
 from db import mutation_claims as db_mc
@@ -320,73 +321,11 @@ async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone):
 
 
 async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
-    """Verify against Square, then cancel. Returns 'ok' | 'mismatch' | 'failed'.
-
-    The location check is the point. A local row can drift — from a bad backfill,
-    a manual edit, a bug we have not found yet — and cancelling on the strength of
-    a phone match alone would then destroy a booking at a location the caller never
-    mentioned. Square's own copy of the booking is the authority, and if the two
-    disagree we stop.
-    """
-    token = await square_booking.get_access_token(tenant)
-    if not token:
-        logger.error("tools/cancel[square]: no access token for tenant %s", tenant_id)
-        return "failed"
-
-    fetch_status, booking = await square_booking.get_booking_detailed(token, event_id)
-    if fetch_status == square_booking.FETCH_UNKNOWN:
-        # We could not read Square, so we cannot verify the location and must not
-        # cancel — and we equally cannot say the cancellation failed. Nothing was
-        # sent, but the appointment's provider state is unverified, so this is
-        # unknown rather than a definitive rejection.
-        logger.error("tools/cancel[square]: booking %s unreadable for tenant %s", event_id, tenant_id)
-        return "unknown"
-    if fetch_status == square_booking.FETCH_NOT_FOUND:
-        # A definitive answer: the booking is gone. See the NOT_FOUND note below.
-        logger.warning("tools/cancel[square]: booking %s absent at the provider "
-                       "(tenant %s) — reconciling local state", event_id, tenant_id)
-        return "ok"
-
-    expected = str(appt.get("provider_location_id") or "")
-    actual = str(booking.get("location_id") or "")
-    if expected and actual and expected != actual:
-        logger.error(
-            "tools/cancel[square]: INTEGRITY FAILURE — appointment %s says location %s "
-            "but Square booking %s is at %s. Refusing to cancel (tenant %s).",
-            appt.get("id"), expected, event_id, actual, tenant_id)
-        return "mismatch"
-    if expected and not actual:
-        logger.error("tools/cancel[square]: booking %s exposes no location_id; refusing "
-                     "to cancel against expected %s (tenant %s)", event_id, expected, tenant_id)
-        return "mismatch"
-
-    status, _, err_code = await square_booking.cancel_booking_detailed(token, event_id)
-    if status in (square_booking.CANCEL_OK, square_booking.CANCEL_ALREADY):
-        # ALREADY counts as success: the caller's intent is satisfied and our own
-        # record is the thing still out of date. Reconciling it is the right move,
-        # and it issues no second mutation — the detailed helper checked first.
-        if status == square_booking.CANCEL_ALREADY:
-            logger.info("tools/cancel[square]: booking %s was already cancelled — "
-                        "reconciling local state", event_id)
-        return "ok"
-    if status == square_booking.CANCEL_NOT_FOUND:
-        # Square definitively says the booking does not exist. Absence is terminal
-        # provider truth: there is nothing left to cancel, and our row is simply
-        # stale. Treated as success so the local record catches up — the caller's
-        # intent is already satisfied. Distinct from UNKNOWN, where absence is not
-        # established and assuming it would be a guess.
-        logger.warning("tools/cancel[square]: booking %s reported NOT_FOUND — "
-                       "reconciling local state (tenant %s)", event_id, tenant_id)
-        return "ok"
-    if status == square_booking.CANCEL_UNKNOWN:
-        # C1's whole point: we do not know. Kept distinct from "failed" so the
-        # caller can retain ownership and reconcile instead of releasing.
-        logger.error("tools/cancel[square]: cancel of %s outcome UNKNOWN (tenant %s)",
-                     event_id, tenant_id)
-        return "unknown"
-    logger.error("tools/cancel[square]: cancel of %s returned %s%s (tenant %s)",
-                 event_id, status, f" [{err_code}]" if err_code else "", tenant_id)
-    return "failed"
+    """Thin delegate. C4 moved the provider half into services/appointment_cancellation
+    so the refund path and the deferred-intent worker share one implementation of
+    the location-verification and outcome rules rather than three copies."""
+    return await appointment_cancellation.cancel_square_booking(
+        tenant, appt, event_id, tenant_id)
 
 
 def _customer_problem_message(status: str) -> str:

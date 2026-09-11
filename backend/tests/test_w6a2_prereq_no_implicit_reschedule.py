@@ -219,11 +219,20 @@ def test_the_slot_claim_prerequisite_is_still_in_place():
 
 
 def test_w6a1_cancellation_helpers_are_untouched():
-    """Deleting reschedule code must not take the explicit cancel path with it."""
+    """Deleting reschedule code must not take the explicit cancel path with it.
+
+    C4 moved the provider half into services/appointment_cancellation so the
+    refund path and the deferred-intent worker share one implementation; the tool
+    now delegates. The property still worth pinning is that the cancel tool
+    reaches a real provider cancellation, wherever that code lives.
+    """
     calls = _calls(tools.cancel_appointment)
     assert "_cancel_square_booking" in calls
     sq = _calls(tools._cancel_square_booking)
-    assert "square_booking.cancel_booking_detailed" in sq
+    assert "appointment_cancellation.cancel_square_booking" in sq
+    from services import appointment_cancellation
+    assert "square_booking.cancel_booking_detailed" in _calls(
+        appointment_cancellation.cancel_square_booking)
 
 
 # ── 10. the tool contract ────────────────────────────────────────────────────

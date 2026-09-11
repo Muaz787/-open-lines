@@ -259,8 +259,13 @@ async def _handle_checkout_completed(session: dict) -> None:
     appointment = None
     if payment.get("appointment_id"):
         try:
-            await db.update_appointment(payment["appointment_id"], {"status": "confirmed"})
-            logger.info("Appointment %s confirmed after payment", payment["appointment_id"])
+            # C4: conditional — a late payment webhook must not resurrect an
+            # appointment that has since been cancelled.
+            if await db.confirm_appointment_unless_cancelled(payment["appointment_id"]):
+                logger.info("Appointment %s confirmed after payment", payment["appointment_id"])
+            else:
+                logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
+                               "payment webhook", payment["appointment_id"])
             appointment = await db.get_appointment_by_id(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
@@ -449,8 +454,11 @@ async def _handle_square_payment_completed(event: dict) -> None:
     appointment = None
     if payment.get("appointment_id"):
         try:
-            await db.update_appointment(payment["appointment_id"], {"status": "confirmed"})
-            logger.info("Appointment %s confirmed after Square payment", payment["appointment_id"])
+            if await db.confirm_appointment_unless_cancelled(payment["appointment_id"]):
+                logger.info("Appointment %s confirmed after Square payment", payment["appointment_id"])
+            else:
+                logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
+                               "Square payment webhook", payment["appointment_id"])
             appointment = await db.get_appointment_by_id(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
@@ -529,12 +537,7 @@ async def _process_refund(payment: dict, tenant: dict) -> None:
             logger.error("Refund: could not load appointment %s: %s", appointment_id, e)
 
         if appointment:
-            await _cancel_appointment_calendar(tenant, appointment)
-            try:
-                await db.update_appointment(appointment_id, {"status": "cancelled"})
-                logger.info("Appointment %s cancelled after refund", appointment_id)
-            except Exception as e:
-                logger.error("Refund: failed to cancel appointment %s: %s", appointment_id, e)
+            await _cancel_appointment_after_refund(tenant, appointment, appointment_id)
 
     try:
         await _notify_refund(tenant, payment)
@@ -543,6 +546,91 @@ async def _process_refund(payment: dict, tenant: dict) -> None:
         logger.error("Refund notification failed for tenant %s: %s", tenant_id, e)
 
     await _emit_zapier_deposit(tenant_id, payment, "deposit_refunded")
+
+
+async def _cancel_appointment_after_refund(tenant: dict, appointment: dict,
+                                          appointment_id: str) -> None:
+    """Cancel the refunded appointment, under global mutation ownership.
+
+    A refund may complete financially even when the appointment cannot be
+    cancelled right now — but the INTENT must not evaporate. Previously this path
+    called the calendar directly with no coordination at all, which could cancel
+    a booking another workflow was mid-way through mutating; and it handled only
+    Google/Outlook, so a Square booking was never actually cancelled.
+    """
+    from services import appointment_cancel_intent, appointment_cancellation as cancel_svc
+    from services import mutation_ownership
+    from db import mutation_claims as db_mc
+
+    tenant_id = str(tenant.get("id") or "")
+    booking_id = appointment.get("google_event_id") or ""
+
+    own_status, claim = await mutation_ownership.acquire_for_cancel(appointment_id, tenant_id)
+
+    if own_status != mutation_ownership.ACQUIRED or claim is None:
+        # BUSY (or unavailable). What to do depends on WHO holds it, because the
+        # owners differ in whether they will end up cancelling this appointment.
+        owner = None
+        try:
+            owner = await db_mc.get_claim(appointment_id)
+        except Exception as e:
+            logger.warning("Refund: could not read the owning claim for %s: %s", appointment_id, e)
+        owner_type = (owner or {}).get("operation_type") or ""
+
+        if owner_type in (db_mc.OP_CANCEL, db_mc.OP_CANCEL_RECONCILE):
+            # A cancellation of this same appointment is already durably owned —
+            # by an interactive caller or by reconciliation. Queuing a second
+            # intent would add nothing: that owner's lifecycle ends in the
+            # appointment being cancelled or in an operator being told why not.
+            logger.info("Refund: appointment %s is already owned by %s — no extra "
+                        "cancellation intent needed", appointment_id, owner_type)
+            return
+
+        # Anything else — notably a reschedule, which can end in create_failed and
+        # leave the source ACTIVE — must not be trusted to subsume this.
+        result = await appointment_cancel_intent.enqueue(
+            tenant_id=tenant_id, appointment_id=appointment_id,
+            provider_booking_id=booking_id, reason="refund")
+        if result == appointment_cancel_intent.ENQUEUE_FAILED:
+            logger.error("Refund: appointment %s was refunded but its cancellation could "
+                         "NOT be recorded — needs manual review", appointment_id)
+        return
+
+    # We own it. Cancel under the same C1/C3 rules every other path obeys.
+    try:
+        outcome = await cancel_svc.cancel_at_provider(tenant, appointment, tenant_id)
+
+        if outcome == cancel_svc.UNKNOWN:
+            await mutation_ownership.to_reconcile(claim, db_mc.REASON_PROVIDER_UNKNOWN)
+            return
+
+        if outcome != cancel_svc.OK:
+            # Definitive rejection. Unlike an interactive caller, a refund is a
+            # standing business requirement, so release ownership and let the
+            # durable queue keep trying rather than dropping it.
+            await mutation_ownership.release(claim)
+            result = await appointment_cancel_intent.enqueue(
+                tenant_id=tenant_id, appointment_id=appointment_id,
+                provider_booking_id=booking_id, reason="refund")
+            if result == appointment_cancel_intent.ENQUEUE_FAILED:
+                logger.error("Refund: appointment %s was refunded, its cancellation was "
+                             "refused (%s), and the retry could NOT be recorded — needs "
+                             "manual review", appointment_id, outcome)
+            return
+
+        try:
+            await db.update_appointment(appointment_id, {"status": "cancelled"})
+            logger.info("Appointment %s cancelled after refund", appointment_id)
+        except Exception as e:
+            await mutation_ownership.to_reconcile(claim, db_mc.REASON_LOCAL_WRITE_FAILED)
+            logger.error("Refund: provider cancelled appointment %s but the local write "
+                         "failed (%s) — handed to reconciliation", appointment_id, e)
+            return
+
+        await mutation_ownership.release(claim)
+    except Exception as e:
+        logger.error("Refund: cancellation of appointment %s raised: %s", appointment_id, e)
+        await mutation_ownership.release(claim)
 
 
 async def _cancel_appointment_calendar(tenant: dict, appointment: dict) -> None:

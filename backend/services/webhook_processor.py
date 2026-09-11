@@ -8,6 +8,8 @@ so a mid-deploy restart or a slow GPT-4o call never loses a call event.
 
 import asyncio
 import time as _time
+
+from services import appointment_cancel_intent as _appointment_cancel_intent
 import json
 import logging
 import os
@@ -382,11 +384,35 @@ async def process_end_of_call(payload: dict) -> None:
     logger.info("Processed end-of-call-report for call %s tenant %s", call_id, tenant_id)
 
 
+async def _dispatch(event: dict) -> None:
+    """Route a queued event by its type.
+
+    Previously every row was handed to process_end_of_call regardless of
+    event_type, which was harmless while Vapi reports were the only thing queued
+    and unsafe the moment anything else was. An unrecognised type now raises
+    rather than silently entering the Vapi handler.
+    """
+    event_type = (event.get("event_type") or "").strip()
+    payload = event["payload"]
+
+    if event_type in ("", "end-of-call-report"):
+        # "" preserves the historical shape: rows enqueued before event_type was
+        # meaningful were all end-of-call reports.
+        await process_end_of_call(payload)
+        return
+
+    if event_type == _appointment_cancel_intent.EVENT_TYPE:
+        await _appointment_cancel_intent.handle(payload)
+        return
+
+    raise ValueError(f"webhook processor: unknown event_type {event_type!r}")
+
+
 async def _process_one(event: dict) -> None:
     event_id = event["id"]
     attempts = event["attempts"] + 1
     try:
-        await process_end_of_call(event["payload"])
+        await _dispatch(event)
         await db.mark_webhook_done(event_id)
     except Exception as e:
         error_msg = str(e)
