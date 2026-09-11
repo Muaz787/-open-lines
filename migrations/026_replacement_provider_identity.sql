@@ -60,9 +60,21 @@ create unique index if not exists appointment_reschedule_ops_replacement_booking
 -- One local appointment per provider booking, per tenant. This is what makes the
 -- webhook's SELECT-then-INSERT safe under concurrent delivery: the loser gets
 -- 23505 and re-reads instead of creating a second row.
+--
+-- THE PREDICATE EXCLUDES THE EMPTY STRING, NOT JUST NULL.
+-- routers/tools.py writes `event.get("id", "")` on the Google/Outlook booking
+-- path, so a calendar response without an id yields '' rather than NULL. Under a
+-- NULL-only predicate two such rows for one tenant would collide, and a calendar
+-- hiccup would become a REFUSED BOOKING for a caller on the phone. An empty id is
+-- not a provider identity, so it is excluded from the identity constraint
+-- entirely -- which is also the honest reading: we cannot claim uniqueness over a
+-- value that identifies nothing.
+--
+-- Verified against production before writing: 26 appointments, 0 NULL, 0 empty,
+-- 0 duplicates on either key.
 create unique index if not exists appointments_tenant_provider_booking_key
     on appointments (tenant_id, google_event_id)
-    where google_event_id is not null;
+    where google_event_id is not null and google_event_id <> '';
 
 -- ===========================================================================
 -- ROLLBACK (do NOT run unless reverting).

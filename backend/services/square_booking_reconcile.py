@@ -134,6 +134,14 @@ async def reconcile_booking_event(event: dict) -> Outcome:
 
     tenant_id, location_id = res.tenant_id, res.tenant_location_id
     booking_id = meta["object_id"]
+    if not booking_id:
+        # No provider identity, nothing to reconcile against. Belt-and-braces: an
+        # empty id is also excluded from the appointments identity constraint, so
+        # mirroring one would create a row nothing could ever match again.
+        logger.warning("W7D: booking event %s carries no booking id — nothing to do",
+                       meta["provider_event_id"])
+        return Outcome(NOT_BOOKING_EVENT, tenant_id=tenant_id,
+                       tenant_location_id=location_id, detail="no provider booking id")
 
     tenant = await db.get_tenant_by_id(tenant_id) or {}
     token = await square_booking.get_access_token(tenant)
