@@ -393,6 +393,19 @@ async def square_webhook(request: Request):
     event_type = event.get("type", "")
     event_id   = event.get("event_id", "")
 
+    # W7B — OBSERVATION ONLY. Records the delivery, counts repeats, and asks the
+    # W7A resolver what it WOULD route. It selects nothing: the dispatch below is
+    # byte-identical to before and still routes via get_tenant_by_square_merchant_id.
+    #
+    # A duplicate delivery is deliberately NOT short-circuited here. Suppressing
+    # it would change behaviour, and the handler that dedupe protects is the same
+    # one W7D replaces — so it lands with the cutover, not ahead of it.
+    #
+    # Fail-open on purpose: an observability outage must not become a webhook
+    # outage. observe() never raises.
+    from services import square_webhook_observability as _w7b
+    _observation = await _w7b.observe(event)
+
     try:
         match event_type:
             case "payment.updated" | "payment.created":
@@ -403,10 +416,15 @@ async def square_webhook(request: Request):
             case "catalog.version.updated":
                 from services import square_booking
                 await square_booking.handle_catalog_update(event)
+            case _:
+                await _w7b.record_legacy_result(_observation, _w7b.LEGACY_UNHANDLED)
+                return {"status": "ok"}
     except Exception as e:
+        await _w7b.record_legacy_result(_observation, _w7b.LEGACY_ERROR, str(e))
         logger.error("Square webhook processing failed for event %s: %s", event_id, e)
         raise HTTPException(status_code=500, detail="Processing failed")
 
+    await _w7b.record_legacy_result(_observation, _w7b.LEGACY_COMPLETED)
     return {"status": "ok"}
 
 

@@ -494,22 +494,37 @@ async def test_merchant_lookup_short_circuits_on_empty_input():
 # §15 — zero blast radius
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_no_production_handler_imports_the_resolver_yet():
+def test_the_resolver_is_reachable_only_through_the_observability_layer():
+    """W7B wired W7A in — for OBSERVATION only.
+
+    The guard that mattered was never "nothing imports this"; it was "nothing
+    that MUTATES imports this". So the allowed importers are pinned by name: the
+    shadow observer, and the endpoint that calls it. A booking or catalog handler
+    reaching for the resolver would mean routing had changed without review.
+    """
     import ast
     import pathlib
 
     root = pathlib.Path(__file__).resolve().parent.parent
-    offenders = []
-    for path in list((root / "routers").rglob("*.py")) + list((root / "services").rglob("*.py")):
-        if path.name in ("square_webhook_resolution.py",):
-            continue
+    allowed = {"services/square_webhook_observability.py",
+               "routers/payments.py",
+               "services/square_webhook_resolution.py",
+               "db/square_routing.py"}
+
+    importers = []
+    for path in list((root / "routers").rglob("*.py")) + list((root / "services").rglob("*.py")) \
+            + list((root / "db").rglob("*.py")):
+        rel = str(path.relative_to(root))
         tree = ast.parse(path.read_text())
         names = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
         names |= {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
         names |= {a.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) for a in n.names}
         if any("square_webhook_resolution" in x or "square_routing" in x for x in names):
-            offenders.append(str(path.relative_to(root)))
-    assert offenders == [], f"W7A must stay unwired until W7B: {offenders}"
+            importers.append(rel)
+
+    assert set(importers) <= allowed, f"unexpected importer(s): {sorted(set(importers) - allowed)}"
+    # and the mutating handlers specifically must not be among them
+    assert "services/square_booking.py" not in importers
 
 
 def test_the_square_webhook_dispatch_is_unchanged():
