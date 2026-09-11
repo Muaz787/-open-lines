@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import uuid as _uuid
 from datetime import datetime, timedelta, date as date_type, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
@@ -272,9 +273,44 @@ async def create_booking(
     token: str, *, location_id: str, start_at_iso: str, customer_id: str,
     team_member_id: str, service_variation_id: str, service_variation_version,
     duration_minutes: int | None, note: str = "",
+    idempotency_key: "str | _uuid.UUID | None" = None,
 ) -> dict:
-    """CreateBooking. Returns the booking object (id, status, ...). Raises on HTTP error."""
+    """CreateBooking. Returns the booking object (id, status, ...). Raises on HTTP error.
+
+    idempotency_key is OPTIONAL and defaults to a fresh UUID per request, which is
+    what ordinary booking wants: each call is a new logical booking, and a caller
+    that retries after an unknown outcome would be replaying a body rebuilt from a
+    live resolve_slot — a different request, which a stable key would turn into a
+    conflict rather than a no-op.
+
+    A caller may supply one only when it can also guarantee the BODY is frozen.
+    W6A2's reschedule operation will be the first: every provider-significant
+    field comes from appointment_reschedule_operations
+    (target_provider_location_id, target_provider_customer_id,
+    target_service_variation_id, target_service_variation_version,
+    target_team_member_id, target_start_at_utc, target_duration_minutes,
+    target_service_name) alongside provider_idempotency_key, and no retry may
+    call resolve_slot again. A stable key over a mutable body is worse than no
+    stable key at all.
+
+    Square requires idempotency_key on CreateBooking, so an absent key is
+    generated rather than omitted — unlike create_customer, where the field is
+    optional and simply left out.
+    """
     import uuid
+    if idempotency_key is None:
+        key = str(uuid.uuid4())
+    elif isinstance(idempotency_key, uuid.UUID):
+        # The operation row stores a uuid; canonical string form is the boundary.
+        key = str(idempotency_key)
+    else:
+        # Used EXACTLY as supplied — not stripped, not re-cased, not canonicalised.
+        # Silently repairing a caller's key would break the one property it exists
+        # to provide.
+        key = idempotency_key
+        if not key.strip():
+            raise ValueError("create_booking: idempotency_key must not be empty")
+
     seg: dict = {
         "team_member_id": team_member_id,
         "service_variation_id": service_variation_id,
@@ -284,7 +320,7 @@ async def create_booking(
     if duration_minutes:
         seg["duration_minutes"] = int(duration_minutes)
     body = {
-        "idempotency_key": str(uuid.uuid4()),
+        "idempotency_key": key,
         "booking": {
             "location_id": location_id,
             "start_at": start_at_iso,
