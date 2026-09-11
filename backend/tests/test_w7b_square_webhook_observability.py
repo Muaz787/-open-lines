@@ -540,7 +540,10 @@ def test_the_dispatch_table_is_intact_after_the_W7D_cutover():
                  '"catalog.version.updated"'):
         assert case in src
     assert "_handle_square_payment_completed(event)" in src
-    assert "square_booking.handle_catalog_update(event)" in src
+    # W7E replaced the catalog arm's single-tenant .limit(1) lookup with
+    # all-candidate routing. Payments are still untouched.
+    assert "_w7e.route_catalog_event(event)" in src
+    assert "square_booking.handle_catalog_update(event)" not in src
     # booking now routes through the location-aware reconciler. W7D.1 added the
     # resolve-once hand-off, so the call carries the shared Resolution.
     assert "square_booking_reconcile.reconcile_booking_event(" in src
