@@ -456,6 +456,18 @@ async def _maybe_reconcile_cancellations() -> None:
     except Exception as e:
         logger.error("cancel reconciliation pass failed: %s", e)
 
+    try:
+        # W6A2-D1: release reschedule claims whose operation row never landed.
+        # Safe because no provider call may precede operation persistence, so
+        # such a claim proves nothing was created. Real persisted operations are
+        # explicitly NOT recovered here — that is the D2 recovery worker's job.
+        from services import reschedule
+        orphans = await reschedule.cleanup_orphan_reschedule_claims()
+        if orphans.get("scanned"):
+            logger.info("orphan reschedule claims: %s", orphans)
+    except Exception as e:
+        logger.error("orphan reschedule claim pass failed: %s", e)
+
 
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")

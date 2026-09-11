@@ -509,12 +509,20 @@ def test_no_release_helper_works_without_both_token_and_timestamp():
         assert "claim_token" in code and "claimed_at" in code, fn.__name__
 
 
-def test_no_reschedule_runtime_was_introduced():
-    """C3 establishes the lock boundary only."""
-    import ast
+def test_the_ownership_layer_never_mutates_a_provider():
+    """SUPERSEDES C3's "no reschedule runtime exists" guard, which D1 retires by
+    design when it adds acquire_for_reschedule.
+
+    What must still hold — and is the stronger property — is that the ownership
+    layer itself remains a lock and nothing more: it never creates or cancels a
+    booking, and it never touches the operations table. Reschedule ownership may
+    exist; reschedule side effects may not live here.
+    """
     import inspect
     for mod in (mo, db_mc):
         src = inspect.getsource(mod)
-        assert "appointment_reschedule_operations" not in src
-        assert "create_booking" not in src
-    assert not hasattr(mo, "acquire_for_reschedule")
+        assert "create_booking" not in src, f"{mod.__name__} must not create bookings"
+        assert "cancel_booking" not in src, f"{mod.__name__} must not cancel bookings"
+        assert "appointment_reschedule_operations" not in src, \
+            f"{mod.__name__} must not touch the operations table"
+    assert hasattr(mo, "acquire_for_cancel") and hasattr(mo, "acquire_for_reschedule")
