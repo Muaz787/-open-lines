@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
 from services import square_service as sq_svc, square_booking, vapi
+from services import location_sync
 from services.security import encrypt, verify_tenant_owner
 from db import supabase as db
 
@@ -118,7 +119,23 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         logger.error("Square OAuth: no access_token in response for tenant %s", tenant_id)
         return RedirectResponse(url=f"{dest}?square=error")
 
-    location_id = ""
+    # W7E.3: the legacy pointer starts from whatever the tenant already has, not
+    # from empty. This callback used to begin at "" and then write
+    # `location_id or None` unconditionally, which meant a RE-connect had two
+    # destructive outcomes:
+    #
+    #   * list_locations succeeded -> the tenant's existing pointer was silently
+    #     replaced by locations[0], i.e. by Square's list order
+    #   * list_locations FAILED    -> location_id stayed "" and the pointer was
+    #     written as NULL, wiping it outright. availability falls back to that
+    #     pointer, so one transient Square hiccup during a re-connect could take
+    #     a live single-location tenant's bookings offline.
+    #
+    # Starting from the existing value makes both impossible, and the shared
+    # W7E.1 chooser decides the rest: existing pointer preserved, or the ONE
+    # unambiguous usable location, or nothing. It never picks a row.
+    existing_location_id = str((tenant or {}).get("square_location_id") or "").strip()
+    location_id = existing_location_id
     currency    = ""
     try:
         merchant_info = await sq_svc.get_merchant_info(access_token)
@@ -127,12 +144,22 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
             merchant_id = merchant_info.get("merchant_id", "")
     except Exception as e:
         logger.warning("Square OAuth: could not fetch merchant info for tenant %s: %s", tenant_id, e)
+    locations: list[dict] = []
     try:
         locations = await sq_svc.list_locations(access_token)
-        if locations:
-            location_id = locations[0].get("id", "")
     except Exception as e:
         logger.warning("Square OAuth: could not fetch locations for tenant %s: %s", tenant_id, e)
+    location_id = location_sync.choose_legacy_default_square_location(
+        existing_location_id, locations) or ""
+    if not location_id and len(location_sync.usable_square_locations(locations)) > 1:
+        # A multi-location merchant connecting for the first time. There is no
+        # single right answer, so no default is invented — the merchant's
+        # locations are persisted as bindings by the follow-on sync, and W4
+        # resolution works from those.
+        logger.info(
+            "Square OAuth: tenant %s has %d usable Square locations — leaving "
+            "square_location_id unset rather than guessing a default",
+            tenant_id, len(location_sync.usable_square_locations(locations)))
 
     try:
         update = {
