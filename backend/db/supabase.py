@@ -977,3 +977,54 @@ async def get_appointment_by_rescheduled_from(source_appointment_id: str) -> dic
         .execute()
     )
     return res.data[0] if res.data else None
+
+
+# ---------------------------------------------------------------------------
+# W7D — provider-version guarded reconciliation (migration 025)
+# ---------------------------------------------------------------------------
+
+async def get_appointment_by_provider_booking(booking_id: str) -> dict | None:
+    """Find a local row by provider booking id, WITHOUT knowing the tenant.
+
+    get_appointment_by_event_id() requires a tenant_id, which a webhook does not
+    have until routing has already succeeded. This lookup is how W7D notices that
+    a booking is already mirrored -- including a W6A2 replacement created moments
+    earlier -- before it considers inserting anything.
+
+    google_event_id is the provider-booking linkage for every provider. The name
+    predates Square; it is deliberately not renamed in this slice.
+    """
+    if not booking_id:
+        return None
+    res = (get_client().table("appointments").select("*")
+           .eq("google_event_id", booking_id).limit(1).execute())
+    return res.data[0] if res.data else None
+
+
+async def reconcile_appointment_if_newer(appointment_id: str, provider_version,
+                                         patch: dict) -> bool:
+    """Apply `patch` ONLY if the provider version we hold is newer than the stored one.
+
+    The guard is in the UPDATE's own predicate rather than in a preceding SELECT,
+    because two webhook workers can read the same stored version and both decide
+    they are newer. Expressed as PostgREST `or=(is.null, lt.N)`:
+
+        stored IS NULL            -> accept (a legacy row upgrades itself)
+        stored < provider_version -> accept
+        stored = provider_version -> no row matches, no-op (duplicate delivery)
+        stored > provider_version -> no row matches, no-op (stale delivery)
+
+    Returns True only if WE made the change. `len(res.data) == 1` is the proof --
+    the same compare-and-swap discipline every W6A2 mutator uses.
+
+    Only the columns in `patch` are written. A full-row dict must never be passed
+    here: that is the resurrection bug this function exists to make impossible.
+    """
+    if not appointment_id or provider_version is None:
+        return False
+    res = (get_client().table("appointments")
+           .update({**patch, "provider_version": int(provider_version)})
+           .eq("id", appointment_id)
+           .or_(f"provider_version.is.null,provider_version.lt.{int(provider_version)}")
+           .execute())
+    return len(res.data or []) == 1
