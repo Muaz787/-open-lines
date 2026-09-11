@@ -600,13 +600,19 @@ def test_orphan_cleanup_is_wired_into_the_continuous_loop():
 
 # ── 16. no tool exposure ─────────────────────────────────────────────────────
 
-def test_no_reschedule_tool_is_exposed_to_the_assistant_yet():
+def test_booking_still_cannot_name_an_existing_appointment():
+    """D3 exposed reschedule_appointment; this invariant outlives that.
+
+    book_appointment must never learn to take an appointment_ref. The moment it
+    can name an existing appointment, "book" and "move" stop being separable at
+    the tool boundary, which is where the separation has to hold.
+    """
     from services import vapi
-    names = {t["function"]["name"] for t in vapi.build_calendar_tools("t1")}
-    assert "reschedule_appointment" not in names
     book = next(t for t in vapi.build_calendar_tools("t1")
                 if t["function"]["name"] == "book_appointment")
-    assert "appointment_ref" not in book["function"]["parameters"]["properties"]
+    props = book["function"]["parameters"]["properties"]
+    assert "appointment_ref" not in props
+    assert not any("reschedule" in k for k in props)
 
 
 def test_bad_refs_never_reach_ownership():
