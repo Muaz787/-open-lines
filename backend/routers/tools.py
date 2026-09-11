@@ -331,12 +331,13 @@ async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
         logger.error("tools/cancel[square]: no access token for tenant %s", tenant_id)
         return "failed"
 
-    try:
-        booking = await square_booking.get_booking(token, event_id)
-    except Exception as e:
-        logger.error("tools/cancel[square]: could not read booking %s: %s", event_id, e)
+    fetch_status, booking = await square_booking.get_booking_detailed(token, event_id)
+    if fetch_status == square_booking.FETCH_UNKNOWN:
+        # We could not read Square, so we cannot verify the location and must not
+        # cancel. Distinct from NOT_FOUND, which is an actual answer.
+        logger.error("tools/cancel[square]: booking %s unreadable for tenant %s", event_id, tenant_id)
         return "failed"
-    if not booking:
+    if fetch_status == square_booking.FETCH_NOT_FOUND:
         logger.error("tools/cancel[square]: booking %s not found for tenant %s", event_id, tenant_id)
         return "failed"
 
@@ -353,7 +354,7 @@ async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
                      "to cancel against expected %s (tenant %s)", event_id, expected, tenant_id)
         return "mismatch"
 
-    status, _ = await square_booking.cancel_booking_detailed(token, event_id)
+    status, _, err_code = await square_booking.cancel_booking_detailed(token, event_id)
     if status in (square_booking.CANCEL_OK, square_booking.CANCEL_ALREADY):
         # ALREADY counts as success: the caller's intent is satisfied and our own
         # record is the thing still out of date. Reconciling it is the right move,
@@ -362,8 +363,8 @@ async def _cancel_square_booking(tenant, appt, event_id, tenant_id) -> str:
             logger.info("tools/cancel[square]: booking %s was already cancelled — "
                         "reconciling local state", event_id)
         return "ok"
-    logger.error("tools/cancel[square]: cancel of %s returned %s (tenant %s)",
-                 event_id, status, tenant_id)
+    logger.error("tools/cancel[square]: cancel of %s returned %s%s (tenant %s)",
+                 event_id, status, f" [{err_code}]" if err_code else "", tenant_id)
     return "failed"
 
 
