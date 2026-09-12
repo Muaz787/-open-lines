@@ -24,6 +24,30 @@ def _sub_client(subaccount_sid: str, subaccount_token: str) -> Client:
     return Client(subaccount_sid, subaccount_token)
 
 
+def regulatory_client(subaccount_sid: str, subaccount_token: str) -> Client:
+    """A client that can read a SUB-ACCOUNT's regulatory resources.
+
+    W9H-QA.2 measured a trap worth a named function. Twilio has two URL shapes:
+
+      api.twilio.com/2010-04-01/Accounts/{sid}/...   PATH-scoped
+      numbers.twilio.com/v2/RegulatoryCompliance/... CREDENTIAL-scoped
+
+    The Numbers v2 URLs carry no account segment at all, so `Client(parent_sid,
+    parent_token, account_sid=sub_sid)` silently returns the PARENT's Bundles,
+    EndUsers and SupportingDocuments while appearing to be scoped to the
+    sub-account. During W9H-QA.2 that made a brand-new, provably empty sub-account
+    report one SupportingDocument -- a census that would have been reported as the
+    customer's had it not been impossible on its face.
+
+    Only the sub-account's OWN credentials scope Numbers v2. Use this rather than
+    constructing a client with account_sid= whenever Bundles, EndUsers or
+    SupportingDocuments are being read or written for a tenant.
+    """
+    if not subaccount_sid or not subaccount_token:
+        raise ValueError("a regulatory client requires the sub-account's own credentials")
+    return Client(subaccount_sid, subaccount_token)
+
+
 async def create_subaccount(business_name: str) -> dict:
     try:
         client = _master_client()
