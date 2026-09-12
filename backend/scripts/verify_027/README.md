@@ -60,10 +60,15 @@ done
 | `stage_e.py` | delete/cascade semantics, measured not assumed |
 | `stage_f.py` | RLS against real `anon` / `authenticated` / `service_role` |
 | `stage_gh.py` | replay idempotency (catalog fingerprint unchanged across three applications) and rollback/legacy compatibility |
+| `stage_k.py` | migration **030**'s provider-claim constraints — 19 proofs: one claim per logical scope, scopes that must not collide, cross-tenant independence, SID uniqueness within an account, cascade |
+| `stage_l_race.py` | the claim is exclusive under real OS-level concurrency — four processes per resource, one winner, every loser seeing 23505 on `trpc_scope_key` |
+| `stage_m_retire_race.py` | the retirement CAS under real concurrency — four processes retiring one SID yield one winner; a stale worker cannot clear a replacement; exclusivity and `trpc_sid_account_chk` survive retirement |
 
 ```bash
 cd backend/scripts/verify_027
-for s in stage_c stage_d stage_e stage_f stage_gh; do python $s.py; done
+for s in stage_c stage_d stage_e stage_f stage_gh stage_k; do python $s.py; done
+python stage_l_race.py parent
+python stage_m_retire_race.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.
@@ -78,6 +83,20 @@ still set, which trips `tre_profile_needs_tenant_chk`. Account closure and GDPR
 erasure would have failed with `23514`. Both owner FKs are now `ON DELETE CASCADE`.
 
 No amount of reading the DDL would have found that.
+
+## Keeping the fixtures alive as the lineage moves
+
+`stage_d.py` and `stage_e.py` were written for a 027-only lineage. Migration **028**
+then added `trp_submitted_requirements_chk` — a profile past the draft states needs a
+`requirements_fingerprint` — and most fixtures in both scripts are `'approved'`, so
+both began failing on their own setup and 027's proofs silently stopped running.
+Both now supply the fingerprint as a literal, leaving every call site and argument
+tuple untouched.
+
+That repair was made only after confirming the failure **predates** the migration
+under test: replaying the lineage with 030 excluded produces the identical failure,
+on the identical 028 constraint. A harness failure that a new migration actually
+caused is a regression, and would be reported rather than patched over.
 
 ## Fidelity limits
 
