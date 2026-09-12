@@ -23,6 +23,7 @@ from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
 from services import regulatory_state as st
 from tests.test_w9g_engine import (ADDR_SID, BU_SID, DOC_SID, EU_SID, GOOD_ADDRESS,
+                                   _seed_authorization, authorize, prepared,
                                    GOOD_ATTRS, REQS, SUB, TENANT, FakeTwilio,
                                    ProviderError, tenant, world)  # noqa: F401
 from tests.test_w9g_regulation_discovery import FakeRegulation, IE_REQUIREMENTS
@@ -66,6 +67,10 @@ def _seed(world, **over):
                                "validated": True, "address_sid": ADDR_SID,
                                "supporting_document_sid": DOC_SID,
                                "provider_account_sid": SUB})
+    # A workflow that has details and a validated address has, in reality, also
+    # recorded the customer's authorisation -- the gate sits between the two and
+    # nothing reaches the provider without it.
+    _seed_authorization(world)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -74,9 +79,8 @@ def _seed(world, **over):
 
 @pytest.mark.asyncio
 async def test_the_fingerprint_is_written_to_the_profile_not_just_returned(world):
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
-    assert r["ok"]
+    r = await prepared(world)
+    assert r["ok"], r
     stored = world["profiles"][0]
     assert stored["requirements_fingerprint"] == REQS.fingerprint()
     assert stored["requirements_observed_at"]
@@ -86,8 +90,7 @@ async def test_the_fingerprint_is_written_to_the_profile_not_just_returned(world
 async def test_the_fingerprint_survives_a_new_request_with_no_shared_memory(world):
     """T1 collects, the process 'restarts', T2 submits. The only thing carried across
     is the database row -- which is the whole point."""
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    await prepared(world)
     persisted = dict(world["profiles"][0])          # all a later request would load
     _seed(world)
     world["profiles"].clear()
@@ -156,8 +159,7 @@ def test_a_changed_regulation_sid_is_still_caught_separately(world):
 async def test_details_are_persisted_BEFORE_the_provider_is_touched(world):
     """CASE 1: EndUser.create fails. The answers must already be safe."""
     world["twilio"].opts["end_user_error"] = ProviderError(code=20500, status=500)
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    r = await prepared(world)
     assert r["status"] == engine.PROVIDER_UNAVAILABLE
     assert world["details"], "the customer's answers were lost"
     assert world["details"][0]["business_registration_number"] == "123456"
@@ -167,8 +169,7 @@ async def test_details_are_persisted_BEFORE_the_provider_is_touched(world):
 async def test_a_retry_after_a_provider_failure_needs_no_customer_input(world):
     """CASE 5: the customer has gone. The retry must still work."""
     world["twilio"].opts["end_user_error"] = ProviderError(code=20500, status=500)
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    await prepared(world)
 
     world["twilio"].opts.pop("end_user_error")
     r = await engine.prepare_profile(tenant(), attributes={})   # nothing re-sent
@@ -179,11 +180,16 @@ async def test_a_retry_after_a_provider_failure_needs_no_customer_input(world):
 @pytest.mark.asyncio
 async def test_one_field_can_be_corrected_without_resending_the_rest(world):
     """CASE 3: Twilio rejects the filing over the CRO number."""
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
-    r = await engine.prepare_profile(
+    await prepared(world)
+    # Correcting the CRO number changes a fact the authorisation covered, so the
+    # old authorisation stops applying -- by design. The customer re-authorises the
+    # corrected facts, and only then does the filing proceed.
+    stale = await engine.prepare_profile(
         tenant(), attributes={"business_registration_number": "NC999999"})
-    assert r["ok"]
+    assert stale["status"] == engine.AUTHORIZATION_STALE, stale
+    await authorize(world)
+    r = await engine.prepare_profile(tenant(), attributes={})
+    assert r["ok"], r
     stored = world["details"][0]
     assert stored["business_registration_number"] == "NC999999"
     assert stored["authorized_rep_email"] == "ann@dani.ie", "an untouched field was wiped"
@@ -312,10 +318,9 @@ async def test_the_declaration_comes_from_the_POLICY_not_a_default(world):
     """W9G.3. The values are supplied, but from a context-keyed policy Twilio
     confirmed -- not a constant, and not for any other context."""
     from services import regulatory_declaration as rd
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     attrs = {k: v for k, v in GOOD_ATTRS.items()
              if k not in ("business_identity", "is_subassigned")}
-    await engine.prepare_profile(tenant(), attributes=attrs)
+    await prepared(world, attrs)
     policy = rd.resolve(iso_country="IE", number_type="local",
                         end_user_type="business")
     sent = world["twilio"].last_end_user_attributes
@@ -584,6 +589,9 @@ async def test_the_customer_can_fix_the_address_without_retyping_anything(world)
     world["twilio"].opts.pop("address_error")
     world["addresses"].clear()
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    # A corrected address is a different premises to authorise, so consent is given
+    # for it -- but NOTHING the customer typed is re-sent, which is the point here.
+    await authorize(world)
     r = await engine.prepare_profile(tenant(), attributes={})   # nothing re-sent
     assert r["ok"], r
     sent = world["twilio"].last_end_user_attributes

@@ -632,3 +632,114 @@ async def record_provider_claim_failure(claim_id: str, failure: str) -> dict | N
            .update({"failure": failure, "updated_at": _now_iso()})
            .eq("id", claim_id).is_("provider_sid", "null").execute())
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
+# ── tenant_regulatory_authorizations (migration 029, W9H.1A) ───────────────
+#
+# APPEND-ONLY BY INTERFACE. There is no generic update function here on purpose:
+# an authorisation records what a customer agreed to at a moment, and the only
+# intended later mutation is revoking it. Immutability cannot be enforced by a
+# CHECK -- a CHECK cannot compare OLD to NEW -- and this repository contains no
+# triggers, so the narrow interface IS the enforcement. Residual risk is stated in
+# migration 029: RLS with no policies stops every anon/authenticated caller, but
+# our own service role could still rewrite a row by going around these functions.
+
+# The columns a caller may supply. authorized_at is DELIBERATELY NOT among them:
+# it is stamped here from the server clock, so no caller -- including a future route
+# that forwards a request body carelessly -- can backdate or forward-date the audit
+# record of when a customer consented. The engine does not accept one either; this
+# is the same guarantee made twice, on purpose.
+AUTHORIZATION_COLUMNS = (
+    "tenant_id", "iso_country", "end_user_type", "tenant_regulatory_address_id",
+    "authorized_details_fingerprint", "authorized_by", "authorization_method",
+    "authorized_address_city", "authorized_address_postal_code",
+)
+
+
+async def insert_authorization(row: dict) -> dict | None:
+    """Record one authorisation, or return None if an identical one already exists.
+
+    None means the partial unique index refused a second ACTIVE authorisation for
+    the same scope and the same facts -- which is the idempotency we want: a
+    double-clicked consent form records one authorisation, not two. The caller
+    re-reads rather than treating it as an error. This is DB-only; unlike the
+    address race in W9H-QA.3 there is no provider resource to strand.
+    """
+    payload = {k: row.get(k) for k in AUTHORIZATION_COLUMNS}
+    # WHEN is ours, never the caller's.
+    payload["authorized_at"] = _now_iso()
+    payload["created_at"] = _now_iso()
+    try:
+        res = (get_client().table("tenant_regulatory_authorizations")
+               .insert(payload).execute())
+    except Exception as e:
+        if _is_unique_violation(e):
+            return None
+        raise
+    return (res.data or [None])[0]
+
+
+async def find_active_authorization(tenant_id: str, iso_country: str,
+                                    end_user_type: str, address_row_id: str,
+                                    fingerprint: str | None = None) -> dict | None:
+    """The live authorisation for one exact scope.
+
+    Scoped by ADDRESS, never by tenant and country alone: authorising the Limerick
+    premises is not authorising the Cork one.
+    """
+    q = (get_client().table("tenant_regulatory_authorizations").select("*")
+         .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
+         .eq("end_user_type", end_user_type)
+         .eq("tenant_regulatory_address_id", address_row_id)
+         .is_("authorization_revoked_at", "null"))
+    if fingerprint:
+        q = q.eq("authorized_details_fingerprint", fingerprint)
+    return (q.limit(1).execute().data or [None])[0]
+
+
+async def list_authorizations(tenant_id: str, iso_country: str | None = None,
+                              address_row_id: str | None = None) -> list[dict]:
+    """Every authorisation, revoked ones included. History must stay queryable."""
+    q = (get_client().table("tenant_regulatory_authorizations").select("*")
+         .eq("tenant_id", tenant_id))
+    if iso_country:
+        q = q.eq("iso_country", iso_country)
+    if address_row_id:
+        q = q.eq("tenant_regulatory_address_id", address_row_id)
+    return q.order("authorized_at", desc=True).execute().data or []
+
+
+async def get_authorization(tenant_id: str, authorization_id: str) -> dict | None:
+    res = (get_client().table("tenant_regulatory_authorizations").select("*")
+           .eq("tenant_id", tenant_id).eq("id", authorization_id).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def revoke_authorization(tenant_id: str, authorization_id: str,
+                               revoked_at: str | None = None) -> dict | None:
+    """Withdraw an authorisation. The ONLY mutation this interface permits.
+
+    Fenced on the row still being active, so a second revocation is a no-op rather
+    than a rewrite of the first one's timestamp, and authorized_at is never
+    touched -- the history of who consented, and when, survives the withdrawal.
+    """
+    res = (get_client().table("tenant_regulatory_authorizations")
+           .update({"authorization_revoked_at": revoked_at or _now_iso()})
+           .eq("tenant_id", tenant_id).eq("id", authorization_id)
+           .is_("authorization_revoked_at", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
+async def attach_profile_authorization(profile_id: str,
+                                       authorization_id: str) -> dict | None:
+    """Record which authorisation a filing relied on. Written ONCE.
+
+    Fenced on authorization_id still being null, so a later authorisation -- or a
+    revocation -- can never rewrite what a submitted filing was actually made
+    under. Same fence discipline as the address SID in W9H-QA.3, and for the same
+    reason: this is an identity a row acquires exactly once.
+    """
+    res = (get_client().table("tenant_regulatory_profiles")
+           .update({"authorization_id": authorization_id, "updated_at": _now_iso()})
+           .eq("id", profile_id).is_("authorization_id", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None

@@ -15,6 +15,8 @@ def _sql(cur, q, args=()):
     cur.execute(q, args)
 
 def expect_ok(n, label, q, args=(), *, conn):
+    if q is PROF:
+        args = _prof(args)
     with conn.transaction() as _:
         try:
             conn.execute(q, args)
@@ -24,6 +26,8 @@ def expect_ok(n, label, q, args=(), *, conn):
             raise psycopg.Rollback
 
 def expect_reject(n, label, q, args=(), want_state=None, want_con=None, *, conn):
+    if q is PROF:
+        args = _prof(args)
     try:
         with conn.transaction():
             conn.execute(q, args)
@@ -44,17 +48,26 @@ ADDR = ("insert into tenant_regulatory_addresses "
         "(id, tenant_id, tenant_location_id, iso_country, provider_account_sid, address_sid,"
         " supporting_document_sid, validated, provider_locality) "
         "values (%s,%s,%s,%s,%s,%s,%s,%s,%s)")
-# requirements_fingerprint is supplied as a literal no call site passes: migration
-# 028's trp_submitted_requirements_chk requires one on every profile past the draft
-# states, and most fixtures below are 'approved'. It is not under test here (028 has
-# tests/test_migration_028_contract.py) -- supplying it is simply what lets these
-# 027 proofs still build a valid profile, and it leaves every call site and argument
-# tuple below untouched. This repair is NOT caused by 030: the same failure occurs
-# on a lineage with 030 excluded, which is how it was diagnosed.
+# TWO literals are appended that no call site below passes, because two later
+# migrations added invariants these 027 fixtures predate:
+#   * requirements_fingerprint -- 028's trp_submitted_requirements_chk
+#   * authorization_id         -- 029's trp_submitted_authorization_chk
+# Most fixtures here are 'approved', which both constraints police. Neither is
+# under test in this file (028 has tests/test_migration_028_contract.py, 029 has
+# stage_j.py); supplying them is simply what lets these 027 proofs still build a
+# valid profile. The authorisation is resolved by a subquery on the tenant, and
+# _prof() below repeats the tenant argument -- so every call site and argument
+# tuple in this file stays exactly as it was.
 PROF = ("insert into tenant_regulatory_profiles "
         "(id, tenant_id, regulatory_address_id, iso_country, number_type, end_user_type,"
-        " provider_account_sid, bundle_sid, state, requirements_fingerprint)"
-        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s, repeat('a',64))")
+        " provider_account_sid, bundle_sid, state, requirements_fingerprint,"
+        " authorization_id) values (%s,%s,%s,%s,%s,%s,%s,%s,%s, repeat('a',64),"
+        " (select id from tenant_regulatory_authorizations where tenant_id=%s limit 1))")
+
+
+def _prof(args):
+    """Repeat the tenant id for PROF's authorisation subquery."""
+    return tuple(args) + (args[1],)
 PHONE = ("insert into tenant_phone_numbers "
          "(id, tenant_id, tenant_location_id, regulatory_profile_id, e164, purpose, status,"
          " provider_account_sid, provider_sid, iso_country) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")
@@ -97,6 +110,18 @@ with psycopg.connect(DSN, autocommit=True) as c:
               ADDR, (AA2, A, LA2, "IE", "ACa", "ADa2", "RDa2", True, "Dublin 8"), conn=c)
     c.execute(ADDR, (AB1, B, LB1, "IE", "ACb", "ADb1", "RDb1", True, "Cork"))
 
+    # One authorisation per tenant, so PROF's subquery can satisfy 029's
+    # trp_submitted_authorization_chk. Not under test here -- stage_j.py proves the
+    # authorisation constraints themselves.
+    AUTH_SQL = ("insert into tenant_regulatory_authorizations (id, tenant_id,"
+                " iso_country, end_user_type, tenant_regulatory_address_id,"
+                " authorized_details_fingerprint, authorized_by, authorization_method,"
+                " authorized_at, authorized_address_city)"
+                " values (%s,%s,'IE','business',%s,repeat('a',64),'A Representative',"
+                "'dashboard', now(), 'Dublin')")
+    c.execute(AUTH_SQL, (str(uuid.uuid4()), A, AA1))
+    c.execute(AUTH_SQL, (str(uuid.uuid4()), B, AB1))
+
     # ── 4 cross-tenant address reference
     expect_reject(4, "profile of A referencing an address of B rejected",
                   PROF, (str(uuid.uuid4()), A, AB1, "IE", "local", "business", "ACa",
@@ -104,7 +129,7 @@ with psycopg.connect(DSN, autocommit=True) as c:
                   "23503", "trp_address_owner_fk", conn=c)
 
     PA_DUB = str(uuid.uuid4()); PA_CORK = str(uuid.uuid4()); PA_WIDE = str(uuid.uuid4())
-    c.execute(PROF, (PA_DUB, A, AA1, "IE", "local", "business", "ACa", "BU_dub", "approved"))
+    c.execute(PROF, _prof((PA_DUB, A, AA1, "IE", "local", "business", "ACa", "BU_dub", "approved")))
     # 12) Dublin + a second address-scoped profile coexist
     expect_ok(12, "address-scoped profiles for two different addresses coexist",
               PROF, (PA_CORK, A, AA2, "IE", "local", "business", "ACa", "BU_sec", "approved"),
@@ -134,7 +159,7 @@ with psycopg.connect(DSN, autocommit=True) as c:
                           "active", "ACa", "PN1", "IE"),
                   "23503", "tpn_location_owner_fk", conn=c)
     PB_WIDE = str(uuid.uuid4())
-    c.execute(PROF, (PB_WIDE, B, None, "IE", "local", "business", "ACb", "BU_b", "approved"))
+    c.execute(PROF, _prof((PB_WIDE, B, None, "IE", "local", "business", "ACb", "BU_b", "approved")))
     expect_reject(6, "phone of A referencing a profile of B rejected",
                   PHONE, (str(uuid.uuid4()), A, None, PB_WIDE, "+353161700002", "permanent",
                           "active", "ACa", "PN2", "IE"),

@@ -210,16 +210,15 @@ def test_the_declaration_values_live_in_exactly_one_place():
 
 import pytest as _pytest  # noqa: E402
 from services import regulatory_engine as engine  # noqa: E402
-from tests.test_w9g_engine import (GOOD_ADDRESS, GOOD_ATTRS, tenant, world)  # noqa: F401,E402
+from tests.test_w9g_engine import (prepared, GOOD_ADDRESS, GOOD_ATTRS, tenant, world)  # noqa: F401,E402
 
 
 @_pytest.mark.asyncio
 async def test_a_customer_supplied_declaration_is_IGNORED_not_persisted(world):
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     hostile = {**GOOD_ATTRS,
                "business_identity": "INDEPENDENT_SOFTWARE_VENDOR",
                "is_subassigned": "YES"}
-    r = await engine.prepare_profile(tenant(), attributes=hostile)
+    r = await prepared(world, hostile)
     assert r["ok"], r
     sent = world["twilio"].last_end_user_attributes
     assert sent["business_identity"] == "DIRECT_CUSTOMER", "the policy must win"
@@ -232,11 +231,9 @@ async def test_a_customer_supplied_declaration_is_IGNORED_not_persisted(world):
 @_pytest.mark.asyncio
 async def test_an_injected_value_cannot_come_back_as_history_on_a_later_request(world):
     """The exact hole: persist once, honour forever."""
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    await engine.prepare_profile(
-        tenant(), attributes={**GOOD_ATTRS,
-                              "business_identity": "INDEPENDENT_SOFTWARE_VENDOR",
-                              "is_subassigned": "YES"})
+    await prepared(world, {**GOOD_ATTRS,
+                           "business_identity": "INDEPENDENT_SOFTWARE_VENDOR",
+                           "is_subassigned": "YES"})
     world["twilio"].last_end_user_attributes = None
     world["profiles"].clear()
     world["twilio"].created["end_user"] = 0

@@ -45,8 +45,14 @@ with psycopg.connect(DSN, autocommit=True) as c:
     for name, tbl, defn, ncols, deltype in fks:
         print(f"        {name:28s} cols={ncols} ondel={deltype}  {defn[:82]}")
     composite = [f for f in fks if f[3] == 2]
-    ck("six composite FKs on the new tables", len(composite) == 6,
+    # SEVEN since migration 029: trp_authorization_owner_fk is the composite guard
+    # that stops a profile citing another tenant's authorisation. Named explicitly
+    # rather than just counted, so a future FK cannot quietly take its place.
+    ck("seven composite FKs on the new tables", len(composite) == 7,
        f"{len(composite)}: {[f[0] for f in composite]}")
+    ck("the 029 authorisation FK is one of them",
+       "trp_authorization_owner_fk" in [f[0] for f in composite],
+       str([f[0] for f in composite]))
     # 'c' = CASCADE. Changed from SET NULL after Stage E measured that SET NULL made
     # tenant deletion impossible (the tenant_id FK nulls tenant_id first, tripping
     # tre_profile_needs_tenant_chk).

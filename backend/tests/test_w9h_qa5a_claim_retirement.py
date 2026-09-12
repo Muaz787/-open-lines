@@ -20,6 +20,7 @@ from services import provider_claims as pc
 from services import regulatory_engine as engine
 from services import regulatory_state as st
 from tests.test_w9g_engine import (ADDR_SID, BU_SID, DOC_SID, EU_SID, GOOD_ADDRESS,
+                                   authorize, prepared,
                                    GOOD_ATTRS, SUB, TENANT, ProviderError, tenant,
                                    world)  # noqa: F401
 
@@ -44,10 +45,35 @@ async def _address(world):
 
 
 async def _prepared(world):
-    await _address(world)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    """Drive the flow to a fully prepared profile.
+
+    Goes through the shared `prepared` helper because migration 029 added an
+    authorisation gate ahead of the first provider identity: the customer's
+    answers are persisted, the customer authorises THOSE facts, and only then does
+    anything reach the provider. Retirement is about provider ownership, which sits
+    BELOW authorisation -- so these tests need a valid authorisation in place to
+    reach the code they are actually about.
+    """
+    r = await prepared(world)
     assert r["ok"], r
     return r
+
+
+async def _ready_to_authorize(world, attributes=None):
+    """Address + persisted customer answers + a matching authorisation, WITHOUT a
+    successful prepare.
+
+    The order matters and is the product's, not a convenience: the authorisation
+    fingerprint covers the customer's answers, so there is nothing to authorise
+    until they are stored. The first prepare stores them and is refused for want of
+    an authorisation; then the customer authorises THOSE facts. Tests that plant
+    their own claim rows need exactly this state -- authorised, but with the
+    provider work still to do.
+    """
+    await _address(world)
+    first = await engine.prepare_profile(tenant(), attributes=attributes or GOOD_ATTRS)
+    assert first["status"] == engine.AUTHORIZATION_NOT_RECORDED, first
+    await authorize(world)
 
 
 NOT_FOUND = ProviderError(code=20404, status=404, detail="not found")
@@ -150,7 +176,7 @@ async def test_the_claim_and_the_profile_agree_after_a_recovery(world):
 async def test_a_legacy_sibling_sid_is_ADOPTED_not_duplicated(world):
     """A pre-030 tenant already has an EndUser. Creating a second one would mint a
     duplicate identity for a business that already has one."""
-    await _address(world)
+    await _ready_to_authorize(world)
     world["profiles"].append({
         "id": "prof-legacy", "tenant_id": TENANT, "iso_country": "IE",
         "number_type": "local", "end_user_type": "business",
@@ -169,7 +195,7 @@ async def test_a_legacy_sibling_sid_is_ADOPTED_not_duplicated(world):
 
 @pytest.mark.asyncio
 async def test_a_legacy_seed_that_cannot_be_verified_is_not_adopted(world):
-    await _address(world)
+    await _ready_to_authorize(world)
     world["profiles"].append({
         "id": "prof-legacy", "tenant_id": TENANT, "iso_country": "IE",
         "number_type": "local", "end_user_type": "business",
@@ -556,7 +582,7 @@ async def test_ONE_live_sibling_disagreeing_with_the_claim_fails_closed(world):
     """Distinct from two siblings disagreeing with each other, which the sibling
     scan already catches. Here exactly one sibling exists and it contradicts the
     canonical claim, with nothing proven dead."""
-    await _address(world)
+    await _ready_to_authorize(world)
     claim = await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="end_user",
         scope_key=pc.end_user_scope("IE", "business"), provider_account_sid=SUB)

@@ -15,6 +15,7 @@ from db import regulatory as db_reg
 from services import provider_claims as pc
 from services import regulatory_engine as engine
 from tests.test_w9g_engine import (ADDR_SID, BU_SID, DOC_SID, EU_SID, GOOD_ADDRESS,
+                                   authorize, prepared,
                                    GOOD_ATTRS, REQS, SUB, TENANT, FakeTwilio,
                                    ProviderError, tenant, world)  # noqa: F401
 
@@ -43,6 +44,23 @@ async def _address(world):
     r = await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     assert r["ok"], r
     return r["address"]
+
+
+async def _ready_to_authorize(world, attributes=None):
+    """Address + persisted customer answers + a matching authorisation, WITHOUT a
+    successful prepare.
+
+    The order matters and is the product's, not a convenience: the authorisation
+    fingerprint covers the customer's answers, so there is nothing to authorise
+    until they are stored. The first prepare stores them and is refused for want of
+    an authorisation; then the customer authorises THOSE facts. Tests that plant
+    their own claim rows need exactly this state -- authorised, but with the
+    provider work still to do.
+    """
+    await _address(world)
+    first = await engine.prepare_profile(tenant(), attributes=attributes or GOOD_ATTRS)
+    assert first["status"] == engine.AUTHORIZATION_NOT_RECORDED, first
+    await authorize(world)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -116,8 +134,7 @@ async def test_the_enduser_claim_exists_before_the_provider_is_called(world):
         seen["friendly_name"] = kw.get("friendly_name")
 
     world["twilio"].opts["on_end_user_create"] = at_create
-    await _address(world)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    r = await prepared(world)
     assert r["ok"], r
     assert len(seen["claims"]) == 1, "the claim must exist when the provider is called"
     assert seen["claims"][0]["provider_sid"] is None
@@ -136,11 +153,12 @@ async def test_sibling_locations_share_one_enduser(world):
     """The scope is (country, end-user type) -- NOT the profile or the address --
     because an EndUser is one business identity shared across a tenant's filings."""
     world["locations"].append({"id": "loc-2", "tenant_id": TENANT})
-    await _address(world)
-    first = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    first = await prepared(world)
     assert first["ok"], first
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS,
                                 tenant_location_id="loc-2")
+    # a second premises is a separate authorisation scope by design (W9H.1A)
+    await authorize(world, tenant_location_id="loc-2")
     second = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS,
                                           tenant_location_id="loc-2")
     assert second["ok"], second
@@ -152,7 +170,8 @@ async def test_sibling_locations_share_one_enduser(world):
 
 @pytest.mark.asyncio
 async def test_a_request_that_loses_the_enduser_claim_never_creates(world):
-    addr = await _address(world)
+    await _ready_to_authorize(world)
+    addr = world["addresses"][0]
     await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="end_user",
         scope_key=pc.end_user_scope("IE", "business"), provider_account_sid=SUB)
@@ -166,7 +185,7 @@ async def test_a_request_that_loses_the_enduser_claim_never_creates(world):
 @pytest.mark.asyncio
 async def test_an_enduser_created_by_a_dead_worker_is_adopted(world):
     """CASE 3: the worker created it, then died before attaching."""
-    await _address(world)
+    await _ready_to_authorize(world)
     claim = await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="end_user",
         scope_key=pc.end_user_scope("IE", "business"), provider_account_sid=SUB)
@@ -184,7 +203,7 @@ async def test_an_enduser_created_by_a_dead_worker_is_adopted(world):
 @pytest.mark.asyncio
 async def test_an_unknown_enduser_outcome_is_reconciled_not_recreated(world):
     """CASE 4: Twilio created it; the transport died before we heard."""
-    await _address(world)
+    await _ready_to_authorize(world)
     orig = FakeTwilio.end_users.fget
 
     def patched(self):
@@ -233,7 +252,7 @@ async def test_a_stale_enduser_worker_cannot_overwrite_the_new_owner(world):
 async def test_two_endusers_for_one_claim_FAIL_CLOSED(world):
     """CASE 6. An EndUser is a regulatory IDENTITY -- unlike a duplicate Address,
     picking one arbitrarily would file an identity nobody chose."""
-    await _address(world)
+    await _ready_to_authorize(world)
     claim = await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="end_user",
         scope_key=pc.end_user_scope("IE", "business"), provider_account_sid=SUB)
@@ -275,8 +294,7 @@ async def test_the_document_claim_exists_before_the_provider_is_called(world):
         seen["friendly_name"] = kw.get("friendly_name")
 
     world["twilio"].opts["on_document_create"] = at_create
-    await _address(world)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    r = await prepared(world)
     assert r["ok"], r
     assert len(seen["claims"]) == 1
     assert seen["claims"][0]["provider_sid"] is None
@@ -292,7 +310,7 @@ def test_the_document_source_claims_before_it_creates():
 
 @pytest.mark.asyncio
 async def test_exactly_one_document_per_logical_address(world):
-    await _address(world)
+    assert (await prepared(world))["ok"]
     for _ in range(3):
         r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
         assert r["ok"], r
@@ -302,7 +320,8 @@ async def test_exactly_one_document_per_logical_address(world):
 
 @pytest.mark.asyncio
 async def test_a_request_that_loses_the_document_claim_never_creates(world):
-    addr = await _address(world)
+    await _ready_to_authorize(world)
+    addr = world["addresses"][0]
     await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="supporting_document",
         scope_key=pc.supporting_document_scope(addr["id"], "business_address"),
@@ -328,7 +347,7 @@ async def test_the_document_attachment_is_fenced(world):
 
 @pytest.mark.asyncio
 async def test_an_unknown_document_outcome_is_reconciled(world):
-    await _address(world)
+    await _ready_to_authorize(world)
     orig = FakeTwilio.supporting_documents.fget
 
     def patched(self):
@@ -403,8 +422,7 @@ async def test_the_profile_exists_before_the_bundle_is_created(world):
         seen["friendly_name"] = kw.get("friendly_name")
 
     world["twilio"].opts["on_bundle_create"] = at_create
-    await _address(world)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    r = await prepared(world)
     assert r["ok"], r
     assert len(seen["profiles"]) == 1, "the profile must exist first"
     assert len(seen["claims"]) == 1
@@ -421,7 +439,11 @@ def test_the_bundle_source_claims_before_it_creates():
 @pytest.mark.asyncio
 async def test_a_concurrent_profile_insert_reuses_instead_of_raising(world):
     """Stage H. The loser re-reads the canonical profile; both proceed on one row."""
-    await _address(world)
+    await _ready_to_authorize(world)
+    # The authorisation gate refuses the FIRST prepare, and that refusal path
+    # creates a draft profile -- so without clearing it the insert below is never
+    # reached and this test would silently stop exercising the loser path.
+    world["profiles"].clear()
     calls = {"n": 0}
     real_insert = engine.db_reg.insert_profile
 
@@ -452,7 +474,7 @@ def test_the_profile_insert_catches_the_uniqueness_violation_itself():
 
 @pytest.mark.asyncio
 async def test_exactly_one_bundle_is_created_across_repeated_attempts(world):
-    await _address(world)
+    assert (await prepared(world))["ok"]
     for _ in range(3):
         r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
         assert r["ok"], r
@@ -472,7 +494,7 @@ async def test_the_bundle_attachment_is_fenced(world):
 
 @pytest.mark.asyncio
 async def test_an_unknown_bundle_outcome_is_reconciled(world):
-    await _address(world)
+    await _ready_to_authorize(world)
     orig = FakeTwilio.bundles.fget
 
     def patched(self):
@@ -498,7 +520,7 @@ async def test_an_unknown_bundle_outcome_is_reconciled(world):
 
 @pytest.mark.asyncio
 async def test_two_bundles_for_one_claim_FAIL_CLOSED(world):
-    await _address(world)
+    await _ready_to_authorize(world)
     claim = await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="bundle", scope_key="prof-1",
         provider_account_sid=SUB)
@@ -533,7 +555,7 @@ async def test_a_stale_bundle_worker_cannot_overwrite_the_winner(world):
 
 @pytest.mark.asyncio
 async def test_a_fresh_claim_is_never_stolen(world):
-    await _address(world)
+    await _ready_to_authorize(world)
     await db_reg.claim_provider_resource(
         tenant_id=TENANT, resource="end_user",
         scope_key=pc.end_user_scope("IE", "business"), provider_account_sid=SUB)
@@ -547,10 +569,10 @@ async def test_a_fresh_claim_is_never_stolen(world):
 async def test_an_outage_releases_the_lease_so_a_retry_is_not_blocked(world):
     """My own first design held the lease after an outage, so a two-second blip
     cost the customer the whole stale window."""
-    await _address(world)
+    await _ready_to_authorize(world)
     world["twilio"].opts["end_user_error"] = ProviderError(code=20500, status=500)
-    first = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
-    assert first["status"] == engine.PROVIDER_UNAVAILABLE
+    first = await engine.prepare_profile(tenant(), attributes={})
+    assert first["status"] == engine.PROVIDER_UNAVAILABLE, first
 
     world["twilio"].opts.pop("end_user_error")
     second = await engine.prepare_profile(tenant(), attributes={})
