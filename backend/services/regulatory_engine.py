@@ -49,9 +49,41 @@ REQUIREMENTS_CHANGED = "requirements_changed"
 UNRESOLVED_ISV_DECLARATION = "unresolved_isv_declaration"
 NOT_READY = "not_ready"
 MISSING_COUNTRY = "business_country_not_confirmed"
+UNSUPPORTED_REQUIREMENT_FIELD = "unsupported_requirement_field"
+REQUIREMENTS_NOT_RECORDED = "requirements_not_recorded"
 
 DEFAULT_NUMBER_TYPE = "local"
 DEFAULT_END_USER_TYPE = "business"
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _ensure_draft_profile(tenant_id, country, number_type, end_user_type,
+                                address_row, reqs, sub_sid, tenant_location_id):
+    """A profile row with NO provider identity yet.
+
+    Exists so a workflow stalled on the unresolved declaration is visible and
+    resumable, without filing anything. Deliberately carries no end_user_sid and no
+    bundle_sid -- 027's trp_submitted_identity_chk only demands those once the state
+    has reached the provider, and this state has not.
+    """
+    profile = await db_reg.find_profile_for_address(
+        tenant_id, country, number_type, end_user_type, address_row["id"])
+    patch = {"regulation_sid": reqs.regulation_sid,
+             "regulation_friendly_name": reqs.friendly_name,
+             "requirements_fingerprint": reqs.fingerprint(),
+             "requirements_observed_at": _now_iso()}
+    if profile:
+        return await db_reg.update_profile(profile["id"], patch) or {**profile, **patch}
+    return await db_reg.insert_profile({
+        "tenant_id": tenant_id, "tenant_location_id": tenant_location_id,
+        "regulatory_address_id": address_row["id"], "provider": "twilio",
+        "provider_account_sid": sub_sid, "iso_country": country,
+        "number_type": number_type, "end_user_type": end_user_type,
+        "state": st.DETAILS_REQUIRED, **patch})
 
 
 def _result(status: str, **extra) -> dict:
@@ -433,47 +465,13 @@ def submission_blockers(*, profile: dict, requirements, attributes: dict,
         blockers.append(UNRESOLVED_ISV_DECLARATION + ":" + ",".join(unresolved))
     if str(profile.get("evaluation_status") or "").lower() != "compliant":
         blockers.append("evaluation_not_compliant")
+    # The profile must know WHICH requirement shape it was built against. Without a
+    # stored fingerprint there is nothing to compare the live requirements to, so
+    # drift cannot be detected and the submission fails closed rather than going
+    # out on an unverifiable basis.
+    if not str(profile.get("requirements_fingerprint") or "").strip():
+        blockers.append(REQUIREMENTS_NOT_RECORDED)
     return blockers
-
-
-async def submit(tenant: dict, *, profile: dict, requirements, attributes: dict,
-                 address_row: dict | None, client, sub_sid: str) -> dict:
-    """Submit the Bundle for Twilio review.
-
-    Re-discovers the regulation first: submitting against requirements that changed
-    since collection would file stale answers. Once submitted, the historical
-    regulation identity on the profile is never rewritten -- reconciliation tracks
-    the bundle Twilio actually holds.
-    """
-    if str(profile.get("provider_account_sid") or "") != sub_sid:
-        return _result(OWNERSHIP_CONFLICT, detail="bundle_account_mismatch")
-
-    fresh = await rq.discover_regulation(iso_country=requirements.iso_country,
-                                        number_type=requirements.number_type,
-                                        end_user_type=requirements.end_user_type,
-                                        client=client)
-    if not fresh.ok:
-        return _result(PROVIDER_UNAVAILABLE if fresh.status == rq.UNAVAILABLE
-                       else fresh.status, detail=fresh.detail)
-    if (fresh.requirements.regulation_sid != requirements.regulation_sid
-            or fresh.requirements.fingerprint() != requirements.fingerprint()):
-        return _result(REQUIREMENTS_CHANGED,
-                       detail="regulation or required fields changed since collection",
-                       regulation_sid=fresh.requirements.regulation_sid)
-
-    blockers = submission_blockers(profile=profile, requirements=requirements,
-                                   attributes=attributes, address_row=address_row)
-    if blockers:
-        return _result(NOT_READY, blockers=blockers)
-
-    try:
-        updated = client.numbers.v2.regulatory_compliance.bundles(
-            profile["bundle_sid"]).update(status="pending-review")
-    except Exception as e:
-        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
-    provider_status = str(getattr(updated, "status", "") or "")
-    return _result(OK, bundle_status=provider_status,
-                   state=st.state_for_provider_status(provider_status)[0])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -483,10 +481,10 @@ async def submit(tenant: dict, *, profile: dict, requirements, attributes: dict,
 async def read_end_user_attributes(*, end_user_sid: str, client) -> dict:
     """The attributes actually filed with the provider.
 
-    THE ATTRIBUTE BAG IS NEVER STORED LOCALLY. It holds the authorised
-    representative's name and email, and the only thing that needs it is the provider.
-    So when a later step must check what was filed -- e.g. whether the ISV declaration
-    fields were answered -- it reads them back from Twilio rather than keeping a copy.
+    A RECONCILIATION AID, NOT THE SOURCE OF TRUTH. W9G used this as the only place
+    the answers lived, which meant a provider outage or a deleted EndUser destroyed
+    them. The durable record is now tenant_regulatory_business_details; this exists
+    to compare what we hold against what Twilio holds, so a divergence is visible.
     """
     try:
         eu = client.numbers.v2.regulatory_compliance.end_users(end_user_sid).fetch()
@@ -527,18 +525,65 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
     if not address_row.get("validated"):
         return _result(ADDRESS_VALIDATION_FAILED, detail="address_not_validated")
 
-    bad = ie_ux.invalid_enum_fields(reqs, attributes)
+    # A provider field with nowhere to store it stops the workflow. Personal data
+    # must not accumulate in an untyped blob, and a requirement we cannot record is
+    # a requirement we cannot show back to the customer to correct.
+    unstorable = db_reg.unstorable_fields(reqs.end_user_field_names)
+    if unstorable:
+        return _result(UNSUPPORTED_REQUIREMENT_FIELD, fields=unstorable,
+                       next_requirement="a column for each new provider field, or a "
+                                        "reviewed design for storing it")
+
+    # PERSIST WHAT THE CUSTOMER TYPED, BEFORE TOUCHING THE PROVIDER. Everything
+    # after this can fail -- and if the answers only ever existed in this request,
+    # every failure would mean asking them to retype. Merged, so a one-field
+    # correction stays a one-field correction.
+    stored = await db_reg.upsert_business_details(
+        tenant_id, country, end_user_type=end_user_type,
+        values={**db_reg.details_from_attributes(attributes),
+                "requirements_fingerprint": reqs.fingerprint(),
+                "collected_at": _now_iso()})
+
+    # The effective answers are the stored ones: this request's values merged over
+    # whatever a previous request already established. That is what makes a retry
+    # after a provider failure work without the customer present.
+    effective = db_reg.attributes_from_details(stored, reqs.end_user_field_names)
+
+    bad = ie_ux.invalid_enum_fields(reqs, effective)
     if bad:
         return _result(INVALID_CUSTOMER_DATA, invalid_enum=bad)
-    missing = ie_ux.missing_fields(reqs, attributes)
-    # The declaration fields are reported separately: they are not the customer's to
-    # supply, so listing them as "missing customer data" would misdirect the fix.
-    unresolved = ie_ux.unresolved_declarations(reqs, attributes)
-    missing = [m for m in missing if m not in unresolved]
+    unresolved = ie_ux.unresolved_declarations(reqs, effective)
+    missing = [m for m in ie_ux.missing_fields(reqs, effective) if m not in unresolved]
     if missing:
-        return _result(INVALID_CUSTOMER_DATA, missing=missing)
+        return _result(INVALID_CUSTOMER_DATA, missing=missing,
+                       details_stored=True)
 
-    eu = await resolve_end_user(tenant, requirements=reqs, attributes=attributes,
+    # ── THE STOPPING POINT ────────────────────────────────────────────────
+    # The EndUser IS the regulatory identity. The live Ireland regulation lists
+    # business_identity and is_subassigned as REQUIRED end-user fields, and W9G.1
+    # could not establish from Twilio's documentation which actor each one
+    # describes. Creating the EndUser now would file an identity that the current
+    # regulation says is incomplete -- and Evaluation checks exactly that field
+    # presence, so it would come back noncompliant anyway. Nothing is gained by
+    # creating it early and a half-filed identity is lost.
+    #
+    # So collection completes, the answers are durable, the address is already
+    # validated -- and NO provider identity is created until an operator resolves
+    # the declaration. `details_required` already means "we do not have everything
+    # we need"; the reason is what distinguishes waiting on the customer from
+    # waiting on us.
+    if unresolved:
+        profile = await _ensure_draft_profile(
+            tenant_id, country, number_type, end_user_type, address_row, reqs,
+            sub_sid, tenant_location_id)
+        return _result(UNRESOLVED_ISV_DECLARATION,
+                       unresolved_declarations=unresolved,
+                       details_stored=True,
+                       profile=profile,
+                       next_requirement="an operator must answer the ISV declaration "
+                                        "before any provider identity is created")
+
+    eu = await resolve_end_user(tenant, requirements=reqs, attributes=effective,
                                client=client, sub_sid=sub_sid)
     if not eu["ok"]:
         return eu
@@ -560,13 +605,20 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
             "regulation_sid": reqs.regulation_sid,
             "regulation_friendly_name": reqs.friendly_name,
             "end_user_sid": eu["end_user_sid"], "state": st.DETAILS_REQUIRED,
+            # DURABLE, not an in-request value: this is what a later submission
+            # compares the live requirements against.
+            "requirements_fingerprint": reqs.fingerprint(),
+            "requirements_observed_at": _now_iso(),
         })
         if not profile:
             return _result(PROVIDER_REJECTED, detail="profile_insert_failed")
-    elif profile.get("end_user_sid") != eu["end_user_sid"]:
-        await db_reg.update_profile(profile["id"],
-                                   {"end_user_sid": eu["end_user_sid"]})
-        profile = {**profile, "end_user_sid": eu["end_user_sid"]}
+    else:
+        patch = {"requirements_fingerprint": reqs.fingerprint(),
+                 "requirements_observed_at": _now_iso()}
+        if profile.get("end_user_sid") != eu["end_user_sid"]:
+            patch["end_user_sid"] = eu["end_user_sid"]
+        await db_reg.update_profile(profile["id"], patch)
+        profile = {**profile, **patch}
 
     bundle = await ensure_bundle(tenant, profile=profile, requirements=reqs,
                                 end_user_sid=eu["end_user_sid"], client=client,
@@ -651,12 +703,33 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
         return _result(REQUIREMENTS_CHANGED, detail="regulation_sid_changed",
                        regulation_sid=reqs.regulation_sid)
 
+    # ── DURABLE DRIFT CHECK ───────────────────────────────────────────────
+    # The SID alone is not enough: Twilio can change a regulation's required
+    # fields without reissuing it. The fingerprint stored on the profile when the
+    # answers were collected is compared with the shape the provider reports NOW,
+    # so a change that happened between two requests -- or across a restart -- is
+    # caught. Comparing two in-memory values inside one request, which is what W9G
+    # did, could never have detected this.
+    stored_fp = str(profile.get("requirements_fingerprint") or "").strip()
+    if not stored_fp:
+        return _result(NOT_READY, blockers=[REQUIREMENTS_NOT_RECORDED])
+    if stored_fp != reqs.fingerprint():
+        return _result(REQUIREMENTS_CHANGED, detail="required_fields_changed",
+                       regulation_sid=reqs.regulation_sid,
+                       stored_fingerprint=stored_fp,
+                       current_fingerprint=reqs.fingerprint())
+
     address_row = (await db_reg.get_address(str(profile["tenant_id"]),
                                            str(profile["regulatory_address_id"]))
                    if profile.get("regulatory_address_id") else None)
-    attributes = (await read_end_user_attributes(end_user_sid=profile["end_user_sid"],
-                                                 client=client)
-                  if profile.get("end_user_sid") else {})
+    # OUR OWN RECORD IS THE SOURCE, not the provider's copy. Reading the filed
+    # attributes back from Twilio only works while Twilio has them and is
+    # reachable, which is precisely when it is least useful. The stored details are
+    # also what an operator edits after a rejection.
+    details = await db_reg.get_business_details(
+        str(profile["tenant_id"]), str(profile.get("iso_country") or ""),
+        str(profile.get("end_user_type") or "business"))
+    attributes = db_reg.attributes_from_details(details, reqs.end_user_field_names)
     blockers = submission_blockers(profile=profile, requirements=reqs,
                                   attributes=attributes, address_row=address_row)
     if blockers:
@@ -692,3 +765,71 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
         patch={"bundle_status": provider_status,
                "submitted_at": datetime.now(timezone.utc).isoformat()})
     return _result(OK, state=target, bundle_status=provider_status)
+
+
+async def recover_end_user(tenant: dict, *, profile: dict) -> dict:
+    """Re-establish a provider EndUser from OUR stored answers.
+
+    Covers the cases W9G had no answer for: the EndUser 404s, or a sibling's SID
+    turns out to describe something inconsistent, or a create failed after the
+    customer had already gone. Because the answers are durable, none of these needs
+    the customer present.
+
+    Fails closed if the declaration is still unresolved -- recovery must not become
+    a side door that files an incomplete identity.
+    """
+    client, sub_sid = _tenant_client(tenant)
+    if client is None:
+        return _result(OWNERSHIP_CONFLICT, detail="missing_twilio_credentials")
+    if str(profile.get("provider_account_sid") or "") != sub_sid:
+        return _result(OWNERSHIP_CONFLICT, detail="profile_account_mismatch")
+
+    country = str(profile.get("iso_country") or "")
+    end_user_type = str(profile.get("end_user_type") or "business")
+    found = await rq.discover_regulation(iso_country=country,
+                                        number_type=str(profile.get("number_type") or ""),
+                                        end_user_type=end_user_type, client=client)
+    if not found.ok:
+        return _result(PROVIDER_UNAVAILABLE if found.status == rq.UNAVAILABLE
+                       else found.status, detail=found.detail)
+    reqs = found.requirements
+
+    details = await db_reg.get_business_details(str(profile["tenant_id"]), country,
+                                               end_user_type)
+    if not details:
+        # Nothing stored: this profile predates the durable record, so the customer
+        # genuinely has to be asked again. Said plainly rather than guessed around.
+        return _result(NOT_READY, detail="no_stored_business_details")
+    attributes = db_reg.attributes_from_details(details, reqs.end_user_field_names)
+
+    unresolved = ie_ux.unresolved_declarations(reqs, attributes)
+    if unresolved:
+        return _result(UNRESOLVED_ISV_DECLARATION,
+                       unresolved_declarations=unresolved)
+    missing = ie_ux.missing_fields(reqs, attributes)
+    if missing:
+        return _result(INVALID_CUSTOMER_DATA, missing=missing)
+
+    existing_sid = str(profile.get("end_user_sid") or "")
+    if existing_sid:
+        try:
+            client.numbers.v2.regulatory_compliance.end_users(existing_sid).fetch()
+            return _result(OK, end_user_sid=existing_sid, recreated=False)
+        except Exception as e:
+            code = getattr(e, "status", None)
+            if code != 404:
+                # Only a 404 proves it is gone. Anything else is "we do not know",
+                # and recreating on an unknown would risk a duplicate identity.
+                return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
+
+    try:
+        created = client.numbers.v2.regulatory_compliance.end_users.create(
+            friendly_name=f"OpenLines tenant {str(profile['tenant_id'])[:8]} "
+                          f"({country} {end_user_type})",
+            type=end_user_type, attributes=attributes)
+    except Exception as e:
+        logger.error("EndUser recovery failed for profile %s: %s",
+                     profile.get("id"), _safe_provider_error(e))
+        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
+    await db_reg.update_profile(profile["id"], {"end_user_sid": created.sid})
+    return _result(OK, end_user_sid=created.sid, recreated=True)

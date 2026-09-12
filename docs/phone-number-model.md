@@ -213,3 +213,45 @@ constant `False`: W9C proved the search locality is not the locality an address 
 satisfy, so acceptance is established only by a purchase carrying a real `AddressSid`
 and `BundleSid` — a later gate. Nothing in the W9G path calls
 `IncomingPhoneNumber.create`.
+
+### W9G.1 corrections
+
+Three things W9G got wrong, found in review before merge:
+
+**1. Requirement drift was not durable.** The fingerprint was computed and returned in
+an HTTP response body; nothing persisted it, and the submit path compared only
+`regulation_sid`. Twilio can change a regulation's required fields *without* reissuing
+it, so a submission built on the old shape would have gone through. It is now stored on
+the profile (`requirements_fingerprint`, migration 028) and compared against the live
+shape at submission. A profile with no stored fingerprint **fails closed** — there is
+nothing to compare against, so drift cannot be detected.
+
+**2. Nothing collected was recoverable.** The attribute bag went to Twilio and was
+stored nowhere, presented as PII minimisation. In practice a failed create, a 404'd
+EndUser, or a rejection needing one corrected field all meant the customer retyped
+everything. `tenant_regulatory_business_details` now holds the answers in **named
+columns** (never a blob), written *before* the provider is touched, **merged** so a
+one-field correction stays a one-field correction. Not encrypted — the repo encrypts
+credentials and stores personal data plaintext behind RLS, and encrypting these would
+break the operator review of a rejected filing that is the reason for storing them.
+
+**3. The engine filed an incomplete identity.** It created the EndUser while omitting
+the two declaration fields the live regulation lists as required, and the fake accepted
+the partial payload so no test noticed. The engine now **stops before creating any
+provider identity** while the declaration is unresolved: answers stored, address
+validated, a resumable draft profile visible, and nothing filed. The fake now enforces
+the regulation's required fields.
+
+`business_identity` / `is_subassigned` remain the open question. Twilio's documentation
+does not say which actor each field describes, and its ISV guidance covers A2P 10DLC
+messaging brands rather than regulatory bundles.
+
+### Callback credential
+
+Twilio's security documentation covers the HMAC-SHA1 scheme and the
+URL-plus-sorted-params construction but says **nothing** about which token signs a
+request concerning a sub-account-owned resource. W9G asserted the sub-account token
+without verifying it. The handler now tries the sub-account token first, then the
+parent, and **records which matched** — both are OpenLines-controlled, cross-account
+abuse is already blocked by the `AccountSid` check, and a third party's signature
+matches neither. The first real callback settles the question.

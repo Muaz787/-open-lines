@@ -358,3 +358,81 @@ async def test_an_illegal_transition_is_logged_without_the_failure_reason(world,
                               failure_reason="Ann Byrne at ann@dani.ie is not a director")
     assert "ann@dani.ie" not in caplog.text
     assert "Refused illegal regulatory transition" in caplog.text
+
+
+# ── credential selection, made explicit because the docs are silent ─────────
+#
+# W9G asserted Twilio signs a sub-account-owned Bundle's callback with the
+# SUB-ACCOUNT auth token. W9G.1 went back to Twilio's security documentation to
+# confirm it: the page documents HMAC-SHA1 and the URL-plus-sorted-params
+# construction but says NOTHING about which token signs a request concerning a
+# sub-account-owned resource. So the assertion was unverified, and the handler now
+# accepts either of OUR OWN tokens and records which matched -- which settles the
+# question on first contact instead of risking an outage on a guess.
+
+PARENT_TOKEN = "the-parent-auth-token"
+THIRD_PARTY_TOKEN = "an-attackers-token"
+
+
+def test_a_subaccount_signed_callback_reports_the_subaccount_credential():
+    params = form()
+    assert cb.select_credential(url=URL, params=params, signature=sign(params),
+                               subaccount_token=TOKEN,
+                               parent_token=PARENT_TOKEN) == cb.CRED_SUBACCOUNT
+
+
+def test_a_parent_signed_callback_is_accepted_and_reported_as_such(caplog):
+    """If Twilio turns out to sign with the parent token, the first real callback
+    tells us rather than failing."""
+    params = form()
+    sig = sign(params, token=PARENT_TOKEN)
+    with caplog.at_level("WARNING"):
+        cred = cb.select_credential(url=URL, params=params, signature=sig,
+                                    subaccount_token=TOKEN,
+                                    parent_token=PARENT_TOKEN)
+    assert cred == cb.CRED_PARENT
+    assert "PARENT auth token" in caplog.text
+
+
+def test_the_subaccount_credential_is_tried_first():
+    """The more specific, tenant-bound credential wins when both would match."""
+    params = form()
+    assert cb.select_credential(url=URL, params=params, signature=sign(params),
+                               subaccount_token=TOKEN,
+                               parent_token=TOKEN) == cb.CRED_SUBACCOUNT
+
+
+def test_a_THIRD_PARTY_token_is_refused():
+    """Accepting either of our own tokens does not widen what an attacker can do."""
+    params = form()
+    sig = sign(params, token=THIRD_PARTY_TOKEN)
+    assert cb.select_credential(url=URL, params=params, signature=sig,
+                               subaccount_token=TOKEN,
+                               parent_token=PARENT_TOKEN) == cb.CRED_NONE
+
+
+def test_no_signature_selects_no_credential():
+    params = form()
+    assert cb.select_credential(url=URL, params=params, signature="",
+                               subaccount_token=TOKEN,
+                               parent_token=PARENT_TOKEN) == cb.CRED_NONE
+
+
+def test_credential_selection_still_enforces_the_url_and_the_body():
+    """Broadening the credential must not broaden anything else."""
+    params = form()
+    sig = sign(params)
+    assert cb.select_credential(url=URL + "x", params=params, signature=sig,
+                               subaccount_token=TOKEN,
+                               parent_token=PARENT_TOKEN) == cb.CRED_NONE
+    assert cb.select_credential(url=URL, params={**params, "Status": "twilio-rejected"},
+                               signature=sig, subaccount_token=TOKEN,
+                               parent_token=PARENT_TOKEN) == cb.CRED_NONE
+
+
+def test_a_missing_parent_token_does_not_weaken_the_subaccount_check():
+    params = form()
+    assert cb.select_credential(url=URL, params=params,
+                               signature=sign(params, token=PARENT_TOKEN),
+                               subaccount_token=TOKEN,
+                               parent_token="") == cb.CRED_NONE

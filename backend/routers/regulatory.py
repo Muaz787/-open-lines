@@ -8,6 +8,7 @@ router is unauthenticated by nature and is protected by Twilio's signature inste
 from __future__ import annotations
 
 import logging
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -38,6 +39,7 @@ _STATUS_FOR = {
     engine.OWNERSHIP_CONFLICT: 409,
     engine.REGULATORY_IDENTITY_CONFLICT: 409,
     engine.UNSUPPORTED_DOCUMENT_REQUIREMENT: 501,
+    engine.UNSUPPORTED_REQUIREMENT_FIELD: 501,
     engine.REQUIREMENTS_CHANGED: 409,
     engine.NOT_READY: 409,
     engine.PROVIDER_UNAVAILABLE: 503,
@@ -165,10 +167,27 @@ async def submit_details(tenant_id: str, body: dict):
     result = await engine.prepare_profile(
         tenant, attributes=(body or {}).get("attributes") or {},
         tenant_location_id=(body or {}).get("tenant_location_id") or None)
+
+    # An unresolved declaration is NOT a client error: the customer's answers were
+    # accepted and stored, and what remains is a compliance decision on OUR side.
+    # 200 with an explicit status says that honestly; a 4xx would tell them to fix
+    # something they cannot fix.
+    if result["status"] == engine.UNRESOLVED_ISV_DECLARATION:
+        profile = result.get("profile") or {}
+        return {"status": engine.UNRESOLVED_ISV_DECLARATION,
+                "details_stored": True,
+                "profile_id": profile.get("id"),
+                "state": profile.get("state"),
+                "has_bundle": False,
+                "unresolved_declarations": result.get("unresolved_declarations", []),
+                "blocked_on": "openlines",
+                "message": "Your details are saved. We are confirming one regulatory "
+                           "declaration with our telephony provider before filing."}
     if not result["ok"]:
         _fail(result)
     profile = result["profile"]
     return {"status": "ok", "profile_id": profile["id"], "state": profile.get("state"),
+            "details_stored": True,
             "has_bundle": bool(result.get("bundle_sid")),
             "has_supporting_document": bool(result.get("supporting_document_sid")),
             "unresolved_declarations": result.get("unresolved_declarations", [])}
@@ -229,12 +248,20 @@ async def twilio_regulatory_callback(
         logger.warning("Regulatory callback rejected (%s)", why)
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    # The credential is tenant-bound: it is the sub-account token belonging to the
+    # tenant that owns THIS bundle, looked up from the profile, never from the
+    # payload. The parent token is offered only as the second candidate because
+    # Twilio's documentation does not say which one signs a sub-account resource's
+    # callback -- see regulatory_callback.select_credential.
     rows = (get_client().table("tenants").select("twilio_auth_token")
             .eq("id", profile.get("tenant_id")).limit(1).execute().data or [])
-    token = str((rows[0] if rows else {}).get("twilio_auth_token") or "")
+    subaccount_token = str((rows[0] if rows else {}).get("twilio_auth_token") or "")
     url = engine.callback_url()
-    if not cb.verify_signature(url=url, params=params,
-                               signature=x_twilio_signature or "", auth_token=token):
+    credential = cb.select_credential(
+        url=url, params=params, signature=x_twilio_signature or "",
+        subaccount_token=subaccount_token,
+        parent_token=os.environ.get("TWILIO_AUTH_TOKEN", ""))
+    if credential == cb.CRED_NONE:
         # No ledger row, no mutation, and no hint about which part mismatched.
         logger.warning("Regulatory callback signature verification failed")
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -247,7 +274,7 @@ async def twilio_regulatory_callback(
     applied = await cb.apply_status(profile=profile,
                                    provider_status=parsed.get("bundle_status", ""),
                                    failure_reason=parsed.get("failure_reason") or None)
-    logger.info("Regulatory callback applied for profile %s: %s -> %s (%s)",
-                profile.get("id"), profile.get("state"), applied.get("state"),
-                ledger.get("action"))
+    logger.info("Regulatory callback applied for profile %s: %s -> %s (%s, signed "
+                "with the %s credential)", profile.get("id"), profile.get("state"),
+                applied.get("state"), ledger.get("action"), credential)
     return {"status": "ok", "event": ledger["action"], "state": applied["state"]}

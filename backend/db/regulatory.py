@@ -153,3 +153,109 @@ async def bump_event_delivery(event_id: str, delivery_count: int) -> dict | None
             .update({"delivery_count": delivery_count,
                      "last_received_at": _now_iso(), "updated_at": _now_iso()})
             .eq("id", event_id).execute().data or [None])[0]
+
+
+# ── tenant_regulatory_business_details (migration 028) ─────────────────────
+#
+# The answers a customer gave, kept so a failed create can be retried, a rejected
+# filing corrected, and a lost provider object rebuilt -- without asking them to
+# retype. Named columns only; never a provider blob.
+
+#: The columns a caller may write. Anything else is refused rather than dropped
+#: silently, so a new provider requirement cannot quietly go unstored.
+BUSINESS_DETAIL_COLUMNS = (
+    "business_name", "business_website", "business_registration_number",
+    "authorized_rep_first_name", "authorized_rep_last_name", "authorized_rep_email",
+    "business_identity", "is_subassigned", "comments",
+    "requirements_fingerprint", "collected_at",
+)
+
+
+async def get_business_details(tenant_id: str, iso_country: str,
+                              end_user_type: str = "business") -> dict | None:
+    res = (get_client().table("tenant_regulatory_business_details").select("*")
+           .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
+           .eq("end_user_type", end_user_type).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def upsert_business_details(tenant_id: str, iso_country: str, *,
+                                  end_user_type: str = "business",
+                                  values: dict) -> dict | None:
+    """Merge the supplied answers into the tenant's stored set.
+
+    MERGE, NOT REPLACE. A correction after a rejection changes one field; wiping
+    the rest would turn a one-field edit into a full retype, which is the problem
+    this table exists to solve. Only non-empty values overwrite, so an omitted
+    field keeps what was there.
+    """
+    patch = {k: v for k, v in (values or {}).items()
+             if k in BUSINESS_DETAIL_COLUMNS
+             and str(v if v is not None else "").strip() != ""}
+    existing = await get_business_details(tenant_id, iso_country, end_user_type)
+    if existing:
+        if not patch:
+            return existing
+        return (get_client().table("tenant_regulatory_business_details")
+                .update({**patch, "updated_at": _now_iso()})
+                .eq("id", existing["id"]).execute().data or [None])[0]
+    return (get_client().table("tenant_regulatory_business_details").insert({
+        "tenant_id": tenant_id, "iso_country": iso_country,
+        "end_user_type": end_user_type, **patch,
+        "created_at": _now_iso(), "updated_at": _now_iso()}).execute().data
+            or [None])[0]
+
+
+def attributes_from_details(details: dict | None, field_names) -> dict:
+    """Stored details -> the provider attribute bag, for exactly the fields asked.
+
+    The column names are ours (authorized_rep_first_name reads better in a database
+    than first_name); the provider's are its own. This is the single place that
+    mapping lives.
+    """
+    if not details:
+        return {}
+    mapped = {
+        "business_name": details.get("business_name"),
+        "business_website": details.get("business_website"),
+        "business_registration_number": details.get("business_registration_number"),
+        "first_name": details.get("authorized_rep_first_name"),
+        "last_name": details.get("authorized_rep_last_name"),
+        "email": details.get("authorized_rep_email"),
+        "business_identity": details.get("business_identity"),
+        "is_subassigned": details.get("is_subassigned"),
+        "comments": details.get("comments"),
+    }
+    return {k: v for k, v in mapped.items()
+            if k in set(field_names) and str(v if v is not None else "").strip() != ""}
+
+
+def details_from_attributes(attributes: dict) -> dict:
+    """The inverse: a provider attribute bag -> our column names."""
+    a = attributes or {}
+    out = {
+        "business_name": a.get("business_name"),
+        "business_website": a.get("business_website"),
+        "business_registration_number": a.get("business_registration_number"),
+        "authorized_rep_first_name": a.get("first_name"),
+        "authorized_rep_last_name": a.get("last_name"),
+        "authorized_rep_email": a.get("email"),
+        "business_identity": a.get("business_identity"),
+        "is_subassigned": a.get("is_subassigned"),
+        "comments": a.get("comments"),
+    }
+    return {k: v for k, v in out.items()
+            if str(v if v is not None else "").strip() != ""}
+
+
+def unstorable_fields(field_names) -> list[str]:
+    """Provider-required fields this schema has no column for.
+
+    A new required field must stop the workflow, not land in an untyped blob:
+    personal data is exactly what should not accumulate unreviewed. Same discipline
+    as an unexpected document requirement.
+    """
+    known = {"business_name", "business_website", "business_registration_number",
+             "first_name", "last_name", "email", "business_identity",
+             "is_subassigned", "comments"}
+    return [f for f in field_names if f not in known]

@@ -41,6 +41,14 @@ def tenant(**over):
 
 # ── a fake Twilio sub-account client ───────────────────────────────────────
 
+class ProviderError(Exception):
+    def __init__(self, code=None, status=500, detail="provider"):
+        super().__init__(detail)
+        self.code = code
+        self.status = status
+
+
+
 class _Obj:
     def __init__(self, **kw):
         for k, v in kw.items():
@@ -106,8 +114,24 @@ class FakeTwilio:
         outer = self
         def create(**kw):
             outer._fail("end_user_error")
+            attrs = kw.get("attributes") or {}
+            # MODELS THE PROVIDER'S OWN REQUIREMENT, not our hopes. The live IE
+            # regulation lists all nine fields as required end-user attributes, so a
+            # fake that accepts a partial bag would let a test pass on a payload the
+            # real provider would consider incomplete -- which is exactly the
+            # too-permissive fake W9G.1 was asked to find. `required_end_user_fields`
+            # is settable so a test can model a different regulation.
+            required = outer.opts.get("required_end_user_fields",
+                                      tuple(REQS.end_user_field_names))
+            optional = {"comments"}
+            missing = [f for f in required
+                       if f not in optional
+                       and str(attrs.get(f) or "").strip() == ""]
+            if missing:
+                raise ProviderError(code=22212, status=400,
+                                    detail=f"missing required end-user fields: {missing}")
             outer.created["end_user"] += 1
-            outer.last_end_user_attributes = kw.get("attributes")
+            outer.last_end_user_attributes = attrs
             return _Obj(sid=EU_SID)
         def context(sid):
             class _Ctx:
@@ -204,7 +228,7 @@ class FakeTwilio:
 
 @pytest.fixture
 def world(monkeypatch):
-    state = {"twilio": FakeTwilio(), "addresses": [], "profiles": [],
+    state = {"twilio": FakeTwilio(), "addresses": [], "profiles": [], "details": [],
              "locations": [{"id": "loc-1", "tenant_id": TENANT}],
              "inserted_addresses": 0, "inserted_profiles": 0}
 
@@ -269,6 +293,27 @@ def world(monkeypatch):
                 return True
         return False
 
+    async def get_details(tid, country, end_user_type="business"):
+        return next((d for d in state["details"]
+                     if d["tenant_id"] == tid and d["iso_country"] == country
+                     and d["end_user_type"] == end_user_type), None)
+
+    async def upsert_details(tid, country, *, end_user_type="business", values):
+        patch = {k: v for k, v in (values or {}).items()
+                 if k in engine.db_reg.BUSINESS_DETAIL_COLUMNS
+                 and str(v if v is not None else "").strip() != ""}
+        row = await get_details(tid, country, end_user_type)
+        if row:
+            row.update(patch)
+            return row
+        row = {"id": f"det-{len(state['details']) + 1}", "tenant_id": tid,
+               "iso_country": country, "end_user_type": end_user_type, **patch}
+        state["details"].append(row)
+        return row
+
+    monkeypatch.setattr(engine.db_reg, "get_business_details", get_details)
+    monkeypatch.setattr(engine.db_reg, "upsert_business_details", upsert_details)
+
     for name, fn in (("find_address", find_address), ("insert_address", insert_address),
                      ("update_address", update_address), ("get_address", get_address),
                      ("list_profiles", list_profiles),
@@ -278,13 +323,6 @@ def world(monkeypatch):
                      ("transition_profile", transition_profile)):
         monkeypatch.setattr(engine.db_reg, name, fn)
     return state
-
-
-class ProviderError(Exception):
-    def __init__(self, code=None, status=500):
-        super().__init__("provider")
-        self.code = code
-        self.status = status
 
 
 # ── address ────────────────────────────────────────────────────────────────
@@ -630,7 +668,8 @@ def _profile(**over):
             "end_user_sid": EU_SID, "provider_account_sid": SUB,
             "iso_country": "IE", "number_type": "local", "end_user_type": "business",
             "regulation_sid": REQS.regulation_sid, "state": st.READY_TO_SUBMIT,
-            "evaluation_status": "compliant", "regulatory_address_id": "addr-1"}
+            "evaluation_status": "compliant", "regulatory_address_id": "addr-1",
+            "requirements_fingerprint": REQS.fingerprint()}
     base.update(over)
     return base
 
@@ -678,8 +717,27 @@ def test_an_unvalidated_address_blocks_submission():
     assert "address_not_validated" in blockers
 
 
+def _seed_details(world):
+    """The durable answers a real workflow would already have stored."""
+    world["details"].append({"id": "det-1", "tenant_id": TENANT, "iso_country": "IE",
+                             "end_user_type": "business",
+                             **{k: v for k, v in
+                                {"business_name": GOOD_ATTRS["business_name"],
+                                 "business_website": GOOD_ATTRS["business_website"],
+                                 "business_registration_number":
+                                     GOOD_ATTRS["business_registration_number"],
+                                 "authorized_rep_first_name": GOOD_ATTRS["first_name"],
+                                 "authorized_rep_last_name": GOOD_ATTRS["last_name"],
+                                 "authorized_rep_email": GOOD_ATTRS["email"],
+                                 "business_identity": GOOD_ATTRS["business_identity"],
+                                 "is_subassigned": GOOD_ATTRS["is_subassigned"],
+                                 }.items()},
+                             "requirements_fingerprint": REQS.fingerprint()})
+
+
 @pytest.mark.asyncio
 async def test_submission_transitions_and_persists_the_provider_status(world):
+    _seed_details(world)
     world["profiles"].append(_profile())
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
                                "validated": True, "supporting_document_sid": DOC_SID,
@@ -693,6 +751,7 @@ async def test_submission_transitions_and_persists_the_provider_status(world):
 
 @pytest.mark.asyncio
 async def test_submitting_twice_is_idempotent(world):
+    _seed_details(world)
     world["profiles"].append(_profile(state=st.PENDING_REVIEW,
                                       bundle_status="pending-review"))
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
@@ -716,6 +775,7 @@ async def test_a_changed_regulation_blocks_submission(world):
 
 @pytest.mark.asyncio
 async def test_a_provider_failure_during_submission_returns_the_profile_for_retry(world):
+    _seed_details(world)
     world["twilio"].opts["submit_error"] = ProviderError(code=20500, status=500)
     world["profiles"].append(_profile())
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
@@ -745,13 +805,57 @@ async def test_prepare_builds_everything_once_and_is_resumable(world):
 
 
 @pytest.mark.asyncio
-async def test_prepare_reports_unresolved_declarations_separately_from_missing_data(world):
+async def test_prepare_STOPS_before_creating_any_provider_identity_while_unresolved(world):
+    """THE CORRECTED STOPPING POINT (W9G.1).
+
+    The live Ireland regulation lists business_identity and is_subassigned as
+    REQUIRED end-user fields. W9G created the EndUser anyway, omitting them -- a
+    provider identity the regulation itself says is incomplete. The customer's
+    answers are stored (so nothing is lost), the address is already validated, and
+    NO EndUser, document or Bundle is created until an operator resolves the
+    declaration."""
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     attrs = {k: v for k, v in GOOD_ATTRS.items()
              if k not in ("business_identity", "is_subassigned")}
     r = await engine.prepare_profile(tenant(), attributes=attrs)
-    assert r["ok"], "the declaration is not the customer's to supply, so it must not block collection"
+    assert r["status"] == engine.UNRESOLVED_ISV_DECLARATION
     assert r["unresolved_declarations"] == ["business_identity", "is_subassigned"]
+    assert r["details_stored"] is True
+    created = world["twilio"].created
+    assert created["end_user"] == 0, "no regulatory identity may be filed"
+    assert created["document"] == 0 and created["bundle"] == 0
+    # A resumable draft profile exists so the stalled workflow is visible.
+    profile = r["profile"]
+    assert profile["state"] == st.DETAILS_REQUIRED
+    assert not profile.get("end_user_sid") and not profile.get("bundle_sid")
+    assert profile["requirements_fingerprint"] == REQS.fingerprint()
+
+
+@pytest.mark.asyncio
+async def test_the_customers_answers_survive_the_declaration_stall(world):
+    """They typed everything they can; they must not be asked again when the
+    declaration is resolved days later."""
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    attrs = {k: v for k, v in GOOD_ATTRS.items()
+             if k not in ("business_identity", "is_subassigned")}
+    await engine.prepare_profile(tenant(), attributes=attrs)
+    stored = world["details"][0]
+    assert stored["business_name"] == "DANI Ltd"
+    assert stored["business_registration_number"] == "123456"
+    assert stored["authorized_rep_email"] == "ann@dani.ie"
+    assert stored.get("business_identity") is None
+    assert stored.get("is_subassigned") is None
+
+    # An operator answers ONLY the declaration -- nothing else is re-sent.
+    r = await engine.prepare_profile(
+        tenant(), attributes={"business_identity": "DIRECT_CUSTOMER",
+                              "is_subassigned": "NO"})
+    assert r["ok"], r
+    assert world["twilio"].created["end_user"] == 1
+    sent = world["twilio"].last_end_user_attributes
+    required = {f.name for f in REQS.end_user_fields if f.required}
+    assert required <= set(sent), f"missing {required - set(sent)}"
+    assert set(sent) <= set(REQS.end_user_field_names)
 
 
 @pytest.mark.asyncio

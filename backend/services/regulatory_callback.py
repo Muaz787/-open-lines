@@ -35,13 +35,16 @@ ACCOUNT_MISMATCH = "account_mismatch"
 NO_BUNDLE_SID = "no_bundle_sid"
 
 
-def verify_signature(*, url: str, params: dict, signature: str, auth_token: str) -> bool:
-    """Twilio's own RequestValidator. Never raises.
+#: Which credential validated a callback. Recorded so the open question below
+#: answers itself on first contact instead of needing another investigation.
+CRED_SUBACCOUNT = "subaccount"
+CRED_PARENT = "parent"
+CRED_NONE = ""
 
-    The token is the account's auth token -- for a sub-account resource this is the
-    SUB-ACCOUNT's token, because Twilio signs with the credentials of the account
-    that owns the resource.
-    """
+
+def verify_signature(*, url: str, params: dict, signature: str,
+                     auth_token: str) -> bool:
+    """Twilio's own RequestValidator against ONE named credential. Never raises."""
     if not signature or not auth_token:
         return False
     try:
@@ -50,6 +53,45 @@ def verify_signature(*, url: str, params: dict, signature: str, auth_token: str)
     except Exception as e:
         logger.error("Signature validation raised: %s", type(e).__name__)
         return False
+
+
+def select_credential(*, url: str, params: dict, signature: str,
+                      subaccount_token: str, parent_token: str = "") -> str:
+    """Which of OUR OWN tokens signed this callback -- or CRED_NONE.
+
+    ── AN OPEN QUESTION, HANDLED EXPLICITLY RATHER THAN ASSUMED ──────────────
+    W9G asserted Twilio signs a sub-account-owned Bundle's callback with the
+    SUB-ACCOUNT auth token. W9G.1 went back to Twilio's security documentation to
+    confirm it and found the page documents the HMAC-SHA1 scheme and the
+    URL-plus-sorted-params construction but says NOTHING about which token signs a
+    request concerning a sub-account-owned resource. So the assertion was
+    unverified.
+
+    Both candidates are OpenLines-controlled credentials for the same organisation,
+    and which one Twilio picks changes nothing about who is allowed to move the
+    profile -- cross-account abuse is blocked separately by comparing the callback's
+    AccountSid with the profile's provider_account_sid. So the safe handling is to
+    accept either of our own tokens and RECORD WHICH ONE MATCHED, rather than guess
+    one and take a production outage on the first real callback, or accept anything.
+
+    This does not widen what is accepted beyond credentials we already hold: a
+    third party's signature matches neither and is refused. The sub-account is tried
+    first because it is the more specific, tenant-bound credential.
+    """
+    if not signature:
+        return CRED_NONE
+    if subaccount_token and verify_signature(url=url, params=params,
+                                             signature=signature,
+                                             auth_token=subaccount_token):
+        return CRED_SUBACCOUNT
+    if parent_token and verify_signature(url=url, params=params,
+                                         signature=signature,
+                                         auth_token=parent_token):
+        logger.warning("Regulatory callback validated with the PARENT auth token, "
+                       "not the sub-account token -- record this: it settles which "
+                       "credential Twilio signs sub-account bundle callbacks with")
+        return CRED_PARENT
+    return CRED_NONE
 
 
 async def resolve_profile(params: dict) -> tuple[dict | None, str]:
