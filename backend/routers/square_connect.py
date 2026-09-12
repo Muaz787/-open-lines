@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
 from services import square_service as sq_svc, square_booking, vapi
+from services import location_sync
 from services.security import encrypt, verify_tenant_owner
 from db import supabase as db
 
@@ -118,7 +119,23 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         logger.error("Square OAuth: no access_token in response for tenant %s", tenant_id)
         return RedirectResponse(url=f"{dest}?square=error")
 
-    location_id = ""
+    # W7E.3: the legacy pointer starts from whatever the tenant already has, not
+    # from empty. This callback used to begin at "" and then write
+    # `location_id or None` unconditionally, which meant a RE-connect had two
+    # destructive outcomes:
+    #
+    #   * list_locations succeeded -> the tenant's existing pointer was silently
+    #     replaced by locations[0], i.e. by Square's list order
+    #   * list_locations FAILED    -> location_id stayed "" and the pointer was
+    #     written as NULL, wiping it outright. availability falls back to that
+    #     pointer, so one transient Square hiccup during a re-connect could take
+    #     a live single-location tenant's bookings offline.
+    #
+    # Starting from the existing value makes both impossible, and the shared
+    # W7E.1 chooser decides the rest: existing pointer preserved, or the ONE
+    # unambiguous usable location, or nothing. It never picks a row.
+    existing_location_id = str((tenant or {}).get("square_location_id") or "").strip()
+    location_id = existing_location_id
     currency    = ""
     try:
         merchant_info = await sq_svc.get_merchant_info(access_token)
@@ -127,19 +144,73 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
             merchant_id = merchant_info.get("merchant_id", "")
     except Exception as e:
         logger.warning("Square OAuth: could not fetch merchant info for tenant %s: %s", tenant_id, e)
+    locations: list[dict] = []
     try:
         locations = await sq_svc.list_locations(access_token)
-        if locations:
-            location_id = locations[0].get("id", "")
     except Exception as e:
         logger.warning("Square OAuth: could not fetch locations for tenant %s: %s", tenant_id, e)
+    location_id = location_sync.choose_legacy_default_square_location(
+        existing_location_id, locations) or ""
+    if not location_id and len(location_sync.usable_square_locations(locations)) > 1:
+        # A multi-location merchant connecting for the first time. There is no
+        # single right answer, so no default is invented — the merchant's
+        # locations are persisted as bindings by the follow-on sync, and W4
+        # resolution works from those.
+        logger.info(
+            "Square OAuth: tenant %s has %d usable Square locations — leaving "
+            "square_location_id unset rather than guessing a default",
+            tenant_id, len(location_sync.usable_square_locations(locations)))
+
+    # ── W7E.3b · merchant identity is preserved, never nulled, never swapped ──
+    # `square_merchant_id` stopped being a label when W7D and W7E made it part of
+    # the identity chain: booking events resolve through the merchant's candidate
+    # set, and catalog events fan out across every tenant claiming it. So the old
+    # `merchant_id or None` had become a routing hazard. If get_merchant_info()
+    # failed and the token response carried no merchant id, a RE-connect wrote
+    # NULL and silently turned a correctly routed tenant into an unrouteable one.
+    #
+    # Three outcomes, all explicit:
+    #   * nothing observed, something stored -> keep what is stored. A provider
+    #     lookup failing tells us nothing about the merchant's identity.
+    #   * nothing observed, nothing stored   -> refuse. Completing OAuth with no
+    #     merchant identity would persist a half-configured integration that
+    #     cannot route and looks connected.
+    #   * a DIFFERENT merchant observed      -> refuse, and write nothing at all.
+    #     Silently re-pointing a tenant at another Square account would leave its
+    #     existing location bindings and mirrored appointments describing a
+    #     merchant that no longer owns them. Deliberately not "handled" by
+    #     migrating that state: re-pointing an established integration is an
+    #     operator decision, not something an OAuth redirect should do.
+    existing_merchant_id = str((tenant or {}).get("square_merchant_id") or "").strip()
+    observed_merchant_id = str(merchant_id or "").strip()
+
+    if not observed_merchant_id:
+        if not existing_merchant_id:
+            logger.error(
+                "Square OAuth: no merchant id from either the token response or "
+                "get_merchant_info for tenant %s — refusing to complete a connection "
+                "with no merchant identity", tenant_id)
+            return RedirectResponse(url=f"{dest}?square=error")
+        logger.warning(
+            "Square OAuth: merchant id unavailable this time for tenant %s — keeping "
+            "the established one rather than clearing it", tenant_id)
+        merchant_id = existing_merchant_id
+    elif existing_merchant_id and observed_merchant_id != existing_merchant_id:
+        logger.error(
+            "Square OAuth: tenant %s is connected to merchant %s but this callback "
+            "presents merchant %s — refusing. Re-pointing an established integration "
+            "would orphan its location bindings and mirrored appointments.",
+            tenant_id, existing_merchant_id, observed_merchant_id)
+        return RedirectResponse(url=f"{dest}?square=error")
+    else:
+        merchant_id = observed_merchant_id
 
     try:
         update = {
             "square_access_token":    encrypt(access_token),
             "square_refresh_token":   encrypt(refresh_token) if refresh_token else None,
             "square_token_expires_at": expires_at or None,
-            "square_merchant_id":     merchant_id or None,
+            "square_merchant_id":     merchant_id,   # guaranteed non-empty above
             "square_location_id":     location_id or None,
             "square_currency":        currency or None,
             "square_oauth_state":     None,
