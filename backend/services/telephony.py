@@ -36,6 +36,30 @@ async def create_subaccount(business_name: str) -> dict:
         raise
 
 
+
+async def close_subaccount(subaccount_sid: str) -> bool:
+    """Close a Twilio sub-account. Returns True only if Twilio confirmed it.  (W9A)
+
+    Twilio has no delete for sub-accounts; `status='closed'` is the terminal
+    state and is irreversible, which is why the only caller is a rollback that
+    created the account seconds earlier and knows nothing else has used it.
+
+    Never raises. A rollback that throws would replace a clear provisioning
+    error with a confusing one, and the orphan is still worth reporting loudly
+    rather than crashing on.
+    """
+    if not subaccount_sid:
+        return False
+    try:
+        _master_client().api.accounts(subaccount_sid).update(status="closed")
+        logger.info("Closed Twilio sub-account %s", subaccount_sid)
+        return True
+    except Exception as e:
+        logger.error("ORPHAN SUB-ACCOUNT %s could not be closed: %s — it must be "
+                     "closed by hand in the Twilio console", subaccount_sid, e)
+        return False
+
+
 # Per-country search config.
 # area_codes: try these first in order; fall through to national search if all miss.
 # Empty list means go straight to national search.
@@ -73,10 +97,35 @@ _PROVINCE_BY_AREA_CODE: dict[str, str] = {
 DEFAULT_CA_PROVINCE = "ON"
 
 
-def normalize_phone(phone: str) -> str:
+# Domestic trunk prefixes, by ISO country, for numbers written the way a local
+# says them. Only consulted when a caller supplies the country EXPLICITLY.
+_NATIONAL_PREFIX: dict[str, str] = {
+    "IE": "353",   # 087 123 4567  -> +353 87 123 4567
+    "GB": "44",
+}
+
+
+def normalize_phone(phone: str, default_country: str = "") -> str:
     """Best-effort E.164 normalization (strips spaces/parens/dashes) so numbers are
-    safe for Twilio SMS and 'whatsapp:<E.164>'. NANP 10 digits → +1…, 11 with leading
-    1 → +…; an existing '+' is preserved. Returns '' if there are no digits."""
+    safe for Twilio SMS and 'whatsapp:<E.164>'. An existing '+' is preserved.
+
+    `default_country` is an ISO code the CALLER must supply deliberately. Without
+    it the NANP assumptions below are unchanged, which is what every existing
+    tenant depends on. With it, a number written in that country's domestic
+    trunk form ('087…' in Ireland) resolves correctly.  (W9A)
+
+    Two rules make this safe for Ireland without endangering North America:
+
+      * '00' is the international access prefix in Ireland, the UK and most of
+        the world. '00353871234567' means '+353871234567'. It previously became
+        '+00353871234567', which is not a number. That fix needs no country
+        context at all -- it is unambiguous.
+      * a leading single '0' is a DOMESTIC trunk prefix, and what follows it is
+        meaningless without knowing the country. It is therefore only stripped
+        when default_country says which country, and never guessed. A bare
+        10-digit number still becomes NANP unless a country says otherwise,
+        because that is what North American callers have always relied on.
+    """
     if not phone:
         return ""
     has_plus = phone.strip().startswith("+")
@@ -85,6 +134,19 @@ def normalize_phone(phone: str) -> str:
         return ""
     if has_plus:
         return "+" + digits
+
+    # Unambiguous: the international access prefix, in any country.
+    if digits.startswith("00") and len(digits) > 4:
+        return "+" + digits[2:]
+
+    cc = _NATIONAL_PREFIX.get((default_country or "").strip().upper())
+    if cc:
+        if digits.startswith(cc):
+            return "+" + digits
+        if digits.startswith("0"):
+            return "+" + cc + digits.lstrip("0")
+        return "+" + cc + digits
+
     if len(digits) == 10:
         return "+1" + digits
     if len(digits) == 11 and digits.startswith("1"):
