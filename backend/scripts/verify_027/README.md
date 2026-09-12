@@ -64,6 +64,7 @@ done
 | `stage_k.py` | migration **030**'s provider-claim constraints — 19 proofs: one claim per logical scope, scopes that must not collide, cross-tenant independence, SID uniqueness within an account, cascade |
 | `stage_l_race.py` | the claim is exclusive under real OS-level concurrency — four processes per resource, one winner, every loser seeing 23505 on `trpc_scope_key` |
 | `stage_m_retire_race.py` | the retirement CAS under real concurrency — four processes retiring one SID yield one winner; a stale worker cannot clear a replacement; exclusivity and `trpc_sid_account_chk` survive retirement |
+| `stage_p_authorization_api.py` | **W9I-C**'s authorisation model — 18 proofs: two premises fingerprint differently and are independently authorisable; an identical active authorisation is refused by `tra_auth_active_key`; editing a fact needs new consent while history stays intact; restoring it reproduces the original digest; revocation frees the scope; another tenant cannot authorise this tenant's address; four concurrent consents yield exactly one row; and authorising creates no profile, claim or number |
 | `stage_o_release.py` | **W9I-B.1**'s phone release lifecycle — 18 proofs: a live permanent transitions to `released`; a released row leaves every partial index (not routable, not a live permanent, its E.164 re-purchasable) while keeping `tpn_provider_object_key`; the identity fence refuses a stale E.164, SID, account or tenant; re-release matches zero rows and does not restamp; and four OS processes releasing one row yield exactly one winner |
 
 ```bash
@@ -72,6 +73,7 @@ for s in stage_c stage_d stage_e stage_f stage_gh stage_j stage_k; do python $s.
 python stage_l_race.py parent
 python stage_m_retire_race.py parent
 python stage_o_release.py parent
+python stage_p_authorization_api.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.

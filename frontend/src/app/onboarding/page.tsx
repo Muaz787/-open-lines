@@ -1077,9 +1077,9 @@ export default function OnboardingPage() {
                   its registered address, then set your number up.
                 </div>
               </div>
-              <Link href={`/dashboard/${result.tenant_id}`}>
+              <Link href={`/dashboard/${result.tenant_id}/verification`}>
                 <button className="btn-primary" style={{ width: '100%' }}>
-                  Continue to your dashboard
+                  Start business verification
                 </button>
               </Link>
             </motion.div>

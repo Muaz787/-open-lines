@@ -14,6 +14,9 @@ export interface SidebarTenant {
   industry: string
   subscription_plan?: string
   subscription_status?: string
+  // W9I-C: present only while a regulated country still needs verification, so
+  // the nav item appears for the tenants who must act and for nobody else.
+  onboarding_state?: string
 }
 
 interface SidebarProps {
@@ -29,6 +32,14 @@ interface SidebarProps {
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────
+const IconVerification = () => (
+  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 3l7 3v5c0 4.4-2.9 8.4-7 9.6C7.9 19.4 5 15.4 5 11V6l7-3z" />
+    <path d="M9 12l2 2 4-4" />
+  </svg>
+)
+
 export const LogoMark = ({ size = 22 }: { size?: number }) => (
   <svg viewBox="0 0 28 28" fill="none" width={size} height={size}>
     <path d="M 15.9,3.2 A 11,11 0 0,1 15.9,24.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -157,6 +168,9 @@ export default function Sidebar({
       <div className="db-sidebar-nav">
         <div className="db-nav-label">Main</div>
         {navItem(base, <IconDashboard />, 'Dashboard')}
+        {tenant?.onboarding_state === 'regulatory_required' &&
+          navItem(`${base}/verification`, <IconVerification />, 'Verification',
+                  <span className="db-nav-badge db-badge-amber">!</span>)}
         {navItem(`${base}/knowledge-base`, <IconKB />, 'Knowledge Base')}
         {navItem(`${base}/leads`, <IconLeads />, 'Leads', leadsCount > 0 ? <span className="db-nav-badge db-badge-red">{leadsCount}</span> : undefined)}
         {navItem(`${base}/calls`, <IconCalls />, 'Calls')}
