@@ -157,3 +157,59 @@ if it is a well-formed git SHA: 40 hex characters, or 7–12 for an abbreviation
 13–39 band is refused because that is where all-hex *secrets* live; a Twilio Account
 SID lower-cases to 34 hex characters and would otherwise have been published on an
 unauthenticated endpoint.
+
+## Regulatory compliance engine (W9G)
+
+The Regulation API is the requirement authority. Ireland's current nine EndUser fields
+and single `business_address` document are an **output** of
+`services/regulatory_requirements.discover_regulation()`, never an input to it — Twilio's
+Regulatory Compliance API is public beta and can change, so a field the provider adds
+flows through as a requirement and one it removes stops being asked for.
+
+| module | role |
+|---|---|
+| `regulatory_requirements` | discovery + the normalized requirement model (no raw provider shape leaks out) |
+| `regulatory_ireland` | IE labels and help text, and the unresolved-declaration marking |
+| `regulatory_state` | **the only** thing that may move a profile's state |
+| `regulatory_engine` | the resumable workflow: address → EndUser → document → Bundle → assignments → Evaluation → submit |
+| `regulatory_callback` | signature verification, bundle-only resolution, ledger, transition |
+| `regulatory_reconcile` | the recovery path for statuses no callback announces |
+
+### The one declaration W9G refuses to guess
+
+`business_identity` and `is_subassigned` are a compliance declaration to an Irish
+regulator about the commercial relationship between OpenLines and the customer.
+
+**Settled:** Twilio documents *"The End-User is the individual or business that answers
+the phone call or message"* — that is the tenant, not OpenLines, which also agrees with
+Ireland demanding proof of address in the number's own locality.
+
+**Not settled:** read as questions about the *end user*, the answers are
+`DIRECT_CUSTOMER` / `NO`; read as questions about the *arrangement*, OpenLines is an ISV
+sub-assigning to its customer, so `is_subassigned` is `YES` — which contradicts the same
+sentence's own coupling of `DIRECT_CUSTOMER` with `NO`. Twilio's ISV guidance covers A2P
+10DLC messaging brands, not regulatory bundles.
+
+So the engine collects everything else, validates the address, builds every provider
+resource and runs Evaluation, but **submission blocks with `unresolved_isv_declaration`**
+until an operator supplies those two values explicitly.
+
+### Callback signature and the proxy
+
+The signed URL is reconstructed from the **configured** public backend URL plus the known
+path (`services/regulatory_engine.callback_url()`), never from `request.url`: behind
+Railway's proxy the request's apparent scheme and host are not what Twilio signed. The
+same constant is handed to Twilio as the `status_callback`, so the two cannot drift.
+`routers/payments.py` does exactly this for Square's webhook.
+
+An invalid signature gets 403, **no ledger row and no profile mutation**, and a log line
+that does not say which part mismatched.
+
+### Number discovery is candidate discovery only
+
+`telephony.search_candidate_numbers()` uses `in_locality` and **never** `area_code`
+(which returns zero results for Ireland). The result's `compliance_validated` is a
+constant `False`: W9C proved the search locality is not the locality an address must
+satisfy, so acceptance is established only by a purchase carrying a real `AddressSid`
+and `BundleSid` — a later gate. Nothing in the W9G path calls
+`IncomingPhoneNumber.create`.
