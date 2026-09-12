@@ -133,17 +133,82 @@ async def get_tenant_by_id(tenant_id: str) -> dict:
 
 
 async def get_tenant_by_phone(phone_number: str) -> dict | None:
-    # Primary: match on twilio_phone_number (E.164, e.g. +16475581427)
-    res = (
+    """Resolve an inbound number to its tenant. DUAL-MODEL AS OF W9D.
+
+    Lookup order:
+      1. tenant_phone_numbers, exact E.164, status in ('active','retiring')
+      2. the legacy tenants.twilio_phone_number scalar
+      3. the Vapi phone-number id (some end-of-call payloads send that instead)
+
+    WHY THE NEW TABLE HAS TO COME FIRST, BEFORE ANY PERMANENT ROLLOUT.
+    A tenant being migrated onto a regulated number holds TWO live numbers at
+    once: the temporary test number and the new permanent one. The scalar can
+    hold one. The moment promotion writes the permanent number into the scalar,
+    the still-ringing temporary number resolves to nothing and a caller gets a
+    404. Only a table can answer for both, so this lookup has to be multi-number
+    aware before the first permanent number is ever bought.
+
+    'provisioning' rows are deliberately NOT matched: the Twilio webhook is not
+    configured yet, so a caller routed there would reach silence. 'released' and
+    'failed' rows are history.
+
+    FAILS CLOSED ON DISAGREEMENT. If the table and the scalar both claim this
+    number for DIFFERENT tenants, that is not a preference to resolve -- picking
+    either one risks handing one customer's call to another customer's assistant.
+    It returns None and logs an identity conflict, which surfaces as a failed
+    call rather than a cross-tenant leak.
+    """
+    from db import phone_numbers as db_phone   # local: db.phone_numbers imports us
+
+    number = str(phone_number or "").strip()
+
+    # 1) canonical model
+    row = None
+    try:
+        row = await db_phone.find_routable_by_e164(number)
+    except db_phone.PhoneNumberIdentityConflict as e:
+        logger.error("PHONE IDENTITY CONFLICT inside tenant_phone_numbers: %s", e)
+        return None
+
+    # 2) legacy scalar. Read even when (1) hit, so a disagreement is DETECTED
+    #    rather than shadowed by whichever model happened to answer first.
+    scalar = (
         get_client()
         .table("tenants")
         .select("*")
-        .eq("twilio_phone_number", phone_number)
+        .eq("twilio_phone_number", number)
         .limit(1)
         .execute()
     )
-    if res.data:
-        return res.data[0]
+    scalar_tenant = (scalar.data or [None])[0]
+
+    if row:
+        table_tenant_id = str(row.get("tenant_id") or "")
+        if scalar_tenant and str(scalar_tenant.get("id") or "") != table_tenant_id:
+            logger.error(
+                "PHONE IDENTITY CONFLICT: tenant_phone_numbers assigns a number to "
+                "tenant %s but tenants.twilio_phone_number assigns it to tenant %s "
+                "-- refusing to choose",
+                table_tenant_id, scalar_tenant.get("id"))
+            return None
+        if scalar_tenant and str(scalar_tenant.get("id") or "") == table_tenant_id:
+            return scalar_tenant          # same tenant; the full row is already here
+        # get_tenant_by_id uses .single() and raises when the row is gone. A
+        # dangling row must not turn an inbound call into a 500.
+        try:
+            tenant = await get_tenant_by_id(table_tenant_id)
+        except Exception as e:
+            logger.error("tenant_phone_numbers row %s points at tenant %s which "
+                         "could not be loaded: %s", row.get("id"), table_tenant_id, e)
+            return None
+        if tenant:
+            return tenant
+        logger.error("tenant_phone_numbers row %s points at missing tenant %s",
+                     row.get("id"), table_tenant_id)
+        return None
+
+    if scalar_tenant:
+        return scalar_tenant
     # Fallback: Vapi end-of-call-report payloads sometimes provide the Vapi phone number
     # UUID instead of the Twilio number — match on vapi_phone_number_id.
     res = (
