@@ -62,11 +62,13 @@ done
 | `stage_gh.py` | replay idempotency (catalog fingerprint unchanged across three applications) and rollback/legacy compatibility |
 | `stage_k.py` | migration **030**'s provider-claim constraints — 19 proofs: one claim per logical scope, scopes that must not collide, cross-tenant independence, SID uniqueness within an account, cascade |
 | `stage_l_race.py` | the claim is exclusive under real OS-level concurrency — four processes per resource, one winner, every loser seeing 23505 on `trpc_scope_key` |
+| `stage_m_retire_race.py` | the retirement CAS under real concurrency — four processes retiring one SID yield one winner; a stale worker cannot clear a replacement; exclusivity and `trpc_sid_account_chk` survive retirement |
 
 ```bash
 cd backend/scripts/verify_027
 for s in stage_c stage_d stage_e stage_f stage_gh stage_k; do python $s.py; done
 python stage_l_race.py parent
+python stage_m_retire_race.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.

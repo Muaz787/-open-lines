@@ -438,6 +438,34 @@ def unstorable_fields(field_names) -> list[str]:
 # fenced compare-and-set. The difference is only that Addresses already had a row
 # to claim and these three do not -- see migration 030 for why none of the existing
 # tables was a safe home.
+#
+# ── THE CLAIM LIFECYCLE (completed by W9H-QA.5A) ───────────────────────────
+#
+#   CLAIMED            provider_sid NULL, failure NULL, claimed_at fresh
+#   STALE / TAKEABLE   provider_sid NULL, failure NULL, claimed_at older than
+#                      CLAIM_STALE_SECONDS
+#   TERMINAL_FAILURE   provider_sid NULL, failure NOT NULL -- takeable at once, so
+#                      a corrected retry does not wait out the timer
+#   PROVIDER_ATTACHED  provider_sid NOT NULL. Owned, and never taken over by
+#                      staleness: every takeover CAS is guarded on the SID being
+#                      NULL.
+#   PROVIDER_UNKNOWN   NOT persisted, deliberately. An ambiguous create is resolved
+#                      inside the request by asking the provider about the claim
+#                      marker; if nothing was created the lease is released
+#                      (claimed_at -> epoch) and the row is simply STALE again. A
+#                      stored "unknown" would be a second source of truth about a
+#                      question only the provider can answer.
+#   PROVIDER_RETIRED   also NOT persisted, for the same reason. Once
+#                      retire_provider_claim has run the row is provider_sid NULL
+#                      with a fresh lease held by the worker that proved the
+#                      absence -- which is exactly CLAIMED. A distinct state would
+#                      be a column that only ever means "CLAIMED, and the previous
+#                      resource is gone", which an empty SID already says.
+#
+# The one transition W9H-QA.5A had to add is PROVIDER_ATTACHED -> CLAIMED, and it is
+# permitted ONLY on an authoritative provider 404 for that exact SID. Everything
+# else -- timeout, 401, 403, 429, any 5xx, a malformed body -- means "we do not
+# know" and leaves the attachment untouched. See retire_provider_claim.
 
 CLAIM_TABLE = "tenant_regulatory_provider_claims"
 # Any timestamp guaranteed older than every stale window.
@@ -519,6 +547,63 @@ async def take_over_provider_claim(claim_id: str) -> dict | None:
            .eq("id", claim_id).is_("provider_sid", "null")
            .is_("failure", "null").lt("claimed_at", cutoff).execute())
     return res.data[0] if len(res.data or []) == 1 else None
+
+
+async def reconcile_profile_end_user_sids(tenant_id: str, iso_country: str,
+                                           end_user_type: str,
+                                           canonical_sid: str) -> int:
+    """Point every sibling profile at the canonical EndUser.
+
+    Only called after a retirement PROVED the old SID absent. It is one-directional
+    by design -- the claim is canonical from migration 030 onward, so profiles
+    follow it and never the reverse. Without this, a retirement would leave sibling
+    profiles referencing a SID the provider no longer has, which is the very
+    divergence W9H-QA.5 blocked the release over.
+    """
+    res = (get_client().table("tenant_regulatory_profiles")
+           .update({"end_user_sid": canonical_sid, "updated_at": _now_iso()})
+           .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
+           .eq("end_user_type", end_user_type)
+           .neq("end_user_sid", canonical_sid).execute())
+    return len(res.data or [])
+
+
+async def retire_provider_claim(claim_id: str,
+                                expected_provider_sid: str) -> dict | None:
+    """Detach a provider resource the provider has authoritatively lost.
+
+    W9H-QA.5 stopped the release over this: an attached claim was treated as
+    permanently authoritative, provider_sid could never be cleared, and a resource
+    deleted at Twilio -- which our own QA cleanup does routinely -- would poison
+    its logical scope forever and silently contradict recover_end_user.
+
+    THE FENCE IS THE EXPECTED SID, NOT THE CLAIM ID. Retiring by id alone would let
+    a worker that fetched a 404 for an OLD sid clear a NEWER sid some other request
+    had meanwhile attached -- turning a recovery into a second duplicate. The
+    caller must name the exact dead SID it proved absent.
+
+    WHAT IS RESET, AND WHY ONLY THIS:
+      provider_sid -> NULL   the resource is gone; the scope needs a new one
+      claimed_at   -> now    the winner just proved it absent and is the natural
+                             owner of the replacement, so it takes the lease in the
+                             same statement rather than racing for it
+      failure      -> NULL   a stale verdict about a resource that no longer exists
+    provider_account_sid is DELIBERATELY PRESERVED. It is written at claim-insert
+    time, before any provider resource exists, so it identifies the sub-account the
+    logical scope lives in, not the attached resource -- and trpc_sid_account_chk
+    only forbids the reverse (a SID with no account). tenant_id, provider, resource,
+    scope_key and created_at are never touched: this is a state transition on one
+    claim, not a delete-and-reinsert of it.
+
+    Returns the retired row, or None if we lost the race -- in which case the
+    caller must re-read and follow whatever the canonical state now says.
+    """
+    res = (get_client().table(CLAIM_TABLE)
+           .update({"provider_sid": None, "claimed_at": _now_iso(),
+                    "failure": None, "updated_at": _now_iso()})
+           .eq("id", claim_id)
+           .eq("provider_sid", expected_provider_sid).execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
 async def release_provider_claim(claim_id: str) -> dict | None:

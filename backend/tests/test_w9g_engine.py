@@ -185,6 +185,9 @@ class FakeTwilio:
         def context(sid):
             class _Ctx:
                 def fetch(self):
+                    hook = outer.opts.get("on_end_user_fetch")
+                    if hook:
+                        hook(sid)
                     outer._fail("end_user_fetch_error")
                     return _Obj(sid=sid,
                                 attributes=outer.opts.get("end_user_attributes",
@@ -220,6 +223,9 @@ class FakeTwilio:
         def context(sid):
             class _Ctx:
                 def fetch(self):
+                    hook = outer.opts.get("on_document_fetch")
+                    if hook:
+                        hook(sid)
                     outer._fail("document_fetch_error")
                     return _Obj(sid=sid)
                 def delete(self):
@@ -469,6 +475,26 @@ def world(monkeypatch):
             return None
         return None
 
+    async def reconcile_profile_end_user_sids(tid, country, eut, canonical):
+        n = 0
+        for p_ in state["profiles"]:
+            if (p_["tenant_id"] == tid and p_.get("iso_country") == country
+                    and p_.get("end_user_type") == eut
+                    and p_.get("end_user_sid") != canonical):
+                p_["end_user_sid"] = canonical
+                n += 1
+        return n
+
+    async def retire_provider_claim(claim_id, expected_provider_sid):
+        # Models the CAS: the fence is the EXPECTED SID, not the claim id, so a
+        # worker holding a stale 404 cannot clear a newer attachment.
+        for c_ in state["claims"]:
+            if c_["id"] == claim_id and c_["provider_sid"] == expected_provider_sid:
+                c_.update({"provider_sid": None, "failure": None,
+                           "claimed_at": state["now"]()})
+                return c_
+        return None
+
     async def release_provider_claim(claim_id):
         for c_ in state["claims"]:
             if c_["id"] == claim_id and c_["provider_sid"] is None:
@@ -535,6 +561,8 @@ def world(monkeypatch):
                      ("record_address_failure", record_address_failure),
                      ("release_address_claim", release_address_claim),
                      ("release_provider_claim", release_provider_claim),
+                     ("retire_provider_claim", retire_provider_claim),
+                     ("reconcile_profile_end_user_sids", reconcile_profile_end_user_sids),
                      ("claim_provider_resource", claim_provider_resource),
                      ("find_provider_claim", find_provider_claim),
                      ("attach_provider_sid", attach_provider_sid),
