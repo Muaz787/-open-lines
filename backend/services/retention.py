@@ -74,7 +74,25 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
         # only credentials that can release it — dropping the row first left the
         # number permanently unreleasable except by hand in the Twilio console,
         # billing us for it forever.
-        if tenant and tenant.get("twilio_phone_number"):
+        # Gated on the canonical model as well as the scalar (W9I-B.1). Asking
+        # only the scalar meant a tenant whose canonical row was live but whose
+        # scalar was clear had its row deleted -- cascading the canonical row
+        # away -- while the number stayed ours at Twilio, billing monthly, with
+        # every record of which sub-account held it now gone.
+        holds_number = bool(tenant and tenant.get("twilio_phone_number"))
+        if tenant and not holds_number:
+            try:
+                from db import phone_numbers as db_phones
+                holds_number = bool(await db_phones.get_current_permanent(tenant_id))
+                if holds_number:
+                    logger.error(
+                        "retention: tenant %s has no scalar number but a live "
+                        "canonical row -- reconcile before purging", tenant_id)
+            except Exception as e:
+                logger.error("retention: canonical phone check failed for %s: %s",
+                             tenant_id, e)
+                holds_number = True   # unknown: do not purge past it silently
+        if tenant and holds_number:
             try:
                 from services.provisioning import release_tenant_number
                 result = await release_tenant_number(tenant)

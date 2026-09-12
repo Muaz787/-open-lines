@@ -642,10 +642,21 @@ async def provision_tenant(payload: dict) -> dict:
         logger.warning("Rolling back: releasing number %s on sub-account %s", purchased_number, subaccount_sid)
         # Best effort — release_number now raises on a Twilio error, and the
         # original provisioning failure is the one worth surfacing.
+        released = False
         try:
-            await telephony.release_number(subaccount_sid, subaccount_token, purchased_number)
+            released = await telephony.release_number(
+                subaccount_sid, subaccount_token, purchased_number)
         except Exception as e:
             logger.error("Rollback release of %s failed: %s", purchased_number, e)
+        # Step 13 may already have inserted a canonical row before the failure
+        # that brought us here. Left behind as 'provisioning' it is still a live
+        # permanent by tpn_one_current_permanent and still owns the E.164 by
+        # tpn_owned_e164_key, so this tenant could never be provisioned again --
+        # the same divergence the release path had, reached from the other side.
+        # Only on a CONFIRMED Twilio delete, and fenced on the identity we bought.
+        if released:
+            await _rollback_canonical_row(
+                tenant["id"], purchased_number, subaccount_sid, purchased_sid)
         raise
 
 
@@ -947,6 +958,33 @@ async def _provision_after_twilio(
     }
 
 
+async def _rollback_canonical_row(tenant_id: str, e164: str,
+                                  subaccount_sid: str, provider_sid: str) -> None:
+    """Retire a canonical row a failed provisioning attempt may have created.
+
+    Never raises: the provisioning failure that triggered the rollback is the
+    error worth surfacing, and a rollback that raises would replace it with a
+    less useful one. A row left behind is loud in the log and reconcilable;
+    hiding the original failure is not.
+    """
+    from db import phone_numbers as db_phones
+    try:
+        row = await db_phones.find_owned_by_e164(e164)
+        if not row or str(row.get("tenant_id") or "") != str(tenant_id):
+            return
+        rel = await phone_registry.mark_released(
+            tenant_id=str(tenant_id), number_row_id=str(row["id"]),
+            expected_e164=e164,
+            expected_provider_sid=str(row.get("provider_sid") or ""),
+            expected_provider_account_sid=str(row.get("provider_account_sid") or ""),
+            last_error="provisioning rolled back")
+        if not rel["released"]:
+            logger.error("Rollback: canonical row %s for %s not released (%s)",
+                         row.get("id"), e164, rel.get("detail"))
+    except Exception as e:
+        logger.error("Rollback: canonical retirement of %s failed: %s", e164, e)
+
+
 async def release_tenant_number(tenant: dict) -> dict:
     """Give a tenant's phone number back — the inverse of provisioning it.
 
@@ -966,6 +1004,7 @@ async def release_tenant_number(tenant: dict) -> dict:
     Never raises. Returns {"released": bool, "steps": {...}, "reason": str}.
     """
     from db import supabase as db
+    from db import phone_numbers as db_phones
 
     tenant_id  = str(tenant.get("id") or "")
     number     = str(tenant.get("twilio_phone_number") or "")
@@ -974,8 +1013,46 @@ async def release_tenant_number(tenant: dict) -> dict:
     vapi_id    = str(tenant.get("vapi_phone_number_id") or "")
     steps: dict = {}
 
+    # The canonical row is resolved FIRST, before anything is given away, and by
+    # E.164 rather than by "the tenant's current number". Reading it up front is
+    # what lets the transition at the end be fenced on the identity we saw here:
+    # if a replacement arrives in between, the fence misses and the replacement
+    # survives.
+    canonical = None
+    if number:
+        try:
+            canonical = await db_phones.find_owned_by_e164(number)
+            if canonical and str(canonical.get("tenant_id") or "") != tenant_id:
+                # Another tenant holds this E.164 canonically. Releasing on this
+                # tenant's credentials would take away a number the books say is
+                # someone else's. Refuse; this needs a human.
+                logger.error(
+                    "release: %s is canonically owned by tenant %s, not %s -- refusing",
+                    number, canonical.get("tenant_id"), tenant_id)
+                return {"released": False, "steps": {},
+                        "reason": "canonical_owner_mismatch"}
+        except Exception as e:
+            # Not knowing the canonical state is not a reason to proceed: the
+            # whole point is that provider release and canonical state converge.
+            logger.error("release: canonical lookup failed for tenant %s: %s", tenant_id, e)
+            return {"released": False, "steps": {}, "reason": "canonical_lookup_failed"}
+    steps["canonical_row"] = bool(canonical)
+
     if not number:
-        return {"released": True, "steps": {}, "reason": "no_number_on_tenant"}
+        # No scalar. A canonical row can still be live here -- that is exactly the
+        # drift this gate closes -- so say so rather than reporting a clean no-op.
+        try:
+            orphan = await db_phones.get_current_permanent(tenant_id)
+        except Exception:
+            orphan = None
+        if orphan:
+            logger.error(
+                "release: tenant %s has no scalar number but canonical row %s is "
+                "still %s on %s -- reconcile it before releasing",
+                tenant_id, orphan.get("id"), orphan.get("status"), orphan.get("e164"))
+            return {"released": False, "steps": steps,
+                    "reason": "canonical_row_without_scalar"}
+        return {"released": True, "steps": steps, "reason": "no_number_on_tenant"}
 
     logger.warning(
         "RELEASING number %s for tenant %s (%s) — subscription_status=%s. This cannot be undone.",
@@ -1026,27 +1103,56 @@ async def release_tenant_number(tenant: dict) -> dict:
 
     steps["twilio_released"] = True
 
-    # Clear the fields last, so a failure above leaves the tenant in a state the
-    # next attempt can retry from.
+    # Twilio has confirmed the delete. ONLY NOW may the books say released --
+    # everything above this line is "we asked", which is not proof.
+    #
+    # Canonical first and scalar second, through the one primitive that owns
+    # both, so they cannot end up disagreeing. Before W9I-B.1 this was a bare
+    # update_tenant that cleared the scalar and left the canonical row 'active':
+    # the number was gone at Twilio, unroutable in fact, and still counted as
+    # the tenant's live permanent -- which made every later reprovision buy a
+    # number and immediately throw it away.
     from datetime import datetime, timezone
-    try:
-        await db.update_tenant(tenant_id, {
-            "twilio_phone_number":  None,
-            "vapi_phone_number_id": None,
-            # Stamped here rather than by the caller, so a manual admin release
-            # leaves the same audit trail as the automated sweep. The number is
-            # cleared off the row, making this the only remaining evidence.
-            "number_released_at":   datetime.now(timezone.utc).isoformat(),
-        })
-        steps["tenant_cleared"] = True
-    except Exception as e:
-        # The number is genuinely gone; we just failed to record it. Loud, because
-        # the row now claims a number that no longer exists.
-        logger.error(
-            "release: number %s released for tenant %s but clearing the row failed: %s",
-            number, tenant_id, e,
-        )
-        steps["tenant_cleared"] = False
+    if canonical:
+        try:
+            rel = await phone_registry.mark_released(
+                tenant_id=tenant_id, number_row_id=str(canonical["id"]),
+                expected_e164=number,
+                expected_provider_sid=str(canonical.get("provider_sid") or ""),
+                expected_provider_account_sid=str(canonical.get("provider_account_sid") or ""))
+        except Exception as e:
+            logger.error(
+                "release: number %s released at Twilio for tenant %s but the "
+                "canonical transition raised: %s -- the row still reads live",
+                number, tenant_id, e)
+            steps["canonical_released"] = False
+            steps["tenant_cleared"] = False
+            return {"released": True, "steps": steps,
+                    "reason": "canonical_update_failed", "number": number}
+        steps["canonical_released"] = rel["released"]
+        steps["canonical_idempotent"] = rel["idempotent"]
+        steps["tenant_cleared"] = rel["scalar_cleared"]
+        if not rel["released"]:
+            logger.error(
+                "release: number %s is gone at Twilio for tenant %s but the "
+                "canonical row was not transitioned (%s)",
+                number, tenant_id, rel.get("detail"))
+            return {"released": True, "steps": steps,
+                    "reason": f"canonical_not_released:{rel.get('detail')}",
+                    "number": number}
+    else:
+        # A legacy tenant that predates the canonical model. There is nothing to
+        # transition, so the fenced scalar clear stands alone -- still fenced, so
+        # it cannot clear a replacement.
+        try:
+            cleared = await db.clear_tenant_number_fenced(
+                tenant_id, number, datetime.now(timezone.utc).isoformat())
+            steps["tenant_cleared"] = bool(cleared)
+        except Exception as e:
+            logger.error(
+                "release: number %s released for tenant %s but clearing the row failed: %s",
+                number, tenant_id, e)
+            steps["tenant_cleared"] = False
 
     logger.info("Released number %s for tenant %s", number, tenant_id)
     return {"released": True, "steps": steps, "reason": "", "number": number}
@@ -1080,6 +1186,34 @@ async def reprovision_tenant_number(tenant: dict) -> dict:
     if tenant.get("twilio_phone_number"):
         return {"provisioned": False, "number": str(tenant["twilio_phone_number"]),
                 "reason": "tenant_already_has_a_number"}
+
+    # PREFLIGHT, BEFORE ANY MONEY IS SPENT (W9I-B.1 Stage H).
+    # The scalar guard above is not sufficient on its own: a tenant whose scalar
+    # was cleared but whose canonical row is still live passes it, buys a real
+    # number, and is then refused by register_permanent below -- after the
+    # non-refundable monthly rental has been charged (USD 1.15 for a Canadian
+    # local number, measured). Ask the canonical model, which is the authority
+    # on whether this tenant already holds a permanent number, and refuse here.
+    #
+    # This does not replace the post-purchase check. A preflight sees a moment
+    # ago; live_conflict and tpn_one_current_permanent are what hold under a
+    # race. Both are required, for different failures.
+    try:
+        live = await phone_registry.current_permanent_conflict(tenant_id)
+    except Exception as e:
+        # Unable to establish whether a purchase is safe. Spending money on a
+        # maybe is the one outcome worth avoiding here.
+        logger.error("reprovision: canonical preflight failed for tenant %s: %s",
+                     tenant_id, e)
+        return {"provisioned": False, "number": "", "reason": "canonical_preflight_failed"}
+    if live:
+        logger.error(
+            "reprovision: tenant %s still holds canonical permanent row %s "
+            "(%s, %s) -- refusing BEFORE purchasing a replacement",
+            tenant_id, live.get("id"), live.get("e164"), live.get("status"))
+        return {"provisioned": False, "number": "",
+                "reason": "canonical_permanent_still_live"}
+
     if not (sub_sid and sub_token):
         return {"provisioned": False, "number": "", "reason": "missing_twilio_credentials"}
     if not tenant.get("vapi_assistant_id"):

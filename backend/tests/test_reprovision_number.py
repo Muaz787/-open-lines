@@ -22,6 +22,11 @@ def _canonical_patches():
     import contextlib
     stack = contextlib.ExitStack()
     for cm in (
+        # W9I-B.1: the preflight asks the canonical model whether this tenant
+        # already holds a permanent number BEFORE spending money. These tests
+        # are about what happens once that has passed, so it answers "no".
+        patch("services.phone_registry.current_permanent_conflict",
+              new=AsyncMock(return_value=None)),
         patch("services.phone_registry.register_permanent",
               new=AsyncMock(return_value={"status": "ok",
                                           "row": {"id": "phone-row-reprov"},

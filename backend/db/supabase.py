@@ -238,6 +238,33 @@ async def update_tenant(tenant_id: str, data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def clear_tenant_number_fenced(tenant_id: str, e164: str,
+                                     released_at: str) -> list[dict]:
+    """Clear the legacy phone pointers, but ONLY while they still name `e164`.
+
+    The unfenced version of this write is how a released number could take a
+    live one down with it: release worker reads number A, the tenant is
+    reprovisioned onto B, the worker then clears "the tenant's number" and B --
+    a number that rings -- is unlinked. Matching on the E.164 makes that write
+    hit zero rows instead.
+
+    Returns the rows it changed: exactly one when it cleared, zero when the
+    pointer had already moved on or was already clear. Both are legitimate; the
+    caller decides which, by looking at what is actually there.
+    """
+    res = (
+        get_client()
+        .table("tenants")
+        .update({"twilio_phone_number": None,
+                 "vapi_phone_number_id": None,
+                 "number_released_at": released_at})
+        .eq("id", tenant_id)
+        .eq("twilio_phone_number", e164)
+        .execute()
+    )
+    return res.data or []
+
+
 # ---------------------------------------------------------------------------
 # Leads
 # ---------------------------------------------------------------------------

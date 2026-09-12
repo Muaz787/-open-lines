@@ -14,6 +14,16 @@ one:
 
     register_permanent()   the number exists at the provider -> record it
     mark_active()          the number is configured and answers -> make it routable
+    mark_released()        the provider confirmed it is gone -> close the row
+
+mark_released() was added in W9I-B.1, because shipping the first two without it
+left the model able to acquire numbers but never to let one go. release_tenant_number
+cleared the legacy scalar and left the canonical row 'active', so a released
+number stayed the tenant's live permanent for ever: unroutable in fact, still
+counted by tpn_one_current_permanent, and therefore blocking the replacement the
+customer was waiting for -- after the replacement had been bought and paid for.
+Acquisition and release now go through the same module for the same reason they
+have to: two writers with different semantics is how the drift happened.
 
 BOTH THE CANONICAL ROW AND THE LEGACY SCALAR ARE WRITTEN HERE, TOGETHER. The
 scalar is not deprecated yet -- `get_tenant_by_phone` still falls back to it and
@@ -34,6 +44,7 @@ NOTHING HERE TOUCHES THE PROVIDER. It records what the provider already did.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from db import phone_numbers as db_phones
 from db import supabase as db
@@ -43,6 +54,10 @@ logger = logging.getLogger(__name__)
 
 OK = "ok"
 CONFLICT = "live_conflict"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def register_permanent(*, tenant_id: str, e164: str, provider_account_sid: str,
@@ -96,3 +111,96 @@ async def mark_active(*, tenant_id: str, number_row_id: str, e164: str) -> dict:
                                        {"status": lifecycle.STATUS_ACTIVE})
     await db.update_tenant(tenant_id, {"twilio_phone_number": e164})
     return {"status": OK, "row": row}
+
+
+STALE = "stale"
+
+
+async def current_permanent_conflict(tenant_id: str) -> dict | None:
+    """The live permanent row that would refuse a new one, or None.
+
+    The cheap local preflight the reprovision path was missing. W9I-B routed
+    reprovision through register_permanent() but left its guard reading the
+    legacy scalar, so a tenant whose scalar was clear and whose canonical row was
+    still live passed the guard, bought a real number, and was refused after the
+    money was spent -- USD 1.15 per attempt, measured, non-refundable.
+
+    This does NOT replace the post-purchase check. A preflight can only see the
+    world as it was a moment ago; register_permanent's live_conflict and the
+    tpn_one_current_permanent index are what hold under concurrency. The
+    preflight exists to stop the PREDICTABLE spend, not the racing one.
+    """
+    return await db_phones.get_current_permanent(tenant_id)
+
+
+async def mark_released(*, tenant_id: str, number_row_id: str, expected_e164: str,
+                        expected_provider_sid: str,
+                        expected_provider_account_sid: str,
+                        last_error: str = "") -> dict:
+    """THE ONE PLACE a number leaves our possession, in the application's books.
+
+    Call this only with authoritative proof from the provider: a confirmed delete
+    or an authoritative 404. "We asked and something went wrong" is not proof --
+    a timeout, 401, 403, 429, 5xx or malformed body all mean the number may still
+    be ours and still be billing, and a row marked released on that basis makes
+    the number unfindable by every reconciliation path we have. Those cases must
+    leave the row exactly as it is, so the next run can try again.
+
+    Canonical first, scalar second, both fenced on the same E.164. The canonical
+    table is the authority: if the CAS does not land, the scalar is left alone,
+    because a cleared scalar next to a live canonical row is the divergence this
+    module exists to prevent.
+
+    Returns {"status": OK|STALE, "released": bool, "idempotent": bool,
+             "scalar_cleared": bool, "row": dict|None, "detail": str}.
+    """
+    changed = await db_phones.release_number_cas(
+        number_id=number_row_id, tenant_id=tenant_id, e164=expected_e164,
+        provider_sid=expected_provider_sid,
+        provider_account_sid=expected_provider_account_sid,
+        last_error=last_error)
+
+    idempotent = False
+    if len(changed) == 1:
+        row = changed[0]
+    else:
+        # Zero rows is ambiguous on its own -- already released, or moved under
+        # us. Re-read and let the row say which.
+        row = await db_phones.get_by_id(number_row_id)
+        if row is None:
+            logger.error("release: canonical row %s is gone for tenant %s",
+                         number_row_id, tenant_id)
+            return {"status": STALE, "released": False, "idempotent": False,
+                    "scalar_cleared": False, "row": None, "detail": "row_missing"}
+        identity_matches = (
+            str(row.get("tenant_id") or "") == str(tenant_id)
+            and str(row.get("e164") or "") == expected_e164
+            and str(row.get("provider_sid") or "") == expected_provider_sid
+            and str(row.get("provider_account_sid") or "") == expected_provider_account_sid)
+        if identity_matches and lifecycle.is_released(row):
+            idempotent = True          # a retry of a release that already landed
+        else:
+            # Either the identity moved (a replacement occupies this row id --
+            # impossible today, but the fence is what makes it impossible) or the
+            # status is one we must not release from. Fail closed either way.
+            logger.error(
+                "release: refusing to transition canonical row %s for tenant %s "
+                "-- identity_matches=%s status=%s", number_row_id, tenant_id,
+                identity_matches, row.get("status"))
+            return {"status": STALE, "released": False, "idempotent": False,
+                    "scalar_cleared": False, "row": row,
+                    "detail": "identity_mismatch" if not identity_matches
+                              else f"unreleasable_status:{row.get('status')}"}
+
+    # The canonical row is released. Now, and only now, the legacy pointer -- and
+    # only while it still names the number we just released.
+    released_at = str(row.get("released_at") or "") or _now_iso()
+    cleared = await db.clear_tenant_number_fenced(tenant_id, expected_e164, released_at)
+    if not cleared:
+        logger.info(
+            "release: legacy scalar for tenant %s no longer named %s -- left "
+            "untouched (already clear, or moved to a replacement)",
+            tenant_id, expected_e164)
+
+    return {"status": OK, "released": True, "idempotent": idempotent,
+            "scalar_cleared": bool(cleared), "row": row, "detail": ""}
