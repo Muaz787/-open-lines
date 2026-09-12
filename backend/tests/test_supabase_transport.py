@@ -38,12 +38,32 @@ def _fresh_policy(monkeypatch):
     import gotrue._sync.gotrue_base_api as gt
     import postgrest._sync.client as pg
 
-    originals = [(pg, "SyncClient", pg.SyncClient), (gt, "SyncClient", gt.SyncClient)]
+    # install() rebinds these names for the whole PROCESS, and any earlier test
+    # module that reaches a real get_client() will have triggered it. Capturing
+    # `module.SyncClient` as-is therefore captures the FACTORY, not the library
+    # class — and the fixture would then "restore" the factory, so the next
+    # install() saw its own work and reported already-patched instead of the
+    # module path.
+    #
+    # That is why three of these tests failed when this file ran after
+    # test_w7a/w7b/w7d while passing on their own and in the full suite: the
+    # outcome depended on which module happened to touch the client first.
+    #
+    # So: unwrap to the library class and rebind it BEFORE the test body, and
+    # put back whatever was actually there afterwards.
+    restore, originals = [], []
+    for module in (pg, gt):
+        current = module.SyncClient
+        original = getattr(current, "wrapped_cls", current)
+        restore.append((module, "SyncClient", current))
+        originals.append((module, "SyncClient", original))
+        setattr(module, "SyncClient", original)
+
     saved = (T._installed, dict(T._patched))
     T._installed = False
     T._patched.clear()
     yield
-    for module, attr, value in originals:
+    for module, attr, value in restore:
         setattr(module, attr, value)
     T._installed, patched = saved[0], saved[1]
     T._patched.clear()
