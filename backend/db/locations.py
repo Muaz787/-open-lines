@@ -77,6 +77,38 @@ async def update_location(tenant_id: str, location_id: str, data: dict) -> dict:
 # location_provider_bindings
 # ---------------------------------------------------------------------------
 
+async def refresh_derived_timezone(tenant_id: str, location_id: str, *,
+                                   was: str | None, now: str) -> bool:
+    """Advance a tenant location's timezone ONLY if it still equals `was`.
+
+    Compare-and-swap, in the UPDATE's own predicate. Returns True only if we
+    made the change -- `len(res.data) == 1` is the proof, the same shape W7D
+    uses for provider_version fencing.
+
+    WHY IT MUST BE CONDITIONAL (W8.2)
+    tenant_locations.timezone means "operator override, else the provider value
+    derived at adoption" (see location_adoption.location_payload). There is no
+    column recording which, so the only safe evidence that a value is still
+    tracking the provider is that it EQUALS the provider timezone we last
+    stored. A read-then-write would lose that: an operator changing the timezone
+    between our read and our write would be silently overwritten. Putting the
+    old value in the predicate means a race can only ever make us lose, never
+    make us clobber.
+
+    `was=None` handles the other direction: a location with no timezone, whose
+    binding had none either, may be populated the first time the provider
+    reports one. A location that has a value while the binding had none cannot
+    be provider-derived, so it is left alone.
+    """
+    if not (tenant_id and location_id and now):
+        return False
+    q = (get_client().table("tenant_locations").update({"timezone": now, "updated_at": _now_iso()})
+         .eq("tenant_id", tenant_id).eq("id", location_id))
+    q = q.is_("timezone", "null") if was is None else q.eq("timezone", was)
+    res = q.execute()
+    return len(res.data or []) == 1
+
+
 async def list_bindings(tenant_id: str, provider: str | None = None) -> list:
     q = (get_client().table("location_provider_bindings").select("*")
          .eq("tenant_id", tenant_id))

@@ -138,6 +138,60 @@ def binding_metadata(location: dict) -> dict:
     }
 
 
+async def _refresh_derived_timezone(tenant_id: str, prior: dict, meta: dict,
+                                    provider_location_id: str) -> None:
+    """Advance the bound tenant location's timezone when it is still derived.
+
+    Only the exact-match case is provable without a schema change: if the
+    location's timezone still equals the provider timezone we last STORED, it
+    has not been overridden and may follow the provider. Anything else is
+    preserved, because an override and a stale derivation are indistinguishable
+    in a single nullable column.
+
+    `prior` is read from the map loaded once before the loop, so
+    prior["provider_timezone"] is genuinely the OLD value — the comparison
+    happens before update_binding replaces it.
+
+    A binding that is discovered but not yet adopted has no location to update,
+    and one being attached to the default for the first time during THIS sync is
+    left alone too: it is not ours to re-time on the way in.
+
+    Best effort by design — location persistence has always been allowed to fail
+    without breaking a sync, and a timezone that does not advance is a far
+    smaller problem than a sync that stops.
+    """
+    location_id = str(prior.get("tenant_location_id") or "")
+    if not location_id:
+        return
+
+    # `was` keeps whatever is literally stored, because that exact string is the
+    # CAS predicate. Only the NEW value is normalised, so a provider that starts
+    # sending whitespace cannot be written as a timezone.
+    was = prior.get("provider_timezone")
+    now = str(meta.get("provider_timezone") or "").strip()
+    if not now or now == str(was or "").strip():
+        # No new authoritative timezone, or nothing moved. A provider that stops
+        # reporting a timezone is not evidence that the business changed one, so
+        # a working scheduling value is never erased here.
+        return
+
+    try:
+        moved = await db_loc.refresh_derived_timezone(
+            tenant_id, location_id, was=was, now=now)
+    except Exception as e:
+        logger.warning("location_sync: timezone refresh failed for tenant %s location %s: %s",
+                       tenant_id, provider_location_id, e)
+        return
+
+    if moved:
+        logger.info("location_sync: tenant %s location %s followed the provider timezone "
+                    "%s -> %s", tenant_id, provider_location_id, was, now)
+    else:
+        logger.info("location_sync: tenant %s location %s keeps its own timezone; the "
+                    "provider moved %s -> %s but the location was not tracking it",
+                    tenant_id, provider_location_id, was, now)
+
+
 async def sync_square_locations(
     tenant: dict, locations: list[dict], dry_run: bool = False,
 ) -> dict:
@@ -199,6 +253,22 @@ async def sync_square_locations(
                 result["attached_to_default"] = provider_location_id
                 bound_to_default = provider_location_id
             if not dry_run:
+                # ── W8.2 · refresh a PROVIDER-DERIVED location timezone ─────
+                # Ordering is the safety property, and it is LOCATION FIRST.
+                #
+                # These two writes cannot be atomic (PostgREST, no
+                # transaction), so consider both partial failures:
+                #   * location succeeds, binding fails -> scheduling is already
+                #     on the new timezone, which is the correct one; the next
+                #     sync retries the binding and converges.
+                #   * location fails, binding not yet written -> nothing
+                #     changed; the next sync retries cleanly.
+                # Writing the BINDING first would destroy the evidence: `prior`
+                # would then already hold the new timezone, the location would
+                # still hold the old one, they would no longer match, and the
+                # location would look like an operator override forever.
+                await _refresh_derived_timezone(tenant_id, prior, meta,
+                                                provider_location_id)
                 await db_loc.update_binding(tenant_id, prior["id"], update)
             result["updated"].append(provider_location_id)
         else:
