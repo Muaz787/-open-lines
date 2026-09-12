@@ -435,6 +435,25 @@ async def provision_tenant(payload: dict) -> dict:
         logger.info("[Step %d] Provisioned Twilio number %s", step, purchased_number)
     except Exception as e:
         logger.error("[Step %d] Twilio provisioning failed: %s", step, e)
+        # ── W9A · never leak the sub-account this attempt created ───────────
+        # create_subaccount() runs BEFORE any number can be searched or bought,
+        # and a number purchase can fail for reasons we cannot pre-validate --
+        # an Irish local number needs an AddressSid, and Twilio only says so at
+        # purchase time. Without this, every such failure left a live
+        # sub-account behind, and every retry created another one.
+        #
+        # Only an account created inside THIS try block is closed:
+        # subaccount_sid is None until create_subaccount() returns, so a failure
+        # before that point closes nothing, and a pre-existing account can never
+        # be reached from here.
+        if subaccount_sid:
+            closed = await telephony.close_subaccount(subaccount_sid)
+            if not closed:
+                # Reported, not swallowed: an orphan nobody knows about is worse
+                # than a noisy provisioning error.
+                logger.error("[Step %d] ORPHANED Twilio sub-account %s — close it "
+                             "by hand", step, subaccount_sid)
+            subaccount_sid = subaccount_token = None
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
 
     # Reuse the pre-provision website scrape if onboarding already did one.
