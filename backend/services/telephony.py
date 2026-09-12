@@ -542,3 +542,90 @@ async def find_number_across_accounts(phone_number: str) -> NumberSearch:
             holders.append(acct.sid)
     return NumberSearch(status="success", accounts=tuple(holders),
                         scanned=len(accounts), unreadable=unreadable)
+
+
+# ---------------------------------------------------------------------------
+# W9G Stage X — Irish number DISCOVERY.
+#
+# THE DEFECT THIS REPLACES. _COUNTRY_CONFIG["IE"]["area_codes"] is empty, so
+# find_available_number() fell straight through to an unfiltered national search and
+# returned whatever was first in the pool -- W9C measured Portumna, Bandon, Birr for a
+# Dublin business. Worse, `area_code=1` / `21` / `61` return ZERO results for Ireland:
+# Twilio's area_code filter does not work outside NANP. `in_locality` does.
+#
+# WHY THIS IS ONLY CANDIDATE DISCOVERY. W9C proved the search result's `locality` is
+# NOT the locality an address must satisfy: a number labelled "Dublin" demanded an
+# address in Celbridge/Leixlip/Lucan/Maynooth (error 21615), and the purchase also
+# requires an approved BundleSid (21649). So nothing here may be described as
+# compliance-validated. Acceptance is only ever established by the purchase itself,
+# with a real AddressSid and BundleSid -- which is a later gate, not this one.
+#
+# NOTHING IN THIS FUNCTION PURCHASES A NUMBER.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class NumberCandidates:
+    """Candidate numbers only. Never a statement about regulatory acceptance."""
+    status: str                              # "success" | "error"
+    candidates: tuple[dict, ...] = ()
+    strategy: str = ""                       # how they were found
+    error_detail: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "success"
+
+    @property
+    def is_empty(self) -> bool:
+        return self.ok and not self.candidates
+
+    #: Deliberately named so no caller can mistake this for a compliance result.
+    compliance_validated = False
+
+
+async def search_candidate_numbers(subaccount_sid: str, subaccount_token: str, *,
+                                   iso_country: str, locality: str = "",
+                                   limit: int = 20) -> NumberCandidates:
+    """Find purchasable candidates, preferring the customer's own locality.
+
+    For IE the strategy is locality-first and NEVER area_code. When a locality is
+    given and yields nothing, it falls back to a national sweep but SAYS SO in
+    `strategy`, so a caller can refuse to offer an out-of-locality number rather than
+    discover the mismatch at purchase time.
+    """
+    country = str(iso_country or "").strip().upper()
+    if not subaccount_sid or not subaccount_token or not country:
+        return NumberCandidates(status="error", error_detail="missing_parameters")
+    try:
+        coll = _sub_client(subaccount_sid, subaccount_token) \
+            .available_phone_numbers(country).local
+    except Exception as e:
+        return NumberCandidates(status="error", error_detail=_safe_provider_error(e))
+
+    def _rows(**kw):
+        rows = coll.list(limit=limit, **kw)
+        return tuple({
+            "phone_number": getattr(r, "phone_number", "") or "",
+            "locality": getattr(r, "locality", None),
+            "region": getattr(r, "region", None),
+            # The provider's own words about what an address must satisfy. Carried
+            # through so a caller can see it is 'local' and act accordingly.
+            "address_requirements": getattr(r, "address_requirements", None),
+            "capabilities": dict(getattr(r, "capabilities", {}) or {}),
+            "beta": bool(getattr(r, "beta", False)),
+        } for r in rows)
+
+    wanted = str(locality or "").strip()
+    try:
+        if wanted:
+            found = _rows(in_locality=wanted)
+            if found:
+                return NumberCandidates(status="success", candidates=found,
+                                        strategy=f"in_locality={wanted}")
+        national = _rows()
+        return NumberCandidates(
+            status="success", candidates=national,
+            strategy=("national_fallback_locality_not_available" if wanted
+                      else "national"))
+    except Exception as e:
+        return NumberCandidates(status="error", error_detail=_safe_provider_error(e))

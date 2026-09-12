@@ -44,6 +44,27 @@ _twilio_exc.TwilioRestException = TwilioRestException  # type: ignore[attr-defin
 sys.modules["twilio.base.exceptions"] = _twilio_exc
 sys.modules["twilio.base"].exceptions = _twilio_exc  # type: ignore[attr-defined]
 
+# ── the REAL twilio.request_validator, when the package is installed ─────────
+# W9G verifies Twilio webhook signatures. A MagicMock validator would return a
+# truthy Mock for every signature, so those tests would pass while verifying
+# nothing -- the exact failure mode the tests exist to prevent. The module is pure
+# stdlib (base64/hmac/hashlib/urllib), with no twilio-internal imports, so it can be
+# loaded straight from its file path without disturbing the stub above.
+try:  # pragma: no cover - environment dependent
+    import importlib.util as _ilu
+    from pathlib import Path as _Path
+    for _base in sys.path:
+        _cand = _Path(_base) / "twilio" / "request_validator.py"
+        if _cand.is_file():
+            _spec = _ilu.spec_from_file_location("twilio.request_validator", _cand)
+            _rv = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_rv)
+            sys.modules["twilio.request_validator"] = _rv
+            sys.modules["twilio"].request_validator = _rv  # type: ignore[attr-defined]
+            break
+except Exception:  # the signature tests skip themselves if this did not work
+    pass
+
 # slowapi (prod-only) — provide a functional stub so importing routers that use the
 # rate limiter works. .limit() is a passthrough decorator so the real endpoint
 # functions (and FastAPI route registration) are preserved.

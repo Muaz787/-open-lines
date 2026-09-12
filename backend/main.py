@@ -130,6 +130,13 @@ if _zapier_service.ENABLED:
     app.include_router(zapier.router)
 
 
+# Regulatory compliance (W9G). Tenant routes are bearer-authenticated; the Twilio
+# status callback is signature-verified. DARK until a tenant confirms a country.
+from routers import regulatory as regulatory_router
+app.include_router(regulatory_router.router)
+app.include_router(regulatory_router.webhook_router)
+
+
 # Deployment identity, so a release can be verified rather than inferred.
 from services import deployment
 
