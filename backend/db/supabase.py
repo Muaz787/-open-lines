@@ -1093,3 +1093,48 @@ async def reconcile_appointment_if_newer(appointment_id: str, provider_version,
            .or_(f"provider_version.is.null,provider_version.lt.{int(provider_version)}")
            .execute())
     return len(res.data or []) == 1
+
+
+# ── onboarding tenant claim (migration 031, W9I-B) ─────────────────────────
+
+async def claim_onboarding_tenant(onboarding_key: str, row: dict) -> dict | None:
+    """Create the onboarding tenant, or return None if this attempt lost the race.
+
+    None means another request carrying the SAME key already created it -- a
+    double-clicked form, a retried POST, two browser tabs. The caller re-reads and
+    resumes into that tenant rather than minting a second one.
+
+    23505 is caught here, not in the router, for the same reason it is caught in
+    db/regulatory.claim_provider_resource: losing this race is a normal outcome of
+    this function, not an exception to it. Moving the tenant insert to the FRONT of
+    signup is what created the hazard -- the old flow was accidentally protected
+    because it failed before ever inserting.
+    """
+    payload = {**row, "onboarding_key": onboarding_key}
+    try:
+        res = get_client().table("tenants").insert(payload).execute()
+    except Exception as e:
+        if _is_unique_violation(e):
+            return None
+        raise
+    return (res.data or [None])[0]
+
+
+async def find_onboarding_tenant(onboarding_key: str) -> dict | None:
+    """The tenant a previous attempt with this key created, if any."""
+    res = (get_client().table("tenants").select("*")
+           .eq("onboarding_key", onboarding_key).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+def _is_unique_violation(e: Exception) -> bool:
+    """PostgreSQL 23505 arriving through PostgREST.
+
+    Matched on the SQLSTATE rather than the message, which names the constraint
+    and echoes the conflicting key and is exactly the sort of text that gets
+    reworded between PostgREST versions.
+    """
+    code = getattr(e, "code", None)
+    if str(code) == "23505":
+        return True
+    return "23505" in str(e)

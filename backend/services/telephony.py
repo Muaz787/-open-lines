@@ -99,6 +99,19 @@ _COUNTRY_CONFIG: dict[str, dict] = {
 
 SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 
+
+class CountryNotSupported(Exception):
+    """A country we have no number inventory configuration for.
+
+    A distinct type rather than a generic ValueError so the routers can map it to
+    a controlled customer-facing refusal instead of a 500, and so a test can
+    assert that an unsupported country never reaches number search at all.
+    """
+
+    def __init__(self, country_code: str):
+        self.country_code = str(country_code or "")
+        super().__init__(f"country_not_supported:{self.country_code or '<empty>'}")
+
 # Canadian area codes grouped by province. Used to keep a new number in the
 # SAME province as the business — so an Ontario business never gets a Quebec
 # number just because a single Toronto code was momentarily out of inventory.
@@ -195,10 +208,15 @@ async def find_available_number(
     preferred_area_code: str = "",
     province: str = "",
 ) -> str:
-    cc = country_code.upper()
+    cc = str(country_code or "").strip().upper()
     if cc not in _COUNTRY_CONFIG:
-        logger.warning("Country %s not supported, falling back to CA", cc)
-        cc = "CA"
+        # FAIL CLOSED. This used to log a warning and continue as Canada, which
+        # meant an unrecognised or malformed country silently bought a Canadian
+        # number: the wrong country on the invoice, the wrong country in any
+        # future regulatory filing, and a business whose callers dial another
+        # continent. A country we cannot serve has to be refused, not
+        # substituted.
+        raise CountryNotSupported(cc)
 
     config = _COUNTRY_CONFIG[cc]
     twilio_code = config["twilio_code"]
@@ -251,11 +269,19 @@ async def find_available_number(
     raise ValueError(f"No available local numbers found in {twilio_code}")
 
 
-async def purchase_number(
+async def purchase_number_with_sid(
     subaccount_sid: str,
     subaccount_token: str,
     phone_number: str,
-) -> str:
+) -> tuple[str, str]:
+    """Buy a number and return BOTH its E.164 and the provider object's SID.
+
+    The SID exists because migration 027's canonical model is keyed on it --
+    tpn_provider_object_key is unique on (provider, account, provider_sid), and it
+    is what lets a later reconciliation ask Twilio about a specific number rather
+    than matching on a string that could have been re-issued. purchase_number()
+    below still returns only the E.164, so every existing caller is unchanged.
+    """
     try:
         client = _sub_client(subaccount_sid, subaccount_token)
         incoming = client.incoming_phone_numbers.create(phone_number=phone_number)
@@ -263,13 +289,24 @@ async def purchase_number(
             "Purchased number %s on sub-account %s (SID %s)",
             incoming.phone_number, subaccount_sid, incoming.sid,
         )
-        return incoming.phone_number
+        return incoming.phone_number, incoming.sid
     except TwilioRestException as e:
         logger.error(
             "Failed to purchase number %s on sub-account %s: %s",
             phone_number, subaccount_sid, e,
         )
         raise
+
+
+async def purchase_number(
+    subaccount_sid: str,
+    subaccount_token: str,
+    phone_number: str,
+) -> str:
+    """Kept for the callers and tests that only need the number itself."""
+    e164, _sid = await purchase_number_with_sid(
+        subaccount_sid, subaccount_token, phone_number)
+    return e164
 
 
 async def release_number(

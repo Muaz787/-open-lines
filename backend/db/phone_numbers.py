@@ -72,6 +72,29 @@ async def find_routable_by_e164(e164: str) -> dict | None:
     return rows[0]
 
 
+async def find_owned_by_e164(e164: str) -> dict | None:
+    """The row for a number we currently HOLD, routable or not.
+
+    Distinct from find_routable_by_e164 on purpose. Routing must not reach a
+    number whose webhook is unconfigured, so that lookup excludes
+    `provisioning` -- but OWNERSHIP has to include it, or a retried provisioning
+    attempt would not find the row it just created and would try to insert a
+    second one. The status set is exactly `tpn_owned_e164_key`'s index predicate
+    (phone_lifecycle.OWNED_E164_STATUSES), so this answers the same question the
+    database would.
+    """
+    res = (get_client().table("tenant_phone_numbers").select("*")
+           .eq("e164", e164)
+           .in_("status", list(lifecycle.OWNED_E164_STATUSES))
+           .limit(2).execute())
+    rows = res.data or []
+    if len(rows) > 1:
+        logger.error("tenant_phone_numbers: %d owned rows for one number — the "
+                     "tpn_owned_e164_key index should have made this impossible",
+                     len(rows))
+    return rows[0] if rows else None
+
+
 async def list_for_tenant(tenant_id: str, *, purpose: str = "",
                           statuses: tuple[str, ...] = ()) -> list[dict]:
     q = (get_client().table("tenant_phone_numbers").select("*")
