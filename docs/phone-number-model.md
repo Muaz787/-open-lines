@@ -255,3 +255,46 @@ without verifying it. The handler now tries the sub-account token first, then th
 parent, and **records which matched** — both are OpenLines-controlled, cross-account
 abuse is already blocked by the `AccountSid` check, and a third party's signature
 matches neither. The first real callback settles the question.
+
+### The declaration, resolved (W9G.3)
+
+Twilio Support confirmed, for OpenLines as an ISV with one subaccount per customer
+and the number living in that subaccount:
+
+- **the SMB customer is the EndUser** — for DANI, DANI, not OpenLines
+- **`business_identity = DIRECT_CUSTOMER`** — describes the SMB customer
+- **`is_subassigned = NO`** — also describes the SMB customer: the number is assigned
+  to the EndUser the Bundle represents and is not being further subassigned *by* that
+  EndUser
+- no separate OpenLines ISV identity is required inside the customer's Bundle
+- the subaccount architecture does not change the answer
+
+Separately, OpenLines' **parent-account** Trust Hub profile should be ISV/Reseller —
+audited read-only and **already correct** (`business_identity: isv_reseller_or_partner`,
+profile `twilio-approved`).
+
+**These two values are system-sourced, not customer input.** The customer is
+authoritative for facts about their business — registered name, website, CRO number,
+authorised representative, Irish address. OpenLines is authoritative for mapping its
+own architecture into Twilio's terminology, and a business owner should not have to
+interpret provider jargon to onboard.
+
+`services/regulatory_declaration.py` holds the mapping in **one** place, keyed on
+`(provider, iso_country, number_type, end_user_type, architecture)` with **no
+fallback, no wildcard, no default**. US, CA, GB, IE-mobile, IE-toll-free,
+IE-individual, another provider and another architecture all resolve to nothing and
+fail closed — the answer is specific to what Twilio was actually asked.
+
+It remains **subordinate to the live Regulation API**: the policy says what we
+believe, the regulation says what the provider currently accepts, and they are
+reconciled before anything is filed. If Twilio stops accepting `DIRECT_CUSTOMER` or
+`NO`, the filing is refused; if it stops *asking* for a field, that field is simply
+not sent.
+
+Two further guarantees: the resolved values are **persisted before the EndUser is
+created**, so a retry files the same thing and an audit shows what was declared; and
+once stored they are **never recomputed**, so a later policy change cannot rewrite
+what an earlier filing told a regulator. Customer-supplied values for these two
+fields are **stripped before persistence** — otherwise a value POSTed once would come
+back as "history" and be honoured, which is how a false declaration could have been
+injected.

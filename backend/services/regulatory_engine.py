@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 
 from db import regulatory as db_reg
+from services import regulatory_declaration as decl
 from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
 from services import regulatory_state as st
@@ -47,6 +48,8 @@ ADDRESS_VALIDATION_FAILED = "address_validation_failed"
 UNSUPPORTED_DOCUMENT_REQUIREMENT = "unsupported_document_requirement"
 REQUIREMENTS_CHANGED = "requirements_changed"
 UNRESOLVED_ISV_DECLARATION = "unresolved_isv_declaration"
+DECLARATION_POLICY_UNRESOLVED = "declaration_policy_unresolved"
+DECLARATION_REJECTED_BY_REGULATION = "declaration_rejected_by_regulation"
 NOT_READY = "not_ready"
 MISSING_COUNTRY = "business_country_not_confirmed"
 UNSUPPORTED_REQUIREMENT_FIELD = "unsupported_requirement_field"
@@ -59,6 +62,44 @@ DEFAULT_END_USER_TYPE = "business"
 def _now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+
+async def _resolve_declaration(reqs, stored_details: dict | None) -> dict:
+    """Resolve the system-sourced declaration and reconcile it with the live regulation.
+
+    ── HISTORICAL IMMUTABILITY ───────────────────────────────────────────────
+    If values were already persisted for this tenant -- i.e. a filing has been built
+    on them -- they are REUSED, not recomputed. A policy change later must not
+    silently rewrite what an earlier filing actually declared to a regulator. Only a
+    profile with nothing stored yet takes today's policy.
+    """
+    existing = {k: str((stored_details or {}).get(k) or "").strip()
+                for k in decl.POLICY_FIELDS}
+    if all(existing.values()):
+        # Already declared. Honour history.
+        return _result(OK, attributes={k: v for k, v in existing.items()
+                                       if k in set(reqs.end_user_field_names)},
+                       source="persisted")
+
+    policy = decl.resolve(iso_country=reqs.iso_country,
+                          number_type=reqs.number_type,
+                          end_user_type=reqs.end_user_type)
+    if policy is None:
+        # Twilio has not told us the answer for this combination. Not a default.
+        return _result(DECLARATION_POLICY_UNRESOLVED,
+                       context=f"{reqs.iso_country}/{reqs.number_type}/"
+                               f"{reqs.end_user_type}",
+                       next_requirement="provider confirmation for this exact "
+                                        "country, number type and end-user type")
+
+    status, detail = decl.validate_against_regulation(policy, reqs)
+    if status != decl.RESOLVED:
+        # The regulation changed under the answer. A support reply from the past is
+        # not licence to file a value the provider now rejects.
+        return _result(DECLARATION_REJECTED_BY_REGULATION, detail=detail)
+    return _result(OK, attributes=decl.applicable_attributes(policy, reqs),
+                   source=policy.source)
 
 
 async def _ensure_draft_profile(tenant_id, country, number_type, end_user_type,
@@ -538,9 +579,16 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
     # after this can fail -- and if the answers only ever existed in this request,
     # every failure would mean asking them to retype. Merged, so a one-field
     # correction stays a one-field correction.
+    # THE DECLARATION IS NOT THE CUSTOMER'S TO SUPPLY. Stripping it here rather
+    # than merely ignoring it downstream is what stops a customer-supplied value
+    # from being persisted and then read back as "history" on the next request --
+    # which would let anyone inject a false regulatory declaration by POSTing it
+    # once. The only writer of these columns is the policy path below.
+    customer_supplied = {k: v for k, v in (attributes or {}).items()
+                         if k not in decl.POLICY_FIELDS}
     stored = await db_reg.upsert_business_details(
         tenant_id, country, end_user_type=end_user_type,
-        values={**db_reg.details_from_attributes(attributes),
+        values={**db_reg.details_from_attributes(customer_supplied),
                 "requirements_fingerprint": reqs.fingerprint(),
                 "collected_at": _now_iso()})
 
@@ -558,30 +606,46 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
         return _result(INVALID_CUSTOMER_DATA, missing=missing,
                        details_stored=True)
 
-    # ── THE STOPPING POINT ────────────────────────────────────────────────
-    # The EndUser IS the regulatory identity. The live Ireland regulation lists
-    # business_identity and is_subassigned as REQUIRED end-user fields, and W9G.1
-    # could not establish from Twilio's documentation which actor each one
-    # describes. Creating the EndUser now would file an identity that the current
-    # regulation says is incomplete -- and Evaluation checks exactly that field
-    # presence, so it would come back noncompliant anyway. Nothing is gained by
-    # creating it early and a half-filed identity is lost.
+    # ── THE DECLARATION ───────────────────────────────────────────────────
+    # business_identity and is_subassigned are not facts about the customer; they
+    # are a statement in Twilio's terminology about the commercial relationship,
+    # and Twilio Support has confirmed the answer for THIS architecture. So they
+    # are SYSTEM-SOURCED -- resolved from the context we already know, not asked of
+    # a business owner who would have to interpret provider jargon to answer.
     #
-    # So collection completes, the answers are durable, the address is already
-    # validated -- and NO provider identity is created until an operator resolves
-    # the declaration. `details_required` already means "we do not have everything
-    # we need"; the reason is what distinguishes waiting on the customer from
-    # waiting on us.
-    if unresolved:
+    # The policy is still subordinate to the live regulation: it says what we
+    # believe, the Regulation API says what the provider currently accepts, and the
+    # two are reconciled before anything is filed.
+    declared = await _resolve_declaration(reqs, stored)
+    if not declared["ok"]:
+        profile = await _ensure_draft_profile(
+            tenant_id, country, number_type, end_user_type, address_row, reqs,
+            sub_sid, tenant_location_id)
+        return {**declared, "profile": profile, "details_stored": True}
+    effective = {**effective, **declared["attributes"]}
+
+    # Anything the regulation asks for that the policy did NOT answer is still a
+    # hard stop -- the block was never about these two fields specifically, it was
+    # about never filing an identity the regulation calls incomplete.
+    still_unresolved = ie_ux.unresolved_declarations(reqs, effective)
+    if still_unresolved:
         profile = await _ensure_draft_profile(
             tenant_id, country, number_type, end_user_type, address_row, reqs,
             sub_sid, tenant_location_id)
         return _result(UNRESOLVED_ISV_DECLARATION,
-                       unresolved_declarations=unresolved,
-                       details_stored=True,
-                       profile=profile,
-                       next_requirement="an operator must answer the ISV declaration "
-                                        "before any provider identity is created")
+                       unresolved_declarations=still_unresolved,
+                       details_stored=True, profile=profile)
+
+    # PERSIST THE DECLARATION BEFORE THE IDENTITY IS FILED. Whatever the EndUser
+    # ends up stating must already be recorded on our side, so a retry files the
+    # same thing and an audit can show what was declared.
+    if declared.get("source") != "persisted" and declared["attributes"]:
+        stored = await db_reg.upsert_business_details(
+            tenant_id, country, end_user_type=end_user_type,
+            values={**declared["attributes"],
+                    "requirements_fingerprint": reqs.fingerprint()})
+        effective = {**effective,
+                     **db_reg.attributes_from_details(stored, reqs.end_user_field_names)}
 
     eu = await resolve_end_user(tenant, requirements=reqs, attributes=effective,
                                client=client, sub_sid=sub_sid)
@@ -730,6 +794,9 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
         str(profile["tenant_id"]), str(profile.get("iso_country") or ""),
         str(profile.get("end_user_type") or "business"))
     attributes = db_reg.attributes_from_details(details, reqs.end_user_field_names)
+    # A submission must declare exactly what was persisted. If the declaration was
+    # never stored, submission_blockers below refuses -- it is not recomputed here,
+    # because a filing's declaration is history, not a live lookup.
     blockers = submission_blockers(profile=profile, requirements=reqs,
                                   attributes=attributes, address_row=address_row)
     if blockers:
@@ -802,6 +869,12 @@ async def recover_end_user(tenant: dict, *, profile: dict) -> dict:
         return _result(NOT_READY, detail="no_stored_business_details")
     attributes = db_reg.attributes_from_details(details, reqs.end_user_field_names)
 
+    # The same resolver prepare_profile uses, so recovery can never file a different
+    # declaration from the one the original filing made.
+    declared = await _resolve_declaration(reqs, details)
+    if not declared["ok"]:
+        return declared
+    attributes = {**attributes, **declared["attributes"]}
     unresolved = ie_ux.unresolved_declarations(reqs, attributes)
     if unresolved:
         return _result(UNRESOLVED_ISV_DECLARATION,

@@ -225,12 +225,33 @@ async def test_recovery_says_so_plainly_when_nothing_was_ever_stored(world):
 
 
 @pytest.mark.asyncio
-async def test_recovery_will_not_file_an_identity_while_the_declaration_is_open(world):
-    """CASE 4 must not become a side door around the stopping point."""
+async def test_recovery_uses_the_SAME_declaration_policy_as_preparation(world):
+    """The two paths must not be able to file different declarations (W9G.3)."""
     _seed(world, business_identity=None, is_subassigned=None)
     world["profiles"].append(_profile(end_user_sid=None))
     r = await engine.recover_end_user(tenant(), profile=world["profiles"][0])
-    assert r["status"] == engine.UNRESOLVED_ISV_DECLARATION
+    assert r["ok"], r
+    sent = world["twilio"].last_end_user_attributes
+    assert sent["business_identity"] == "DIRECT_CUSTOMER"
+    assert sent["is_subassigned"] == "NO"
+
+
+@pytest.mark.asyncio
+async def test_recovery_will_not_file_an_identity_for_an_UNCONFIRMED_context(world):
+    """CASE 4 must not become a side door around the stopping point."""
+    from tests.test_w9g_regulation_discovery import FakeRegulation as _FR
+    world["twilio"].opts["regulations"] = [_FR(iso_country="GB")]
+    _seed(world, business_identity=None, is_subassigned=None)
+    # the stored answers must be for the profile's own country, or recovery stops
+    # earlier for a different (also correct) reason
+    world["details"].append({**world["details"][0], "id": "det-gb", "iso_country": "GB"})
+    world["addresses"].append({**world["addresses"][0], "id": "addr-gb",
+                               "iso_country": "GB"})
+    world["profiles"].append(_profile(end_user_sid=None, iso_country="GB",
+                                      regulatory_address_id="addr-gb"))
+    r = await engine.recover_end_user(tenant(business_country_code="GB"),
+                                      profile=world["profiles"][0])
+    assert r["status"] == engine.DECLARATION_POLICY_UNRESOLVED
     assert world["twilio"].created["end_user"] == 0
 
 
@@ -287,16 +308,21 @@ def test_the_column_mapping_round_trips():
 # ═══════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_the_declaration_fields_are_never_given_a_default(world):
-    """Not a default, not an empty string, not a plausible guess -- nothing."""
+async def test_the_declaration_comes_from_the_POLICY_not_a_default(world):
+    """W9G.3. The values are supplied, but from a context-keyed policy Twilio
+    confirmed -- not a constant, and not for any other context."""
+    from services import regulatory_declaration as rd
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     attrs = {k: v for k, v in GOOD_ATTRS.items()
              if k not in ("business_identity", "is_subassigned")}
     await engine.prepare_profile(tenant(), attributes=attrs)
-    stored = world["details"][0]
-    assert "business_identity" not in stored or stored["business_identity"] is None
-    assert "is_subassigned" not in stored or stored["is_subassigned"] is None
-    assert world["twilio"].last_end_user_attributes is None
+    policy = rd.resolve(iso_country="IE", number_type="local",
+                        end_user_type="business")
+    sent = world["twilio"].last_end_user_attributes
+    assert sent["business_identity"] == policy.business_identity
+    assert sent["is_subassigned"] == policy.is_subassigned
+    # and the identical values were recorded before the filing
+    assert world["details"][0]["business_identity"] == policy.business_identity
 
 
 def _executable_source(module) -> str:

@@ -805,57 +805,141 @@ async def test_prepare_builds_everything_once_and_is_resumable(world):
 
 
 @pytest.mark.asyncio
-async def test_prepare_STOPS_before_creating_any_provider_identity_while_unresolved(world):
-    """THE CORRECTED STOPPING POINT (W9G.1).
-
-    The live Ireland regulation lists business_identity and is_subassigned as
-    REQUIRED end-user fields. W9G created the EndUser anyway, omitting them -- a
-    provider identity the regulation itself says is incomplete. The customer's
-    answers are stored (so nothing is lost), the address is already validated, and
-    NO EndUser, document or Bundle is created until an operator resolves the
-    declaration."""
+async def test_the_confirmed_declaration_is_supplied_by_the_system(world):
+    """W9G.3. The customer never types these two values -- they are Twilio
+    terminology about our commercial relationship, and Twilio Support confirmed the
+    answer for exactly this context. The customer supplies facts about their
+    business; OpenLines supplies the mapping of its own architecture."""
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    attrs = {k: v for k, v in GOOD_ATTRS.items()
-             if k not in ("business_identity", "is_subassigned")}
-    r = await engine.prepare_profile(tenant(), attributes=attrs)
-    assert r["status"] == engine.UNRESOLVED_ISV_DECLARATION
-    assert r["unresolved_declarations"] == ["business_identity", "is_subassigned"]
-    assert r["details_stored"] is True
-    created = world["twilio"].created
-    assert created["end_user"] == 0, "no regulatory identity may be filed"
-    assert created["document"] == 0 and created["bundle"] == 0
-    # A resumable draft profile exists so the stalled workflow is visible.
-    profile = r["profile"]
-    assert profile["state"] == st.DETAILS_REQUIRED
-    assert not profile.get("end_user_sid") and not profile.get("bundle_sid")
-    assert profile["requirements_fingerprint"] == REQS.fingerprint()
+    customer_only = {k: v for k, v in GOOD_ATTRS.items()
+                     if k not in ("business_identity", "is_subassigned")}
+    r = await engine.prepare_profile(tenant(), attributes=customer_only)
+    assert r["ok"], r
+    sent = world["twilio"].last_end_user_attributes
+    assert sent["business_identity"] == "DIRECT_CUSTOMER"
+    assert sent["is_subassigned"] == "NO"
 
 
 @pytest.mark.asyncio
-async def test_the_customers_answers_survive_the_declaration_stall(world):
-    """They typed everything they can; they must not be asked again when the
-    declaration is resolved days later."""
+async def test_the_declaration_is_persisted_BEFORE_the_identity_is_filed(world):
+    """Whatever the EndUser states must already be on our side, so a retry files the
+    same thing and an audit can show what was declared."""
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    attrs = {k: v for k, v in GOOD_ATTRS.items()
-             if k not in ("business_identity", "is_subassigned")}
-    await engine.prepare_profile(tenant(), attributes=attrs)
+    customer_only = {k: v for k, v in GOOD_ATTRS.items()
+                     if k not in ("business_identity", "is_subassigned")}
+    await engine.prepare_profile(tenant(), attributes=customer_only)
+    stored = world["details"][0]
+    assert stored["business_identity"] == "DIRECT_CUSTOMER"
+    assert stored["is_subassigned"] == "NO"
+
+
+@pytest.mark.asyncio
+async def test_an_unconfirmed_CONTEXT_still_stops_before_any_provider_identity(world):
+    """The block was never about these two field names -- it was about never filing
+    an identity the regulation calls incomplete. Twilio answered for IE/local/
+    business only, so a context it has not spoken about still fails closed."""
+    world["twilio"].opts["regulations"] = [
+        FakeRegulation(iso_country="GB", friendly_name="United Kingdom: Local - Business")]
+    tn = tenant(business_country_code="GB")
+    await engine.ensure_address(tn, submitted={**GOOD_ADDRESS, "postal_code": "SW1A 1AA"})
+    customer_only = {k: v for k, v in GOOD_ATTRS.items()
+                     if k not in ("business_identity", "is_subassigned")}
+    r = await engine.prepare_profile(tn, attributes=customer_only)
+    assert r["status"] == engine.DECLARATION_POLICY_UNRESOLVED
+    assert r["context"] == "GB/local/business"
+    assert r["details_stored"] is True
+    created = world["twilio"].created
+    assert created["end_user"] == 0 and created["document"] == 0 and created["bundle"] == 0
+    profile = r["profile"]
+    assert profile["state"] == st.DETAILS_REQUIRED
+    assert not profile.get("end_user_sid") and not profile.get("bundle_sid")
+
+
+@pytest.mark.asyncio
+async def test_the_customers_answers_survive_an_unconfirmed_context(world):
+    """They typed everything they can; a missing provider confirmation must not cost
+    them their work."""
+    world["twilio"].opts["regulations"] = [FakeRegulation(iso_country="GB")]
+    tn = tenant(business_country_code="GB")
+    await engine.ensure_address(tn, submitted={**GOOD_ADDRESS, "postal_code": "SW1A 1AA"})
+    customer_only = {k: v for k, v in GOOD_ATTRS.items()
+                     if k not in ("business_identity", "is_subassigned")}
+    await engine.prepare_profile(tn, attributes=customer_only)
     stored = world["details"][0]
     assert stored["business_name"] == "DANI Ltd"
-    assert stored["business_registration_number"] == "123456"
     assert stored["authorized_rep_email"] == "ann@dani.ie"
     assert stored.get("business_identity") is None
     assert stored.get("is_subassigned") is None
 
-    # An operator answers ONLY the declaration -- nothing else is re-sent.
-    r = await engine.prepare_profile(
-        tenant(), attributes={"business_identity": "DIRECT_CUSTOMER",
-                              "is_subassigned": "NO"})
+
+@pytest.mark.asyncio
+async def test_a_regulation_that_no_longer_accepts_the_value_FAILS_CLOSED(world):
+    """A support answer from the past is not licence to file a value the provider
+    now rejects."""
+    changed = {
+        "end_user": [{**IE_REQUIREMENTS["end_user"][0],
+                      "detailed_fields": [
+                          {**d, "description": "Choose any one of the following "
+                                               "values: [RESELLER, AGENCY]."}
+                          if d["machine_name"] == "business_identity" else d
+                          for d in IE_REQUIREMENTS["end_user"][0]["detailed_fields"]]}],
+        "supporting_document": IE_REQUIREMENTS["supporting_document"]}
+    world["twilio"].opts["regulations"] = [FakeRegulation(requirements=changed)]
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    # customer facts only -- the declaration is the system's to supply, and it is
+    # the SYSTEM's value the changed regulation must reject.
+    customer_only = {k: v for k, v in GOOD_ATTRS.items()
+                     if k not in ("business_identity", "is_subassigned")}
+    r = await engine.prepare_profile(tenant(), attributes=customer_only)
+    assert r["status"] == engine.DECLARATION_REJECTED_BY_REGULATION
+    assert "business_identity=DIRECT_CUSTOMER" in r["detail"]
+    assert world["twilio"].created["end_user"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_regulation_that_drops_the_field_simply_omits_it(world):
+    """Not every change is a failure: a field the provider stopped asking for is
+    nothing to declare, and must not be sent."""
+    dropped = {
+        "end_user": [{**IE_REQUIREMENTS["end_user"][0],
+                      "fields": [f for f in IE_REQUIREMENTS["end_user"][0]["fields"]
+                                 if f != "is_subassigned"]}],
+        "supporting_document": IE_REQUIREMENTS["supporting_document"]}
+    world["twilio"].opts["regulations"] = [FakeRegulation(requirements=dropped)]
+    # the provider now requires one field fewer, so the fake must too
+    world["twilio"].opts["required_end_user_fields"] = tuple(
+        dropped["end_user"][0]["fields"])
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
     assert r["ok"], r
-    assert world["twilio"].created["end_user"] == 1
     sent = world["twilio"].last_end_user_attributes
-    required = {f.name for f in REQS.end_user_fields if f.required}
-    assert required <= set(sent), f"missing {required - set(sent)}"
-    assert set(sent) <= set(REQS.end_user_field_names)
+    assert "is_subassigned" not in sent
+    assert sent["business_identity"] == "DIRECT_CUSTOMER"
+
+
+@pytest.mark.asyncio
+async def test_an_already_declared_profile_keeps_its_historical_values(world):
+    """A policy change later must not silently rewrite what an earlier filing
+    actually declared to a regulator."""
+    world["details"].append({"id": "det-1", "tenant_id": TENANT, "iso_country": "IE",
+                             "end_user_type": "business",
+                             "business_name": GOOD_ATTRS["business_name"],
+                             "business_website": GOOD_ATTRS["business_website"],
+                             "business_registration_number":
+                                 GOOD_ATTRS["business_registration_number"],
+                             "authorized_rep_first_name": GOOD_ATTRS["first_name"],
+                             "authorized_rep_last_name": GOOD_ATTRS["last_name"],
+                             "authorized_rep_email": GOOD_ATTRS["email"],
+                             # what an earlier filing declared
+                             "business_identity": "INDEPENDENT_SOFTWARE_VENDOR",
+                             "is_subassigned": "YES"})
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(tenant(), attributes={})
+    assert r["ok"], r
+    sent = world["twilio"].last_end_user_attributes
+    assert sent["business_identity"] == "INDEPENDENT_SOFTWARE_VENDOR"
+    assert sent["is_subassigned"] == "YES"
+    assert world["details"][0]["business_identity"] == "INDEPENDENT_SOFTWARE_VENDOR"
 
 
 @pytest.mark.asyncio
@@ -868,12 +952,41 @@ async def test_prepare_refuses_before_the_address_is_validated(world):
 
 
 @pytest.mark.asyncio
-async def test_prepare_refuses_an_out_of_enum_value(world):
+async def test_an_out_of_enum_DECLARATION_from_a_customer_is_ignored_not_rejected(world):
+    """W9G.3 changed this. The declaration fields are system-sourced, so a customer
+    value for them is stripped before it reaches validation -- there is nothing to
+    reject, and the policy's own value is filed instead. (A customer-supplied
+    declaration being ignored is asserted directly in
+    tests/test_w9g3_declaration_policy.py.)"""
     await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     r = await engine.prepare_profile(
         tenant(), attributes={**GOOD_ATTRS, "business_identity": "RESELLER"})
+    assert r["ok"], r
+    assert world["twilio"].last_end_user_attributes["business_identity"] \
+        == "DIRECT_CUSTOMER"
+
+
+@pytest.mark.asyncio
+async def test_the_enum_guard_still_protects_a_customer_facing_enum_field(world):
+    """The guard is not dead code -- it still applies to any enum field the
+    regulation asks the CUSTOMER to answer. Ireland currently has none, so this
+    models a regulation that does."""
+    with_enum = {
+        "end_user": [{**IE_REQUIREMENTS["end_user"][0],
+                      "fields": IE_REQUIREMENTS["end_user"][0]["fields"] + ["comments"],
+                      "detailed_fields": [
+                          {**d, "description": "Choose any one of the following "
+                                               "values: [LTD, PLC]."}
+                          if d["machine_name"] == "business_name" else d
+                          for d in IE_REQUIREMENTS["end_user"][0]["detailed_fields"]]}],
+        "supporting_document": IE_REQUIREMENTS["supporting_document"]}
+    world["twilio"].opts["regulations"] = [FakeRegulation(requirements=with_enum)]
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(
+        tenant(), attributes={**GOOD_ATTRS, "business_name": "NOT_AN_OPTION"})
     assert r["status"] == engine.INVALID_CUSTOMER_DATA
-    assert r["invalid_enum"] == ["business_identity"]
+    assert r["invalid_enum"] == ["business_name"]
+    assert world["twilio"].created["end_user"] == 0
 
 
 # ── no purchases, anywhere ─────────────────────────────────────────────────

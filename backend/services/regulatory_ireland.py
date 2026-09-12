@@ -47,6 +47,14 @@ from services.regulatory_requirements import RegulationRequirementSet
 
 #: Fields whose value is a compliance declaration about the OpenLines/tenant
 #: relationship rather than a fact the customer can simply be asked for.
+#:
+#: W9G.3: Twilio Support confirmed the values for (Twilio, IE, local, business,
+#: OpenLines ISV + per-customer subaccount), so for THAT context they are now
+#: system-sourced -- see services/regulatory_declaration.py. They remain listed here
+#: because the list is what marks them as NOT the customer's to answer, which is
+#: still true: the customer is authoritative for facts about their business, and
+#: OpenLines is authoritative for mapping its own architecture into Twilio's
+#: terminology. A context with no confirmed policy still fails closed.
 UNRESOLVED_DECLARATION_FIELDS = ("business_identity", "is_subassigned")
 
 #: Customer-facing labels and help. Keyed by provider machine_name. A field absent
@@ -80,13 +88,13 @@ IE_FIELD_UX: dict[str, dict[str, str]] = {
     },
     "business_identity": {
         "label": "Business classification",
-        "help": "How this number is used commercially. Set by OpenLines — see "
-                "the unresolved declaration note.",
+        "help": "Set by OpenLines from our provider relationship — you are not "
+                "asked to interpret this.",
     },
     "is_subassigned": {
         "label": "Number assigned to an end customer",
-        "help": "Whether the number is sub-assigned. Set by OpenLines — see "
-                "the unresolved declaration note.",
+        "help": "Set by OpenLines from our provider relationship — you are not "
+                "asked to interpret this.",
     },
     "comments": {
         "label": "Additional comments",
