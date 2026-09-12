@@ -161,12 +161,56 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
             "square_location_id unset rather than guessing a default",
             tenant_id, len(location_sync.usable_square_locations(locations)))
 
+    # ── W7E.3b · merchant identity is preserved, never nulled, never swapped ──
+    # `square_merchant_id` stopped being a label when W7D and W7E made it part of
+    # the identity chain: booking events resolve through the merchant's candidate
+    # set, and catalog events fan out across every tenant claiming it. So the old
+    # `merchant_id or None` had become a routing hazard. If get_merchant_info()
+    # failed and the token response carried no merchant id, a RE-connect wrote
+    # NULL and silently turned a correctly routed tenant into an unrouteable one.
+    #
+    # Three outcomes, all explicit:
+    #   * nothing observed, something stored -> keep what is stored. A provider
+    #     lookup failing tells us nothing about the merchant's identity.
+    #   * nothing observed, nothing stored   -> refuse. Completing OAuth with no
+    #     merchant identity would persist a half-configured integration that
+    #     cannot route and looks connected.
+    #   * a DIFFERENT merchant observed      -> refuse, and write nothing at all.
+    #     Silently re-pointing a tenant at another Square account would leave its
+    #     existing location bindings and mirrored appointments describing a
+    #     merchant that no longer owns them. Deliberately not "handled" by
+    #     migrating that state: re-pointing an established integration is an
+    #     operator decision, not something an OAuth redirect should do.
+    existing_merchant_id = str((tenant or {}).get("square_merchant_id") or "").strip()
+    observed_merchant_id = str(merchant_id or "").strip()
+
+    if not observed_merchant_id:
+        if not existing_merchant_id:
+            logger.error(
+                "Square OAuth: no merchant id from either the token response or "
+                "get_merchant_info for tenant %s — refusing to complete a connection "
+                "with no merchant identity", tenant_id)
+            return RedirectResponse(url=f"{dest}?square=error")
+        logger.warning(
+            "Square OAuth: merchant id unavailable this time for tenant %s — keeping "
+            "the established one rather than clearing it", tenant_id)
+        merchant_id = existing_merchant_id
+    elif existing_merchant_id and observed_merchant_id != existing_merchant_id:
+        logger.error(
+            "Square OAuth: tenant %s is connected to merchant %s but this callback "
+            "presents merchant %s — refusing. Re-pointing an established integration "
+            "would orphan its location bindings and mirrored appointments.",
+            tenant_id, existing_merchant_id, observed_merchant_id)
+        return RedirectResponse(url=f"{dest}?square=error")
+    else:
+        merchant_id = observed_merchant_id
+
     try:
         update = {
             "square_access_token":    encrypt(access_token),
             "square_refresh_token":   encrypt(refresh_token) if refresh_token else None,
             "square_token_expires_at": expires_at or None,
-            "square_merchant_id":     merchant_id or None,
+            "square_merchant_id":     merchant_id,   # guaranteed non-empty above
             "square_location_id":     location_id or None,
             "square_currency":        currency or None,
             "square_oauth_state":     None,

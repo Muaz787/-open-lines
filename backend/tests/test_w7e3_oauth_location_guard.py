@@ -43,10 +43,17 @@ def loc(lid, *, status="ACTIVE"):
     return {"id": lid, "status": status, "timezone": "Europe/Dublin", "name": lid}
 
 
-async def run_callback(*, pointer, locations, list_raises=False, merchant="ML66K1YVCD1P0"):
-    """Drive the real OAuth callback with every external call stubbed."""
+async def run_callback(*, pointer, locations, list_raises=False, merchant="ML66K1YVCD1P0",
+                       stored_merchant=None, info_merchant=None, info_raises=False,
+                       want_redirect=False):
+    """Drive the real OAuth callback with every external call stubbed.
+
+    merchant        -> what the TOKEN response carries
+    info_merchant   -> what get_merchant_info carries (defaults to `merchant`)
+    stored_merchant -> what the tenant already has on file
+    """
     tenant = {"id": "t-1", "business_name": "DANI", "square_oauth_state": "st8",
-              "square_location_id": pointer}
+              "square_location_id": pointer, "square_merchant_id": stored_merchant}
     captured = {}
 
     async def cap(tid, update):
@@ -55,20 +62,25 @@ async def run_callback(*, pointer, locations, list_raises=False, merchant="ML66K
 
     lst = AsyncMock(side_effect=RuntimeError("square down")) if list_raises \
         else AsyncMock(return_value=locations)
+    info = AsyncMock(side_effect=RuntimeError("merchant info down")) if info_raises \
+        else AsyncMock(return_value={"currency": "EUR",
+                                     "merchant_id": (info_merchant if info_merchant is not None
+                                                     else merchant)})
 
     with patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=tenant)), \
          patch("db.supabase.update_tenant", new=AsyncMock(side_effect=cap)), \
          patch("services.square_service.exchange_code",
                new=AsyncMock(return_value={"access_token": "at", "refresh_token": "rt",
                                            "expires_at": "2027-01-01", "merchant_id": merchant})), \
-         patch("services.square_service.get_merchant_info",
-               new=AsyncMock(return_value={"currency": "EUR", "merchant_id": merchant})), \
+         patch("services.square_service.get_merchant_info", new=info), \
          patch("services.square_service.list_locations", new=lst), \
          patch("routers.square_connect.encrypt", side_effect=lambda v: f"enc:{v}"), \
          patch("services.vapi.patch_assistant_tools", new=AsyncMock()), \
          patch("services.square_booking.sync", new=AsyncMock()), \
          patch("asyncio.create_task", side_effect=lambda coro: coro.close()):
-        await sc.callback(request=None, code="c", state="t-1:st8")
+        resp = await sc.callback(request=None, code="c", state="t-1:st8")
+    if want_redirect:
+        return captured, str(getattr(resp, "headers", {}).get("location", ""))
     return captured
 
 
@@ -132,7 +144,8 @@ async def test_C_multi_location_first_connect_is_order_independent():
 @pytest.mark.asyncio
 async def test_D_RECONNECT_never_replaces_an_existing_pointer():
     """The silent-replacement half of the defect."""
-    got = await run_callback(pointer=CORK, locations=[loc(DUBLIN), loc(CORK), loc(LIMERICK)])
+    got = await run_callback(pointer=CORK, stored_merchant="ML66K1YVCD1P0",
+                             locations=[loc(DUBLIN), loc(CORK), loc(LIMERICK)])
     assert got["square_location_id"] == CORK
 
 
@@ -140,7 +153,8 @@ async def test_D_RECONNECT_never_replaces_an_existing_pointer():
 async def test_D2_reconnect_preserves_the_pointer_in_every_ordering():
     three = [loc(CORK), loc(DUBLIN), loc(LIMERICK)]
     for order in itertools.permutations(three):
-        got = await run_callback(pointer=DUBLIN, locations=list(order))
+        got = await run_callback(pointer=DUBLIN, stored_merchant="ML66K1YVCD1P0",
+                                 locations=list(order))
         assert got["square_location_id"] == DUBLIN
 
 
@@ -148,7 +162,8 @@ async def test_D2_reconnect_preserves_the_pointer_in_every_ordering():
 async def test_E_a_provider_failure_NO_LONGER_WIPES_the_pointer():
     """The destructive half. Before this, one transient list_locations failure
     during a re-connect nulled the pointer and took availability offline."""
-    got = await run_callback(pointer=CORK, locations=[], list_raises=True)
+    got = await run_callback(pointer=CORK, stored_merchant="ML66K1YVCD1P0",
+                             locations=[], list_raises=True)
     assert got["square_location_id"] == CORK, "a transient Square failure wiped the pointer"
 
 
@@ -223,3 +238,103 @@ def test_the_whole_repository_is_now_free_of_arbitrary_location_defaults():
         code = _executable_source(mod)
         assert "locations[0]" not in code, f"{mod.__name__} still indexes the provider list"
         assert "locs[0]" not in code, f"{mod.__name__} still indexes the provider list"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W7E.3b — merchant identity is preserved, never nulled, never swapped
+#
+# square_merchant_id stopped being a label when W7D and W7E made it part of the
+# identity chain. `merchant_id or None` had become a routing hazard: a re-connect
+# during a transient get_merchant_info failure wrote NULL and silently turned a
+# correctly routed tenant into an unrouteable one.
+# ═══════════════════════════════════════════════════════════════════════════
+
+MERCHANT = "ML66K1YVCD1P0"
+OTHER = "MLZZZOTHERMERCHANT"
+
+
+@pytest.mark.asyncio
+async def test_M1_existing_merchant_plus_the_same_id_persists_it():
+    got = await run_callback(pointer=CORK, stored_merchant=MERCHANT,
+                             locations=[loc(CORK)], merchant=MERCHANT)
+    assert got["square_merchant_id"] == MERCHANT
+
+
+@pytest.mark.asyncio
+async def test_M2_a_transient_lookup_failure_PRESERVES_the_existing_merchant():
+    """The routing-integrity case. Before this, the token response carrying no
+    merchant id plus a failed get_merchant_info wrote NULL — and a NULL merchant
+    means W7D booking routing and W7E catalog routing can no longer find the
+    tenant at all."""
+    got = await run_callback(pointer=CORK, stored_merchant=MERCHANT,
+                             locations=[loc(CORK)], merchant="", info_raises=True)
+    assert got["square_merchant_id"] == MERCHANT, "a transient failure wiped merchant identity"
+    assert got["square_location_id"] == CORK
+
+
+@pytest.mark.asyncio
+async def test_M3_a_DIFFERENT_authoritative_merchant_is_REFUSED_not_swapped():
+    """Silently re-pointing a tenant at another Square account would leave its
+    location bindings and mirrored appointments describing a merchant that no
+    longer owns them. Nothing is written at all."""
+    got, redirect = await run_callback(pointer=CORK, stored_merchant=MERCHANT,
+                                       locations=[loc(CORK)], merchant=OTHER,
+                                       want_redirect=True)
+    assert got == {}, "a conflicting merchant identity was persisted"
+    assert "square=error" in redirect
+
+
+@pytest.mark.asyncio
+async def test_M3b_the_refusal_also_withholds_the_new_access_token():
+    """Refusing must not half-apply: the credential for the other merchant must
+    not land on this tenant either."""
+    got, _ = await run_callback(pointer=CORK, stored_merchant=MERCHANT,
+                                locations=[loc(CORK)], merchant=OTHER, want_redirect=True)
+    assert "square_access_token" not in got
+
+
+@pytest.mark.asyncio
+async def test_M4_first_connect_with_a_token_merchant_id_persists_it():
+    got = await run_callback(pointer=None, stored_merchant=None,
+                             locations=[loc(CORK)], merchant=MERCHANT)
+    assert got["square_merchant_id"] == MERCHANT
+
+
+@pytest.mark.asyncio
+async def test_M5_first_connect_falls_back_to_the_provider_lookup():
+    """Token response carried no merchant id; get_merchant_info supplies it."""
+    got = await run_callback(pointer=None, stored_merchant=None, locations=[loc(CORK)],
+                             merchant="", info_merchant=MERCHANT)
+    assert got["square_merchant_id"] == MERCHANT
+
+
+@pytest.mark.asyncio
+async def test_M6_first_connect_with_NO_merchant_identity_persists_nothing():
+    """Completing OAuth here would leave a half-configured integration that
+    cannot route and yet looks connected."""
+    got, redirect = await run_callback(pointer=None, stored_merchant=None, locations=[loc(CORK)],
+                                       merchant="", info_raises=True, want_redirect=True)
+    assert got == {}, "a half-configured Square integration was persisted"
+    assert "square=error" in redirect
+
+
+@pytest.mark.asyncio
+async def test_M7_the_merchant_id_is_never_written_as_None():
+    got = await run_callback(pointer=None, stored_merchant=None,
+                             locations=[loc(CORK)], merchant=MERCHANT)
+    assert got["square_merchant_id"]
+    assert got["square_merchant_id"] is not None
+
+
+def test_M8_the_write_can_no_longer_null_the_merchant():
+    code = _executable_source(sc)
+    assert "'square_merchant_id': merchant_id" in code.replace('"', "'")
+    assert "'square_merchant_id': merchant_id or None" not in code.replace('"', "'")
+
+
+def test_M9_both_refusals_happen_BEFORE_any_write():
+    code = _executable_source(sc.callback)
+    head = code[:code.index("update = {")]
+    assert head.count("return RedirectResponse") >= 2, \
+        "the merchant guard does not refuse before update_tenant"
+    assert "observed_merchant_id" in head
