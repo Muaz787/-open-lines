@@ -292,3 +292,154 @@ def test_a_legacy_single_location_confirmation_is_unchanged():
                                  "service_name": "Cut"},
                                 {"calendar_timezone": TORONTO}, pending=False)
     assert "10:00" in msg, msg
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CORRECTED FRAMING — the current Square merchant is the founder's personal
+# CANADIAN account. "Dublin", "Cork" and "Limerick" are synthetic labels on
+# Canadian locations, so America/Toronto is CORRECT provider truth, not bad
+# data. These tests prove two things at once: that Irish-sounding names cannot
+# make OpenLines think a location is Irish, and that a genuinely Irish merchant
+# reporting Europe/Dublin would be honoured.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def canadian_control():
+    """The real topology today: Canadian merchant, Irish-named test locations."""
+    return [{"id": "ca-dub", "name": "Dublin", "timezone": TORONTO,
+             "_binding": {"provider_location_id": DUB_PID, "provider_timezone": TORONTO}},
+            {"id": "ca-cork", "name": "Cork", "timezone": TORONTO,
+             "_binding": {"provider_location_id": CORK_PID, "provider_timezone": TORONTO}},
+            {"id": "ca-lim", "name": "Limerick", "timezone": TORONTO,
+             "_binding": {"provider_location_id": LIM_PID, "provider_timezone": TORONTO}}]
+
+
+def synthetic_ireland():
+    """FIXTURE ONLY — the future real DANI Ireland merchant. No production data."""
+    return [{"id": "ie-dub", "name": "Dublin", "timezone": DUBLIN,
+             "_binding": {"provider_location_id": "LIE_DUB", "provider_timezone": DUBLIN}},
+            {"id": "ie-cork", "name": "Cork", "timezone": DUBLIN,
+             "_binding": {"provider_location_id": "LIE_CORK", "provider_timezone": DUBLIN}},
+            {"id": "ie-lim", "name": "Limerick", "timezone": DUBLIN,
+             "_binding": {"provider_location_id": "LIE_LIM", "provider_timezone": DUBLIN}}]
+
+
+@pytest.mark.parametrize("loc_id,name", [("ca-dub", "Dublin"), ("ca-cork", "Cork"),
+                                         ("ca-lim", "Limerick")])
+def test_1_2_3_an_irish_NAME_on_a_canadian_location_stays_Toronto(loc_id, name):
+    """The anti-inference test. If anything ever derives a timezone from a
+    label, these fail — which is exactly what we want."""
+    tz = tools._offer_timezone({"tenant_location_id": loc_id, "start_at_utc": "2027-07-14T17:00:00Z"},
+                               {"calendar_timezone": TORONTO}, canadian_control())
+    assert tz == TORONTO, f"the name {name!r} leaked into timezone resolution -> {tz}"
+
+
+def test_4_provider_order_permutations_give_the_same_canadian_answer():
+    import itertools
+    answers = {tools._offer_timezone({"tenant_location_id": "ca-cork",
+                                      "start_at_utc": "2027-07-14T17:00:00Z"},
+                                     {"calendar_timezone": TORONTO}, list(o))
+               for o in itertools.permutations(canadian_control())}
+    assert answers == {TORONTO}
+
+
+def test_5_no_name_based_inference_exists_anywhere_in_the_resolver():
+    src = _executable_source(tools._offer_timezone)
+    for city in ("Dublin", "Cork", "Limerick", "Toronto", "Vancouver", "Ireland", "IE"):
+        assert city not in src, f"{city!r} appears in timezone resolution"
+    assert "name" not in src, "the resolver reads a location name"
+
+
+@pytest.mark.parametrize("loc_id", ["ie-dub", "ie-cork", "ie-lim"])
+def test_6_7_8_a_real_irish_merchant_reporting_Europe_Dublin_is_honoured(loc_id):
+    tz = tools._offer_timezone({"tenant_location_id": loc_id, "start_at_utc": "2027-07-14T13:00:00Z"},
+                               {"calendar_timezone": TORONTO}, synthetic_ireland())
+    assert tz == DUBLIN, "a real Irish location was not honoured"
+
+
+def test_a_legacy_toronto_tenant_default_cannot_override_an_irish_location():
+    """The precedence defect W8 was sent to look for. The tenant default is
+    America/Toronto — 10 of 11 production tenants have it — and it must not win
+    over a resolved location."""
+    for season, utc, expect in (("winter", "2027-01-20T14:00:00Z", 14),
+                                ("summer", "2027-07-14T13:00:00Z", 14)):
+        msg = tools._booked_message({"tenant_location_id": "ie-cork", "start_at_utc": utc,
+                                     "service_name": "Fitting"},
+                                    {"calendar_timezone": TORONTO},
+                                    pending=False, adopted=synthetic_ireland())
+        local = datetime.fromisoformat(utc.replace("Z", "+00:00")).astimezone(ZoneInfo(DUBLIN))
+        assert local.hour == expect
+        assert "2:00" in msg, f"{season}: tenant default leaked into {msg!r}"
+
+
+def test_9_15_synthetic_ireland_DST_both_directions():
+    for utc, expect_hour in (("2027-01-20T14:00:00Z", 14), ("2027-07-14T13:00:00Z", 14)):
+        tz = tools._offer_timezone({"tenant_location_id": "ie-dub", "start_at_utc": utc},
+                                   {"calendar_timezone": TORONTO}, synthetic_ireland())
+        assert datetime.fromisoformat(utc.replace("Z", "+00:00")).astimezone(ZoneInfo(tz)).hour == expect_hour
+
+
+def test_14_the_UTC_slot_identity_is_stable_across_both_fixtures():
+    utc = "2027-07-14T13:00:00Z"
+    instant = datetime.fromisoformat(utc.replace("Z", "+00:00"))
+    for adopted, loc in ((canadian_control(), "ca-cork"), (synthetic_ireland(), "ie-cork")):
+        tz = tools._offer_timezone({"tenant_location_id": loc, "start_at_utc": utc},
+                                   {"calendar_timezone": TORONTO}, adopted)
+        assert instant.astimezone(ZoneInfo(tz)) == instant
+
+
+# ── mixed-timezone generalisation ──────────────────────────────────────────
+
+MIXED = [{"id": "l-tor", "name": "Toronto", "timezone": TORONTO,
+          "_binding": {"provider_timezone": TORONTO}},
+         {"id": "l-van", "name": "Vancouver", "timezone": "America/Vancouver",
+          "_binding": {"provider_timezone": "America/Vancouver"}}]
+
+
+def test_16_17_18_one_tenant_can_hold_locations_in_different_timezones():
+    utc = "2027-07-14T17:00:00Z"
+    tenant = {"calendar_timezone": TORONTO}
+    tor = tools._offer_timezone({"tenant_location_id": "l-tor", "start_at_utc": utc}, tenant, MIXED)
+    van = tools._offer_timezone({"tenant_location_id": "l-van", "start_at_utc": utc}, tenant, MIXED)
+    assert tor == TORONTO and van == "America/Vancouver"
+    a = datetime.fromisoformat(utc.replace("Z", "+00:00")).astimezone(ZoneInfo(tor))
+    b = datetime.fromisoformat(utc.replace("Z", "+00:00")).astimezone(ZoneInfo(van))
+    assert a.hour == 13 and b.hour == 10, f"{a} / {b}"
+
+
+def test_19_an_existing_slot_is_never_REINTERPRETED_by_a_location_switch():
+    """Switching locations changes which zone a NEW slot is read in. It can never
+    move a slot already offered, because identity is the UTC instant."""
+    utc = "2027-07-14T17:00:00Z"
+    instant = datetime.fromisoformat(utc.replace("Z", "+00:00"))
+    for loc in ("l-tor", "l-van"):
+        tz = tools._offer_timezone({"tenant_location_id": loc, "start_at_utc": utc},
+                                   {"calendar_timezone": TORONTO}, MIXED)
+        assert datetime.fromisoformat(utc.replace("Z", "+00:00")).astimezone(ZoneInfo(tz)) == instant
+
+
+# ── fail-closed ────────────────────────────────────────────────────────────
+
+def test_20_multi_location_availability_REFUSES_without_a_timezone():
+    """A resolved location with no timezone makes zero Square calls and returns
+    a spoken error — it does not quietly use the tenant's Toronto default. This
+    is why a slot can never exist without a resolved timezone in the first
+    place."""
+    src = _executable_source(tools._multi_location_availability)
+    guard = src[src.index("timezone = "):]
+    assert "if not timezone:" in guard
+    assert guard.index("if not timezone:") < guard.index("get_square_services"),         "the refusal must precede any Square work"
+    assert "calendar_timezone" not in src and "America/Toronto" not in src
+
+
+def test_square_location_sync_stores_provider_truth_verbatim():
+    """Phase 2: whatever Square reports is what we store — Toronto for the
+    Canadian account, Europe/Dublin for a real Irish one. No name, no country,
+    no default."""
+    from services import location_sync as ls
+    src = _executable_source(ls.binding_metadata)
+    assert "'provider_timezone': location.get('timezone')" in src.replace('"', "'")
+    for forbidden in ("America/Toronto", "Europe/Dublin", "name", "country"):
+        assert f"'provider_timezone': location.get('{forbidden}')" not in src.replace('"', "'")
+    assert ls.binding_metadata({"timezone": "Europe/Dublin"})["provider_timezone"] == DUBLIN
+    assert ls.binding_metadata({"timezone": TORONTO})["provider_timezone"] == TORONTO
+    assert ls.binding_metadata({"name": "Dublin"})["provider_timezone"] is None
