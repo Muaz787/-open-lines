@@ -589,3 +589,58 @@ async def test_the_customer_can_fix_the_address_without_retyping_anything(world)
     sent = world["twilio"].last_end_user_attributes
     assert sent["business_name"] == "DANI Ltd"
     assert sent["business_identity"] == "DIRECT_CUSTOMER"
+
+
+@pytest.mark.asyncio
+async def test_a_provider_OUTAGE_during_address_creation_also_preserves_details(world):
+    """Rejection and outage are different classifications but must have the same
+    effect on the customer's typed answers: they survive both."""
+    world["twilio"].opts["address_error"] = ProviderError(code=20500, status=500)
+    res = await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    assert res["status"] == engine.PROVIDER_UNAVAILABLE
+    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    assert r["details_stored"] is True
+    assert world["details"][0]["business_name"] == "DANI Ltd"
+    assert world["details"][0]["authorized_rep_email"] == "ann@dani.ie"
+    assert world["twilio"].created["end_user"] == 0
+
+
+@pytest.mark.asyncio
+async def test_repeated_attempts_never_create_a_second_details_row(world):
+    """The row is keyed on (tenant, country, end-user type); a retry must merge."""
+    world["twilio"].opts["address_error"] = ProviderError(code=21628, status=400)
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    for _ in range(4):
+        await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    assert len(world["details"]) == 1, "a duplicate business-details row was created"
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_address_leaves_no_provider_identity_of_any_kind(world):
+    """The full stop, asserted resource by resource rather than by outcome alone."""
+    world["twilio"].opts["address_error"] = ProviderError(code=21628, status=400)
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    created = world["twilio"].created
+    assert created["address"] == 0 and created["end_user"] == 0
+    assert created["document"] == 0 and created["bundle"] == 0
+    assert created["assignment"] == 0 and created["evaluation"] == 0
+    assert world["twilio"].purchases == 0
+    assert world["profiles"] == [], "no profile may advance as though validation passed"
+    # and the stored address row must not claim a provider SID
+    assert world["addresses"][0].get("address_sid") is None
+    assert world["addresses"][0]["validated"] is False
+
+
+@pytest.mark.asyncio
+async def test_neither_failure_path_logs_the_address_or_the_representative(world, caplog):
+    for err in (ProviderError(code=21628, status=400),
+                ProviderError(code=20500, status=500)):
+        world["addresses"].clear()
+        world["twilio"].opts["address_error"] = err
+        with caplog.at_level("INFO"):
+            await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+            await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    for secret in ("1 Example Street", "D02 AB12", "DANI Ltd", "ann@dani.ie",
+                   "Ann", "Byrne", "123456"):
+        assert secret not in caplog.text, secret
