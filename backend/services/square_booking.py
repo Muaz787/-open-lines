@@ -36,6 +36,37 @@ MAX_WINDOW_DAYS = 32
 # Access token (decrypt + refresh-if-near-expiry)
 # ---------------------------------------------------------------------------
 
+def _observed_expiry(value) -> str | None:
+    """Square's `expires_at` from a token response, if one was actually carried.
+
+    Returns the provider's own string untouched, or None meaning "not observed —
+    leave whatever is on file alone".
+
+    TWIN: routers/square_connect.py has the same contract for the OAuth
+    authorization_code grant. Deliberately duplicated rather than shared for now:
+    the OAuth copy shipped minutes ago and the right home for a provider-response
+    validator is services/square_service.py, which is a consolidation worth doing
+    on its own rather than as a side effect of this fix. A test asserts the two
+    agree on every case, so they cannot drift silently.
+
+    Nothing in this codebase derives an expiry from a lifetime, and this does not
+    either: a fabricated expiry would push the token past the window in which
+    get_access_token() would have renewed it. A malformed value is treated as not
+    observed rather than stored, because this very function's caller parses the
+    stored field with datetime.fromisoformat.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        logger.warning("Square token refresh: ignoring unparseable expires_at %r — "
+                       "keeping the stored expiry", text)
+        return None
+    return text
+
+
 async def get_access_token(tenant: dict) -> str | None:
     """Return a usable Square access token for the tenant, refreshing it if it is
     within ~3 days of expiry. Returns None if the tenant has no Square connection."""
@@ -56,12 +87,39 @@ async def get_access_token(tenant: dict) -> str | None:
                 new_token = data.get("access_token")
                 if new_token:
                     from services.security import encrypt
-                    await db.update_tenant(tenant["id"], {
-                        "square_access_token": encrypt(new_token),
-                        "square_token_expires_at": data.get("expires_at") or None,
-                    })
-                    logger.info("Square token refreshed for tenant %s", tenant.get("id"))
+                    # ── W7E.5 · observed fields only ────────────────────────
+                    # A refresh response is PARTIAL EVIDENCE, exactly as an
+                    # OAuth response is. The expiry used to be written as
+                    # `data.get("expires_at") or None`, so a refresh that
+                    # returned a new access token but no expiry NULLED the
+                    # expiry -- and the guard above is `if expires_at and
+                    # refresh_enc`, so that tenant could never auto-refresh
+                    # again. A successful refresh would have permanently
+                    # disabled refreshing.
+                    patch = {"square_access_token": encrypt(new_token)}
+
+                    # Square may rotate the refresh token on this grant. The old
+                    # code ignored the field entirely, so a rotated credential
+                    # was discarded and the next refresh would have presented a
+                    # superseded one. Storing it when observed is safe either
+                    # way: if Square echoes the same value this is a no-op.
+                    rotated = str(data.get("refresh_token") or "").strip()
+                    if rotated:
+                        patch["square_refresh_token"] = encrypt(rotated)
+
+                    observed = _observed_expiry(data.get("expires_at"))
+                    if observed:
+                        patch["square_token_expires_at"] = observed
+
+                    await db.update_tenant(tenant["id"], patch)
+                    logger.info("Square token refreshed for tenant %s (updated: %s)",
+                                tenant.get("id"), ", ".join(sorted(patch)))
                     return new_token
+                # An incomplete response is not a refresh. Write nothing and keep
+                # using the stored credential, which is still valid until expiry.
+                logger.warning("Square token refresh for tenant %s returned no access "
+                               "token — keeping the stored credential untouched",
+                               tenant.get("id"))
         except Exception as e:  # refresh is best-effort; fall back to the stored token
             logger.warning("Square token refresh failed for tenant %s: %s", tenant.get("id"), e)
     return token
