@@ -83,6 +83,11 @@ class FakeTwilio:
         self.last_bundle = None
         self.address_store = {}
         self.deleted_addresses = []
+        # SIDs the provider has authoritatively lost. Explicit, because
+        # "deleted at the provider" is a precise fact and must not be inferred
+        # from an empty store or expressed as a blunt global fetch error -- a
+        # freshly recreated resource must not look deleted too.
+        self.gone = set()
         self.end_user_store = {}
         self.deleted_end_users = []
         self.document_store = {}
@@ -152,7 +157,10 @@ class FakeTwilio:
             # fake accepts none either -- a fake that filtered would let the engine
             # pass while relying on a filter that does not exist.
             outer._fail("end_user_list_error")
-            return list(outer.end_user_store.values())
+            # A resource the provider has lost is absent from list() as well as
+            # fetch(), or reconciliation would keep adopting a deleted one.
+            return [x for x in outer.end_user_store.values()
+                    if x.sid not in outer.gone]
         def create(**kw):
             hook = outer.opts.get("on_end_user_create")
             if hook:
@@ -188,6 +196,14 @@ class FakeTwilio:
                     hook = outer.opts.get("on_end_user_fetch")
                     if hook:
                         hook(sid)
+                    # THE STORE IS AUTHORITATIVE FOR EXISTENCE. A SID that is not
+                    # there 404s, exactly as the provider would; a configured error
+                    # applies only to one that IS there. A blunt global fetch error
+                    # made a freshly recreated resource appear deleted too, which
+                    # is not a state the provider can be in.
+                    if sid in outer.gone:
+                        raise ProviderError(code=20404, status=404,
+                                            detail="end user not found")
                     outer._fail("end_user_fetch_error")
                     return _Obj(sid=sid,
                                 attributes=outer.opts.get("end_user_attributes",
@@ -207,7 +223,8 @@ class FakeTwilio:
         def _list(limit=None, **kw):
             # MEASURED: no server-side filter for SupportingDocuments either.
             outer._fail("document_list_error")
-            return list(outer.document_store.values())
+            return [x for x in outer.document_store.values()
+                    if x.sid not in outer.gone]
         def create(**kw):
             hook = outer.opts.get("on_document_create")
             if hook:
@@ -226,6 +243,9 @@ class FakeTwilio:
                     hook = outer.opts.get("on_document_fetch")
                     if hook:
                         hook(sid)
+                    if sid in outer.gone:
+                        raise ProviderError(code=20404, status=404,
+                                            detail="document not found")
                     outer._fail("document_fetch_error")
                     return _Obj(sid=sid)
                 def delete(self):
@@ -245,7 +265,8 @@ class FakeTwilio:
             # this fake honours it -- the engine relies on it for Bundles only.
             outer._fail("bundle_list_error")
             return [b for b in outer.bundle_store.values()
-                    if friendly_name is None or b.friendly_name == friendly_name]
+                    if b.sid not in outer.gone
+                    and (friendly_name is None or b.friendly_name == friendly_name)]
         def create(**kw):
             hook = outer.opts.get("on_bundle_create")
             if hook:
@@ -287,6 +308,9 @@ class FakeTwilio:
                 item_assignments = _IA()
                 evaluations = _Ev()
                 def fetch(self):
+                    if sid in outer.gone:
+                        raise ProviderError(code=20404, status=404,
+                                            detail="bundle not found")
                     outer._fail("bundle_fetch_error")
                     return _Obj(sid=sid, status=outer.bundle_status)
                 def update(self, **kw):

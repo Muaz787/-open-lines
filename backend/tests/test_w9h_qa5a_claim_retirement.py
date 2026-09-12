@@ -110,8 +110,7 @@ async def test_an_enduser_404_retires_the_claim_and_recreates_once(world):
     await _prepared(world)
     claim = _claim(world, "end_user")
     assert claim["provider_sid"] == EU_SID
-    world["twilio"].end_user_store.clear()          # deleted at the provider
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)                # deleted at the provider
 
     r = await engine.prepare_profile(tenant(), attributes={})
     assert r["ok"], r
@@ -138,8 +137,7 @@ async def test_a_non_404_never_retires_and_never_recreates(world, err, label):
 @pytest.mark.asyncio
 async def test_the_claim_and_the_profile_agree_after_a_recovery(world):
     await _prepared(world)
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
     r = await engine.prepare_profile(tenant(), attributes={})
     assert r["ok"], r
     claim = _claim(world, "end_user")
@@ -223,8 +221,7 @@ async def test_a_document_404_retires_and_recreates_once(world):
     await _prepared(world)
     claim = _claim(world, "supporting_document")
     assert claim["provider_sid"] == DOC_SID
-    world["twilio"].document_store.clear()
-    world["twilio"].opts["document_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(DOC_SID)
 
     r = await engine.prepare_profile(tenant(), attributes={})
     assert r["ok"], r
@@ -248,8 +245,7 @@ async def test_a_document_non_404_never_retires(world, err):
 @pytest.mark.asyncio
 async def test_the_claim_and_the_address_agree_after_a_document_recovery(world):
     await _prepared(world)
-    world["twilio"].document_store.clear()
-    world["twilio"].opts["document_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(DOC_SID)
     r = await engine.prepare_profile(tenant(), attributes={})
     assert r["ok"], r
     claim = _claim(world, "supporting_document")
@@ -269,8 +265,7 @@ async def test_a_DRAFT_bundle_404_is_eligible_for_retirement(world):
     assert claim["provider_sid"] == BU_SID
     profile = world["profiles"][0]
     assert profile["state"] not in (st.PENDING_REVIEW, st.APPROVED)
-    world["twilio"].bundle_store.clear()
-    world["twilio"].opts["bundle_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(BU_SID)
 
     r = await engine.prepare_profile(tenant(), attributes={})
     world["twilio"].opts.pop("bundle_fetch_error", None)
@@ -290,8 +285,7 @@ async def test_a_FILED_bundle_404_FAILS_CLOSED_and_is_never_recreated(world, sta
     claim = _claim(world, "bundle")
     profile = world["profiles"][0]
     profile["state"] = state
-    world["twilio"].bundle_store.clear()
-    world["twilio"].opts["bundle_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(BU_SID)
     before = world["twilio"].created["bundle"]
 
     out = await engine.ensure_bundle(tenant(), profile=profile, requirements=None,
@@ -308,8 +302,7 @@ async def test_a_submitted_at_timestamp_alone_also_blocks_recreation(world):
     claim = _claim(world, "bundle")
     profile = world["profiles"][0]
     profile["submitted_at"] = "2026-09-01T00:00:00Z"
-    world["twilio"].bundle_store.clear()
-    world["twilio"].opts["bundle_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(BU_SID)
     out = await engine.ensure_bundle(tenant(), profile=profile, requirements=None,
                                      end_user_sid=EU_SID,
                                      client=world["twilio"], sub_sid=SUB)
@@ -385,8 +378,7 @@ async def test_after_retirement_an_unknown_create_still_reconciles_by_marker(wor
     """Retirement must not become a side door around marker reconciliation."""
     from tests.test_w9g_engine import FakeTwilio
     await _prepared(world)
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
     orig = FakeTwilio.end_users.fget
 
     def patched(self):
@@ -407,15 +399,16 @@ async def test_after_retirement_an_unknown_create_still_reconciles_by_marker(wor
         FakeTwilio.end_users = property(orig)
     assert r["ok"], r
     assert r["end_user_sid"] == "ITghost", "the ambiguous create must be adopted"
-    assert len(world["twilio"].end_user_store) == 1, "no blind duplicate"
+    live = [x for x in world["twilio"].end_user_store
+            if x not in world["twilio"].gone]
+    assert live == ["ITghost"], f"no blind duplicate; live={live}"
 
 
 @pytest.mark.asyncio
 async def test_after_retirement_two_marker_matches_still_fail_closed(world):
     await _prepared(world)
     claim = _claim(world, "end_user")
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
     marker = pc.marker("end_user", claim["id"])
     for sid in ("ITone", "ITtwo"):
         world["twilio"].end_user_store[sid] = type(
@@ -453,8 +446,7 @@ async def test_no_customer_content_is_logged_on_any_verification_path(world, cap
 @pytest.mark.asyncio
 async def test_the_retirement_warning_names_the_claim_not_the_sid_in_full(world):
     await _prepared(world)
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
     with caplog_at(logging.DEBUG) as records:
         await engine.prepare_profile(tenant(), attributes={})
     text = "\n".join(records)
@@ -509,8 +501,7 @@ async def test_a_stale_worker_whose_retirement_LOSES_never_creates(world):
     NEW one. Losing the CAS must mean following the canonical state, not creating."""
     await _prepared(world)
     claim = _claim(world, "end_user")
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
     before = world["twilio"].created["end_user"]
 
     real_retire = engine.db_reg.retire_provider_claim
@@ -548,8 +539,7 @@ async def test_a_SIBLING_profile_is_repointed_after_a_retirement(world):
                "regulatory_address_id": "addr-9", "state": st.DETAILS_REQUIRED,
                "authorization_id": None}
     world["profiles"].append(sibling)
-    world["twilio"].end_user_store.clear()
-    world["twilio"].opts["end_user_fetch_error"] = NOT_FOUND
+    world["twilio"].gone.add(EU_SID)
 
     r = await engine.prepare_profile(tenant(), attributes={})
     assert r["ok"], r
@@ -586,3 +576,38 @@ async def test_ONE_live_sibling_disagreeing_with_the_claim_fails_closed(world):
     assert r["status"] == engine.REGULATORY_IDENTITY_CONFLICT, r
     assert claim["provider_sid"] == "ITclaim", "the claim must not be overwritten"
     assert world["twilio"].created["end_user"] == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# where the deliberate dead end can be reached (W9H-QA.5R Stage B)
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_the_retired_dead_end_has_exactly_one_reachable_return():
+    """PROVIDER_RESOURCE_RETIRED is a dead end requiring a human, so it must be
+    reachable from exactly one place and only when recreation is forbidden. If it
+    could fire on the ordinary 404 recovery path, every deleted EndUser would
+    become a support ticket instead of a self-healing retry."""
+    body = _src(engine._ensure_provider_resource)
+    assert body.count("PROVIDER_RESOURCE_RETIRED") == 1
+    # the return sits inside the `not may_retire` branch
+    before = body.split("PROVIDER_RESOURCE_RETIRED")[0]
+    assert "if not may_retire" in before
+    assert before.rindex("if not may_retire") > before.rindex("VERIFY_NOT_FOUND") \
+        if "VERIFY_NOT_FOUND" in before else True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resource", ["end_user", "supporting_document", "bundle"])
+async def test_the_ordinary_404_recovery_never_ends_in_the_dead_end(world, resource):
+    """All three resources must SELF-HEAL from an authoritative 404 while nothing
+    is filed -- proven by running each path, not by reading the flag."""
+    await _prepared(world)
+    tw = world["twilio"]
+    tw.gone.add({"end_user": EU_SID, "supporting_document": DOC_SID,
+                 "bundle": BU_SID}[resource])
+
+    r = await engine.prepare_profile(tenant(), attributes={})
+    assert r["status"] != engine.PROVIDER_RESOURCE_RETIRED, \
+        f"{resource} hit the human-review dead end on an ordinary recovery"
+    assert r["ok"], r
+    assert _claim(world, resource)["provider_sid"] is not None
