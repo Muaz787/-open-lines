@@ -11,6 +11,26 @@ import pytest
 
 from services import provisioning
 import db.supabase as _supabase_mod  # noqa: F401  (registers the dotted path for patch())
+import db.phone_numbers as _phones_mod  # noqa: F401
+
+
+def _canonical_patches():
+    """W9I-B: reprovision records the number in tenant_phone_numbers as well as
+    the legacy scalar, through services.phone_registry. Modelled here so these
+    tests keep asserting what they are about -- purchase, import and rollback --
+    rather than the new persistence step."""
+    import contextlib
+    stack = contextlib.ExitStack()
+    for cm in (
+        patch("services.phone_registry.register_permanent",
+              new=AsyncMock(return_value={"status": "ok",
+                                          "row": {"id": "phone-row-reprov"},
+                                          "created": True})),
+        patch("services.phone_registry.mark_active",
+              new=AsyncMock(return_value={"status": "ok", "row": {}})),
+    ):
+        stack.enter_context(cm)
+    return stack
 
 
 def _tenant(**over):
@@ -29,8 +49,9 @@ def _tenant(**over):
 
 @pytest.mark.asyncio
 async def test_buys_imports_and_clears_the_reclaim_history():
-    with patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
-         patch("services.telephony.purchase_number", new=AsyncMock(return_value="+14165550999")), \
+    with _canonical_patches(), patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
+         patch("services.telephony.purchase_number_with_sid",
+               new=AsyncMock(return_value=("+14165550999", "PN_reprov"))), \
          patch("services.vapi.import_twilio_number", new=AsyncMock(return_value="vapi_pn_new")), \
          patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
         res = await provisioning.reprovision_tenant_number(_tenant())
@@ -38,7 +59,11 @@ async def test_buys_imports_and_clears_the_reclaim_history():
     assert res["provisioned"] is True and res["number"] == "+14165550999"
 
     wrote = upd.call_args.args[1]
-    assert wrote["twilio_phone_number"] == "+14165550999"
+    # W9I-B: the legacy scalar is now mirrored by phone_registry.mark_active --
+    # the single path that owns both it and the canonical row -- so it is no
+    # longer part of this update. `res["number"]` above is the assertion that the
+    # number was actually adopted.
+    assert "twilio_phone_number" not in wrote
     assert wrote["vapi_phone_number_id"] == "vapi_pn_new"
     # Without this the new number could never be reclaimed again: release_due_at()
     # returns None for anything carrying a number_released_at, and the stale warn
@@ -52,7 +77,7 @@ async def test_buys_imports_and_clears_the_reclaim_history():
 async def test_refuses_a_tenant_that_already_has_a_number():
     """This spends money on a real number. Buying a second one silently would be
     a recurring charge nobody notices."""
-    with patch("services.telephony.purchase_number", new=AsyncMock()) as buy:
+    with _canonical_patches(), patch("services.telephony.purchase_number_with_sid", new=AsyncMock()) as buy:
         res = await provisioning.reprovision_tenant_number(
             _tenant(twilio_phone_number="+14165550100")
         )
@@ -63,8 +88,9 @@ async def test_refuses_a_tenant_that_already_has_a_number():
 @pytest.mark.asyncio
 async def test_a_failed_vapi_import_hands_the_number_straight_back():
     """We'd otherwise own — and be billed monthly for — a line that can never ring."""
-    with patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
-         patch("services.telephony.purchase_number", new=AsyncMock(return_value="+14165550999")), \
+    with _canonical_patches(), patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
+         patch("services.telephony.purchase_number_with_sid",
+               new=AsyncMock(return_value=("+14165550999", "PN_reprov"))), \
          patch("services.vapi.import_twilio_number", new=AsyncMock(side_effect=RuntimeError("vapi down"))), \
          patch("services.telephony.release_number", new=AsyncMock()) as release, \
          patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
@@ -78,8 +104,9 @@ async def test_a_failed_vapi_import_hands_the_number_straight_back():
 
 @pytest.mark.asyncio
 async def test_a_failed_purchase_changes_nothing():
-    with patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
-         patch("services.telephony.purchase_number", new=AsyncMock(side_effect=RuntimeError("twilio down"))), \
+    with _canonical_patches(), patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
+         patch("services.telephony.purchase_number_with_sid",
+               new=AsyncMock(side_effect=RuntimeError("twilio down"))), \
          patch("services.vapi.import_twilio_number", new=AsyncMock()) as imp, \
          patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
         res = await provisioning.reprovision_tenant_number(_tenant())
@@ -93,8 +120,9 @@ async def test_a_failed_purchase_changes_nothing():
 async def test_a_lost_db_write_reports_the_live_number_for_reconciliation():
     """Twilio is already billing for it, so the number has to come back in the
     result or it becomes an untraceable charge."""
-    with patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
-         patch("services.telephony.purchase_number", new=AsyncMock(return_value="+14165550999")), \
+    with _canonical_patches(), patch("services.telephony.find_available_number", new=AsyncMock(return_value="+14165550999")), \
+         patch("services.telephony.purchase_number_with_sid",
+               new=AsyncMock(return_value=("+14165550999", "PN_reprov"))), \
          patch("services.vapi.import_twilio_number", new=AsyncMock(return_value="vapi_pn_new")), \
          patch("db.supabase.update_tenant", new=AsyncMock(side_effect=RuntimeError("db down"))):
         res = await provisioning.reprovision_tenant_number(_tenant())
@@ -109,7 +137,7 @@ async def test_a_lost_db_write_reports_the_live_number_for_reconciliation():
     ({"vapi_assistant_id": ""},  "no_assistant_on_tenant"),
 ])
 async def test_an_incomplete_tenant_is_refused_rather_than_half_built(missing, reason):
-    with patch("services.telephony.purchase_number", new=AsyncMock()) as buy:
+    with _canonical_patches(), patch("services.telephony.purchase_number_with_sid", new=AsyncMock()) as buy:
         res = await provisioning.reprovision_tenant_number(_tenant(**missing))
     assert res["provisioned"] is False and res["reason"] == reason
     buy.assert_not_called()
@@ -117,7 +145,7 @@ async def test_an_incomplete_tenant_is_refused_rather_than_half_built(missing, r
 
 @pytest.mark.asyncio
 async def test_the_new_number_stays_local_to_their_published_one():
-    with patch("services.telephony.find_available_number", new=AsyncMock(return_value="+19055550999")) as find, \
+    with _canonical_patches(), patch("services.telephony.find_available_number", new=AsyncMock(return_value="+19055550999")) as find, \
          patch("services.telephony.purchase_number", new=AsyncMock(return_value="+19055550999")), \
          patch("services.vapi.import_twilio_number", new=AsyncMock(return_value="vapi_pn_new")), \
          patch("db.supabase.update_tenant", new=AsyncMock()):

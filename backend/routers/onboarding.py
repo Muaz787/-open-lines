@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 
 from db import supabase as db
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
+from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
 
@@ -87,6 +88,46 @@ class ProvisionRequest(BaseModel):
     payment_method_id: str = ""
     address: dict | None = None
     billing_name: str = ""
+    # Per-attempt idempotency key (W9I-B). Opaque and client-generated: this
+    # endpoint is unauthenticated, so there is no server identity to derive one
+    # from, and the tenant is now created BEFORE any provider work -- which means
+    # a double-clicked form would otherwise mint a second tenant. A retry
+    # carrying the same key resumes the same onboarding instead.
+    onboarding_key: str = ""
+
+    @field_validator("onboarding_key")
+    @classmethod
+    def _valid_onboarding_key(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            return ""
+        # A uuid4 and nothing else. Constrained so the key cannot be used to
+        # smuggle arbitrary text into the column, and so a guessable value
+        # (a business name, an email) cannot be passed off as a key -- resuming
+        # someone else's onboarding must require an unguessable string.
+        try:
+            import uuid as _uuid
+            if str(_uuid.UUID(v, version=4)) != v.lower():
+                raise ValueError
+        except Exception:
+            raise ValueError("onboarding_key must be a uuid4")
+        return v.lower()
+
+    @field_validator("country")
+    @classmethod
+    def _supported_country(cls, v: str) -> str:
+        """Refuse an unsupported country HERE, before anything is created.
+
+        The old flow accepted anything and let telephony quietly substitute
+        Canada. Validating at the edge means a malformed value never reaches a
+        tenant row, a subaccount, or an invoice.
+        """
+        cc = (v or "").strip().upper()
+        if not cc:
+            raise ValueError("country is required")
+        if cc not in telephony.SUPPORTED_COUNTRIES:
+            raise ValueError(f"country {cc} is not supported")
+        return cc
 
     @field_validator("plan")
     @classmethod
@@ -253,6 +294,22 @@ async def provision(request: Request, body: ProvisionRequest):
             detail="A plan and payment method are required to start your free trial",
         )
 
+    # Ireland is a real, working path in this build, but the billing policy it
+    # depends on (trial starts only when a permanent +353 is ACTIVE) is not
+    # implemented yet, so it stays closed to the public. Refused HERE, before a
+    # tenant or a sub-account exists, with a controlled message -- not the raw
+    # "Phone Number Requires an Address but AddressSid was empty" a customer
+    # gets today.
+    if (lifecycle_ob.needs_regulatory_clearance(body.country)
+            and not lifecycle_ob.ireland_onboarding_enabled()):
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "country_onboarding_not_open",
+                    "country": body.country,
+                    "message": "We are not yet accepting online signups for this "
+                               "country. Please contact us and we will set your "
+                               "account up directly."})
+
     _started = time.monotonic()
     try:
         provision_data = body.model_dump(exclude={
@@ -261,6 +318,8 @@ async def provision(request: Request, body: ProvisionRequest):
             # never end up on the tenant row.
             "plan", "card_setup_token", "payment_method_id", "address", "billing_name",
         })
+        # onboarding_key stays IN the payload: the provisioner needs it to claim
+        # or resume the tenant. It is written to the tenant row and nowhere else.
         result = await provisioning.provision_tenant(provision_data)
         _duration_ms = int((time.monotonic() - _started) * 1000)
         logger.info("Provisioned tenant %s (%s) in %dms", result.get("tenant_id"), body.business_name, _duration_ms)

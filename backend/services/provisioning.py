@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 from openai import AsyncOpenAI
 
+from services import onboarding_lifecycle as lifecycle_ob
+from services import phone_registry
 from services import telephony, vapi, knowledge
 from db import supabase as db
 
@@ -371,9 +373,169 @@ async def _custom_body(tenant: dict, wrapped_kb: str, kb_raw: str) -> str:
     return base.replace(KB_SENTINEL, wrapped_kb or "No website content available.")
 
 
+def _onboarding_result(tenant: dict, *, onboarding_state: str,
+                       phone_number: str = "", status: str = "",
+                       next_step: str = "") -> dict:
+    """The shape every provisioning outcome returns.
+
+    One builder so a diverted country, a resumed attempt and a finished signup
+    cannot describe themselves in three different vocabularies -- the frontend
+    switches on `onboarding_state`, never on the absence of a field.
+    """
+    return {
+        "tenant_id": tenant["id"],
+        "phone_number": phone_number,
+        "assistant_id": tenant.get("vapi_assistant_id") or "",
+        "onboarding_state": onboarding_state,
+        "status": status or onboarding_state,
+        "next_step": next_step,
+        "dashboard_url": f"{FRONTEND_URL}/dashboard/{tenant['id']}",
+    }
+
+
+def _completed_result(tenant: dict) -> dict:
+    return _onboarding_result(
+        tenant, onboarding_state=lifecycle_ob.ACTIVE, status="live",
+        phone_number=str(tenant.get("twilio_phone_number") or ""))
+
+
+def _regulatory_pending_result(tenant: dict, country: str) -> dict:
+    """A real, working account that cannot hold a number yet.
+
+    NOT an error, and the wording matters: the customer has an account, and what
+    remains is a verification step their country's regulator requires -- not a
+    failure of ours. W9I-C replaces the placeholder next_step with the form.
+    """
+    return _onboarding_result(
+        tenant, onboarding_state=lifecycle_ob.REGULATORY_REQUIRED,
+        next_step="regulatory_information_required")
+
+
+async def _claim_or_resume_tenant(payload: dict, country: str) -> tuple[dict, bool]:
+    """The onboarding tenant for THIS attempt -- created once, then resumed.
+
+    The key is opaque and per-attempt. A retry carrying the same key lands on the
+    same tenant; a genuinely new signup carries a new key and gets a new tenant.
+    Deliberately NOT keyed on email or business_name: one person legitimately runs
+    two businesses and two businesses share a name, so either would refuse real
+    signups -- and on an unauthenticated endpoint either would also answer "does
+    this email already exist?" for anyone who asked.
+    """
+    key = str(payload.get("onboarding_key") or "").strip()
+    if not key:
+        # Callers that predate the key still work; they simply cannot resume.
+        # Their tenant is created the same way, without a claim.
+        row = await db.insert_tenant(_initial_tenant_row(payload, country))
+        return row, False
+
+    existing = await db.find_onboarding_tenant(key)
+    if existing:
+        logger.info("[Step 0] Resuming onboarding tenant %s", existing["id"])
+        return existing, True
+
+    claimed = await db.claim_onboarding_tenant(key, _initial_tenant_row(payload, country))
+    if claimed is not None:
+        return claimed, False
+
+    # Lost the race to a concurrent request carrying the same key.
+    existing = await db.find_onboarding_tenant(key)
+    if existing:
+        logger.info("[Step 0] Lost the onboarding claim — resuming tenant %s",
+                    existing["id"])
+        return existing, True
+    raise HTTPException(status_code=503,
+                        detail="Could not start onboarding. Please try again.")
+
+
+def _initial_tenant_row(payload: dict, country: str) -> dict:
+    """The minimum durable tenant. Everything else is filled in as it is earned.
+
+    business_country_code is written HERE, from the country the customer chose in
+    the form, because that explicit choice is the only trustworthy signal -- and
+    signup is the one moment it can be captured before any country-sensitive
+    provider boundary is crossed. `country` (the analyzer's guess) is kept
+    separate and unchanged; they answer different questions.
+    """
+    return {
+        "business_name": payload["business_name"],
+        "industry": payload["industry"],
+        "owner_name": payload.get("owner_name", ""),
+        "country": country or None,
+        "business_country_code": country or None,
+        "website_url": payload.get("website_url", ""),
+        "is_active": True,
+        "onboarding_state": lifecycle_ob.initial_state(country),
+    }
+
+
 async def provision_tenant(payload: dict) -> dict:
     business_name: str = payload["business_name"]
     industry: str = payload["industry"]
+
+    # ── Step 0 — THE TENANT, BEFORE ANY PROVIDER IS TOUCHED (W9I-B) ───────
+    # This used to be Step 12, and the ordering was not a style choice: every
+    # regulatory artefact Ireland needs -- address, business details,
+    # authorisation, profile, provider claims -- is keyed on tenant_id by a
+    # composite foreign key, so the tenant has to exist before any of it can. An
+    # Irish tenant must also be able to REST here, valid and un-numbered, while
+    # the customer supplies compliance information.
+    #
+    # The old order was accidentally safe against duplicates because it failed
+    # before inserting anything. Moving the insert to the front removes that
+    # accident, so the onboarding key replaces it deliberately: one attempt, one
+    # key, and the partial unique index decides which concurrent request creates
+    # the tenant while the loser resumes into it.
+    requested_country = str(payload.get("country") or "").strip().upper()
+    tenant, resumed = await _claim_or_resume_tenant(payload, requested_country)
+    tenant_id = tenant["id"]
+    state = str(tenant.get("onboarding_state") or "")
+
+    # Already finished: a completed tenant is FROZEN to this path. Returned as-is,
+    # before any write, so possession of an onboarding key can never reopen or
+    # mutate a live account. Checked on the state alone -- not on whether a number
+    # happens to be present -- so a tenant marked active without one is still
+    # closed to resume rather than falling through to provisioning.
+    if state == lifecycle_ob.ACTIVE:
+        logger.info("[Step 0] Onboarding already complete for tenant %s — returning "
+                    "the finished state", tenant_id)
+        return _completed_result(tenant)
+
+    # ── THE STORED COUNTRY IS AUTHORITATIVE ON RESUME ─────────────────────
+    # The diversion below decides whether a regulator has to be satisfied before a
+    # number can exist, and an earlier version of this code took that decision
+    # from the REQUEST. That was a real hole: a second call carrying the same key
+    # and a different country would have bought a Canadian number for a tenant
+    # whose compliance country was already recorded as IE -- wrong country on the
+    # invoice, and a canonical phone row disagreeing with the tenant it belongs
+    # to. business_country_code is written once, at claim time, and a mismatch is
+    # refused rather than silently ignored: a customer who thinks they changed
+    # country must be told they did not.
+    country = requested_country
+    if resumed:
+        stored = str(tenant.get("business_country_code") or "").strip().upper()
+        if stored:
+            if requested_country and requested_country != stored:
+                logger.warning("[Step 0] Refusing a country change on resume for "
+                               "tenant %s", tenant_id)
+                raise HTTPException(
+                    status_code=409,
+                    detail={"status": "country_already_set",
+                            "business_country_code": stored,
+                            "message": "This signup was started for a different "
+                                       "country. Please start again to change it."})
+            country = stored
+
+    # ── THE REGULATED-COUNTRY DIVERSION ──────────────────────────────────
+    # Ireland stops here. W9C and W9H-QA.2 both measured that an Irish local
+    # number is refused at PURCHASE time without a validated AddressSid and an
+    # approved Bundle, and that Twilio exposes no way to learn that beforehand --
+    # so there is nothing to branch on inside the number search. The only correct
+    # move is to not reach telephony at all. The tenant is real, the account
+    # works, and W9I-C gives the customer the compliance form.
+    if lifecycle_ob.needs_regulatory_clearance(country):
+        logger.info("[Step 0] %s requires regulatory clearance — tenant %s created "
+                    "without telephony", country, tenant_id)
+        return _regulatory_pending_result(tenant, country)
 
     # Step 1 — Load system prompt template (skip for custom industry)
     step = 1
@@ -431,7 +593,8 @@ async def provision_tenant(payload: dict) -> dict:
         phone_number = await telephony.find_available_number(
             subaccount_sid, subaccount_token, country_code,
             preferred_area_code=preferred_ac, province=detected_province)
-        purchased_number = await telephony.purchase_number(subaccount_sid, subaccount_token, phone_number)
+        purchased_number, purchased_sid = await telephony.purchase_number_with_sid(
+            subaccount_sid, subaccount_token, phone_number)
         logger.info("[Step %d] Provisioned Twilio number %s", step, purchased_number)
     except Exception as e:
         logger.error("[Step %d] Twilio provisioning failed: %s", step, e)
@@ -472,8 +635,8 @@ async def provision_tenant(payload: dict) -> dict:
     # Steps 4–11 are wrapped so any failure releases the purchased number before raising
     try:
         return await _provision_after_twilio(
-            payload, subaccount_sid, subaccount_token, purchased_number,
-            template, qualification_fields, prescraped_text,
+            payload, tenant, subaccount_sid, subaccount_token, purchased_number,
+            purchased_sid, template, qualification_fields, prescraped_text,
         )
     except HTTPException:
         logger.warning("Rolling back: releasing number %s on sub-account %s", purchased_number, subaccount_sid)
@@ -488,9 +651,11 @@ async def provision_tenant(payload: dict) -> dict:
 
 async def _provision_after_twilio(
     payload: dict,
+    tenant: dict,
     subaccount_sid: str,
     subaccount_token: str,
     purchased_number: str,
+    purchased_sid: str,
     template: str | None,
     qualification_fields: dict | None,
     prescraped_text: str | None = None,
@@ -695,7 +860,6 @@ async def _provision_after_twilio(
             "qualification_fields": qualification_fields,
             "twilio_subaccount_sid": subaccount_sid,
             "twilio_auth_token": subaccount_token,
-            "twilio_phone_number": purchased_number,
             "vapi_assistant_id": vapi_assistant_id,
             "vapi_phone_number_id": vapi_phone_id,
             "pinecone_namespace": pinecone_namespace,
@@ -725,18 +889,60 @@ async def _provision_after_twilio(
             tenant_data["vapi_suborg_id"] = suborg_id
         if suborg_key_encrypted:
             tenant_data["vapi_suborg_api_key"] = suborg_key_encrypted
-        tenant = await db.insert_tenant(tenant_data)
+        # The tenant already exists -- Step 0 created it before any provider was
+        # touched -- so this UPDATES it rather than inserting a second one. A
+        # resumed attempt overwrites the same row with the same work.
         tenant_id = tenant["id"]
-        logger.info("[Step %d] Inserted tenant %s", step, tenant_id)
+        # Settled at Step 0 and never re-guessed from a later request. Popped
+        # rather than absent-by-luck, so a future edit to tenant_data cannot
+        # reintroduce a country rewrite.
+        tenant_data.pop("country", None)
+        tenant_data.pop("business_country_code", None)
+        updated = await db.update_tenant(tenant_id, tenant_data)
+        logger.info("[Step %d] Updated onboarding tenant %s", step, tenant_id)
     except Exception as e:
-        logger.error("[Step %d] Supabase insert failed: %s", step, e)
+        logger.error("[Step %d] Supabase tenant update failed: %s", step, e)
         raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
+
+    # ── Step 13 — THE CANONICAL PHONE ROW (W9I-B) ─────────────────────────
+    # W9I-A found signup writing the number ONLY to the legacy scalar, leaving
+    # tenant_phone_numbers -- the model routing prefers and the whole two-number
+    # Irish migration depends on -- populated by backfill alone. Both are written
+    # here, through the one path that owns them, so they cannot diverge again.
+    #
+    # register_permanent inserts `provisioning`, which phone_lifecycle excludes
+    # from ROUTABLE_STATUSES; mark_active flips it to `active` and mirrors the
+    # scalar at the same moment. Between the two an inbound caller cannot be sent
+    # to a number whose webhook is already wired but whose row is not yet live.
+    step = 13
+    try:
+        reg = await phone_registry.register_permanent(
+            tenant_id=tenant_id, e164=purchased_number,
+            provider_account_sid=subaccount_sid, provider_sid=purchased_sid or "",
+            iso_country=str(payload.get("country") or "").strip().upper() or "CA")
+        if reg["status"] != phone_registry.OK or not reg.get("row"):
+            raise RuntimeError(f"canonical phone registration refused: {reg.get('detail')}")
+        await phone_registry.mark_active(tenant_id=tenant_id,
+                                        number_row_id=reg["row"]["id"],
+                                        e164=purchased_number)
+        logger.info("[Step %d] Canonical phone row active for tenant %s", step, tenant_id)
+    except Exception as e:
+        logger.error("[Step %d] Canonical phone persistence failed: %s", step, e)
+        raise HTTPException(status_code=500, detail=f"Step {step} failed: {e}")
+
+    try:
+        await db.update_tenant(tenant_id, {"onboarding_state": lifecycle_ob.ACTIVE})
+    except Exception as e:
+        # The line works; the marker lagging is not worth failing a signup for.
+        logger.error("Could not mark onboarding complete for tenant %s: %s", tenant_id, e)
 
     return {
         "tenant_id": tenant_id,
         "phone_number": purchased_number,
         "assistant_id": vapi_assistant_id,
+        "onboarding_state": lifecycle_ob.ACTIVE,
         "status": "live",
+        "next_step": "",
         "dashboard_url": f"{FRONTEND_URL}/dashboard/{tenant_id}",
     }
 
@@ -891,7 +1097,8 @@ async def reprovision_tenant_number(tenant: dict) -> dict:
         candidate = await telephony.find_available_number(
             sub_sid, sub_token, country, preferred_area_code=preferred_ac,
         )
-        number = await telephony.purchase_number(sub_sid, sub_token, candidate)
+        number, number_sid = await telephony.purchase_number_with_sid(
+            sub_sid, sub_token, candidate)
     except Exception as e:
         logger.error("reprovision: Twilio purchase failed for tenant %s: %s", tenant_id, e)
         return {"provisioned": False, "number": "", "reason": "twilio_purchase_failed"}
@@ -915,9 +1122,31 @@ async def reprovision_tenant_number(tenant: dict) -> dict:
             logger.error("reprovision: rollback release of %s also failed: %s", number, release_err)
         return {"provisioned": False, "number": "", "reason": "vapi_import_failed"}
 
+    # The canonical row, through the SAME path signup uses. This flow had the
+    # identical drift W9I-A found in signup: it wrote the legacy scalar and left
+    # tenant_phone_numbers unaware of a number it had just bought.
+    try:
+        reg = await phone_registry.register_permanent(
+            tenant_id=tenant_id, e164=number, provider_account_sid=sub_sid,
+            provider_sid=number_sid, iso_country=country.strip().upper() or "CA")
+        if reg["status"] != phone_registry.OK or not reg.get("row"):
+            logger.error("reprovision: canonical registration refused for tenant %s "
+                         "(%s) — releasing %s", tenant_id, reg.get("detail"), number)
+            try:
+                await telephony.release_number(sub_sid, sub_token, number)
+            except Exception as release_err:
+                logger.error("reprovision: rollback release failed: %s", release_err)
+            return {"provisioned": False, "number": "",
+                    "reason": "canonical_registration_refused"}
+        await phone_registry.mark_active(tenant_id=tenant_id,
+                                        number_row_id=reg["row"]["id"], e164=number)
+    except Exception as e:
+        logger.error("reprovision: canonical phone persistence failed for tenant %s: %s",
+                     tenant_id, e)
+        return {"provisioned": False, "number": "", "reason": "phone_persistence_failed"}
+
     try:
         await db.update_tenant(tenant_id, {
-            "twilio_phone_number":  number,
             "vapi_phone_number_id": vapi_phone_id,
             # Clear the reclaim history. Leaving number_released_at set would make
             # release_due_at() return None forever, so this new number could never

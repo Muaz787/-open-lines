@@ -121,6 +121,12 @@ interface ProvisionResult {
   assistant_id: string
   status: string
   dashboard_url: string
+  // W9I-B. The backend now reports where onboarding actually got to, because a
+  // country whose regulator must be satisfied first finishes signup WITHOUT a
+  // phone number — a real account, not a failure. Switch on this, never on the
+  // absence of phone_number.
+  onboarding_state?: 'provisioning' | 'regulatory_required' | 'active'
+  next_step?: string
   // Present only when the trial subscription was created. Absent if Stripe was
   // unavailable, in which case the tenant is live on the card-free fallback trial.
   trial?: { plan: string; status: string; trial_ends_at: string | null }
@@ -351,6 +357,24 @@ export default function OnboardingPage() {
     if (form.extra_instructions)    body.extra_instructions   = form.extra_instructions
     if (form.business_description)  body.business_description  = form.business_description
     if (analysisToken)              body.analysis_token       = analysisToken
+
+    // One opaque key per signup ATTEMPT, kept in sessionStorage so a refresh or a
+    // second click resumes the same onboarding instead of creating another tenant.
+    // The tenant is now created before any provider work, so this is what replaces
+    // the accidental protection the old ordering gave us.
+    let onboardingKey = ''
+    try {
+      onboardingKey = sessionStorage.getItem('ol_onboarding_key') || ''
+      if (!onboardingKey) {
+        onboardingKey = crypto.randomUUID()
+        sessionStorage.setItem('ol_onboarding_key', onboardingKey)
+      }
+    } catch {
+      // Private mode or storage disabled: fall back to a per-call key. Signup
+      // still works; it simply cannot resume.
+      onboardingKey = crypto.randomUUID()
+    }
+    body.onboarding_key = onboardingKey
 
     try {
       const res = await fetch(`${API}/onboarding/provision`, {
@@ -1026,7 +1050,42 @@ export default function OnboardingPage() {
           )}
 
           {/* ───────── STAGE: DONE / ACTIVATION ───────── */}
-          {stage === 'done' && result && (
+          {/* W9I-B. A country whose regulator must be satisfied before a local
+              number can exist finishes signup with a real, working account and no
+              number. That is not a failure, and it must not look like one — today
+              this same path shows the customer a raw Twilio "AddressSid was empty"
+              error after a sub-account has already been created. The compliance
+              form itself arrives in W9I-C; nothing about the requirements is
+              hardcoded here, because Twilio's Regulation API is the only source of
+              truth for what Ireland asks. */}
+          {stage === 'done' && result && result.onboarding_state === 'regulatory_required' && (
+            <motion.div key="done-regulatory" className="success-wrap"
+              initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
+              <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
+                Your account is ready
+              </div>
+              <div style={{
+                padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)',
+                margin: '18px 0', textAlign: 'left',
+              }}>
+                <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+                  Phone numbers in {COUNTRIES.find(c => c.code === form.country)?.name ?? 'your country'}{' '}
+                  require a short business verification step before they can be
+                  activated. We&apos;ll ask for a few details about your business and
+                  its registered address, then set your number up.
+                </div>
+              </div>
+              <Link href={`/dashboard/${result.tenant_id}`}>
+                <button className="btn-primary" style={{ width: '100%' }}>
+                  Continue to your dashboard
+                </button>
+              </Link>
+            </motion.div>
+          )}
+
+          {stage === 'done' && result && result.onboarding_state !== 'regulatory_required' && (
             <motion.div key="done" className="success-wrap"
               initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4 }}>
