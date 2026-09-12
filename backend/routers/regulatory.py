@@ -17,6 +17,7 @@ from db import regulatory as db_reg
 from db.supabase import get_client
 from services import business_country, regulatory_callback as cb
 from services import regulatory_engine as engine
+from services import regulatory_filing as filing
 from services import regulatory_events as reg_events
 from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
@@ -43,6 +44,7 @@ _STATUS_FOR = {
     engine.REQUIREMENTS_CHANGED: 409,
     engine.NOT_READY: 409,
     engine.PROVIDER_UNAVAILABLE: 503,
+    engine.SUBMISSION_OUTCOME_UNKNOWN: 503,
     rq.NOT_FOUND: 404,
     rq.AMBIGUOUS: 409,
     rq.UNAVAILABLE: 503,
@@ -158,15 +160,24 @@ async def create_address(tenant_id: str, body: dict):
 
 @router.post("/{tenant_id}/details")
 async def submit_details(tenant_id: str, body: dict):
-    """Collect the regulation's fields and build every provider resource.
+    """Advance this tenant's filing to the point where it is ready to submit.
 
-    Resumable: calling it again after a partial failure continues rather than
-    duplicating. The attribute bag is forwarded to the provider and NEVER stored.
+    W9I-D TURNED THIS INTO A WRAPPER. It used to take an `attributes` bag from the
+    caller and hand it to prepare_profile, which meant a browser could put values
+    in front of the provider that differed from the ones the customer authorised,
+    and could drive the resource-creation sequence itself. Collection now belongs
+    to /verification (W9I-C) and sequencing to services.regulatory_filing, so this
+    keeps its path and its shape but no longer chooses anything: the facts come
+    from canonical storage and the ordering from the orchestrator.
+
+    `attributes` in the body is deliberately IGNORED rather than rejected -- it was
+    never storage, nothing in this repository sends it, and a 4xx would be a worse
+    answer than doing the right thing. Nothing a caller puts there can reach the
+    provider.
     """
-    tenant = await _tenant(tenant_id)
-    result = await engine.prepare_profile(
-        tenant, attributes=(body or {}).get("attributes") or {},
-        tenant_location_id=(body or {}).get("tenant_location_id") or None)
+    result = await filing.advance(
+        tenant_id,
+        regulatory_address_id=str((body or {}).get("regulatory_address_id") or ""))
 
     # An unresolved declaration is NOT a client error: the customer's answers were
     # accepted and stored, and what remains is a compliance decision on OUR side.
@@ -193,37 +204,44 @@ async def submit_details(tenant_id: str, body: dict):
             "unresolved_declarations": result.get("unresolved_declarations", [])}
 
 
-async def _owned_profile(tenant_id: str, profile_id: str) -> dict:
-    profile = await db_reg.get_profile(tenant_id, profile_id)
-    if not profile:
-        # Tenant-scoped at the query level, so another tenant's profile id simply
-        # does not exist here.
-        raise HTTPException(status_code=404, detail="Profile not found")
-    return profile
-
-
 @router.post("/{tenant_id}/evaluate")
 async def evaluate_profile(tenant_id: str, body: dict):
-    tenant = await _tenant(tenant_id)
-    profile = await _owned_profile(tenant_id, str((body or {}).get("profile_id") or ""))
-    result = await engine.evaluate_profile(tenant, profile=profile)
-    if not result["ok"]:
+    """Prepare and evaluate, stopping short of filing.
+
+    Also a wrapper now. It used to take a caller-chosen profile_id and evaluate
+    whatever that named, which let a client evaluate one profile and submit
+    another. The orchestrator resolves the profile from the tenant and premises.
+    """
+    result = await filing.advance(
+        tenant_id,
+        regulatory_address_id=str((body or {}).get("regulatory_address_id") or ""))
+    if not result.get("ok"):
         _fail(result)
-    return {"status": "ok", "evaluation_status": result["evaluation_status"],
-            "compliant": result["compliant"], "state": result["state"],
-            "failed_requirements": result["failed_requirements"]}
+    profile = result.get("profile") or {}
+    return {"status": "ok", "state": profile.get("state") or result.get("state"),
+            "reached": result.get("reached"),
+            "evaluation_status": profile.get("evaluation_status")}
 
 
 @router.post("/{tenant_id}/submit")
 async def submit_for_review(tenant_id: str, body: dict):
-    tenant = await _tenant(tenant_id)
-    profile = await _owned_profile(tenant_id, str((body or {}).get("profile_id") or ""))
-    result = await engine.submit_profile(tenant, profile=profile)
-    if not result["ok"]:
+    """File this tenant's Bundle for regulatory review.
+
+    Submission is a separate, explicit act -- the orchestrator does not do it
+    unless asked -- and every gate still applies inside submit_profile: the
+    authorisation is re-checked immediately before the provider call, not trusted
+    from whenever the resources were built.
+    """
+    result = await filing.advance(
+        tenant_id,
+        regulatory_address_id=str((body or {}).get("regulatory_address_id") or ""),
+        submit=True)
+    if not result.get("ok"):
         _fail(result)
-    return {"status": "ok", "state": result["state"],
+    return {"status": "ok", "state": result.get("state"),
             "bundle_status": result.get("bundle_status"),
-            "already_submitted": result.get("already_submitted", False)}
+            "already_submitted": result.get("already_submitted", False),
+            "recovered_from_unknown": result.get("recovered_from_unknown", False)}
 
 
 @webhook_router.post("/regulatory")

@@ -31,6 +31,7 @@ from services import onboarding_lifecycle as lifecycle_ob
 from services import regulatory_authorization as auth
 from services import regulatory_customer_errors as cx
 from services import regulatory_engine as engine
+from services import regulatory_filing as filing
 from services import regulatory_ireland as ie_ux
 from services import regulatory_review as review
 from services.security import authenticated_tenant_user, require_tenant_owner
@@ -485,6 +486,45 @@ async def authorize(tenant_id: str, body: dict,
         "next_state": READY_FOR_REGULATORY_FILING,
         "message": "Your information is ready for regulatory submission.",
         "filing_submitted": False,
+    }
+
+
+@router.get("/filing")
+async def filing_status(tenant_id: str):
+    """Where each of this tenant's registrations stands, in the customer's terms.
+
+    Derived from tenant_regulatory_profiles.state -- the filing authority -- and
+    translated once, so no screen or email can describe the same filing
+    differently. Carries no Bundle SID, EndUser SID, provider status string or
+    provider failure text: Twilio's rejection reasons can quote the submitted
+    identity back, and this is exactly where that must not surface.
+    """
+    tenant = await _tenant(tenant_id)
+    country = _country(tenant)
+    profiles = await db_reg.list_profiles(tenant_id)
+    scoped = [p for p in profiles
+              if str(p.get("iso_country") or "").upper() == country]
+
+    filings = []
+    for p in scoped:
+        view = filing.customer_status(p)
+        filings.append({
+            "regulatory_address_id": p.get("regulatory_address_id"),
+            **view,
+            # When the provider asked for corrections, name the step to go back
+            # to. Which FIELDS are at fault is not echoed: the provider states it
+            # in free text that can quote the identity, and guessing would be
+            # worse than sending them to review everything they submitted.
+            "revisit_step": cx.STEP_DETAILS if view["action_required"] else "",
+        })
+
+    return {
+        "iso_country": country,
+        "filings": filings,
+        # No filing yet is a legitimate, common state -- it is what every tenant
+        # looks like between authorising and the first orchestration pass.
+        "any_submitted": any(f["submitted"] for f in filings),
+        "any_action_required": any(f["action_required"] for f in filings),
     }
 
 
