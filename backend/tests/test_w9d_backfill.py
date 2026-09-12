@@ -43,7 +43,11 @@ def world(monkeypatch):
 
     async def fake_list(sub_sid, sub_token):
         state["lookups"].append(("list", sub_sid))
-        return list(state["provider"])
+        if state.get("provider_error"):
+            return bf.telephony.ProviderNumberList(status="error",
+                                                   error_detail=state["provider_error"])
+        return bf.telephony.ProviderNumberList(status="success",
+                                              numbers=tuple(state["provider"]))
 
     async def fake_country(number):
         state["lookups"].append(("lookup", number))
@@ -61,7 +65,7 @@ def world(monkeypatch):
         state["inserted"].append(row)
         return {**row, "id": "new-row-id"}
 
-    monkeypatch.setattr(bf.telephony, "list_subaccount_numbers", fake_list)
+    monkeypatch.setattr(bf.telephony, "fetch_subaccount_numbers", fake_list)
     monkeypatch.setattr(bf.telephony, "lookup_iso_country", fake_country)
     monkeypatch.setattr(bf.db_phone, "list_for_tenant", fake_existing)
     monkeypatch.setattr(bf.db_phone, "insert_number", fake_insert)
@@ -141,11 +145,19 @@ async def test_a_tenant_with_no_subaccount_credentials_is_skipped(world):
 
 @pytest.mark.asyncio
 async def test_an_unreachable_provider_is_unknown_not_empty(world):
-    """[] from the provider means 'could not establish', NOT 'owns nothing'. A live
-    number must never be written off because a list call failed."""
-    world["provider"] = []
+    """A failed query means 'could not establish', NOT 'owns nothing'. A live number
+    must never be written off because a list call failed. W9F gave this its own
+    reason string, distinct from an authoritatively empty account."""
+    world["provider_error"] = "TwilioRestException http=500"
     r = await bf.plan_tenant(tenant())
     assert (r["action"], r["reason"]) == ("skip", "provider_numbers_unavailable")
+
+
+@pytest.mark.asyncio
+async def test_an_authoritatively_empty_account_has_its_own_reason(world):
+    world["provider"] = []
+    r = await bf.plan_tenant(tenant())
+    assert (r["action"], r["reason"]) == ("skip", "provider_account_empty")
 
 
 @pytest.mark.asyncio
@@ -302,29 +314,15 @@ class _Row:
 
 
 @pytest.mark.asyncio
-async def test_list_subaccount_numbers_returns_the_fields_the_backfill_needs():
+async def test_fetch_subaccount_numbers_returns_the_fields_the_backfill_needs():
     row = _Row(sid=PN, phone_number=NUMBER, account_sid=SUB, date_created=CREATED,
                status="in-use", origin="twilio")
     with patch("services.telephony._sub_client", return_value=_SubClient([row])):
-        out = await telephony.list_subaccount_numbers(SUB, "tok")
-    assert out == [{"sid": PN, "phone_number": NUMBER, "account_sid": SUB,
-                    "date_created": CREATED, "status": "in-use", "origin": "twilio"}]
-
-
-@pytest.mark.asyncio
-async def test_list_subaccount_numbers_never_raises():
-    class _Boom:
-        @property
-        def incoming_phone_numbers(self):
-            raise RuntimeError("network down")
-    with patch("services.telephony._sub_client", return_value=_Boom()):
-        assert await telephony.list_subaccount_numbers(SUB, "tok") == []
-
-
-@pytest.mark.asyncio
-async def test_list_subaccount_numbers_without_credentials_is_empty_not_an_error():
-    assert await telephony.list_subaccount_numbers("", "tok") == []
-    assert await telephony.list_subaccount_numbers(SUB, "") == []
+        out = await telephony.fetch_subaccount_numbers(SUB, "tok")
+    assert out.ok and not out.is_empty
+    assert out.numbers == ({"sid": PN, "phone_number": NUMBER, "account_sid": SUB,
+                            "date_created": CREATED, "status": "in-use",
+                            "origin": "twilio"},)
 
 
 class _Lookups:
