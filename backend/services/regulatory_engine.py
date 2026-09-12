@@ -560,12 +560,6 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
                        else found.status, detail=found.detail)
     reqs = found.requirements
 
-    address_row = await db_reg.find_address(tenant_id, country, tenant_location_id)
-    if not address_row or not address_row.get("address_sid"):
-        return _result(NOT_READY, detail="address_not_created")
-    if not address_row.get("validated"):
-        return _result(ADDRESS_VALIDATION_FAILED, detail="address_not_validated")
-
     # A provider field with nowhere to store it stops the workflow. Personal data
     # must not accumulate in an untyped blob, and a requirement we cannot record is
     # a requirement we cannot show back to the customer to correct.
@@ -596,6 +590,29 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
     # whatever a previous request already established. That is what makes a retry
     # after a provider failure work without the customer present.
     effective = db_reg.attributes_from_details(stored, reqs.end_user_field_names)
+
+    # ── THE ADDRESS GATE, AFTER PERSISTENCE ───────────────────────────────
+    # It sits here, not above, because the customer's answers do not depend on the
+    # address. W9H-QA found them being persisted downstream of this gate: a business
+    # that filled in every field but whose address the provider refused lost
+    # everything they had typed, which is precisely the recoverability defect W9G.1
+    # was meant to close.
+    #
+    # The two failures are also reported differently. "No address submitted yet" and
+    # "you submitted one and Twilio refused it" need different things from the
+    # customer, and calling the second one address_not_created would tell them to add
+    # an address they have already added.
+    address_row = await db_reg.find_address(tenant_id, country, tenant_location_id)
+    if not address_row:
+        return _result(NOT_READY, detail="address_not_submitted", details_stored=True)
+    if not address_row.get("address_sid"):
+        return _result(ADDRESS_VALIDATION_FAILED,
+                       detail=str(address_row.get("validation_error")
+                                  or "address_rejected_by_provider"),
+                       details_stored=True)
+    if not address_row.get("validated"):
+        return _result(ADDRESS_VALIDATION_FAILED, detail="address_not_validated",
+                       details_stored=True)
 
     bad = ie_ux.invalid_enum_fields(reqs, effective)
     if bad:

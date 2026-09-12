@@ -526,3 +526,66 @@ async def test_the_real_upsert_does_not_clear_a_field_with_blank_input(monkeypat
     patch = client.updated[0]
     assert "business_name" not in patch
     assert patch["comments"] == "note"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# W9H-QA found these two against the LIVE provider.
+# ═══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_details_survive_an_address_the_PROVIDER_REJECTS(world):
+    """The defect: persistence sat downstream of the address gate, so a business
+    that filled in every field but whose address Twilio refused lost everything it
+    had typed -- the exact recoverability failure W9G.1 was meant to close. Found by
+    running the real workflow against Twilio's live API with an unvalidatable
+    address."""
+    world["twilio"].opts["address_error"] = ProviderError(code=21628, status=400)
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    assert r["status"] == engine.ADDRESS_VALIDATION_FAILED
+    assert r["details_stored"] is True
+    stored = world["details"][0]
+    assert stored["business_name"] == "DANI Ltd"
+    assert stored["business_registration_number"] == "123456"
+    assert stored["authorized_rep_email"] == "ann@dani.ie"
+    assert stored["requirements_fingerprint"] == REQS.fingerprint()
+    assert world["twilio"].created["end_user"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_address_is_not_reported_as_never_submitted(world):
+    """"No address yet" and "you submitted one and Twilio refused it" need different
+    things from the customer. Reporting the second as the first would tell them to
+    add an address they have already added."""
+    world["twilio"].opts["address_error"] = ProviderError(code=21628, status=400)
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    assert r["status"] == engine.ADDRESS_VALIDATION_FAILED
+    assert r["detail"] == "provider_could_not_validate"
+    assert "not_created" not in r["detail"] and "not_submitted" not in r["detail"]
+
+
+@pytest.mark.asyncio
+async def test_no_address_at_all_is_reported_as_not_submitted(world):
+    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    assert r["status"] == engine.NOT_READY
+    assert r["detail"] == "address_not_submitted"
+    assert r["details_stored"] is True
+    assert world["details"][0]["business_name"] == "DANI Ltd"
+
+
+@pytest.mark.asyncio
+async def test_the_customer_can_fix_the_address_without_retyping_anything(world):
+    """The point of persisting first: correct the address, resend nothing else."""
+    world["twilio"].opts["address_error"] = ProviderError(code=21628, status=400)
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+
+    world["twilio"].opts.pop("address_error")
+    world["addresses"].clear()
+    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
+    r = await engine.prepare_profile(tenant(), attributes={})   # nothing re-sent
+    assert r["ok"], r
+    sent = world["twilio"].last_end_user_attributes
+    assert sent["business_name"] == "DANI Ltd"
+    assert sent["business_identity"] == "DIRECT_CUSTOMER"
