@@ -81,6 +81,8 @@ class FakeTwilio:
         self.last_end_user_attributes = None
         self.last_document = None
         self.last_bundle = None
+        self.address_store = {}
+        self.deleted_addresses = []
         self.numbers = self
         self.v2 = self
         self.regulatory_compliance = self
@@ -90,23 +92,50 @@ class FakeTwilio:
             raise self.opts[key]
 
     # ── addresses ────────────────────────────────────────────────────────
+    # Backed by a real store keyed on SID, because W9H-QA.3 turns on questions the
+    # provider answers: does an Address with THIS FriendlyName already exist, and is
+    # it still there after we delete it. A fake that only counted creates could not
+    # express either, and would let takeover/adoption tests pass without the
+    # behaviour existing. Measured against the live API in W9H-QA.2: Twilio does NOT
+    # deduplicate identical creates, so this fake does not either.
     @property
     def addresses(self):
         outer = self
         def create(**kw):
+            hook = outer.opts.get("on_address_create")
+            if hook:
+                hook(**kw)
             outer._fail("address_error")
             outer.created["address"] += 1
-            return _Obj(sid=ADDR_SID,
-                        validated=outer.opts.get("address_validated", True),
-                        city="Dublin 2", region="Dublin")
+            sid = outer.opts.get("address_sid", ADDR_SID)
+            if outer.created["address"] > 1:
+                sid = f"{sid}-dup{outer.created['address']}"
+            rec = _Obj(sid=sid,
+                       validated=outer.opts.get("address_validated", True),
+                       city="Dublin 2", region="Dublin",
+                       friendly_name=kw.get("friendly_name"))
+            outer.address_store[sid] = rec
+            return rec
+        def _list(friendly_name=None, limit=None, **kw):
+            outer._fail("address_list_error")
+            return [a for a in outer.address_store.values()
+                    if friendly_name is None or a.friendly_name == friendly_name]
         def context(sid):
             class _Ctx:
                 def fetch(self):
                     outer._fail("address_fetch_error")
-                    return _Obj(sid=sid, validated=True, city="Dublin 2",
-                                region="Dublin")
+                    rec = outer.address_store.get(sid)
+                    if rec is None:
+                        raise ProviderError(code=20404, status=404,
+                                            detail="address not found")
+                    return rec
+                def delete(self):
+                    outer._fail("address_delete_error")
+                    outer.deleted_addresses.append(sid)
+                    outer.address_store.pop(sid, None)
+                    return True
             return _Ctx()
-        return _Resource(create=create, context=context)
+        return _Resource(create=create, list=_list, context=context)
 
     # ── end users ────────────────────────────────────────────────────────
     @property
@@ -228,9 +257,13 @@ class FakeTwilio:
 
 @pytest.fixture
 def world(monkeypatch):
+    # A controllable clock, so a stale-claim test states the elapsed time it means
+    # instead of sleeping for two real minutes.
+    clock = {"t": 1_000_000.0}
     state = {"twilio": FakeTwilio(), "addresses": [], "profiles": [], "details": [],
              "locations": [{"id": "loc-1", "tenant_id": TENANT}],
-             "inserted_addresses": 0, "inserted_profiles": 0}
+             "inserted_addresses": 0, "inserted_profiles": 0,
+             "clock": clock, "now": lambda: clock["t"]}
 
     class FakeQB:
         def __init__(self, table): self.table, self.filters = table, {}
@@ -270,6 +303,59 @@ def world(monkeypatch):
     async def get_address(tid, aid):
         return next((a for a in state["addresses"]
                      if a["id"] == aid and a["tenant_id"] == tid), None)
+
+    # ── the claim primitives (W9H-QA.3) ──────────────────────────────────
+    # These model the DATABASE, not the engine: claim_address enforces migration
+    # 027's partial unique indexes and returns None on conflict exactly as a caught
+    # 23505 does; attach/record are fenced on `address_sid is null`; takeover
+    # reproduces the two compare-and-set predicates. Nothing here reimplements a
+    # decision ensure_address makes -- if the engine stopped claiming before
+    # creating, every one of these would still behave the same and the tests would
+    # correctly fail.
+    async def claim_address(row):
+        scope = (row["tenant_id"], row.get("tenant_location_id") or None,
+                 row["iso_country"], row.get("provider", "twilio"))
+        for a in state["addresses"]:
+            if (a["tenant_id"], a.get("tenant_location_id") or None,
+                    a["iso_country"], a.get("provider", "twilio")) == scope:
+                return None                      # 23505, caught in the real layer
+        state["inserted_addresses"] += 1
+        # Postgres returns the row with every column present; address_sid is NULL,
+        # not absent. A fake that omitted it would hide a KeyError the real layer
+        # cannot produce.
+        new_row = {"address_sid": None, "validation_error": None,
+                   **row, "id": f"addr-{state['inserted_addresses']}",
+                   "updated_at": state["now"]()}
+        state["addresses"].append(new_row)
+        return new_row
+
+    async def attach_address_sid(aid, patch):
+        for a in state["addresses"]:
+            if a["id"] == aid and a.get("address_sid") is None:
+                a.update(patch); a["updated_at"] = state["now"]()
+                return a
+        return None                              # the fence rejected us
+
+    async def take_over_address_claim(aid):
+        for a in state["addresses"]:
+            if a["id"] != aid or a.get("address_sid") is not None:
+                continue
+            terminal = a.get("validation_error") is not None
+            age = state["now"]() - a.get("updated_at", state["now"]())
+            if terminal or age >= engine.db_reg.CLAIM_STALE_SECONDS:
+                a["validation_error"] = None
+                a["updated_at"] = state["now"]()
+                return a
+            return None
+        return None
+
+    async def record_address_failure(aid, error):
+        for a in state["addresses"]:
+            if a["id"] == aid and a.get("address_sid") is None:
+                a.update({"validated": False, "validation_error": error})
+                a["updated_at"] = state["now"]()
+                return a
+        return None
     async def list_profiles(tid):
         return [p for p in state["profiles"] if p["tenant_id"] == tid]
     async def find_profile_for_address(tid, country, nt, eut, addr_id):
@@ -316,6 +402,10 @@ def world(monkeypatch):
 
     for name, fn in (("find_address", find_address), ("insert_address", insert_address),
                      ("update_address", update_address), ("get_address", get_address),
+                     ("claim_address", claim_address),
+                     ("attach_address_sid", attach_address_sid),
+                     ("take_over_address_claim", take_over_address_claim),
+                     ("record_address_failure", record_address_failure),
                      ("list_profiles", list_profiles),
                      ("find_profile_for_address", find_profile_for_address),
                      ("insert_profile", insert_profile),

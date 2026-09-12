@@ -25,6 +25,7 @@ Acquisition is a later gate.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from db import regulatory as db_reg
@@ -54,6 +55,18 @@ NOT_READY = "not_ready"
 MISSING_COUNTRY = "business_country_not_confirmed"
 UNSUPPORTED_REQUIREMENT_FIELD = "unsupported_requirement_field"
 REQUIREMENTS_NOT_RECORDED = "requirements_not_recorded"
+# Another request currently owns creating this address. A NORMAL, RETRYABLE state --
+# deliberately not address_validation_failed (nothing was rejected) and deliberately
+# not an error (nothing is wrong), because telling a customer their address failed
+# because they double-clicked would be a lie.
+ADDRESS_CREATE_IN_PROGRESS = "address_create_in_progress"
+
+# How long a request that lost the claim will wait for the winner before returning
+# ADDRESS_CREATE_IN_PROGRESS. A Twilio Address.create round-trip measured ~0.5s, so
+# this usually resolves into a reuse; it is bounded because a web request must not
+# hang on another request's provider call.
+CLAIM_WAIT_ATTEMPTS = 4
+CLAIM_WAIT_SECONDS = 0.4
 
 DEFAULT_NUMBER_TYPE = "local"
 DEFAULT_END_USER_TYPE = "business"
@@ -215,18 +228,60 @@ async def ensure_address(tenant: dict, *, submitted: dict,
 
     # Already created at the provider? Reconcile instead of creating a second one.
     if existing and existing.get("address_sid"):
-        if str(existing.get("provider_account_sid") or "") != sub_sid:
-            return _result(OWNERSHIP_CONFLICT, detail="address_account_mismatch")
-        try:
-            live = client.addresses(existing["address_sid"]).fetch()
-        except Exception as e:
-            return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
-        patch = {"validated": bool(getattr(live, "validated", False)),
-                 "provider_locality": str(getattr(live, "city", "") or "") or None,
-                 "provider_region": str(getattr(live, "region", "") or "") or None,
-                 "validation_error": None}
-        row = await db_reg.update_address(existing["id"], patch)
-        return _result(OK, address=row or {**existing, **patch}, reused=True)
+        return await _reconcile_existing_address(existing, client, sub_sid)
+
+    submitted_columns = {k: (v or None) for k, v in values.items() if k != "iso_country"}
+
+    # ── THE CLAIM, BEFORE ANY PROVIDER WRITE (W9H-QA.3) ───────────────────
+    # W9H-QA.2 measured two processes both reaching Address.create before either
+    # owned the row: two provider Addresses, one orphaned, and a raw 23505 out of
+    # the loser's request. Ordering is the fix -- the database decides who may
+    # spend a provider resource, using the partial unique indexes that were already
+    # there, and it decides BEFORE the resource is spent rather than after.
+    claim = existing
+    i_created_the_claim = False
+    if claim is None:
+        claim = await db_reg.claim_address({
+            "tenant_id": tenant_id, "tenant_location_id": tenant_location_id,
+            "iso_country": country, "provider_account_sid": sub_sid,
+            "validated": False, **submitted_columns})
+        i_created_the_claim = claim is not None
+        if claim is None:
+            # Someone else claimed this scope between our read and our insert. The
+            # loser NEVER calls the provider -- it waits briefly for the winner and
+            # then reports honestly that work is in flight.
+            return await _await_claim_winner(tenant_id, country, tenant_location_id,
+                                             client, sub_sid)
+
+    if str(claim.get("provider_account_sid") or "") not in ("", sub_sid):
+        return _result(OWNERSHIP_CONFLICT, detail="address_account_mismatch")
+
+    # ── DID ANYONE ALREADY CREATE FOR THIS CLAIM? ─────────────────────────
+    # Asked of the PROVIDER, not of our own row, because the dangerous gap is
+    # exactly the one where an Address exists at Twilio and our row does not know
+    # it yet -- a worker that died between create and attach. The claim id travels
+    # in FriendlyName, so this is an exact lookup rather than a guess at matching
+    # street text, and it is what makes takeover adopt an orphan instead of minting
+    # a second one.
+    marker = db_reg.claim_marker(claim["id"])
+    try:
+        already = client.addresses.list(friendly_name=marker, limit=20)
+    except Exception as e:
+        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
+    if already:
+        return await _adopt_provider_address(claim, already, client, sub_sid,
+                                             submitted_columns)
+
+    # ── MAY I CREATE? ─────────────────────────────────────────────────────
+    # Only the claim's owner may. We own it if we just inserted it, or if we won an
+    # atomic takeover of one that is abandoned or terminally failed.
+    if not i_created_the_claim:
+        taken = await db_reg.take_over_address_claim(claim["id"])
+        if taken is None:
+            # A live worker holds it. Wait briefly, then say so.
+            return await _await_claim_winner(tenant_id, country, tenant_location_id,
+                                             client, sub_sid)
+        claim = taken
 
     try:
         created = client.addresses.create(
@@ -234,7 +289,7 @@ async def ensure_address(tenant: dict, *, submitted: dict,
             city=values["city"], region=values["region"] or values["city"],
             postal_code=values["postal_code"], iso_country=country,
             street_secondary=values["street_secondary"] or None,
-            friendly_name=f"OpenLines regulatory address ({country})",
+            friendly_name=marker,
             emergency_enabled=False, auto_correct_address=True)
     except Exception as e:
         detail = _safe_provider_error(e)
@@ -242,37 +297,121 @@ async def ensure_address(tenant: dict, *, submitted: dict,
         # 21628 is Twilio refusing to validate the address -- a customer-data
         # problem, not an outage, and the two must not share a state.
         if code == 21628:
-            row = existing or await db_reg.insert_address({
-                "tenant_id": tenant_id, "tenant_location_id": tenant_location_id,
-                "iso_country": country, "provider_account_sid": sub_sid,
-                "validated": False, **{k: v or None for k, v in values.items()
-                                       if k != "iso_country"}})
-            if row:
-                await db_reg.update_address(row["id"],
-                                            {"validated": False,
-                                             "validation_error": "provider_could_not_validate"})
+            await db_reg.record_address_failure(claim["id"], "provider_could_not_validate")
             # NEVER log the address itself on failure.
             logger.warning("Regulatory address rejected by provider for tenant %s (%s)",
                            tenant_id, detail)
-            return _result(ADDRESS_VALIDATION_FAILED, detail=detail,
-                           address=row)
+            row = await db_reg.get_address(tenant_id, claim["id"])
+            return _result(ADDRESS_VALIDATION_FAILED, detail=detail, address=row or claim)
+
+        # ANYTHING ELSE IS AN UNKNOWN OUTCOME, NOT A FAILURE. A timeout or a
+        # transport error can arrive after Twilio has already created the Address;
+        # retrying the create blindly is how duplicates are born. Ask the provider
+        # what actually happened, using the claim marker.
         logger.error("Regulatory address creation failed for tenant %s: %s",
                      tenant_id, detail)
+        try:
+            found = client.addresses.list(friendly_name=marker, limit=20)
+        except Exception:
+            found = []
+        if found:
+            return await _adopt_provider_address(claim, found, client, sub_sid,
+                                                 submitted_columns)
         return _result(PROVIDER_UNAVAILABLE, detail=detail)
 
-    row_patch = {
-        "tenant_id": tenant_id, "tenant_location_id": tenant_location_id,
-        "iso_country": country, "provider_account_sid": sub_sid,
-        "address_sid": created.sid,
-        "validated": bool(getattr(created, "validated", False)),
-        "validation_error": None,
-        "provider_locality": str(getattr(created, "city", "") or "") or None,
-        "provider_region": str(getattr(created, "region", "") or "") or None,
-        **{k: (v or None) for k, v in values.items() if k != "iso_country"},
-    }
-    row = (await db_reg.update_address(existing["id"], row_patch) if existing
-           else await db_reg.insert_address(row_patch))
+    return await _adopt_provider_address(claim, [created], client, sub_sid,
+                                         submitted_columns)
+
+
+async def _reconcile_existing_address(existing: dict, client, sub_sid: str) -> dict:
+    """Re-read an address we already created, so our state matches the provider's."""
+    if str(existing.get("provider_account_sid") or "") != sub_sid:
+        return _result(OWNERSHIP_CONFLICT, detail="address_account_mismatch")
+    try:
+        live = client.addresses(existing["address_sid"]).fetch()
+    except Exception as e:
+        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
+    patch = {"validated": bool(getattr(live, "validated", False)),
+             "provider_locality": str(getattr(live, "city", "") or "") or None,
+             "provider_region": str(getattr(live, "region", "") or "") or None,
+             "validation_error": None}
+    row = await db_reg.update_address(existing["id"], patch)
+    return _result(OK, address=row or {**existing, **patch}, reused=True)
+
+
+async def _await_claim_winner(tenant_id: str, country: str,
+                              tenant_location_id: str | None,
+                              client, sub_sid: str) -> dict:
+    """A request that does not own the claim: wait briefly, then report honestly.
+
+    Bounded on purpose. The winner's provider call takes well under a second, so
+    most losers return the winner's validated address; but a web request must never
+    be held open waiting on another request, so when the wait runs out this returns
+    a distinct retryable status rather than inventing a failure.
+    """
+    for attempt in range(CLAIM_WAIT_ATTEMPTS):
+        await asyncio.sleep(CLAIM_WAIT_SECONDS)
+        row = await db_reg.find_address(tenant_id, country, tenant_location_id)
+        if row and row.get("address_sid"):
+            return await _reconcile_existing_address(row, client, sub_sid)
+        if row and row.get("validation_error"):
+            return _result(ADDRESS_VALIDATION_FAILED,
+                           detail=str(row.get("validation_error")), address=row)
+    return _result(ADDRESS_CREATE_IN_PROGRESS, detail="another_request_is_creating_it")
+
+
+async def _adopt_provider_address(claim: dict, candidates: list, client, sub_sid: str,
+                                  submitted_columns: dict) -> dict:
+    """Attach ONE provider Address to the claim, and clean up any sibling.
+
+    More than one candidate means a worker crashed mid-create and its replacement
+    created another before the first became visible. Both carry this claim's marker,
+    so both are provably ours -- which is the only condition under which deleting a
+    provider resource is defensible. We keep the one we attach and remove the rest.
+
+    If the fenced attach finds the claim already finalised, we are the stale worker:
+    we do not overwrite the current owner, and we withdraw our own Address instead
+    of leaving it orphaned.
+    """
+    chosen = candidates[0]
+    patch = {"provider_account_sid": sub_sid, "address_sid": chosen.sid,
+             "validated": bool(getattr(chosen, "validated", False)),
+             "validation_error": None,
+             "provider_locality": str(getattr(chosen, "city", "") or "") or None,
+             "provider_region": str(getattr(chosen, "region", "") or "") or None,
+             **submitted_columns}
+    row = await db_reg.attach_address_sid(claim["id"], patch)
+
+    if row is None:
+        # Lost the claim. Somebody else already attached an address.
+        current = await db_reg.get_address(claim["tenant_id"], claim["id"])
+        winner_sid = str((current or {}).get("address_sid") or "")
+        for extra in candidates:
+            if extra.sid != winner_sid:
+                _discard_provider_address(client, extra.sid, claim["id"])
+        if current and current.get("address_sid"):
+            return await _reconcile_existing_address(current, client, sub_sid)
+        return _result(ADDRESS_CREATE_IN_PROGRESS, detail="claim_taken_over")
+
+    for extra in candidates[1:]:
+        _discard_provider_address(client, extra.sid, claim["id"])
     return _result(OK, address=row, reused=False)
+
+
+def _discard_provider_address(client, address_sid: str, claim_id: str) -> None:
+    """Delete a provider Address that is provably ours and provably unused.
+
+    "Provably ours" is the whole point: the caller only ever passes a SID it found
+    by this claim's FriendlyName marker, or one it created itself under that marker.
+    An address whose ownership we cannot establish is never touched.
+    """
+    try:
+        client.addresses(address_sid).delete()
+    except Exception as e:
+        # Not fatal -- the claim is already correct. Worth a line so a leaked
+        # resource is findable, with no address content in it.
+        logger.warning("Could not remove superseded regulatory address for claim %s: %s",
+                       claim_id, _safe_provider_error(e))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

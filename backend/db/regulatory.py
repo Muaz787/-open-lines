@@ -47,6 +47,146 @@ async def insert_address(row: dict) -> dict | None:
             .insert(payload).execute().data or [None])[0]
 
 
+# ── the address creation claim (W9H-QA.3) ──────────────────────────────────
+#
+# W9H-QA.2 raced two processes through ensure_address and measured the result:
+# BOTH crossed Twilio's Address.create before either owned the database row, so
+# two provider Addresses existed, one INSERT won, the loser raised a raw 23505 out
+# of the request, and the loser's Address was orphaned at Twilio with nothing
+# pointing at it. Twilio does not deduplicate identical Address.create calls, so
+# nothing upstream was going to save us.
+#
+# The fix is ordering: take the uniqueness claim in the database FIRST, and let the
+# partial unique indexes from migration 027 decide the winner, before anyone is
+# allowed to spend a provider resource.
+
+# A claim whose attempt has not been touched for this long is presumed abandoned --
+# its worker crashed, was redeployed, or lost its container. Comfortably longer than
+# a Twilio Address.create round-trip (~0.5s measured) so a live attempt is never
+# stolen, short enough that a crash does not strand a customer.
+CLAIM_STALE_SECONDS = 120
+
+
+def claim_marker(address_row_id: str) -> str:
+    """The provider-side ownership marker for one claim.
+
+    Twilio's Address list filters on FriendlyName server-side, so writing the claim
+    row's id here makes "did anyone already create an Address for this claim?" an
+    exact question with an exact answer -- not a heuristic match on street text.
+    That is what lets a taking-over worker ADOPT a crashed worker's Address instead
+    of creating a second one, and what makes a delete provably safe: we only ever
+    remove an Address whose FriendlyName names the claim we hold.
+
+    Twilio caps FriendlyName at 64 characters and rejects a longer FILTER with
+    twilio_code 20400 -- measured live in W9H-QA.3, where a 65-character marker made
+    the reconciliation lookup fail before it could do any good. This is 54; the
+    length is asserted in the tests so the budget cannot be spent by accident.
+    """
+    return f"OpenLines regaddr {address_row_id}"
+
+
+async def claim_address(row: dict) -> dict | None:
+    """Take the creation claim for one address scope, or return None if we lost.
+
+    Returns the claim row on success. None means another request holds the claim --
+    NOT an error, and specifically not something the caller may treat as permission
+    to call the provider.
+
+    23505 is caught HERE rather than in the engine because losing a race is a normal
+    outcome of this function, not an exception to it. W9H-QA.2's defect was exactly
+    this error escaping as an unhandled 500.
+    """
+    payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
+    try:
+        res = (get_client().table("tenant_regulatory_addresses")
+               .insert(payload).execute())
+    except Exception as e:
+        if _is_unique_violation(e):
+            return None
+        raise
+    return (res.data or [None])[0]
+
+
+def _is_unique_violation(e: Exception) -> bool:
+    """Is this PostgreSQL 23505 arriving through PostgREST?
+
+    Matched on the SQLSTATE rather than the message: the message names the
+    constraint and echoes the conflicting key, which is exactly the sort of text
+    that gets reworded between PostgREST versions.
+    """
+    code = getattr(e, "code", None)
+    if code is None:
+        code = (getattr(e, "args", None) or [{}])[0]
+        code = code.get("code") if isinstance(code, dict) else None
+    if str(code) == "23505":
+        return True
+    # Fall back to the serialised body only when no structured code reached us.
+    return "23505" in str(e)
+
+
+async def attach_address_sid(address_row_id: str, patch: dict) -> dict | None:
+    """FENCED finalisation: write the provider SID only while nobody else has.
+
+    The fence is `address_sid is null`. It is a real invariant rather than a version
+    counter -- an address row acquires its provider identity exactly once -- so a
+    worker that crashed, was taken over, and then woke up cannot overwrite the
+    identity the new owner already attached. It gets None back and learns it lost.
+
+    One row updated proves we won; zero proves we did not.
+    """
+    res = (get_client().table("tenant_regulatory_addresses")
+           .update({**patch, "updated_at": _now_iso()})
+           .eq("id", address_row_id).is_("address_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
+async def take_over_address_claim(address_row_id: str) -> dict | None:
+    """Atomically take over a claim that is abandoned or terminally failed.
+
+    Two separate compare-and-sets rather than one OR'd predicate, because each
+    answers a different question and PostgREST expresses them far more legibly
+    apart:
+
+      1. The previous attempt ended in a provider REJECTION. There is no live worker
+         to displace, so a corrected retry may proceed immediately -- waiting out a
+         stale timer would make every address correction take two minutes.
+      2. The previous attempt simply stopped touching the row. Presumed crashed.
+
+    Both are guarded by `address_sid is null`: a claim that already reached the
+    provider is never up for grabs. Winning renews updated_at, which is what stops a
+    second waiting worker from also taking over -- the renewal moves the row out of
+    the stale window in the same statement that awards it.
+    """
+    cutoff = datetime.now(timezone.utc).timestamp() - CLAIM_STALE_SECONDS
+    cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
+    base = {"updated_at": _now_iso(), "validation_error": None}
+
+    res = (get_client().table("tenant_regulatory_addresses").update(base)
+           .eq("id", address_row_id).is_("address_sid", "null")
+           .not_.is_("validation_error", "null").execute())
+    if len(res.data or []) == 1:
+        return res.data[0]
+
+    res = (get_client().table("tenant_regulatory_addresses").update(base)
+           .eq("id", address_row_id).is_("address_sid", "null")
+           .is_("validation_error", "null")
+           .lt("updated_at", cutoff_iso).execute())
+    return res.data[0] if len(res.data or []) == 1 else None
+
+
+async def record_address_failure(address_row_id: str, error: str) -> dict | None:
+    """Record a provider rejection on a claim we still hold.
+
+    Fenced the same way as attachment: if we no longer hold the claim, our failure
+    is stale news and must not overwrite a newer owner's state.
+    """
+    res = (get_client().table("tenant_regulatory_addresses")
+           .update({"validated": False, "validation_error": error,
+                    "updated_at": _now_iso()})
+           .eq("id", address_row_id).is_("address_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
 async def update_address(address_row_id: str, patch: dict) -> dict | None:
     return (get_client().table("tenant_regulatory_addresses")
             .update({**patch, "updated_at": _now_iso()})
