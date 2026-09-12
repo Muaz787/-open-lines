@@ -671,7 +671,8 @@ async def _multi_location_book(
         # second one — Vapi retries are normal and must not double-book.
         logger.info("tools/book[multi]: slot %s already booked (%s) — idempotent return",
                     slot_ref, offer.get("booking_id"))
-        return _result(tc_id, _booked_message(offer, tenant, pending=False, again=True))
+        return _result(tc_id, _booked_message(offer, tenant, pending=False, again=True,
+                                              adopted=adopted))
 
     if status == slot_offers.IN_PROGRESS:
         # Claimed and still in flight, or an attempt whose outcome we never learned.
@@ -810,15 +811,46 @@ async def _multi_location_book(
     logger.info("tools/book[multi]: booked %s at %s (booking %s, status %s)",
                 offer.get("service_name"), offer["provider_location_id"], booking_id,
                 booking.get("status"))
-    return _result(tc_id, _booked_message(offer, tenant, pending=pending))
+    return _result(tc_id, _booked_message(offer, tenant, pending=pending, adopted=adopted))
 
 
-def _booked_message(offer: dict, tenant: dict, *, pending: bool, again: bool = False) -> str:
+def _offer_timezone(offer: dict, tenant: dict, adopted: list[dict] | None) -> str:
+    """The timezone a booked slot must be SPOKEN in.  (W8)
+
+    The slot's identity is its UTC instant and nothing else -- that is what was
+    offered, re-resolved and sent to Square, and it never changes. This decides
+    only how that instant is read back to the caller.
+
+    It has to be the LOCATION's timezone, not the tenant's. _booked_message used
+    to read `offer["_tz"]`, which nothing has ever written, so it silently fell
+    through to tenant.calendar_timezone. For DANI that happens to be correct --
+    Cork, Dublin and Limerick are all Europe/Dublin, and so is the tenant -- but
+    it is correct by coincidence of configuration, not by construction. A tenant
+    whose locations span timezones would have heard its confirmation in the
+    wrong one while the booking itself was right.
+
+    Same precedence as availability (_multi_location_availability): the
+    location's own timezone, then the provider's. The tenant value survives only
+    as the legacy single-location fallback, where it is genuinely authoritative.
+    """
+    location_id = str(offer.get("tenant_location_id") or "")
+    if location_id and adopted:
+        location = next((l for l in adopted if str(l.get("id")) == location_id), None)
+        if location:
+            tz = (location.get("timezone")
+                  or (location.get("_binding") or {}).get("provider_timezone") or "").strip()
+            if tz:
+                return tz
+    return (offer.get("_tz") or tenant.get("calendar_timezone") or "UTC")
+
+
+def _booked_message(offer: dict, tenant: dict, *, pending: bool, again: bool = False,
+                    adopted: list[dict] | None = None) -> str:
     """Say booked only once Square says booked, and say pending when it is pending."""
     from zoneinfo import ZoneInfo as _ZI
     loc_name = offer.get("_loc_name") or ""
     try:
-        tz = _ZI(offer.get("_tz") or tenant.get("calendar_timezone") or "UTC")
+        tz = _ZI(_offer_timezone(offer, tenant, adopted))
         dt = datetime.fromisoformat(str(offer["start_at_utc"]).replace("Z", "+00:00")).astimezone(tz)
         h = dt.hour % 12 or 12
         when = f"{dt.strftime('%A, %B')} {dt.day} at {h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
