@@ -174,6 +174,21 @@ async def take_over_address_claim(address_row_id: str) -> dict | None:
     return res.data[0] if len(res.data or []) == 1 else None
 
 
+async def release_address_claim(address_row_id: str) -> dict | None:
+    """Give up an address creation lease after an UNKNOWN provider outcome.
+
+    W9H-QA.3 shipped without this and it is a real, if mild, defect: after a
+    transport failure the claim stayed fresh, so every retry inside the stale
+    window was told the address was already being created. Same reasoning as
+    release_provider_claim -- safe because the next attempt reconciles by marker
+    before creating anything.
+    """
+    res = (get_client().table("tenant_regulatory_addresses")
+           .update({"updated_at": _EPOCH})
+           .eq("id", address_row_id).is_("address_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
 async def record_address_failure(address_row_id: str, error: str) -> dict | None:
     """Record a provider rejection on a claim we still hold.
 
@@ -242,9 +257,23 @@ async def list_nonterminal_profiles(states: tuple[str, ...], limit: int = 200) -
 
 
 async def insert_profile(row: dict) -> dict | None:
+    """Insert a profile, or return None if another request already created it.
+
+    None means the partial unique indexes from migration 027
+    (trp_country_scope_key / trp_address_scope_key) refused a second profile for
+    the same scope. That is a NORMAL outcome of two concurrent requests, so the
+    23505 is caught here and the caller re-reads the canonical row -- W9H.1A found
+    it escaping as a raw PostgreSQL error, constraint name and all, to the API.
+    """
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
-    return (get_client().table("tenant_regulatory_profiles")
-            .insert(payload).execute().data or [None])[0]
+    try:
+        res = (get_client().table("tenant_regulatory_profiles")
+               .insert(payload).execute())
+    except Exception as e:
+        if _is_unique_violation(e):
+            return None
+        raise
+    return (res.data or [None])[0]
 
 
 async def update_profile(profile_id: str, patch: dict) -> dict | None:
@@ -399,3 +428,122 @@ def unstorable_fields(field_names) -> list[str]:
              "first_name", "last_name", "email", "business_identity",
              "is_subassigned", "comments"}
     return [f for f in field_names if f not in known]
+
+
+# ── tenant_regulatory_provider_claims (migration 030, W9H-QA.4) ────────────
+#
+# Creation ownership for EndUser, SupportingDocument and Bundle. Same discipline
+# the Address fix proved in W9H-QA.3: claim in the database BEFORE the provider is
+# called, carry the claim id to the provider in FriendlyName, attach through a
+# fenced compare-and-set. The difference is only that Addresses already had a row
+# to claim and these three do not -- see migration 030 for why none of the existing
+# tables was a safe home.
+
+CLAIM_TABLE = "tenant_regulatory_provider_claims"
+# Any timestamp guaranteed older than every stale window.
+_EPOCH = "1970-01-01T00:00:00+00:00"
+
+
+async def claim_provider_resource(*, tenant_id: str, resource: str, scope_key: str,
+                                  provider_account_sid: str,
+                                  provider: str = "twilio") -> dict | None:
+    """Take creation ownership of one logical provider resource, or None if lost.
+
+    None means another request holds the claim. NOT an error, and specifically not
+    permission to call the provider anyway.
+    """
+    payload = {"tenant_id": tenant_id, "provider": provider, "resource": resource,
+               "scope_key": scope_key, "provider_account_sid": provider_account_sid,
+               "claimed_at": _now_iso(), "created_at": _now_iso(),
+               "updated_at": _now_iso()}
+    try:
+        res = get_client().table(CLAIM_TABLE).insert(payload).execute()
+    except Exception as e:
+        if _is_unique_violation(e):
+            return None
+        raise
+    return (res.data or [None])[0]
+
+
+async def find_provider_claim(*, tenant_id: str, resource: str, scope_key: str,
+                              provider: str = "twilio") -> dict | None:
+    res = (get_client().table(CLAIM_TABLE).select("*")
+           .eq("tenant_id", tenant_id).eq("provider", provider)
+           .eq("resource", resource).eq("scope_key", scope_key).limit(1).execute())
+    return (res.data or [None])[0]
+
+
+async def attach_provider_sid(claim_id: str, provider_sid: str,
+                              provider_account_sid: str) -> dict | None:
+    """FENCED finalisation: write the provider SID only while nobody else has.
+
+    The fence is `provider_sid is null` -- a real invariant, since a claim acquires
+    its provider resource exactly once. A worker that was taken over and then woke
+    up gets None back and learns it lost, instead of overwriting the new owner.
+    """
+    res = (get_client().table(CLAIM_TABLE)
+           .update({"provider_sid": provider_sid,
+                    "provider_account_sid": provider_account_sid,
+                    "failure": None, "updated_at": _now_iso()})
+           .eq("id", claim_id).is_("provider_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
+async def take_over_provider_claim(claim_id: str) -> dict | None:
+    """Atomically take over a claim that is abandoned or terminally failed.
+
+    Two compare-and-sets rather than one OR'd predicate, because they answer
+    different questions:
+
+      1. The previous attempt ended in a provider REFUSAL. No live worker to
+         displace, so a corrected retry proceeds at once -- waiting out a stale
+         timer would make every correction take minutes.
+      2. The previous attempt simply stopped touching the claim. Presumed crashed.
+
+    Both guarded by `provider_sid is null`: a claim that already reached the
+    provider is never up for grabs. Winning renews claimed_at in the same statement
+    that awards the claim, so a second waiting worker cannot also take over.
+    """
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(seconds=CLAIM_STALE_SECONDS)).isoformat()
+    base = {"claimed_at": _now_iso(), "failure": None, "updated_at": _now_iso()}
+
+    res = (get_client().table(CLAIM_TABLE).update(base)
+           .eq("id", claim_id).is_("provider_sid", "null")
+           .not_.is_("failure", "null").execute())
+    if len(res.data or []) == 1:
+        return res.data[0]
+
+    res = (get_client().table(CLAIM_TABLE).update(base)
+           .eq("id", claim_id).is_("provider_sid", "null")
+           .is_("failure", "null").lt("claimed_at", cutoff).execute())
+    return res.data[0] if len(res.data or []) == 1 else None
+
+
+async def release_provider_claim(claim_id: str) -> dict | None:
+    """Give up the lease without recording a verdict.
+
+    Used when a provider call ends in an UNKNOWN outcome. Holding the lease would
+    be worse than useless: nothing is in flight any more, but for a whole stale
+    window every retry would be told "another request is creating it" -- so a
+    two-second outage would cost the customer two minutes.
+
+    Releasing is safe precisely because reconciliation-by-marker happens BEFORE any
+    create: whoever takes the claim next asks the provider what exists, so a
+    resource this attempt may have created is adopted rather than duplicated.
+    Fenced on provider_sid IS NULL so a claim that already succeeded is untouched.
+    """
+    res = (get_client().table(CLAIM_TABLE)
+           .update({"claimed_at": _EPOCH, "updated_at": _now_iso()})
+           .eq("id", claim_id).is_("provider_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None
+
+
+async def record_provider_claim_failure(claim_id: str, failure: str) -> dict | None:
+    """Record a provider refusal on a claim we still hold. Fenced like attachment:
+    if we no longer hold it, our failure is stale news."""
+    res = (get_client().table(CLAIM_TABLE)
+           .update({"failure": failure, "updated_at": _now_iso()})
+           .eq("id", claim_id).is_("provider_sid", "null").execute())
+    return (res.data or [None])[0] if len(res.data or []) == 1 else None

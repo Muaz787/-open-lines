@@ -478,6 +478,10 @@ def test_no_regulatory_code_path_scopes_numbers_v2_with_account_sid():
     for f in list(root.glob("regulatory*.py")) + [pathlib.Path(telephony.__file__)]:
         src = f.read_text()
         body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
-        if "account_sid=" in body and "regulatory_compliance" in body:
+        # The dangerous pattern is CONSTRUCTING a client with account_sid=, not the
+        # word appearing inside provider_account_sid, which is our own column name.
+        import re as _re
+        if _re.search(r"Client\([^)]*\baccount_sid\s*=", body) and \
+                "regulatory_compliance" in body:
             offenders.append(f.name)
     assert not offenders, f"account_sid= used alongside Numbers v2 in {offenders}"

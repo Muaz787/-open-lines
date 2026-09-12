@@ -83,6 +83,12 @@ class FakeTwilio:
         self.last_bundle = None
         self.address_store = {}
         self.deleted_addresses = []
+        self.end_user_store = {}
+        self.deleted_end_users = []
+        self.document_store = {}
+        self.deleted_documents = []
+        self.bundle_store = {}
+        self.deleted_bundles = []
         self.numbers = self
         self.v2 = self
         self.regulatory_compliance = self
@@ -141,7 +147,16 @@ class FakeTwilio:
     @property
     def end_users(self):
         outer = self
+        def _list(limit=None, **kw):
+            # MEASURED: Twilio offers NO server-side filter for EndUsers, so this
+            # fake accepts none either -- a fake that filtered would let the engine
+            # pass while relying on a filter that does not exist.
+            outer._fail("end_user_list_error")
+            return list(outer.end_user_store.values())
         def create(**kw):
+            hook = outer.opts.get("on_end_user_create")
+            if hook:
+                hook(**kw)
             outer._fail("end_user_error")
             attrs = kw.get("attributes") or {}
             # MODELS THE PROVIDER'S OWN REQUIREMENT, not our hopes. The live IE
@@ -161,7 +176,12 @@ class FakeTwilio:
                                     detail=f"missing required end-user fields: {missing}")
             outer.created["end_user"] += 1
             outer.last_end_user_attributes = attrs
-            return _Obj(sid=EU_SID)
+            sid = EU_SID if outer.created["end_user"] == 1 \
+                else f"{EU_SID}-dup{outer.created['end_user']}"
+            rec = _Obj(sid=sid, friendly_name=kw.get("friendly_name"),
+                       attributes=attrs)
+            outer.end_user_store[sid] = rec
+            return rec
         def context(sid):
             class _Ctx:
                 def fetch(self):
@@ -169,35 +189,69 @@ class FakeTwilio:
                     return _Obj(sid=sid,
                                 attributes=outer.opts.get("end_user_attributes",
                                                           dict(GOOD_ATTRS)))
+                def delete(self):
+                    outer._fail("end_user_delete_error")
+                    outer.deleted_end_users.append(sid)
+                    outer.end_user_store.pop(sid, None)
+                    return True
             return _Ctx()
-        return _Resource(create=create, context=context)
+        return _Resource(create=create, list=_list, context=context)
 
     # ── supporting documents ─────────────────────────────────────────────
     @property
     def supporting_documents(self):
         outer = self
+        def _list(limit=None, **kw):
+            # MEASURED: no server-side filter for SupportingDocuments either.
+            outer._fail("document_list_error")
+            return list(outer.document_store.values())
         def create(**kw):
+            hook = outer.opts.get("on_document_create")
+            if hook:
+                hook(**kw)
             outer._fail("document_error")
             outer.created["document"] += 1
             outer.last_document = kw
-            return _Obj(sid=DOC_SID)
+            sid = DOC_SID if outer.created["document"] == 1 \
+                else f"{DOC_SID}-dup{outer.created['document']}"
+            rec = _Obj(sid=sid, status="draft", friendly_name=kw.get("friendly_name"))
+            outer.document_store[sid] = rec
+            return rec
         def context(sid):
             class _Ctx:
                 def fetch(self):
                     outer._fail("document_fetch_error")
                     return _Obj(sid=sid)
+                def delete(self):
+                    outer._fail("document_delete_error")
+                    outer.deleted_documents.append(sid)
+                    outer.document_store.pop(sid, None)
+                    return True
             return _Ctx()
-        return _Resource(create=create, context=context)
+        return _Resource(create=create, list=_list, context=context)
 
     # ── bundles ──────────────────────────────────────────────────────────
     @property
     def bundles(self):
         outer = self
+        def _list(friendly_name=None, limit=None, **kw):
+            # MEASURED: Bundles DO support a server-side FriendlyName filter, so
+            # this fake honours it -- the engine relies on it for Bundles only.
+            outer._fail("bundle_list_error")
+            return [b for b in outer.bundle_store.values()
+                    if friendly_name is None or b.friendly_name == friendly_name]
         def create(**kw):
+            hook = outer.opts.get("on_bundle_create")
+            if hook:
+                hook(**kw)
             outer._fail("bundle_error")
             outer.created["bundle"] += 1
             outer.last_bundle = kw
-            return _Obj(sid=BU_SID, status="draft")
+            sid = BU_SID if outer.created["bundle"] == 1 \
+                else f"{BU_SID}-dup{outer.created['bundle']}"
+            rec = _Obj(sid=sid, status="draft", friendly_name=kw.get("friendly_name"))
+            outer.bundle_store[sid] = rec
+            return rec
 
         def context(sid):
             class _IA:
@@ -233,8 +287,13 @@ class FakeTwilio:
                     outer._fail("submit_error")
                     outer.bundle_status = kw.get("status", "pending-review")
                     return _Obj(sid=sid, status=outer.bundle_status)
+                def delete(self):
+                    outer._fail("bundle_delete_error")
+                    outer.deleted_bundles.append(sid)
+                    outer.bundle_store.pop(sid, None)
+                    return True
             return _Ctx()
-        return _Resource(create=create, context=context)
+        return _Resource(create=create, list=_list, context=context)
 
     # ── regulations ──────────────────────────────────────────────────────
     @property
@@ -263,6 +322,7 @@ def world(monkeypatch):
     state = {"twilio": FakeTwilio(), "addresses": [], "profiles": [], "details": [],
              "locations": [{"id": "loc-1", "tenant_id": TENANT}],
              "inserted_addresses": 0, "inserted_profiles": 0,
+             "claims": [],
              "clock": clock, "now": lambda: clock["t"]}
 
     class FakeQB:
@@ -349,6 +409,13 @@ def world(monkeypatch):
             return None
         return None
 
+    async def release_address_claim(aid):
+        for a in state["addresses"]:
+            if a["id"] == aid and a.get("address_sid") is None:
+                a["updated_at"] = -10 ** 9      # older than any stale window
+                return a
+        return None
+
     async def record_address_failure(aid, error):
         for a in state["addresses"]:
             if a["id"] == aid and a.get("address_sid") is None:
@@ -356,6 +423,66 @@ def world(monkeypatch):
                 a["updated_at"] = state["now"]()
                 return a
         return None
+    # ── provider claims (migration 030, W9H-QA.4) ────────────────────────
+    # Models the TABLE: trpc_scope_key's uniqueness, the provider_sid IS NULL
+    # fence, and the two takeover compare-and-sets. Nothing here reimplements a
+    # decision the engine makes -- if _ensure_provider_resource stopped claiming
+    # before creating, these fakes would behave identically and the tests would
+    # correctly fail.
+    async def claim_provider_resource(*, tenant_id, resource, scope_key,
+                                      provider_account_sid, provider="twilio"):
+        key = (tenant_id, provider, resource, scope_key)
+        for c_ in state["claims"]:
+            if (c_["tenant_id"], c_["provider"], c_["resource"], c_["scope_key"]) == key:
+                return None                      # 23505 on trpc_scope_key
+        row = {"id": f"claim-{len(state['claims']) + 1}", "tenant_id": tenant_id,
+               "provider": provider, "resource": resource, "scope_key": scope_key,
+               "provider_account_sid": provider_account_sid, "provider_sid": None,
+               "failure": None, "claimed_at": state["now"]()}
+        state["claims"].append(row)
+        return row
+
+    async def find_provider_claim(*, tenant_id, resource, scope_key,
+                                  provider="twilio"):
+        return next((c_ for c_ in state["claims"]
+                     if c_["tenant_id"] == tenant_id and c_["provider"] == provider
+                     and c_["resource"] == resource
+                     and c_["scope_key"] == scope_key), None)
+
+    async def attach_provider_sid(claim_id, provider_sid, provider_account_sid):
+        for c_ in state["claims"]:
+            if c_["id"] == claim_id and c_["provider_sid"] is None:
+                c_.update({"provider_sid": provider_sid, "failure": None,
+                           "provider_account_sid": provider_account_sid})
+                return c_
+        return None                              # the fence rejected us
+
+    async def take_over_provider_claim(claim_id):
+        for c_ in state["claims"]:
+            if c_["id"] != claim_id or c_["provider_sid"] is not None:
+                continue
+            terminal = c_.get("failure") is not None
+            age = state["now"]() - c_.get("claimed_at", state["now"]())
+            if terminal or age >= engine.db_reg.CLAIM_STALE_SECONDS:
+                c_.update({"failure": None, "claimed_at": state["now"]()})
+                return c_
+            return None
+        return None
+
+    async def release_provider_claim(claim_id):
+        for c_ in state["claims"]:
+            if c_["id"] == claim_id and c_["provider_sid"] is None:
+                c_["claimed_at"] = -10 ** 9     # older than any stale window
+                return c_
+        return None
+
+    async def record_provider_claim_failure(claim_id, failure):
+        for c_ in state["claims"]:
+            if c_["id"] == claim_id and c_["provider_sid"] is None:
+                c_["failure"] = failure
+                return c_
+        return None
+
     async def list_profiles(tid):
         return [p for p in state["profiles"] if p["tenant_id"] == tid]
     async def find_profile_for_address(tid, country, nt, eut, addr_id):
@@ -406,6 +533,13 @@ def world(monkeypatch):
                      ("attach_address_sid", attach_address_sid),
                      ("take_over_address_claim", take_over_address_claim),
                      ("record_address_failure", record_address_failure),
+                     ("release_address_claim", release_address_claim),
+                     ("release_provider_claim", release_provider_claim),
+                     ("claim_provider_resource", claim_provider_resource),
+                     ("find_provider_claim", find_provider_claim),
+                     ("attach_provider_sid", attach_provider_sid),
+                     ("take_over_provider_claim", take_over_provider_claim),
+                     ("record_provider_claim_failure", record_provider_claim_failure),
                      ("list_profiles", list_profiles),
                      ("find_profile_for_address", find_profile_for_address),
                      ("insert_profile", insert_profile),

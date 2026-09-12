@@ -41,9 +41,13 @@ with psycopg.connect(DSN, autocommit=True) as c:
         return i
     def profile(t, ad, k, loc=None):
         i = str(uuid.uuid4())
+        # requirements_fingerprint: 028's trp_submitted_requirements_chk, for the
+        # same reason as in stage_d.py. Predates 030.
         c.execute("insert into tenant_regulatory_profiles (id,tenant_id,tenant_location_id,"
-                  "regulatory_address_id,iso_country,provider_account_sid,bundle_sid,state) "
-                  "values (%s,%s,%s,%s,'IE',%s,%s,'approved')", (i, t, loc, ad, f"AC{k}", f"BU{k}"))
+                  "regulatory_address_id,iso_country,provider_account_sid,bundle_sid,state,"
+                  "requirements_fingerprint) "
+                  "values (%s,%s,%s,%s,'IE',%s,%s,'approved',repeat('a',64))",
+                  (i, t, loc, ad, f"AC{k}", f"BU{k}"))
         return i
     def phone(t, k, loc=None, prof=None):
         i = str(uuid.uuid4())

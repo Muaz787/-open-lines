@@ -44,9 +44,17 @@ ADDR = ("insert into tenant_regulatory_addresses "
         "(id, tenant_id, tenant_location_id, iso_country, provider_account_sid, address_sid,"
         " supporting_document_sid, validated, provider_locality) "
         "values (%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+# requirements_fingerprint is supplied as a literal no call site passes: migration
+# 028's trp_submitted_requirements_chk requires one on every profile past the draft
+# states, and most fixtures below are 'approved'. It is not under test here (028 has
+# tests/test_migration_028_contract.py) -- supplying it is simply what lets these
+# 027 proofs still build a valid profile, and it leaves every call site and argument
+# tuple below untouched. This repair is NOT caused by 030: the same failure occurs
+# on a lineage with 030 excluded, which is how it was diagnosed.
 PROF = ("insert into tenant_regulatory_profiles "
         "(id, tenant_id, regulatory_address_id, iso_country, number_type, end_user_type,"
-        " provider_account_sid, bundle_sid, state) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+        " provider_account_sid, bundle_sid, state, requirements_fingerprint)"
+        " values (%s,%s,%s,%s,%s,%s,%s,%s,%s, repeat('a',64))")
 PHONE = ("insert into tenant_phone_numbers "
          "(id, tenant_id, tenant_location_id, regulatory_profile_id, e164, purpose, status,"
          " provider_account_sid, provider_sid, iso_country) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)")

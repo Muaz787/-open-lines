@@ -29,6 +29,7 @@ import asyncio
 import logging
 
 from db import regulatory as db_reg
+from services import provider_claims as pc
 from services import regulatory_declaration as decl
 from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
@@ -60,6 +61,11 @@ REQUIREMENTS_NOT_RECORDED = "requirements_not_recorded"
 # not an error (nothing is wrong), because telling a customer their address failed
 # because they double-clicked would be a lie.
 ADDRESS_CREATE_IN_PROGRESS = "address_create_in_progress"
+# Another request owns creating this provider resource. Normal and retryable.
+PROVIDER_CREATE_IN_PROGRESS = "provider_create_in_progress"
+# Two provider resources carry the same claim marker. FAIL CLOSED: choosing one
+# would attach a regulatory identity nobody selected, and the other would linger.
+PROVIDER_IDENTITY_CONFLICT = "provider_identity_conflict"
 
 # How long a request that lost the claim will wait for the winner before returning
 # ADDRESS_CREATE_IN_PROGRESS. A Twilio Address.create round-trip measured ~0.5s, so
@@ -317,6 +323,7 @@ async def ensure_address(tenant: dict, *, submitted: dict,
         if found:
             return await _adopt_provider_address(claim, found, client, sub_sid,
                                                  submitted_columns)
+        await db_reg.release_address_claim(claim["id"])
         return _result(PROVIDER_UNAVAILABLE, detail=detail)
 
     return await _adopt_provider_address(claim, [created], client, sub_sid,
@@ -415,6 +422,198 @@ def _discard_provider_address(client, address_sid: str, claim_id: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Claim-guarded provider creation  (migration 030, W9H-QA.4)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# W9H-QA.3 measured the defect for Addresses: two processes both crossed
+# Address.create before either owned the database row, leaving a duplicate and an
+# orphan, because Twilio deduplicates nothing. W9H.1A found the same shape in
+# EndUser, SupportingDocument and Bundle creation. This is the one implementation
+# all three now go through, so they cannot drift apart.
+#
+# The order is the whole point:
+#
+#   claim (DB insert)  ->  ask the provider what exists  ->  create  ->  fenced attach
+#
+# and the provider question is what makes crash recovery possible: the claim id
+# travels in FriendlyName, so a worker can tell "nothing was created" from "a dead
+# worker created one and never attached it".
+
+
+async def _ensure_provider_resource(*, tenant_id: str, resource: str, scope_key: str,
+                                    sub_sid: str, lookup, create,
+                                    delete=None) -> dict:
+    """Create at most one provider resource for one logical scope.
+
+    lookup(marker) -> the provider objects carrying that marker. For Bundles that
+        is a server-side FriendlyName filter; for EndUsers and SupportingDocuments
+        Twilio offers no filter at all (measured), so the caller lists and matches
+        client-side over a collection that holds a handful of rows per sub-account.
+    create(marker)  -> creates the resource, stamped with the marker.
+    delete(sid)     -> withdraws a resource this claim provably owns. Optional; a
+        resource whose ownership we cannot prove is never touched.
+    """
+    claim = await db_reg.find_provider_claim(tenant_id=tenant_id, resource=resource,
+                                             scope_key=scope_key)
+    i_claimed_it = False
+    if claim is None:
+        claim = await db_reg.claim_provider_resource(
+            tenant_id=tenant_id, resource=resource, scope_key=scope_key,
+            provider_account_sid=sub_sid)
+        i_claimed_it = claim is not None
+        if claim is None:
+            # Lost the race. The loser NEVER calls the provider.
+            return await _await_provider_claim(tenant_id, resource, scope_key,
+                                               sub_sid, lookup)
+
+    if claim.get("provider_sid"):
+        if str(claim.get("provider_account_sid") or "") != sub_sid:
+            return _result(OWNERSHIP_CONFLICT, detail=f"{resource}_account_mismatch")
+        return _result(OK, provider_sid=claim["provider_sid"], claim=claim, reused=True)
+
+    if str(claim.get("provider_account_sid") or "") not in ("", sub_sid):
+        return _result(OWNERSHIP_CONFLICT, detail=f"{resource}_account_mismatch")
+
+    marker = pc.marker(resource, claim["id"])
+
+    # DID ANYONE ALREADY CREATE FOR THIS CLAIM? Asked of the provider, because the
+    # dangerous gap is the one where the resource exists at Twilio and our row does
+    # not know it -- a worker that died between create and attach.
+    found = await _lookup_marked(lookup, marker)
+    if not found["ok"]:
+        return found
+    if found["objects"]:
+        return await _adopt_provider_resource(claim, found["objects"], sub_sid,
+                                              resource, delete)
+
+    if not i_claimed_it:
+        taken = await db_reg.take_over_provider_claim(claim["id"])
+        if taken is None:
+            return await _await_provider_claim(tenant_id, resource, scope_key,
+                                               sub_sid, lookup)
+        claim = taken
+
+    try:
+        created = create(marker)
+    except Exception as e:
+        detail = _safe_provider_error(e)
+        code = getattr(e, "code", None)
+        if code in _TERMINAL_PROVIDER_CODES:
+            await db_reg.record_provider_claim_failure(claim["id"], detail)
+            logger.warning("Provider refused %s for tenant %s (%s)",
+                           resource, tenant_id, detail)
+            return _result(PROVIDER_REJECTED, detail=detail, claim=claim)
+
+        # UNKNOWN OUTCOME, not failure. A timeout can arrive after Twilio created
+        # the resource; retrying create is how duplicates are born. Ask instead.
+        logger.error("Provider %s creation failed for tenant %s: %s",
+                     resource, tenant_id, detail)
+        again = await _lookup_marked(lookup, marker)
+        if again["ok"] and again["objects"]:
+            return await _adopt_provider_resource(claim, again["objects"], sub_sid,
+                                                  resource, delete)
+        # Nothing was created. Let go of the lease so the next attempt is not told
+        # that a request which has already ended is still in flight.
+        await db_reg.release_provider_claim(claim["id"])
+        return _result(PROVIDER_UNAVAILABLE, detail=detail, claim=claim)
+
+    return await _adopt_provider_resource(claim, [created], sub_sid, resource, delete)
+
+
+# The only provider codes we treat as a settled verdict about the REQUEST rather
+# than an ambiguous outcome. Deliberately short: everything else -- including
+# 22212 (incomplete attributes) and 70002 -- goes down the reconcile path, which
+# both preserves the statuses callers already handle and, because the lease is
+# released, lets a retry proceed at once.
+_TERMINAL_PROVIDER_CODES = (21628,)
+
+
+async def _lookup_marked(lookup, marker: str) -> dict:
+    try:
+        return _result(OK, objects=pc.matching(lookup(marker), marker))
+    except Exception as e:
+        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e),
+                       objects=[])
+
+
+async def _await_provider_claim(tenant_id: str, resource: str, scope_key: str,
+                                sub_sid: str, lookup) -> dict:
+    """A request that does not own the claim: wait briefly, then report honestly.
+
+    Bounded, because a web request must never hang on another request's provider
+    call. When the wait runs out this returns a distinct retryable status rather
+    than inventing a failure.
+    """
+    for _ in range(CLAIM_WAIT_ATTEMPTS):
+        await asyncio.sleep(CLAIM_WAIT_SECONDS)
+        claim = await db_reg.find_provider_claim(tenant_id=tenant_id,
+                                                 resource=resource,
+                                                 scope_key=scope_key)
+        if claim and claim.get("provider_sid"):
+            if str(claim.get("provider_account_sid") or "") != sub_sid:
+                return _result(OWNERSHIP_CONFLICT,
+                               detail=f"{resource}_account_mismatch")
+            return _result(OK, provider_sid=claim["provider_sid"], claim=claim,
+                           reused=True)
+        if claim and claim.get("failure"):
+            return _result(PROVIDER_REJECTED, detail=str(claim["failure"]),
+                           claim=claim)
+    return _result(PROVIDER_CREATE_IN_PROGRESS,
+                   detail=f"another_request_is_creating_the_{resource}")
+
+
+async def _adopt_provider_resource(claim: dict, candidates: list, sub_sid: str,
+                                   resource: str, delete) -> dict:
+    """Attach ONE provider resource to the claim.
+
+    MORE THAN ONE MATCH FAILS CLOSED. For an Address, two duplicates were
+    interchangeable and one could simply be withdrawn. These are not: an EndUser is
+    a regulatory identity and a Bundle is a filing, so picking one arbitrarily would
+    attach an identity nobody chose and leave a second one behind. A human has to
+    look.
+    """
+    if len(candidates) > 1:
+        logger.error("Provider identity conflict: %d %s resources carry claim %s",
+                     len(candidates), resource, claim["id"])
+        return _result(PROVIDER_IDENTITY_CONFLICT, count=len(candidates),
+                       claim=claim,
+                       next_requirement=f"a human must decide which {resource} is "
+                                        f"authoritative and remove the other")
+
+    chosen = candidates[0]
+    row = await db_reg.attach_provider_sid(claim["id"], chosen.sid, sub_sid)
+    if row is None:
+        # Lost the claim: somebody else already attached. Do not overwrite them, and
+        # do not leave our own resource behind.
+        current = await db_reg.find_provider_claim(
+            tenant_id=claim["tenant_id"], resource=resource,
+            scope_key=claim["scope_key"])
+        winner = str((current or {}).get("provider_sid") or "")
+        if winner and winner != chosen.sid and delete is not None:
+            _withdraw_provider_resource(delete, chosen.sid, claim["id"], resource)
+        if winner:
+            return _result(OK, provider_sid=winner, claim=current, reused=True)
+        return _result(PROVIDER_CREATE_IN_PROGRESS, detail="claim_taken_over")
+    return _result(OK, provider_sid=chosen.sid, claim=row, reused=False)
+
+
+def _withdraw_provider_resource(delete, sid: str, claim_id: str, resource: str) -> None:
+    """Remove a provider resource that is provably ours and provably unused.
+
+    "Provably ours" is the condition, not a formality: the caller only ever passes a
+    SID it found by this claim's marker or created itself under that marker. A
+    resource whose ownership we cannot establish is never deleted.
+    """
+    try:
+        delete(sid)
+    except Exception as e:
+        # Not fatal -- the claim is already correct. Logged so a leaked resource
+        # stays findable by its marker, with no customer content in the line.
+        logger.warning("Could not withdraw superseded %s for claim %s: %s",
+                       resource, claim_id, _safe_provider_error(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # EndUser  (no table by design -- reuse is derived from sibling profiles)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -456,17 +655,33 @@ async def resolve_end_user(tenant: dict, *, requirements, attributes: dict,
     asked = set(requirements.end_user_field_names)
     payload = {k: str(v) for k, v in (attributes or {}).items()
                if k in asked and str(v if v is not None else "").strip() != ""}
-    try:
-        created = client.numbers.v2.regulatory_compliance.end_users.create(
-            friendly_name=f"OpenLines tenant {tenant_id[:8]} "
-                          f"({requirements.iso_country} {requirements.end_user_type})",
-            type=requirements.end_user_type, attributes=payload)
-    except Exception as e:
+
+    # ── CLAIM BEFORE CREATE (W9H-QA.4) ────────────────────────────────────
+    # The sibling scan above is a correct REUSE mechanism and a useless MUTUAL
+    # EXCLUSION one: two requests for two different locations of the same business
+    # both find no sibling SID, and both used to create an EndUser -- a second
+    # regulatory identity for one company, with no DB uniqueness anywhere to stop
+    # it because 027 deliberately has no EndUser table.
+    #
+    # The claim is scoped to (country, end_user_type), NOT to the profile or the
+    # address, because that is what an EndUser actually is: one business identity
+    # shared by all of this tenant's sibling filings for a country.
+    eu = client.numbers.v2.regulatory_compliance.end_users
+    out = await _ensure_provider_resource(
+        tenant_id=tenant_id, resource="end_user", sub_sid=sub_sid,
+        scope_key=pc.end_user_scope(requirements.iso_country,
+                                    requirements.end_user_type),
+        # Twilio offers NO list filter for EndUsers (measured live in W9H-QA.4), so
+        # the marker is matched client-side over the sub-account's handful of rows.
+        lookup=lambda marker: eu.list(limit=200),
+        create=lambda marker: eu.create(friendly_name=marker,
+                                        type=requirements.end_user_type,
+                                        attributes=payload),
+        delete=lambda sid: eu(sid).delete())
+    if not out["ok"]:
         # NEVER log the attribute bag: it holds the representative's name and email.
-        logger.error("EndUser creation failed for tenant %s: %s",
-                     tenant_id, _safe_provider_error(e))
-        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
-    return _result(OK, end_user_sid=created.sid, reused=False)
+        return out
+    return _result(OK, end_user_sid=out["provider_sid"], reused=out.get("reused", False))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -511,16 +726,32 @@ async def ensure_supporting_document(tenant: dict, *, requirements, address_row:
             return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
         return _result(OK, supporting_document_sid=existing_sid, reused=True)
 
-    try:
-        created = client.numbers.v2.regulatory_compliance.supporting_documents.create(
-            friendly_name=f"Proof of address ({requirements.iso_country})",
-            type=doc.accepted_type,
-            attributes={"address_sids": [address_row["address_sid"]]})
-    except Exception as e:
-        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
-    await db_reg.update_address(address_row["id"],
-                               {"supporting_document_sid": created.sid})
-    return _result(OK, supporting_document_sid=created.sid, reused=False)
+    # ── CLAIM BEFORE CREATE (W9H-QA.4) ────────────────────────────────────
+    # `supporting_document_sid IS NULL` is a fine FENCE for attachment but cannot
+    # say "somebody is creating one right now", so two requests both used to create
+    # and an unfenced update let the last writer win -- silently orphaning the
+    # loser's document with no error at all. The claim is scoped to the validated
+    # address and the document type, because Ireland's business_address document IS
+    # a reference to one Address SID.
+    sd = client.numbers.v2.regulatory_compliance.supporting_documents
+    out = await _ensure_provider_resource(
+        tenant_id=str(address_row["tenant_id"]), resource="supporting_document",
+        sub_sid=sub_sid,
+        scope_key=pc.supporting_document_scope(address_row["id"], doc.accepted_type),
+        # No list filter for SupportingDocuments either (measured).
+        lookup=lambda marker: sd.list(limit=200),
+        create=lambda marker: sd.create(
+            friendly_name=marker, type=doc.accepted_type,
+            attributes={"address_sids": [address_row["address_sid"]]}),
+        delete=lambda sid: sd(sid).delete())
+    if not out["ok"]:
+        return out
+    created_sid = out["provider_sid"]
+    if str(address_row.get("supporting_document_sid") or "") != created_sid:
+        await db_reg.update_address(address_row["id"],
+                                   {"supporting_document_sid": created_sid})
+    return _result(OK, supporting_document_sid=created_sid,
+                   reused=out.get("reused", False))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -549,16 +780,34 @@ async def ensure_bundle(tenant: dict, *, profile: dict, requirements,
                        bundle_status=str(getattr(live, "status", "") or ""), reused=True)
 
     email = str((tenant or {}).get("email") or "").strip() or "compliance@openlines.ai"
+
+    # ── CLAIM BEFORE CREATE (W9H-QA.4) ────────────────────────────────────
+    # Keyed on the profile, which already carries the whole filing scope -- tenant,
+    # country, number type, end-user type and address -- so a Bundle can never be
+    # shared across two distinct filings. Before this, two requests both created a
+    # Bundle and the unfenced bundle_sid write left one abandoned in draft.
+    bu = client.numbers.v2.regulatory_compliance.bundles
+    out = await _ensure_provider_resource(
+        tenant_id=str(profile.get("tenant_id") or tenant.get("id") or ""),
+        resource="bundle", sub_sid=sub_sid,
+        scope_key=pc.bundle_scope(profile["id"]),
+        # Bundles DO support a server-side FriendlyName filter (measured), so this
+        # one is an exact provider-side query rather than a client-side scan.
+        lookup=lambda marker: bu.list(friendly_name=marker, limit=50),
+        create=lambda marker: bu.create(
+            friendly_name=marker, email=email, status_callback=callback_url(),
+            regulation_sid=requirements.regulation_sid),
+        delete=lambda sid: bu(sid).delete())
+    if not out["ok"]:
+        return out
+    sid = out["provider_sid"]
     try:
-        created = client.numbers.v2.regulatory_compliance.bundles.create(
-            friendly_name=f"OpenLines {requirements.iso_country} "
-                          f"{requirements.number_type} — tenant {str(tenant.get('id'))[:8]}",
-            email=email, status_callback=callback_url(),
-            regulation_sid=requirements.regulation_sid)
+        live = bu(sid).fetch()
+        status = str(getattr(live, "status", "") or "")
     except Exception as e:
         return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
-    return _result(OK, bundle_sid=created.sid,
-                   bundle_status=str(getattr(created, "status", "") or ""), reused=False)
+    return _result(OK, bundle_sid=sid, bundle_status=status,
+                   reused=out.get("reused", False))
 
 
 async def ensure_item_assignments(*, bundle_sid: str, object_sids: list[str],
@@ -831,7 +1080,15 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
             "requirements_observed_at": _now_iso(),
         })
         if not profile:
-            return _result(PROVIDER_REJECTED, detail="profile_insert_failed")
+            # Another request inserted this profile between our read and our write
+            # (migration 027's partial unique indexes decided). Re-read the
+            # canonical row and continue against it -- both requests must end up
+            # working on the SAME profile, and W9H.1A found this path leaking a raw
+            # PostgreSQL 23505, constraint name and all, to the API instead.
+            profile = await db_reg.find_profile_for_address(
+                tenant_id, country, number_type, end_user_type, address_row["id"])
+            if not profile:
+                return _result(PROVIDER_UNAVAILABLE, detail="profile_claim_lost")
     else:
         patch = {"requirements_fingerprint": reqs.fingerprint(),
                  "requirements_observed_at": _now_iso()}
