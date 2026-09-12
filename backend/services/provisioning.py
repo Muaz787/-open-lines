@@ -411,7 +411,7 @@ def _regulatory_pending_result(tenant: dict, country: str) -> dict:
         next_step="regulatory_information_required")
 
 
-async def _claim_or_resume_tenant(payload: dict, country: str) -> dict:
+async def _claim_or_resume_tenant(payload: dict, country: str) -> tuple[dict, bool]:
     """The onboarding tenant for THIS attempt -- created once, then resumed.
 
     The key is opaque and per-attempt. A retry carrying the same key lands on the
@@ -426,23 +426,23 @@ async def _claim_or_resume_tenant(payload: dict, country: str) -> dict:
         # Callers that predate the key still work; they simply cannot resume.
         # Their tenant is created the same way, without a claim.
         row = await db.insert_tenant(_initial_tenant_row(payload, country))
-        return row
+        return row, False
 
     existing = await db.find_onboarding_tenant(key)
     if existing:
         logger.info("[Step 0] Resuming onboarding tenant %s", existing["id"])
-        return existing
+        return existing, True
 
     claimed = await db.claim_onboarding_tenant(key, _initial_tenant_row(payload, country))
     if claimed is not None:
-        return claimed
+        return claimed, False
 
     # Lost the race to a concurrent request carrying the same key.
     existing = await db.find_onboarding_tenant(key)
     if existing:
         logger.info("[Step 0] Lost the onboarding claim — resuming tenant %s",
                     existing["id"])
-        return existing
+        return existing, True
     raise HTTPException(status_code=503,
                         detail="Could not start onboarding. Please try again.")
 
@@ -485,17 +485,45 @@ async def provision_tenant(payload: dict) -> dict:
     # accident, so the onboarding key replaces it deliberately: one attempt, one
     # key, and the partial unique index decides which concurrent request creates
     # the tenant while the loser resumes into it.
-    country = str(payload.get("country") or "").strip().upper()
-    tenant = await _claim_or_resume_tenant(payload, country)
+    requested_country = str(payload.get("country") or "").strip().upper()
+    tenant, resumed = await _claim_or_resume_tenant(payload, requested_country)
     tenant_id = tenant["id"]
     state = str(tenant.get("onboarding_state") or "")
 
-    # Already finished: a retry of a completed signup returns what exists rather
-    # than provisioning a second line.
-    if state == lifecycle_ob.ACTIVE and tenant.get("twilio_phone_number"):
-        logger.info("[Step 0] Onboarding already complete for tenant %s — resuming "
-                    "to the finished state", tenant_id)
+    # Already finished: a completed tenant is FROZEN to this path. Returned as-is,
+    # before any write, so possession of an onboarding key can never reopen or
+    # mutate a live account. Checked on the state alone -- not on whether a number
+    # happens to be present -- so a tenant marked active without one is still
+    # closed to resume rather than falling through to provisioning.
+    if state == lifecycle_ob.ACTIVE:
+        logger.info("[Step 0] Onboarding already complete for tenant %s — returning "
+                    "the finished state", tenant_id)
         return _completed_result(tenant)
+
+    # ── THE STORED COUNTRY IS AUTHORITATIVE ON RESUME ─────────────────────
+    # The diversion below decides whether a regulator has to be satisfied before a
+    # number can exist, and an earlier version of this code took that decision
+    # from the REQUEST. That was a real hole: a second call carrying the same key
+    # and a different country would have bought a Canadian number for a tenant
+    # whose compliance country was already recorded as IE -- wrong country on the
+    # invoice, and a canonical phone row disagreeing with the tenant it belongs
+    # to. business_country_code is written once, at claim time, and a mismatch is
+    # refused rather than silently ignored: a customer who thinks they changed
+    # country must be told they did not.
+    country = requested_country
+    if resumed:
+        stored = str(tenant.get("business_country_code") or "").strip().upper()
+        if stored:
+            if requested_country and requested_country != stored:
+                logger.warning("[Step 0] Refusing a country change on resume for "
+                               "tenant %s", tenant_id)
+                raise HTTPException(
+                    status_code=409,
+                    detail={"status": "country_already_set",
+                            "business_country_code": stored,
+                            "message": "This signup was started for a different "
+                                       "country. Please start again to change it."})
+            country = stored
 
     # ── THE REGULATED-COUNTRY DIVERSION ──────────────────────────────────
     # Ireland stops here. W9C and W9H-QA.2 both measured that an Irish local
@@ -865,7 +893,11 @@ async def _provision_after_twilio(
         # touched -- so this UPDATES it rather than inserting a second one. A
         # resumed attempt overwrites the same row with the same work.
         tenant_id = tenant["id"]
-        tenant_data.pop("country", None)          # settled at Step 0; not re-guessed
+        # Settled at Step 0 and never re-guessed from a later request. Popped
+        # rather than absent-by-luck, so a future edit to tenant_data cannot
+        # reintroduce a country rewrite.
+        tenant_data.pop("country", None)
+        tenant_data.pop("business_country_code", None)
         updated = await db.update_tenant(tenant_id, tenant_data)
         logger.info("[Step %d] Updated onboarding tenant %s", step, tenant_id)
     except Exception as e:

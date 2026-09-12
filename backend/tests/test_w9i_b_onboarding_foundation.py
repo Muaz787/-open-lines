@@ -506,3 +506,171 @@ def test_the_real_tenant_claim_catches_the_uniqueness_violation():
         "a concurrent duplicate submission would raise a raw 23505 at the API"
     assert dbs._is_unique_violation(type("E", (Exception,), {"code": "23505"})()) is True
     assert dbs._is_unique_violation(ValueError("something else")) is False
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# the onboarding_key trust boundary (W9I-B Stage O4)
+# ══════════════════════════════════════════════════════════════════════════
+# The key is an idempotency/resume token and NOTHING else. It is not a
+# credential: it authenticates nobody, and the only thing it may do is continue
+# one narrowly defined INCOMPLETE onboarding.
+
+@pytest.mark.asyncio
+async def test_a_random_key_starts_a_fresh_signup_and_reaches_nothing_existing():
+    """A guessed uuid4 must not land on anyone's tenant."""
+    with world() as w:
+        first = await provision_tenant({**BASE, "country": "CA",
+                                        "onboarding_key": str(uuid.uuid4())})
+        before = dict(w.tenants[first["tenant_id"]])
+        await provision_tenant({**BASE, "business_name": "Someone Else",
+                                "country": "CA", "onboarding_key": str(uuid.uuid4())})
+    assert len(w.tenants) == 2, "a different key must not reach an existing tenant"
+    assert w.tenants[first["tenant_id"]]["business_name"] == before["business_name"]
+
+
+@pytest.mark.asyncio
+async def test_a_completed_tenant_is_FROZEN_to_the_onboarding_path():
+    """Possession of the key of an ACTIVE tenant must change nothing at all."""
+    key = str(uuid.uuid4())
+    with world() as w:
+        done = await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+        tid = done["tenant_id"]
+        snapshot = dict(w.tenants[tid])
+        phones = [dict(r) for r in w.phones]
+
+        again = await provision_tenant({
+            **BASE, "business_name": "Hijacked Ltd", "industry": "restaurant",
+            "country": "US", "onboarding_key": key})
+
+    assert again["tenant_id"] == tid
+    assert again["onboarding_state"] == lifecycle_ob.ACTIVE
+    assert w.tenants[tid] == snapshot, "a completed tenant was mutated through the key"
+    assert [dict(r) for r in w.phones] == phones, "the phone rows were touched"
+    assert w.purchases == 1, "a second number was bought"
+
+
+@pytest.mark.asyncio
+async def test_an_active_tenant_without_a_number_is_still_frozen():
+    """Checked on the STATE, not on whether a number happens to be present -- so a
+    tenant marked active without one cannot fall through into provisioning."""
+    key = str(uuid.uuid4())
+    with world() as w:
+        await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+        tid = list(w.tenants)[0]
+        w.tenants[tid]["twilio_phone_number"] = None      # the odd historical shape
+        out = await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+    assert out["onboarding_state"] == lifecycle_ob.ACTIVE
+    assert w.purchases == 1, "a frozen tenant was re-provisioned"
+
+
+@pytest.mark.asyncio
+async def test_the_country_cannot_be_changed_on_resume():
+    """THE HOLE THIS TEST EXISTS FOR. An earlier version took the diversion
+    decision from the REQUEST, so a retry carrying the same key and a different
+    country would have bought a Canadian number for a tenant whose compliance
+    country was already IE."""
+    key = str(uuid.uuid4())
+    with world() as w:
+        ie = await provision_tenant({**BASE, "country": "IE", "onboarding_key": key})
+        assert ie["onboarding_state"] == lifecycle_ob.REGULATORY_REQUIRED
+
+        with pytest.raises(HTTPException) as exc:
+            await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail["status"] == "country_already_set"
+    assert exc.value.detail["business_country_code"] == "IE"
+    # and nothing was spent on the way to that refusal
+    assert w.subaccounts == 0 and w.purchases == 0 and w.phones == []
+    assert len(w.tenants) == 1
+    assert list(w.tenants.values())[0]["business_country_code"] == "IE"
+
+
+@pytest.mark.asyncio
+async def test_the_reverse_country_flip_is_also_refused():
+    """A CA signup mid-flight must not be diverted into the regulated path."""
+    key = str(uuid.uuid4())
+    with world() as w:
+        with patch("services.telephony.find_available_number",
+                   AsyncMock(side_effect=RuntimeError("no inventory"))):
+            with pytest.raises(HTTPException):
+                await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+        with pytest.raises(HTTPException) as exc:
+            await provision_tenant({**BASE, "country": "IE", "onboarding_key": key})
+    assert exc.value.status_code == 409
+    assert exc.value.detail["business_country_code"] == "CA"
+
+
+@pytest.mark.asyncio
+async def test_resuming_with_the_same_country_is_allowed():
+    """The refusal must not break the ordinary retry it exists to protect."""
+    key = str(uuid.uuid4())
+    with world() as w:
+        a = await provision_tenant({**BASE, "country": "IE", "onboarding_key": key})
+        b = await provision_tenant({**BASE, "country": "IE", "onboarding_key": key})
+    assert a["tenant_id"] == b["tenant_id"]
+    assert len(w.tenants) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_compliance_country_is_written_once_and_never_rewritten():
+    """Step 12 completes the tenant; it must not carry a country at all."""
+    import inspect
+    from services import provisioning
+    body = inspect.getsource(provisioning._provision_after_twilio)
+    assert 'tenant_data.pop("country", None)' in body
+    assert 'tenant_data.pop("business_country_code", None)' in body, \
+        "a later request could rewrite the compliance country"
+
+    with world() as w:
+        key = str(uuid.uuid4())
+        await provision_tenant({**BASE, "country": "CA", "onboarding_key": key})
+        t = list(w.tenants.values())[0]
+    assert t["business_country_code"] == "CA"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_resumes_of_one_incomplete_tenant_stay_single():
+    import asyncio
+    key = str(uuid.uuid4())
+    with world() as w:
+        await provision_tenant({**BASE, "country": "IE", "onboarding_key": key})
+        out = await asyncio.gather(
+            provision_tenant({**BASE, "country": "IE", "onboarding_key": key}),
+            provision_tenant({**BASE, "country": "IE", "onboarding_key": key}),
+            return_exceptions=True)
+    assert len(w.tenants) == 1
+    ids = {r["tenant_id"] for r in out if isinstance(r, dict)}
+    assert len(ids) == 1
+    assert w.purchases == 0
+
+
+def test_the_key_is_not_a_credential_on_any_authenticated_route():
+    """No authenticated route may accept the key as identity. The regulatory
+    router is owner-authenticated and must never learn of it."""
+    import pathlib
+    from services import provisioning
+    root = pathlib.Path(provisioning.__file__).parent.parent
+    for name in ("regulatory.py", "billing.py", "calls.py", "knowledge.py"):
+        f = root / "routers" / name
+        if f.exists():
+            assert "onboarding_key" not in f.read_text(), \
+                f"{name} references the onboarding key"
+    # it is written on exactly one table, by exactly one path
+    dbs = (root / "db" / "supabase.py").read_text()
+    assert dbs.count('"onboarding_key": onboarding_key') == 1
+
+
+def test_the_key_must_be_a_uuid4():
+    """Constrained so it cannot smuggle text into the column, and so a guessable
+    value (a name, an email) cannot be passed off as a key."""
+    from routers.onboarding import ProvisionRequest
+    import pydantic
+    for bad in ("not-a-uuid", "admin", "a@b.com", "1", "x" * 64,
+                "00000000-0000-0000-0000-000000000000"):
+        with pytest.raises(pydantic.ValidationError):
+            ProvisionRequest(business_name="X", industry="realtor",
+                             country="CA", onboarding_key=bad)
+    good = ProvisionRequest(business_name="X", industry="realtor",
+                            country="CA", onboarding_key=str(uuid.uuid4()))
+    assert good.onboarding_key
