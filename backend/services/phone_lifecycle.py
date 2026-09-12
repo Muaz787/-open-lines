@@ -56,6 +56,18 @@ LIVE_TEMPORARY_STATUSES = (STATUS_PROVISIONING, STATUS_ACTIVE, STATUS_RETIRING)
 #: squats an E.164 we never owned.
 OWNED_E164_STATUSES = (STATUS_PROVISIONING, STATUS_ACTIVE, STATUS_RETIRING)
 
+#: Statuses a release may transition OUT of. Identical in membership to
+#: OWNED_E164_STATUSES today and deliberately spelled separately: that set
+#: answers "do we hold this E.164", this one answers "may this row be released".
+#: They would diverge the moment a status is added that we own but must not
+#: release, and a shared constant would hide that.
+RELEASABLE_STATUSES = (STATUS_PROVISIONING, STATUS_ACTIVE, STATUS_RETIRING)
+
+#: End states. A row here is history: not routable, not a uniqueness conflict,
+#: and never transitioned again. 'failed' is terminal for a purchase that never
+#: completed; 'released' for a number we held and gave back.
+TERMINAL_STATUSES = (STATUS_RELEASED, STATUS_FAILED)
+
 #: Which statuses each purpose is allowed at most one of, per tenant.
 LIVE_STATUSES_BY_PURPOSE = {
     PURPOSE_PERMANENT: CURRENT_PERMANENT_STATUSES,
@@ -102,3 +114,17 @@ def live_conflict(rows: list[dict], candidate: dict) -> str:
                 return "tpn_owned_e164_key"
 
     return ""
+
+
+def is_released(row: dict) -> bool:
+    """Has this row been given back to the provider?
+
+    Distinct from `not is_routable(row)`: a 'provisioning' row is not routable
+    but is still very much ours and still occupies the uniqueness indexes.
+    """
+    return str(row.get("status") or "") == STATUS_RELEASED
+
+
+def is_terminal(row: dict) -> bool:
+    """Is this row history — neither routable nor a uniqueness conflict?"""
+    return str(row.get("status") or "") in TERMINAL_STATUSES

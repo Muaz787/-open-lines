@@ -11,7 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services import provisioning, retention
+from tests.canonical_phone_store import canonical, row as canon_row
 import db.supabase as _supabase_mod  # noqa: F401  (registers the dotted path for patch())
+import db.phone_numbers as _phones_mod  # noqa: F401  (same, for db.phone_numbers)
 
 
 def _tenant(**over):
@@ -40,43 +42,48 @@ async def test_release_detaches_vapi_before_giving_the_number_back():
         calls.append("twilio")
         return True
 
-    with patch("services.vapi.delete_phone_number", new=_vapi_delete), \
-         patch("services.telephony.release_number", new=_twilio_release), \
-         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=_vapi_delete), \
+         patch("services.telephony.release_number", new=_twilio_release):
         res = await provisioning.release_tenant_number(_tenant())
 
     assert res["released"] is True
     assert calls == ["vapi", "twilio"]
+    # THE canonical transition. Before W9I-B.1 the number was gone at Twilio and
+    # this row still said 'active', which is what blocked every later reprovision.
+    assert store.rows[0]["status"] == "released"
+    assert store.rows[0]["released_at"]
     # Cleared so a retry is a no-op rather than a second release attempt.
-    wrote = upd.call_args.args[1]
-    assert wrote["twilio_phone_number"] is None
-    assert wrote["vapi_phone_number_id"] is None
+    assert store.scalars["t1"] is None
     # Audit trail — stamped here so a manual admin release records the same as
     # the automated sweep.
-    assert wrote["number_released_at"]
+    assert store.cleared and store.cleared[0][2]
 
 
 @pytest.mark.asyncio
 async def test_a_failed_vapi_delete_stops_before_anything_is_given_away():
-    with patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=False)), \
-         patch("services.telephony.release_number", new=AsyncMock()) as twilio, \
-         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=False)), \
+         patch("services.telephony.release_number", new=AsyncMock()) as twilio:
         res = await provisioning.release_tenant_number(_tenant())
 
     assert res["released"] is False and res["reason"] == "vapi_delete_failed"
     twilio.assert_not_called()   # nothing released — fully retryable
-    upd.assert_not_called()
+    assert store.rows[0]["status"] == "active"
+    assert store.scalars["t1"] == "+14165550100"
 
 
 @pytest.mark.asyncio
 async def test_a_failed_twilio_release_leaves_the_row_intact_for_a_retry():
-    with patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
-         patch("services.telephony.release_number", new=AsyncMock(side_effect=RuntimeError("twilio down"))), \
-         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
+         patch("services.telephony.release_number", new=AsyncMock(side_effect=RuntimeError("twilio down"))):
         res = await provisioning.release_tenant_number(_tenant())
 
     assert res["released"] is False and res["reason"] == "twilio_release_failed"
-    upd.assert_not_called()
+    # "We asked and it went wrong" is not proof the number is gone.
+    assert store.rows[0]["status"] == "active"
+    assert store.scalars["t1"] == "+14165550100"
 
 
 @pytest.mark.asyncio
@@ -85,31 +92,35 @@ async def test_a_number_missing_from_the_subaccount_does_not_clear_the_row():
     error and return None, so a release that did nothing looked identical to one
     that worked — and we cleared the row anyway, losing the only record of a
     number Twilio kept billing for."""
-    with patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
-         patch("services.telephony.release_number", new=AsyncMock(return_value=False)), \
-         patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
+         patch("services.telephony.release_number", new=AsyncMock(return_value=False)):
         res = await provisioning.release_tenant_number(_tenant())
 
     assert res["released"] is False and res["reason"] == "twilio_number_not_found"
     assert res["steps"]["twilio_released"] is False
-    upd.assert_not_called()
+    assert store.rows[0]["status"] == "active"
+    assert store.scalars["t1"] == "+14165550100"
 
 
 @pytest.mark.asyncio
 async def test_missing_twilio_credentials_refuses_rather_than_guessing():
     """Without the subaccount creds the number cannot be released, and pretending
     otherwise would drop it from our records while Twilio kept billing."""
-    with patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=AsyncMock(return_value=True)), \
          patch("services.telephony.release_number", new=AsyncMock()) as twilio:
         res = await provisioning.release_tenant_number(_tenant(twilio_auth_token=""))
 
     assert res["released"] is False and res["reason"] == "missing_twilio_credentials"
     twilio.assert_not_called()
+    assert store.rows[0]["status"] == "active"
 
 
 @pytest.mark.asyncio
 async def test_a_tenant_with_no_number_is_already_done():
-    with patch("services.vapi.delete_phone_number", new=AsyncMock()) as v, \
+    with canonical([], {}), \
+         patch("services.vapi.delete_phone_number", new=AsyncMock()) as v, \
          patch("services.telephony.release_number", new=AsyncMock()) as t:
         res = await provisioning.release_tenant_number(_tenant(twilio_phone_number=""))
     assert res["released"] is True and res["reason"] == "no_number_on_tenant"
@@ -119,12 +130,13 @@ async def test_a_tenant_with_no_number_is_already_done():
 
 @pytest.mark.asyncio
 async def test_release_works_when_vapi_never_had_the_number():
-    with patch("services.vapi.delete_phone_number", new=AsyncMock()) as v, \
-         patch("services.telephony.release_number", new=AsyncMock()), \
-         patch("db.supabase.update_tenant", new=AsyncMock()):
+    with canonical([canon_row()], {"t1": "+14165550100"}) as store, \
+         patch("services.vapi.delete_phone_number", new=AsyncMock()) as v, \
+         patch("services.telephony.release_number", new=AsyncMock()):
         res = await provisioning.release_tenant_number(_tenant(vapi_phone_number_id=""))
     assert res["released"] is True
     v.assert_not_called()
+    assert store.rows[0]["status"] == "released"
 
 
 # ── Retention purge ordering ─────────────────────────────────────────────────

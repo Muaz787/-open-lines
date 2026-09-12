@@ -127,3 +127,48 @@ async def update_number(number_id: str, patch: dict) -> dict | None:
            .update({**patch, "updated_at": _now_iso()})
            .eq("id", number_id).execute())
     return (res.data or [None])[0]
+
+
+async def release_number_cas(*, number_id: str, tenant_id: str, e164: str,
+                             provider_sid: str, provider_account_sid: str,
+                             last_error: str = "") -> list[dict]:
+    """Fenced transition of ONE row to 'released'. Returns the rows it changed.
+
+    EVERY identity field is part of the WHERE clause, not just the row id. The
+    failure this prevents is specific and was observed in W9H-QA.5: a worker that
+    began releasing number A, stalled, and woke up after the tenant had already
+    been reprovisioned onto number B. Fenced on the row id alone it would still
+    match — the id is stable — and would retire B, taking a live customer's line
+    down. Fenced on the provider identity it matches nothing, which is the
+    correct outcome for a worker holding a stale view of the world.
+
+    The status predicate is RELEASABLE_STATUSES, so a row that is already
+    'released' matches zero rows here rather than being stamped twice with a new
+    released_at. The caller distinguishes "already done" from "moved underneath
+    me" by re-reading; a zero-row result alone does not say which.
+
+    provider_sid is deliberately NOT cleared. The regulatory claim retirement in
+    migration 030 has to null its SID because a claim scope is reusable, but a
+    Twilio IncomingPhoneNumber SID is never reissued: keeping it is what makes
+    tpn_provider_object_key a permanent, truthful record of which provider object
+    this row was, and it cannot collide with any future purchase.
+    """
+    patch = {"status": lifecycle.STATUS_RELEASED,
+             "released_at": _now_iso(),
+             "updated_at": _now_iso()}
+    if last_error:
+        patch["last_error"] = last_error[:500]
+    q = (get_client().table("tenant_phone_numbers").update(patch)
+         .eq("id", number_id)
+         .eq("tenant_id", tenant_id)
+         .eq("e164", e164)
+         .eq("provider_account_sid", provider_account_sid)
+         .eq("provider_sid", provider_sid)
+         .in_("status", list(lifecycle.RELEASABLE_STATUSES)))
+    return q.execute().data or []
+
+
+async def get_by_id(number_id: str) -> dict | None:
+    res = (get_client().table("tenant_phone_numbers").select("*")
+           .eq("id", number_id).limit(1).execute())
+    return (res.data or [None])[0]
