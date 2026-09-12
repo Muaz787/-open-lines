@@ -57,6 +57,10 @@ NOT_READY = "not_ready"
 MISSING_COUNTRY = "business_country_not_confirmed"
 UNSUPPORTED_REQUIREMENT_FIELD = "unsupported_requirement_field"
 REQUIREMENTS_NOT_RECORDED = "requirements_not_recorded"
+#: The submit call failed AFTER the provider may already have accepted it. Not an
+#: error the caller can retry: the truth is at the provider and must be read, not
+#: guessed. See submit_profile's except branch.
+SUBMISSION_OUTCOME_UNKNOWN = "submission_outcome_unknown"
 # Another request currently owns creating this address. A NORMAL, RETRYABLE state --
 # deliberately not address_validation_failed (nothing was rejected) and deliberately
 # not an error (nothing is wrong), because telling a customer their address failed
@@ -1565,10 +1569,48 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
         updated = client.numbers.v2.regulatory_compliance.bundles(
             profile["bundle_sid"]).update(status="pending-review")
     except Exception as e:
-        # Put it back so a retry is possible.
-        await db_reg.transition_profile(profile["id"], expected_state=st.SUBMITTING,
-                                        new_state=st.READY_TO_SUBMIT)
-        return _result(PROVIDER_UNAVAILABLE, detail=_safe_provider_error(e))
+        # ── THE OUTCOME IS UNKNOWN, NOT FAILED (W9I-D Stage I) ────────────
+        # A timeout, a reset or a 5xx here says the RESPONSE did not arrive. It
+        # does not say the submission did not happen: Twilio may have moved the
+        # Bundle to pending-review and then failed to tell us. This branch used to
+        # roll straight back to READY_TO_SUBMIT, which invites the next attempt to
+        # submit a Bundle that is already under review -- a second filing of a
+        # regulated identity, on a retry nobody chose.
+        #
+        # So we ASK the provider what it actually holds, and only the answer
+        # decides. There are exactly three outcomes and they are genuinely
+        # different, so none of them is collapsed into the others.
+        detail = _safe_provider_error(e)
+        truth = await _submission_truth(client, profile)
+        if truth["status"] == VERIFY_EXISTS and truth["submitted"]:
+            # It WAS accepted. Record what the provider actually holds; a rollback
+            # here would lose a real submission and invite a duplicate.
+            provider_status = truth["provider_status"]
+            target = st.state_for_provider_status(provider_status)[0] or st.PENDING_REVIEW
+            from datetime import datetime, timezone
+            await db_reg.transition_profile(
+                profile["id"], expected_state=st.SUBMITTING, new_state=target,
+                patch={"bundle_status": provider_status,
+                       "submitted_at": datetime.now(timezone.utc).isoformat()})
+            logger.warning("Submission for profile %s errored but the provider "
+                           "holds it as %s -- recorded, not retried",
+                           profile["id"], provider_status)
+            return _result(OK, state=target, bundle_status=provider_status,
+                           recovered_from_unknown=True)
+        if truth["status"] == VERIFY_EXISTS:
+            # The provider still holds a draft: the submission did NOT land, so a
+            # retry is safe and is what the customer wants.
+            await db_reg.transition_profile(profile["id"], expected_state=st.SUBMITTING,
+                                            new_state=st.READY_TO_SUBMIT)
+            return _result(PROVIDER_UNAVAILABLE, detail=detail)
+        # We could not reach the provider to find out. LEAVE IT IN SUBMITTING.
+        # That state is deliberately in NONTERMINAL_STATES, so the reconciliation
+        # sweep will fetch the Bundle and resolve this without anyone resubmitting
+        # on a guess. Rolling back here is the one thing that must not happen.
+        logger.error("Submission outcome unknown for profile %s -- left in %s for "
+                     "reconciliation", profile["id"], st.SUBMITTING)
+        return _result(SUBMISSION_OUTCOME_UNKNOWN, detail=detail,
+                       state=st.SUBMITTING)
 
     from datetime import datetime, timezone
     provider_status = str(getattr(updated, "status", "") or "")
@@ -1578,6 +1620,42 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
         patch={"bundle_status": provider_status,
                "submitted_at": datetime.now(timezone.utc).isoformat()})
     return _result(OK, state=target, bundle_status=provider_status)
+
+
+#: Provider Bundle statuses that mean "this has been filed". A Bundle in any of
+#: them must never be submitted again.
+FILED_BUNDLE_STATUSES = frozenset({
+    "pending-review", "in-review", "twilio-approved", "twilio-rejected",
+    "provisionally-approved",
+})
+
+
+async def _submission_truth(client, profile: dict) -> dict:
+    """What does the provider actually hold for this Bundle, right now?
+
+    Used only after a submit whose response never arrived. Returns
+    {"status": VERIFY_*, "submitted": bool, "provider_status": str}.
+
+    `submitted` is decided by the provider's own status vocabulary, not by
+    whether our request appeared to succeed -- that is the entire point: our view
+    of the request is exactly what is unreliable here.
+    """
+    try:
+        live = client.numbers.v2.regulatory_compliance.bundles(
+            profile["bundle_sid"]).fetch()
+    except Exception as e:
+        if _is_authoritative_not_found(e):
+            # The Bundle is gone. That is not "not submitted" -- it is a missing
+            # provider resource, which has its own fail-closed handling and must
+            # not be silently re-created or resubmitted here.
+            return {"status": VERIFY_NOT_FOUND, "submitted": False,
+                    "provider_status": ""}
+        return {"status": VERIFY_UNAVAILABLE, "submitted": False,
+                "provider_status": ""}
+    provider_status = str(getattr(live, "status", "") or "").strip().lower()
+    return {"status": VERIFY_EXISTS,
+            "submitted": provider_status in FILED_BUNDLE_STATUSES,
+            "provider_status": provider_status}
 
 
 async def recover_end_user(tenant: dict, *, profile: dict) -> dict:

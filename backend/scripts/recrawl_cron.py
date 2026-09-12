@@ -215,6 +215,21 @@ async def main() -> int:
     except Exception as e:
         logger.error("transfer-duration reconcile failed: %s", e)
 
+    # ...and reconciles regulatory filings whose Bundle status may have moved
+    # without a callback. Twilio documents that the status callback fires on every
+    # Bundle status change EXCEPT pending-review -> in-review, so a filing can sit
+    # in review with our record stale and no delivery ever coming. The callback
+    # stays the fast path; this is the recovery path.
+    #
+    # DRY RUN unless REGULATORY_RECONCILE_APPLY is set. Bounded per run, never
+    # raises, never resubmits, never buys a number.
+    try:
+        from services import regulatory_reconcile as reg_rec
+        rec = await reg_rec.run_scheduled()
+        logger.info("regulatory reconcile done: %s", rec)
+    except Exception as e:
+        logger.error("regulatory reconcile failed: %s", e)
+
     # Heartbeat for the admin health page — proves the daily cron is running.
     try:
         from datetime import datetime, timezone

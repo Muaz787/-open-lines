@@ -102,3 +102,67 @@ async def reconcile_all(*, dry_run: bool = True, limit: int = 200) -> dict:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
     return {"dry_run": dry_run, "inspected": len(profiles), "counts": counts,
             "results": results}
+
+
+# ── the scheduled pass (W9I-D Stage M) ─────────────────────────────────────
+#
+# WHY THIS IS NOT A NEW SCHEDULER. The repository already runs one daily Railway
+# cron -- scripts/recrawl_cron.py -- which does several unrelated jobs in one pass
+# and writes a heartbeat. Adding a second cron entry, or an in-process loop, would
+# add infrastructure nobody supervises to do something the existing pass can do.
+# So this is a job that pass calls, and it is written to be a good citizen inside
+# it: bounded, never raising, and silent when there is nothing to do.
+#
+# CADENCE. Daily, because that is what exists and because it matches the thing
+# being waited on: Irish regulatory review takes business days, not minutes.
+# Polling harder would spend provider rate limit to learn nothing. The CALLBACK is
+# the fast path -- this exists for the gap Twilio documents (no callback on
+# pending-review -> in-review) and for deliveries that never arrive.
+
+#: Profiles inspected per scheduled run. A cap rather than the full backlog: a
+#: run that tries to reconcile everything after an outage is exactly when the
+#: provider is least able to serve it, and the next day's run continues.
+SCHEDULED_BATCH = 50
+
+#: Set REGULATORY_RECONCILE_APPLY=true to let the scheduled pass actually move
+#: profiles. DRY RUN UNTIL THEN, deliberately: the first production evidence this
+#: job is safe should be a report of what it WOULD do, not a set of transitions it
+#: already did. W9I-D ships it observing; enabling mutation is a separate, evidenced
+#: decision.
+APPLY_ENV = "REGULATORY_RECONCILE_APPLY"
+
+
+def scheduled_apply_enabled() -> bool:
+    import os
+    return os.getenv(APPLY_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+async def run_scheduled() -> dict:
+    """One reconciliation pass for the daily cron. Never raises.
+
+    Returns a summary safe to log: counts and profile ids, no customer identity,
+    no provider payloads.
+    """
+    dry = not scheduled_apply_enabled()
+    try:
+        out = await reconcile_all(dry_run=dry, limit=SCHEDULED_BATCH)
+    except Exception as e:
+        logger.error("regulatory reconciliation pass failed: %s", e)
+        return {"ok": False, "dry_run": dry, "error": type(e).__name__}
+
+    summary = {"ok": True, "dry_run": dry, "inspected": out["inspected"],
+               "counts": out["counts"], "batch": SCHEDULED_BATCH}
+    # In dry run, name what it WOULD have changed. That listing is the evidence
+    # for turning mutation on, so it has to be specific enough to check by hand.
+    if dry:
+        summary["would_change"] = [
+            {"profile_id": r["profile_id"], "from": r["state"],
+             "to": r.get("target_state"), "provider_status": r.get("provider_status")}
+            for r in out["results"] if r.get("would_change")]
+    else:
+        summary["advanced"] = [
+            {"profile_id": r["profile_id"], "to": r.get("state")}
+            for r in out["results"] if r["outcome"] == ADVANCED]
+    if out["inspected"]:
+        logger.info("regulatory reconciliation: %s", summary)
+    return summary

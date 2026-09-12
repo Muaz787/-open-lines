@@ -30,6 +30,7 @@ from services import regulatory_authorization as auth
 from services import regulatory_customer_errors as cx
 from services import regulatory_engine as engine
 from services import regulatory_review as review
+from tests.module_identifiers import identifiers as _identifiers
 
 TENANT = "11111111-1111-1111-1111-111111111111"
 OTHER = "22222222-2222-2222-2222-222222222222"
@@ -278,29 +279,12 @@ FORBIDDEN_IDENTITY_CALLS = (
     "prepare_profile", "resolve_end_user", "ensure_supporting_document",
     "ensure_bundle", "ensure_item_assignments", "submit_bundle",
     "claim_provider_resource", "insert_profile",
+    # W9I-D: this router may READ where a filing stands (customer_status is a
+    # pure translation of a stored state) but must not DRIVE one. advance()
+    # reaches every resource above, so importing regulatory_filing for the status
+    # view must not quietly reopen the door the rest of this list closes.
+    "advance", "submit_profile", "evaluate_profile",
 )
-
-
-def _identifiers(module) -> set[str]:
-    """Every name the module's CODE actually references.
-
-    Parsed, not grepped: a docstring may name prepare_profile to explain why this
-    router does not call it, and a test that cannot tell prose from a call would
-    force the explanation out of the file. Attribute access counts -- the risk is
-    `engine.prepare_profile(...)`, which is an Attribute, not a Name.
-    """
-    import ast, inspect
-    tree = ast.parse(inspect.getsource(module))
-    names = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            for a in node.names:
-                names.add(a.asname or a.name.split(".")[0])
-    return names
 
 
 def test_the_verification_router_cannot_create_a_provider_identity():
