@@ -130,9 +130,15 @@ if _zapier_service.ENABLED:
     app.include_router(zapier.router)
 
 
+# Deployment identity, so a release can be verified rather than inferred.
+from services import deployment
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.1.0", "environment": APP_ENV}
+    # commit is included only when the deploy platform told us what it is, and only
+    # when the value is a well-formed SHA -- see services/deployment.py.
+    return deployment.health_payload(environment=APP_ENV)
 
 
 async def _sync_ngrok_url() -> None:

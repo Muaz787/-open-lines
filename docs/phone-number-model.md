@@ -123,3 +123,37 @@ authenticate.
 W9F found one tenant in the `provider_account_empty` state (a released number whose
 scalar was never cleared). It was **not** repaired by the backfill — a stale scalar
 must never become a canonical ownership row.
+
+## Stale scalar pointers
+
+A tenant can hold a `twilio_phone_number` for a number we no longer own — the number
+was released at Twilio and the scalar was never cleared. While that pointer is set,
+`get_tenant_by_phone()` still resolves it via the legacy fallback.
+
+`scripts/clear_stale_phone_pointers.py --tenant <id>` (dry run by default) clears
+**exactly two columns** — `twilio_phone_number` and `vapi_phone_number_id` — under a
+write fenced on the values just proved stale, so a concurrent re-provision cannot be
+clobbered. It refuses on **any** ambiguity: provider query failed, the account turns
+out to hold numbers, the org-wide sweep was incomplete, the number appears anywhere,
+a canonical row exists, another tenant claims the E.164, or the Vapi resource is
+still live (or its state is unknown).
+
+It deliberately leaves alone:
+
+- **`number_released_at`** — no authoritative release timestamp is obtainable, and
+  inventing one is the fabrication `tpn_activated_source_chk` exists to forbid.
+- **`twilio_subaccount_sid`** — the sub-account is still valid. Owning no number does
+  not make an account stale.
+
+It calls **no** provider mutation. There is nothing left to release or delete; that is
+the premise.
+
+## Verifying a release
+
+`/health` includes a `commit` field when the deploy platform told us the SHA
+(`RAILWAY_GIT_COMMIT_SHA`, or `GIT_COMMIT_SHA` elsewhere). The field is omitted when
+unknown — health never fails over missing metadata — and the value is published only
+if it is a well-formed git SHA: 40 hex characters, or 7–12 for an abbreviation. The
+13–39 band is refused because that is where all-hex *secrets* live; a Twilio Account
+SID lower-cases to 34 hex characters and would otherwise have been published on an
+unauthenticated endpoint.

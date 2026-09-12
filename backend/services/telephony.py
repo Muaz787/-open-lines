@@ -482,3 +482,63 @@ async def lookup_iso_country(phone_number: str) -> str:
     if getattr(info, "valid", None) is False:
         return ""
     return str(getattr(info, "country_code", "") or "").strip().upper()
+
+
+@dataclass(frozen=True)
+class NumberSearch:
+    """Where an E.164 lives across every account we control.
+
+    Same three-state discipline as ProviderNumberList: an incomplete sweep is not
+    evidence of absence. `complete` is False if ANY account could not be read, which
+    is what makes this safe to use as a precondition for deleting a reference.
+    """
+    status: str                          # "success" | "error"
+    accounts: tuple[str, ...] = ()       # account SIDs holding the number
+    scanned: int = 0
+    unreadable: int = 0
+    error_detail: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "success"
+
+    @property
+    def complete(self) -> bool:
+        return self.ok and self.unreadable == 0
+
+    @property
+    def found_nowhere(self) -> bool:
+        """Authoritatively absent: a COMPLETE sweep that found nothing."""
+        return self.complete and not self.accounts
+
+
+async def find_number_across_accounts(phone_number: str) -> NumberSearch:
+    """Search the parent account and every sub-account for one E.164.
+
+    Read-only. Used to prove a scalar phone pointer is stale before clearing it, and
+    (later) for orphan detection.
+    """
+    number = str(phone_number or "").strip()
+    if not number:
+        return NumberSearch(status="error", error_detail="no_number")
+    try:
+        client = _master_client()
+        accounts = client.api.accounts.list(limit=200)
+    except Exception as e:
+        logger.error("Could not enumerate accounts: %s", e)
+        return NumberSearch(status="error", error_detail=_safe_provider_error(e))
+    holders: list[str] = []
+    unreadable = 0
+    for acct in accounts:
+        try:
+            hits = client.api.accounts(acct.sid).incoming_phone_numbers.list(
+                phone_number=number, limit=5)
+        except Exception as e:
+            unreadable += 1
+            logger.error("Could not read numbers on account %s: %s", acct.sid,
+                         _safe_provider_error(e))
+            continue
+        if hits:
+            holders.append(acct.sid)
+    return NumberSearch(status="success", accounts=tuple(holders),
+                        scanned=len(accounts), unreadable=unreadable)
