@@ -39,15 +39,27 @@ with psycopg.connect(DSN, autocommit=True) as c:
                   "iso_country,provider_account_sid,address_sid,supporting_document_sid,validated)"
                   " values (%s,%s,%s,'IE',%s,%s,%s,true)", (i, t, loc, f"AC{k}", f"AD{k}", f"RD{k}"))
         return i
+    def authorization(t, ad):
+        """029's trp_submitted_authorization_chk requires a submitted profile to
+        name its authorisation; these fixtures are 'approved'. Not under test here
+        -- stage_j.py proves the authorisation constraints."""
+        i = str(uuid.uuid4())
+        c.execute("insert into tenant_regulatory_authorizations (id,tenant_id,iso_country,"
+                  "end_user_type,tenant_regulatory_address_id,authorized_details_fingerprint,"
+                  "authorized_by,authorization_method,authorized_at,authorized_address_city) "
+                  "values (%s,%s,'IE','business',%s,repeat('a',64),'A Representative',"
+                  "'dashboard',now(),'Dublin')", (i, t, ad))
+        return i
+
     def profile(t, ad, k, loc=None):
         i = str(uuid.uuid4())
         # requirements_fingerprint: 028's trp_submitted_requirements_chk, for the
-        # same reason as in stage_d.py. Predates 030.
+        # same reason.
         c.execute("insert into tenant_regulatory_profiles (id,tenant_id,tenant_location_id,"
                   "regulatory_address_id,iso_country,provider_account_sid,bundle_sid,state,"
-                  "requirements_fingerprint) "
-                  "values (%s,%s,%s,%s,'IE',%s,%s,'approved',repeat('a',64))",
-                  (i, t, loc, ad, f"AC{k}", f"BU{k}"))
+                  "requirements_fingerprint,authorization_id) "
+                  "values (%s,%s,%s,%s,'IE',%s,%s,'approved',repeat('a',64),%s)",
+                  (i, t, loc, ad, f"AC{k}", f"BU{k}", authorization(t, ad)))
         return i
     def phone(t, k, loc=None, prof=None):
         i = str(uuid.uuid4())

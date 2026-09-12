@@ -30,6 +30,7 @@ import logging
 
 from db import regulatory as db_reg
 from services import provider_claims as pc
+from services import regulatory_authorization as auth
 from services import regulatory_declaration as decl
 from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
@@ -69,6 +70,13 @@ PROVIDER_IDENTITY_CONFLICT = "provider_identity_conflict"
 # An attached provider resource the provider has authoritatively lost, on a claim
 # whose state forbids silent recreation (a filed Bundle). A human must look.
 PROVIDER_RESOURCE_RETIRED = "provider_resource_missing_needs_review"
+# Authorisation outcomes (W9H.1A). Four distinct states, because they need four
+# different things from the customer: record one, un-revoke or re-consent, re-consent
+# to the CHANGED facts, or consent for THIS premises.
+AUTHORIZATION_NOT_RECORDED = auth.NOT_RECORDED
+AUTHORIZATION_REVOKED = auth.REVOKED
+AUTHORIZATION_STALE = auth.STALE
+AUTHORIZATION_WRONG_SCOPE = auth.WRONG_SCOPE
 
 # How long a request that lost the claim will wait for the winner before returning
 # ADDRESS_CREATE_IN_PROGRESS. A Twilio Address.create round-trip measured ~0.5s, so
@@ -422,6 +430,123 @@ def _discard_provider_address(client, address_sid: str, claim_id: str) -> None:
         # resource is findable, with no address content in it.
         logger.warning("Could not remove superseded regulatory address for claim %s: %s",
                        claim_id, _safe_provider_error(e))
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Authorisation  (migration 029, W9H.1A)
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def check_authorization(tenant_id: str, *, iso_country: str,
+                              end_user_type: str, address_row: dict,
+                              details: dict | None) -> dict:
+    """Is there a live authorisation covering the facts we are about to file?
+
+    THE ONE PLACE THIS QUESTION IS ANSWERED. The EndUser gate, the submission gate
+    and -- in W9I -- the number-acquisition gate all call this, so they cannot
+    drift apart about what "authorised" means.
+
+    The digest is computed HERE from what is persisted. It is never accepted from a
+    caller: a caller-supplied fingerprint would let anyone assert that whatever is
+    in the database today is what a customer agreed to, which is the whole property
+    the authorisation exists to provide.
+
+    Failures are distinguished because they need different things from the
+    customer, and none of the messages carry the facts themselves.
+    """
+    address_id = str((address_row or {}).get("id") or "")
+    if not address_id:
+        return _result(AUTHORIZATION_WRONG_SCOPE, detail="no_address_in_scope")
+
+    current = auth.fingerprint_for(details, address_row)
+
+    match = await db_reg.find_active_authorization(
+        tenant_id, iso_country, end_user_type, address_id, fingerprint=current)
+    if match:
+        return _result(OK, authorization=match, fingerprint=current)
+
+    # Nothing live matches the current facts. Say WHY, from the history.
+    history = await db_reg.list_authorizations(tenant_id, iso_country, address_id)
+    scoped = [a for a in history
+              if str(a.get("end_user_type")) == end_user_type]
+    if not scoped:
+        # Is there an authorisation for this tenant and country, but a DIFFERENT
+        # premises? Then the customer has consented -- to somewhere else. Saying
+        # "not recorded" would send them to re-do work they have already done.
+        elsewhere = await db_reg.list_authorizations(tenant_id, iso_country)
+        if any(str(a.get("tenant_regulatory_address_id")) != address_id
+               for a in elsewhere):
+            return _result(AUTHORIZATION_WRONG_SCOPE,
+                           detail="authorized_for_a_different_address")
+        return _result(AUTHORIZATION_NOT_RECORDED, detail="no_authorization_on_file")
+
+    active = [a for a in scoped if a.get("authorization_revoked_at") is None]
+    if not active:
+        return _result(AUTHORIZATION_REVOKED, detail="authorization_withdrawn")
+    # Active, but for a different set of facts: something the authorisation covered
+    # has since been edited.
+    return _result(AUTHORIZATION_STALE, detail="facts_changed_since_authorization")
+
+
+async def record_authorization(tenant_id: str, *, iso_country: str,
+                               end_user_type: str, address_row: dict,
+                               details: dict | None, authorized_by: str,
+                               authorization_method: str) -> dict:
+    """Record a customer's authorisation of the CURRENTLY persisted facts.
+
+    The customer supplies WHO authorised and HOW. The SYSTEM supplies WHEN and
+    WHAT.
+
+    THERE IS DELIBERATELY NO authorized_at PARAMETER. An earlier draft accepted an
+    optional one, which meant the integrity of an audit record depended on every
+    caller choosing not to pass it -- and the moment this is wired to a route, a
+    customer could backdate their own consent to before a filing, or forward-date
+    it so it appears never to have been given. A capability that must not be used
+    should not exist; removing the parameter is what makes that structural rather
+    than a convention. `_now_iso()` is the same trusted server clock every other
+    timestamp in this workflow uses.
+
+    Recording a HISTORICAL authorisation -- consent given by phone or email before
+    it was entered -- is a real future need and is deliberately NOT supported here.
+    It requires a privileged path that can say which operator recorded it and when,
+    and this repository's admin surface is a single shared static API key with no
+    per-operator identity. Building that to enable backdating would be inventing a
+    privilege model to justify a capability, which is the wrong order.
+
+    Nothing about the declaration (business_identity, is_subassigned) is part of
+    this either: those are system-sourced statements about our architecture, and a
+    customer cannot authorise a statement they never made.
+    """
+    who = str(authorized_by or "").strip()
+    if not who:
+        return _result(INVALID_CUSTOMER_DATA, missing=["authorized_by"])
+    if authorization_method not in auth.METHODS:
+        return _result(INVALID_CUSTOMER_DATA, invalid_enum=["authorization_method"])
+    address_id = str((address_row or {}).get("id") or "")
+    if not address_id:
+        return _result(AUTHORIZATION_WRONG_SCOPE, detail="no_address_in_scope")
+
+    fingerprint = auth.fingerprint_for(details, address_row)
+    row = await db_reg.insert_authorization({
+        "tenant_id": tenant_id, "iso_country": iso_country,
+        "end_user_type": end_user_type,
+        "tenant_regulatory_address_id": address_id,
+        "authorized_details_fingerprint": fingerprint,
+        "authorized_by": who, "authorization_method": authorization_method,
+        # server clock, always -- never a caller's value
+        "authorized_at": _now_iso(),
+        "authorized_address_city": str(address_row.get("city") or ""),
+        "authorized_address_postal_code": address_row.get("postal_code"),
+    })
+    if row is None:
+        # An identical ACTIVE authorisation already exists. Idempotent, not an
+        # error: the customer consented to exactly this, and consenting twice is
+        # still consenting once.
+        row = await db_reg.find_active_authorization(
+            tenant_id, iso_country, end_user_type, address_id, fingerprint=fingerprint)
+        return _result(OK, authorization=row, created=False)
+    return _result(OK, authorization=row, created=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1216,6 +1341,27 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
         effective = {**effective,
                      **db_reg.attributes_from_details(stored, reqs.end_user_field_names)}
 
+    # ── THE AUTHORISATION GATE, BEFORE THE FIRST PROVIDER IDENTITY ────────
+    # Everything above this line is ours: our database, our policy resolution. The
+    # next call files a named human being and a registered business with Twilio and,
+    # through Twilio, with an Irish regulator. That must not happen because someone
+    # filled in a form -- it happens because a customer authorised THESE facts for
+    # THIS premises, and the fingerprint is what proves the facts have not moved
+    # since they said so.
+    #
+    # It sits AFTER the details are persisted so that a missing authorisation never
+    # costs a customer what they typed (the W9H-QA defect), and BEFORE
+    # resolve_end_user because an EndUser is the first thing that exists at the
+    # provider under the customer's name.
+    authorized = await check_authorization(
+        tenant_id, iso_country=country, end_user_type=end_user_type,
+        address_row=address_row, details=stored)
+    if not authorized["ok"]:
+        profile = await _ensure_draft_profile(
+            tenant_id, country, number_type, end_user_type, address_row, reqs,
+            sub_sid, tenant_location_id)
+        return {**authorized, "profile": profile, "details_stored": True}
+
     eu = await resolve_end_user(tenant, requirements=reqs, attributes=effective,
                                client=client, sub_sid=sub_sid)
     if not eu["ok"]:
@@ -1260,6 +1406,15 @@ async def prepare_profile(tenant: dict, *, attributes: dict,
             patch["end_user_sid"] = eu["end_user_sid"]
         await db_reg.update_profile(profile["id"], patch)
         profile = {**profile, **patch}
+
+    # WHICH AUTHORISATION THIS FILING RELIED ON. Written once and fenced, so a
+    # later authorisation -- or a revocation -- can never rewrite what a submitted
+    # filing was actually made under.
+    if not profile.get("authorization_id"):
+        attached = await db_reg.attach_profile_authorization(
+            profile["id"], authorized["authorization"]["id"])
+        if attached:
+            profile = attached
 
     bundle = await ensure_bundle(tenant, profile=profile, requirements=reqs,
                                 end_user_sid=eu["end_user_sid"], client=client,
@@ -1378,6 +1533,20 @@ async def submit_profile(tenant: dict, *, profile: dict) -> dict:
                                   attributes=attributes, address_row=address_row)
     if blockers:
         return _result(NOT_READY, blockers=blockers)
+
+    # ── THE AUTHORISATION GATE, AGAIN, IMMEDIATELY BEFORE SUBMISSION ──────
+    # Re-checked rather than trusted from prepare_profile: an arbitrary amount of
+    # time passes between building a bundle and filing it, and inside that window a
+    # customer can withdraw consent or correct a fact the authorisation covered.
+    # The whole point of a durable fingerprint is that this question can be asked
+    # again later and get a different answer.
+    authorized = await check_authorization(
+        str(profile["tenant_id"]), iso_country=str(profile.get("iso_country") or ""),
+        end_user_type=str(profile.get("end_user_type") or "business"),
+        address_row=address_row, details=details)
+    if not authorized["ok"]:
+        return authorized
+
 
     current = str(profile.get("state") or "")
     if current == st.PENDING_REVIEW:

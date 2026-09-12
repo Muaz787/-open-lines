@@ -4,6 +4,7 @@ Every provider resource must be created at most once per profile. A duplicate Tw
 Address or Bundle is not untidy, it is a second filing about the same business, so
 each step looks for a stored SID, confirms it still exists, and only then creates.
 """
+import datetime as _dt
 import pytest
 
 from services import regulatory_engine as engine
@@ -352,6 +353,7 @@ def world(monkeypatch):
     state = {"twilio": FakeTwilio(), "addresses": [], "profiles": [], "details": [],
              "locations": [{"id": "loc-1", "tenant_id": TENANT}],
              "inserted_addresses": 0, "inserted_profiles": 0,
+             "authorizations": [],
              "claims": [],
              "clock": clock, "now": lambda: clock["t"]}
 
@@ -453,6 +455,67 @@ def world(monkeypatch):
                 a["updated_at"] = state["now"]()
                 return a
         return None
+    # ── authorizations (migration 029, W9H.1A) ───────────────────────────
+    # Models the TABLE, including the partial unique index: at most one ACTIVE
+    # authorisation per (tenant, country, end_user_type, address, fingerprint).
+    # Without these, conftest's MagicMock Supabase stub returns a truthy object for
+    # every unpatched query, so the authorisation gate would "pass" against a mock
+    # and every test here would be green while the gate did nothing.
+    async def insert_authorization(row):
+        key = (row["tenant_id"], row["iso_country"], row["end_user_type"],
+               row["tenant_regulatory_address_id"],
+               row["authorized_details_fingerprint"])
+        for a in state["authorizations"]:
+            if a.get("authorization_revoked_at") is None and (
+                    a["tenant_id"], a["iso_country"], a["end_user_type"],
+                    a["tenant_regulatory_address_id"],
+                    a["authorized_details_fingerprint"]) == key:
+                return None                      # 23505 on tra_auth_active_key
+        # The real repository stamps authorized_at from the server clock and
+        # ignores any caller value; a fake that copied the row wholesale would let
+        # a backdating test pass while the guarantee did not exist.
+        new_row = {"id": f"auth-{len(state['authorizations']) + 1}",
+                   "authorization_revoked_at": None, **row,
+                   "authorized_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}
+        state["authorizations"].append(new_row)
+        return new_row
+
+    async def find_active_authorization(tid, country, eut, addr_id, fingerprint=None):
+        for a in state["authorizations"]:
+            if (a["tenant_id"] == tid and a["iso_country"] == country
+                    and a["end_user_type"] == eut
+                    and a["tenant_regulatory_address_id"] == addr_id
+                    and a.get("authorization_revoked_at") is None
+                    and (fingerprint is None
+                         or a["authorized_details_fingerprint"] == fingerprint)):
+                return a
+        return None
+
+    async def list_authorizations(tid, country=None, addr_id=None):
+        return [a for a in state["authorizations"]
+                if a["tenant_id"] == tid
+                and (country is None or a["iso_country"] == country)
+                and (addr_id is None or a["tenant_regulatory_address_id"] == addr_id)]
+
+    async def get_authorization(tid, aid):
+        return next((a for a in state["authorizations"]
+                     if a["id"] == aid and a["tenant_id"] == tid), None)
+
+    async def revoke_authorization(tid, aid, revoked_at=None):
+        for a in state["authorizations"]:
+            if (a["id"] == aid and a["tenant_id"] == tid
+                    and a.get("authorization_revoked_at") is None):
+                a["authorization_revoked_at"] = revoked_at or "2026-09-12T00:00:00Z"
+                return a
+        return None                              # already revoked: a no-op
+
+    async def attach_profile_authorization(pid, auth_id):
+        for p_ in state["profiles"]:
+            if p_["id"] == pid and p_.get("authorization_id") is None:
+                p_["authorization_id"] = auth_id
+                return p_
+        return None                              # the fence rejected us
+
     # ── provider claims (migration 030, W9H-QA.4) ────────────────────────
     # Models the TABLE: trpc_scope_key's uniqueness, the provider_sid IS NULL
     # fence, and the two takeover compare-and-sets. Nothing here reimplements a
@@ -541,7 +604,8 @@ def world(monkeypatch):
                      and p["iso_country"] == country and p["number_type"] == nt), None)
     async def insert_profile(row):
         state["inserted_profiles"] += 1
-        row = {**row, "id": f"prof-{state['inserted_profiles']}"}
+        row = {"authorization_id": None, **row,
+               "id": f"prof-{state['inserted_profiles']}"}
         state["profiles"].append(row)
         return row
     async def update_profile(pid, patch):
@@ -592,6 +656,12 @@ def world(monkeypatch):
                      ("attach_provider_sid", attach_provider_sid),
                      ("take_over_provider_claim", take_over_provider_claim),
                      ("record_provider_claim_failure", record_provider_claim_failure),
+                     ("insert_authorization", insert_authorization),
+                     ("find_active_authorization", find_active_authorization),
+                     ("list_authorizations", list_authorizations),
+                     ("get_authorization", get_authorization),
+                     ("revoke_authorization", revoke_authorization),
+                     ("attach_profile_authorization", attach_profile_authorization),
                      ("list_profiles", list_profiles),
                      ("find_profile_for_address", find_profile_for_address),
                      ("insert_profile", insert_profile),
@@ -599,6 +669,44 @@ def world(monkeypatch):
                      ("transition_profile", transition_profile)):
         monkeypatch.setattr(engine.db_reg, name, fn)
     return state
+
+
+
+
+
+async def prepared(world, attributes=None, *, submitted=None, **kw):
+    """Drive the real customer sequence up to a fully prepared profile.
+
+    address -> first prepare (persists the typed answers, refuses for want of an
+    authorisation) -> the customer authorises THOSE facts -> prepare again.
+
+    That ordering is the product behaviour, not a test convenience: the
+    fingerprint covers the details, so there is nothing to authorise until the
+    details are stored, which is exactly why the gate sits after persistence.
+    """
+    attributes = GOOD_ATTRS if attributes is None else attributes
+    await engine.ensure_address(tenant(), submitted=submitted or GOOD_ADDRESS)
+    first = await engine.prepare_profile(tenant(), attributes=attributes, **kw)
+    if first.get("ok") or first["status"] != engine.AUTHORIZATION_NOT_RECORDED:
+        # Either it is already done, or it stopped at a gate BEFORE authorisation
+        # (a rejected address, missing fields). Those tests are asserting that
+        # earlier stop, so hand it straight back.
+        return first
+    await authorize(world, **kw)
+    return await engine.prepare_profile(tenant(), attributes=attributes, **kw)
+
+
+async def authorize(world, *, tenant_location_id=None, end_user_type="business",
+                    **_ignored):
+    """Record the customer's authorisation of the CURRENTLY stored facts."""
+    address = await engine.db_reg.find_address(TENANT, "IE", tenant_location_id)
+    details = await engine.db_reg.get_business_details(TENANT, "IE", end_user_type)
+    res = await engine.record_authorization(
+        TENANT, iso_country="IE", end_user_type=end_user_type,
+        address_row=address, details=details,
+        authorized_by="A Customer Representative", authorization_method="dashboard")
+    assert res["ok"], res
+    return res["authorization"]
 
 
 # ── address ────────────────────────────────────────────────────────────────
@@ -993,6 +1101,31 @@ def test_an_unvalidated_address_blocks_submission():
     assert "address_not_validated" in blockers
 
 
+def _seed_authorization(world, address_row=None, profile=None):
+    """The authorisation a real workflow would already have recorded.
+
+    Computes the digest through the SAME function the engine uses -- a test that
+    hard-coded a digest would pass while the engine's scheme drifted away from it.
+    """
+    from services import regulatory_authorization as auth
+    address = address_row or next(a for a in world["addresses"] if a["id"] == "addr-1")
+    details = next((d for d in world["details"] if d["tenant_id"] == TENANT), None)
+    row = {"id": "auth-seed", "tenant_id": TENANT, "iso_country": "IE",
+           "end_user_type": "business",
+           "tenant_regulatory_address_id": address["id"],
+           "authorized_details_fingerprint": auth.fingerprint_for(details, address),
+           "authorized_by": "A Customer Representative",
+           "authorization_method": "dashboard",
+           "authorized_at": "2026-09-01T00:00:00Z",
+           "authorization_revoked_at": None,
+           "authorized_address_city": address.get("city") or "Dublin",
+           "authorized_address_postal_code": address.get("postal_code")}
+    world["authorizations"].append(row)
+    if profile is not None:
+        profile["authorization_id"] = row["id"]
+    return row
+
+
 def _seed_details(world):
     """The durable answers a real workflow would already have stored."""
     world["details"].append({"id": "det-1", "tenant_id": TENANT, "iso_country": "IE",
@@ -1018,6 +1151,7 @@ async def test_submission_transitions_and_persists_the_provider_status(world):
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
                                "validated": True, "supporting_document_sid": DOC_SID,
                                "address_sid": ADDR_SID, "provider_account_sid": SUB})
+    _seed_authorization(world, profile=world["profiles"][0])
     r = await engine.submit_profile(tenant(), profile=world["profiles"][0])
     assert r["ok"] and r["state"] == st.PENDING_REVIEW
     assert r["bundle_status"] == "pending-review"
@@ -1033,6 +1167,7 @@ async def test_submitting_twice_is_idempotent(world):
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
                                "validated": True, "supporting_document_sid": DOC_SID,
                                "address_sid": ADDR_SID, "provider_account_sid": SUB})
+    _seed_authorization(world, profile=world["profiles"][0])
     r = await engine.submit_profile(tenant(), profile=world["profiles"][0])
     assert r["ok"] and r["already_submitted"] is True
 
@@ -1057,6 +1192,7 @@ async def test_a_provider_failure_during_submission_returns_the_profile_for_retr
     world["addresses"].append({"id": "addr-1", "tenant_id": TENANT, "iso_country": "IE",
                                "validated": True, "supporting_document_sid": DOC_SID,
                                "address_sid": ADDR_SID, "provider_account_sid": SUB})
+    _seed_authorization(world, profile=world["profiles"][0])
     r = await engine.submit_profile(tenant(), profile=world["profiles"][0])
     assert r["status"] == engine.PROVIDER_UNAVAILABLE
     assert world["profiles"][0]["state"] == st.READY_TO_SUBMIT, "must stay retryable"
@@ -1066,9 +1202,8 @@ async def test_a_provider_failure_during_submission_returns_the_profile_for_retr
 
 @pytest.mark.asyncio
 async def test_prepare_builds_everything_once_and_is_resumable(world):
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    first = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
-    assert first["ok"]
+    first = await prepared(world)
+    assert first["ok"], first
     assert first["bundle_sid"] == BU_SID and first["end_user_sid"] == EU_SID
     assert first["supporting_document_sid"] == DOC_SID
 
@@ -1086,10 +1221,9 @@ async def test_the_confirmed_declaration_is_supplied_by_the_system(world):
     terminology about our commercial relationship, and Twilio Support confirmed the
     answer for exactly this context. The customer supplies facts about their
     business; OpenLines supplies the mapping of its own architecture."""
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
     customer_only = {k: v for k, v in GOOD_ATTRS.items()
                      if k not in ("business_identity", "is_subassigned")}
-    r = await engine.prepare_profile(tenant(), attributes=customer_only)
+    r = await prepared(world, customer_only)
     assert r["ok"], r
     sent = world["twilio"].last_end_user_attributes
     assert sent["business_identity"] == "DIRECT_CUSTOMER"
@@ -1185,8 +1319,7 @@ async def test_a_regulation_that_drops_the_field_simply_omits_it(world):
     # the provider now requires one field fewer, so the fake must too
     world["twilio"].opts["required_end_user_fields"] = tuple(
         dropped["end_user"][0]["fields"])
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    r = await engine.prepare_profile(tenant(), attributes=GOOD_ATTRS)
+    r = await prepared(world)
     assert r["ok"], r
     sent = world["twilio"].last_end_user_attributes
     assert "is_subassigned" not in sent
@@ -1209,8 +1342,7 @@ async def test_an_already_declared_profile_keeps_its_historical_values(world):
                              # what an earlier filing declared
                              "business_identity": "INDEPENDENT_SOFTWARE_VENDOR",
                              "is_subassigned": "YES"})
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    r = await engine.prepare_profile(tenant(), attributes={})
+    r = await prepared(world, {})
     assert r["ok"], r
     sent = world["twilio"].last_end_user_attributes
     assert sent["business_identity"] == "INDEPENDENT_SOFTWARE_VENDOR"
@@ -1234,9 +1366,7 @@ async def test_an_out_of_enum_DECLARATION_from_a_customer_is_ignored_not_rejecte
     reject, and the policy's own value is filed instead. (A customer-supplied
     declaration being ignored is asserted directly in
     tests/test_w9g3_declaration_policy.py.)"""
-    await engine.ensure_address(tenant(), submitted=GOOD_ADDRESS)
-    r = await engine.prepare_profile(
-        tenant(), attributes={**GOOD_ATTRS, "business_identity": "RESELLER"})
+    r = await prepared(world, {**GOOD_ATTRS, "business_identity": "RESELLER"})
     assert r["ok"], r
     assert world["twilio"].last_end_user_attributes["business_identity"] \
         == "DIRECT_CUSTOMER"
