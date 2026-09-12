@@ -432,6 +432,19 @@ create index if not exists tpn_tenant_idx
 --    its own column, because the customer has to be told what to correct -- but as
 --    a named field we can redact in logs, not as an opaque blob that would also
 --    carry Email and whatever else Twilio adds to the form later.
+--
+--    WHY BOTH OWNER FKs CASCADE RATHER THAN SET NULL. An earlier draft used
+--    ON DELETE SET NULL so a deleted profile would leave a de-owned audit row.
+--    Executing it on PostgreSQL 15.19 disproved that design: deleting a TENANT
+--    fires the tenant_id FK first, nulling tenant_id while regulatory_profile_id
+--    is still set, which trips tre_profile_needs_tenant_chk and makes tenant
+--    deletion impossible -- i.e. it would have blocked account closure and GDPR
+--    erasure. CASCADE on both is deterministic (no dependence on which referential
+--    action fires first), it keeps the CHECK that closes the MATCH SIMPLE hole, and
+--    it is better for privacy: a surviving ledger row still carries FailureReason
+--    text about a customer who asked to be deleted. It also sharpens the invariant
+--    on tenant_id: NULL now means "this callback was never resolved to a tenant",
+--    never "it was resolved and then orphaned".
 -- ---------------------------------------------------------------------------
 create table if not exists tenant_regulatory_events (
     id                    uuid        primary key default gen_random_uuid(),
@@ -441,7 +454,7 @@ create table if not exists tenant_regulatory_events (
     bundle_status         text        not null,  -- Twilio's value, verbatim
     fingerprint           text        not null,  -- sha256 hex of canonical fields
     occurrence            int         not null default 1,
-    tenant_id             uuid        null references tenants(id) on delete set null,
+    tenant_id             uuid        null references tenants(id) on delete cascade,
     regulatory_profile_id uuid        null,
     failure_reason        text        null,
     valid_until           timestamptz null,
@@ -463,12 +476,13 @@ create table if not exists tenant_regulatory_events (
     -- column), which is precisely how "tenant A, tenant B's profile" would slip in.
     constraint tre_profile_needs_tenant_chk check
         (regulatory_profile_id is null or tenant_id is not null),
-    -- ON DELETE SET NULL clears BOTH columns together, so a deleted profile can
-    -- never leave a half-resolved event behind.
+    -- ON DELETE CASCADE, not SET NULL: see the block comment above. A half-nulled
+    -- event is unreachable by construction, because the row never survives the
+    -- deletion of either owner.
     constraint tre_profile_owner_fk
         foreign key (tenant_id, regulatory_profile_id)
         references tenant_regulatory_profiles (tenant_id, id)
-        on delete set null
+        on delete cascade
 );
 
 -- One row per (content, occurrence) of a bundle's callback.

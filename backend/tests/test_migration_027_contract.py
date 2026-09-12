@@ -205,13 +205,25 @@ def test_an_event_naming_a_profile_must_also_name_its_tenant(sql):
             "is null or tenant_id is not null)") in sql
 
 
-def test_deleting_a_profile_clears_both_event_columns_together(sql):
-    """on delete set null on the COMPOSITE fk, so a deleted profile can never leave
-    a half-resolved event behind."""
-    pred = re.search(r"constraint tre_profile_owner_fk foreign key \(tenant_id, "
+def test_both_event_owner_fks_cascade_rather_than_set_null(sql):
+    """MEASURED ON REAL POSTGRES, NOT REASONED ABOUT (W9E Stage E).
+
+    An earlier draft used ON DELETE SET NULL so a deleted profile would leave a
+    de-owned audit row. Executing it on PostgreSQL 15.19 disproved the design:
+    deleting a TENANT fires the tenant_id FK first, nulling tenant_id while
+    regulatory_profile_id is still set, which trips tre_profile_needs_tenant_chk --
+    making tenant deletion (account closure, GDPR erasure) impossible.
+
+    CASCADE on both is deterministic, keeps the CHECK that closes the MATCH SIMPLE
+    hole, and does not retain FailureReason text about a deleted customer."""
+    assert re.search(r"constraint tre_profile_owner_fk foreign key \(tenant_id, "
                      r"regulatory_profile_id\) references tenant_regulatory_profiles "
-                     r"\(tenant_id, id\) on delete set null", sql)
-    assert pred
+                     r"\(tenant_id, id\) on delete cascade", sql)
+    assert "on delete set null" not in sql, (
+        "a SET NULL owner action on the event ledger reintroduces the tenant-delete "
+        "deadlock W9E measured")
+    events = sql.split("create table if not exists tenant_regulatory_events")[1]
+    assert "tenant_id uuid null references tenants(id) on delete cascade" in events
 
 
 # ── locality is metadata, never identity ───────────────────────────────────

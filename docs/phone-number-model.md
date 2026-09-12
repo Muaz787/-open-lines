@@ -75,6 +75,28 @@ Everything except inbound lookup. The 33 scalar consumers are **not** migrated y
 they keep working because promotion writes the mirror. Migrating them is a later
 gate, and is not required for regulated-number rollout.
 
+## Deleting things
+
+Proved on PostgreSQL 15.19 (`backend/scripts/verify_027/stage_e.py`), not inferred:
+
+| you delete | result |
+|---|---|
+| a `tenant_location` a regulatory address or phone still points at | **refused** (`23503`) — a purchased number or a filed address must never be silently detached |
+| a regulatory address a profile still points at | **refused** (`23503`) |
+| a regulatory profile a phone row still points at | **refused** (`23503`) |
+| a regulatory profile only an event points at | allowed; the event is **deleted with it** |
+| a tenant owning locations, addresses, profiles, phones and events | allowed; **the whole cascade completes** |
+
+The event ledger's owner FKs are `ON DELETE CASCADE`, not `SET NULL`. The original
+design used `SET NULL` so a deleted profile would leave a de-owned audit row; on real
+Postgres that made **tenant deletion impossible** — deleting a tenant fires the
+`tenant_id` FK first, nulling `tenant_id` while `regulatory_profile_id` is still set,
+tripping `tre_profile_needs_tenant_chk`. Account closure and GDPR erasure would have
+failed with `23514`. CASCADE is also better for privacy: a surviving ledger row still
+carries `FailureReason` text about a customer who asked to be deleted. So on this
+table `tenant_id IS NULL` means exactly one thing: *this callback was never resolved
+to a tenant*.
+
 ## Backfill
 
 `scripts/backfill_phone_numbers.py` (dry run by default, `--apply` to write).
