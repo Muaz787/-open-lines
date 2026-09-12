@@ -74,13 +74,20 @@ async def plan_tenant(tenant: dict) -> dict:
     if existing:
         return out("exists", "already_backfilled")
 
-    provider_rows = await telephony.list_subaccount_numbers(sub_sid, sub_token)
-    if not provider_rows:
-        # [] means "could not establish", NOT "the tenant owns nothing". A live
-        # number must never be written off because a list call failed.
-        return out("skip", "provider_numbers_unavailable")
+    listing = await telephony.fetch_subaccount_numbers(sub_sid, sub_token)
+    if not listing.ok:
+        # We did not learn anything. A live number must never be written off
+        # because a list call failed, so this is retryable, not a verdict.
+        return out("skip", "provider_numbers_unavailable",
+                   provider_error=listing.error_detail)
+    if listing.is_empty:
+        # DIFFERENT FACT, DIFFERENT REASON. Twilio answered and the account holds
+        # nothing, so the scalar points at a number we do not own. That is a
+        # permanent data inconsistency for someone to look at, not an outage to
+        # retry -- and W9E found a real tenant in exactly this state.
+        return out("skip", "provider_account_empty")
 
-    matches = [r for r in provider_rows
+    matches = [r for r in listing.numbers
                if str(r.get("phone_number") or "").strip() == number]
     if not matches:
         return out("skip", "no_provider_match")

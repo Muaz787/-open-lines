@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+from dataclasses import dataclass
 from dotenv import load_dotenv
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -377,21 +378,72 @@ async def point_number_to_vapi(
 # unreachable sub-account is worse than one that reports and skips.
 # ---------------------------------------------------------------------------
 
-async def list_subaccount_numbers(subaccount_sid: str, subaccount_token: str) -> list[dict]:
-    """Every IncomingPhoneNumber the sub-account holds, as plain dicts.
+@dataclass(frozen=True)
+class ProviderNumberList:
+    """The outcome of asking a provider what numbers an account holds.
 
-    Returns [] on any failure, which the caller must treat as "unknown", never as
-    "the tenant has no numbers" -- the difference matters, because the second
-    reading would let a backfill conclude a live number does not exist.
+    WHY THIS IS NOT JUST A LIST. The first version of this returned [] both when
+    Twilio said "this account holds nothing" and when the call to Twilio failed.
+    For ordinary runtime code that conflation is a safe default -- an empty list
+    makes callers do nothing. For an OWNERSHIP MIGRATION it is not safe in either
+    direction: reading a provider outage as "owns no numbers" would let a backfill
+    conclude a live number does not exist, and reading a genuinely empty account as
+    "unknown" would hide a real data inconsistency behind a retryable-looking
+    error. W9E hit exactly that -- a tenant whose number had been released at
+    Twilio was reported as `provider_numbers_unavailable`, which reads as a
+    transient outage when it was a permanent fact.
+
+    So the three states are distinct and the caller is forced to choose:
+
+        ok and numbers      -> the account holds these
+        ok and not numbers  -> the account holds NOTHING, authoritatively
+        not ok              -> we do not know; never treat as either of the above
+
+    error_detail is built from the exception TYPE, HTTP status and Twilio error
+    code only. It never carries the provider's message body or URL, because those
+    echo the request -- including the account SID used to authenticate.
+    """
+    status: str                              # "success" | "error"
+    numbers: tuple[dict, ...] = ()
+    error_detail: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "success"
+
+    @property
+    def is_empty(self) -> bool:
+        """Authoritatively empty. False when the query failed -- unknown is not empty."""
+        return self.ok and not self.numbers
+
+
+def _safe_provider_error(exc: Exception) -> str:
+    """A log-safe description of a provider failure. No message body, no URL."""
+    parts = [type(exc).__name__]
+    status = getattr(exc, "status", None)
+    code = getattr(exc, "code", None)
+    if status is not None:
+        parts.append(f"http={status}")
+    if code is not None:
+        parts.append(f"twilio_code={code}")
+    return " ".join(parts)
+
+
+async def fetch_subaccount_numbers(subaccount_sid: str,
+                                   subaccount_token: str) -> ProviderNumberList:
+    """Every IncomingPhoneNumber the sub-account holds, with success/error distinguished.
+
+    Never raises. Missing credentials are an ERROR, not an empty account: we have
+    not asked the provider anything, so we know nothing.
     """
     if not subaccount_sid or not subaccount_token:
-        return []
+        return ProviderNumberList(status="error", error_detail="missing_credentials")
     try:
         client = _sub_client(subaccount_sid, subaccount_token)
         rows = client.incoming_phone_numbers.list(limit=200)
     except Exception as e:
         logger.error("Could not list numbers on sub-account %s: %s", subaccount_sid, e)
-        return []
+        return ProviderNumberList(status="error", error_detail=_safe_provider_error(e))
     out: list[dict] = []
     for n in rows:
         out.append({
@@ -405,7 +457,7 @@ async def list_subaccount_numbers(subaccount_sid: str, subaccount_token: str) ->
             "status": getattr(n, "status", "") or "",
             "origin": getattr(n, "origin", "") or "",
         })
-    return out
+    return ProviderNumberList(status="success", numbers=tuple(out))
 
 
 async def lookup_iso_country(phone_number: str) -> str:

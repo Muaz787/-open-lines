@@ -105,3 +105,21 @@ It refuses to invent: `activated_at` comes from the provider's
 `iso_country` comes from Twilio Lookup v2 (never `tenants.country`, never a guess
 from the `+1` prefix, which is Canada and the United States both), and
 `provider_sid` comes from the provider. Anything unestablished is a reported skip.
+
+### The two provider skip reasons are not the same fact
+
+| reason | meaning | retryable? |
+|---|---|---|
+| `provider_numbers_unavailable` | the query to Twilio **failed** — we know nothing | **yes** |
+| `provider_account_empty` | Twilio **answered** and the account holds no numbers, so the scalar points at a number we do not own | **no** — a data inconsistency for a human |
+
+W9D returned `[]` for both, which read as a transient outage when it was permanent.
+`telephony.fetch_subaccount_numbers()` now returns a `ProviderNumberList` whose
+`ok` / `is_empty` are independent, so "unknown" can never be mistaken for "empty".
+`error_detail` is built from the exception type, HTTP status and Twilio error code
+only — never the provider's message body or URL, which echo the account SID used to
+authenticate.
+
+W9F found one tenant in the `provider_account_empty` state (a released number whose
+scalar was never cleared). It was **not** repaired by the backfill — a stale scalar
+must never become a canonical ownership row.
