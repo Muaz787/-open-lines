@@ -136,6 +136,12 @@ from routers import regulatory as regulatory_router
 app.include_router(regulatory_router.router)
 app.include_router(regulatory_router.webhook_router)
 
+# The customer-facing verification flow (W9I-C). A SEPARATE module from the
+# operator/workflow routes above, because it must not be able to create a
+# provider identity -- see its docstring for the Gate 1 boundary.
+from routers import regulatory_verification as regulatory_verification_router
+app.include_router(regulatory_verification_router.router)
+
 
 # Deployment identity, so a release can be verified rather than inferred.
 from services import deployment

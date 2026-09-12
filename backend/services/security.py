@@ -101,6 +101,45 @@ async def require_tenant_owner(
     await verify_tenant_owner(tenant_id, authorization)
 
 
+async def authenticated_tenant_user(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict:
+    """Who is making this request, once verify_tenant_owner has already allowed it.
+
+    Added for W9I-C, where an authorisation record has to name a person: "X
+    authorised OpenLines to submit these facts". A frontend-supplied name would be
+    worth nothing -- whoever can call the route can type any name into it -- so the
+    identity comes from the same verified bearer token that granted access, and
+    the customer never supplies it.
+
+    Deliberately SEPARATE from require_tenant_owner rather than a change to it.
+    That dependency is applied at router level across every regulatory route and
+    returns None; widening its contract would touch every caller in the app to
+    serve one route. This re-verifies and returns the identity, and routes that
+    need a name depend on both.
+    """
+    tenant_id = request.path_params.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+    await verify_tenant_owner(tenant_id, authorization)
+
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    try:
+        from db.supabase import get_client
+        user = get_client().auth.get_user(token).user
+    except Exception as e:
+        logger.warning("Identity lookup failed after a successful ownership check: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {
+        "user_id": str(getattr(user, "id", "") or ""),
+        "email": str(getattr(user, "email", "") or ""),
+        "tenant_id": str(tenant_id),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 1b. Vapi shared-secret verification (server webhooks + mid-call tool calls)
 # ---------------------------------------------------------------------------
