@@ -366,3 +366,67 @@ async def point_number_to_vapi(
             phone_number, subaccount_sid, e,
         )
         raise
+
+
+# ---------------------------------------------------------------------------
+# W9D — read-only provider facts the phone-number backfill needs.
+#
+# Both helpers exist so services/phone_backfill.py can be tested by patching one
+# named function, and so every Twilio call in this codebase stays inside this
+# module. Neither ever raises: a backfill that crashes on one tenant's
+# unreachable sub-account is worse than one that reports and skips.
+# ---------------------------------------------------------------------------
+
+async def list_subaccount_numbers(subaccount_sid: str, subaccount_token: str) -> list[dict]:
+    """Every IncomingPhoneNumber the sub-account holds, as plain dicts.
+
+    Returns [] on any failure, which the caller must treat as "unknown", never as
+    "the tenant has no numbers" -- the difference matters, because the second
+    reading would let a backfill conclude a live number does not exist.
+    """
+    if not subaccount_sid or not subaccount_token:
+        return []
+    try:
+        client = _sub_client(subaccount_sid, subaccount_token)
+        rows = client.incoming_phone_numbers.list(limit=200)
+    except Exception as e:
+        logger.error("Could not list numbers on sub-account %s: %s", subaccount_sid, e)
+        return []
+    out: list[dict] = []
+    for n in rows:
+        out.append({
+            "sid": getattr(n, "sid", "") or "",
+            "phone_number": getattr(n, "phone_number", "") or "",
+            "account_sid": getattr(n, "account_sid", "") or "",
+            # The date the number entered the account -- i.e. when it was
+            # provisioned. This is the only trustworthy activation timestamp
+            # available; IncomingPhoneNumber carries no country field at all.
+            "date_created": getattr(n, "date_created", None),
+            "status": getattr(n, "status", "") or "",
+            "origin": getattr(n, "origin", "") or "",
+        })
+    return out
+
+
+async def lookup_iso_country(phone_number: str) -> str:
+    """The ISO-3166-1 alpha-2 country of an E.164 number, per Twilio Lookup v2.
+
+    WHY LOOKUP AND NOT A LOCAL RULE. IncomingPhoneNumber exposes no country, and
+    every production number is +1 -- which is Canada AND the United States. A
+    prefix rule would have to guess between them, and an analyzer-derived guess is
+    exactly what must never become compliance data. Lookup answers from the
+    provider's own numbering data (basic lookup, no data packages).
+
+    Returns "" when unresolved, which the caller treats as a reason to SKIP.
+    """
+    number = str(phone_number or "").strip()
+    if not number:
+        return ""
+    try:
+        info = _master_client().lookups.v2.phone_numbers(number).fetch()
+    except Exception as e:
+        logger.error("Lookup v2 failed for a number: %s", e)
+        return ""
+    if getattr(info, "valid", None) is False:
+        return ""
+    return str(getattr(info, "country_code", "") or "").strip().upper()
