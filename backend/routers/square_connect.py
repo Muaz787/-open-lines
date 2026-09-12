@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import secrets
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, Header
@@ -71,6 +72,34 @@ async def onboard(
 # GET /square-connect/callback
 # ---------------------------------------------------------------------------
 
+def _observed_expiry(value) -> str | None:
+    """Square's `expires_at`, if this response actually carried a usable one.
+
+    Returns the provider's own string untouched, or None to mean "not observed
+    — leave whatever is on file alone".
+
+    Square sends an absolute RFC3339 timestamp on the authorization_code grant.
+    Nothing in this codebase ever derives an expiry from a lifetime, and this
+    function deliberately does not either: a fabricated expiry would extend the
+    token's apparent life past the point where get_access_token() would have
+    renewed it, which is worse than having none.
+
+    An unparseable value is treated as not observed rather than stored, because
+    get_access_token() parses this field with datetime.fromisoformat and a
+    malformed value there silently disables refresh-before-expiry.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        logger.warning("Square OAuth: ignoring unparseable expires_at %r — "
+                       "keeping whatever expiry is on file", text)
+        return None
+    return text
+
+
 @router.get("/callback")
 async def callback(request: Request, code: str = "", error: str = "", state: str = ""):
     """Square OAuth callback — exchanges code for tokens and stores them."""
@@ -139,7 +168,10 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
     currency    = ""
     try:
         merchant_info = await sq_svc.get_merchant_info(access_token)
-        currency = merchant_info.get("currency", "USD").lower()
+        # No "USD" default. A successful lookup that simply carries no currency
+        # is not evidence of USD, and defaulting would let it overwrite a stored
+        # value with an invented one.
+        currency = str(merchant_info.get("currency") or "").strip().lower()
         if not merchant_id:
             merchant_id = merchant_info.get("merchant_id", "")
     except Exception as e:
@@ -206,15 +238,36 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         merchant_id = observed_merchant_id
 
     try:
+        # ── W7E.4 · observed fields only ────────────────────────────────
+        # An OAuth response is PARTIAL EVIDENCE. The absence of a field proves
+        # nothing about the durable value, so absence must never mean "write
+        # NULL". This dict therefore carries only what this transaction actually
+        # established; everything else keeps whatever is on file.
+        #
+        # The three keys below used to be written as `x or None`, which meant a
+        # reconnect could destroy working state:
+        #   * refresh token -> nulled, and get_access_token() needs it to
+        #     refresh before expiry, so a healthy integration would quietly stop
+        #     being able to renew itself.
+        #   * expiry        -> nulled, disabling that same refresh from the
+        #     other side (it requires BOTH to be present).
+        #   * currency      -> nulled by a transient merchant lookup failure.
         update = {
             "square_access_token":    encrypt(access_token),
-            "square_refresh_token":   encrypt(refresh_token) if refresh_token else None,
-            "square_token_expires_at": expires_at or None,
             "square_merchant_id":     merchant_id,   # guaranteed non-empty above
-            "square_location_id":     location_id or None,
-            "square_currency":        currency or None,
-            "square_oauth_state":     None,
+            "square_oauth_state":     None,          # deliberate clear: the
+                                                     # nonce is spent
         }
+        if refresh_token:
+            update["square_refresh_token"] = encrypt(refresh_token)
+        observed_expiry = _observed_expiry(expires_at)
+        if observed_expiry:
+            update["square_token_expires_at"] = observed_expiry
+        if currency:
+            update["square_currency"] = currency
+        if location_id:
+            update["square_location_id"] = location_id
+
         await db.update_tenant(tenant_id, update)
     except Exception as e:
         logger.error("Square OAuth: DB update failed for tenant %s: %s", tenant_id, e)

@@ -39,6 +39,17 @@ def _executable_source(obj) -> str:
     return ast.unparse(tree)
 
 
+
+def assert_no_pointer_written(got):
+    """W7E.4 turned the callback into an observed-fields-only patch, so "no
+    default was invented" is now expressed by the key being ABSENT rather than
+    written as None. The database end state is identical — the column was
+    already NULL — but omitting is the stronger guarantee: nothing was written
+    at all, so the value cannot be clobbered even in principle."""
+    assert "square_location_id" not in got or got["square_location_id"] is None, \
+        f"a default location was written: {got.get('square_location_id')!r}"
+
+
 def loc(lid, *, status="ACTIVE"):
     return {"id": lid, "status": status, "timezone": "Europe/Dublin", "name": lid}
 
@@ -130,7 +141,7 @@ async def test_A_first_connect_single_location_still_populates():
 @pytest.mark.asyncio
 async def test_B_first_connect_MULTI_location_invents_nothing():
     got = await run_callback(pointer=None, locations=[loc(CORK), loc(DUBLIN), loc(LIMERICK)])
-    assert got["square_location_id"] is None, "a default was invented at OAuth"
+    assert_no_pointer_written(got)
 
 
 @pytest.mark.asyncio
@@ -138,7 +149,7 @@ async def test_C_multi_location_first_connect_is_order_independent():
     three = [loc(CORK), loc(DUBLIN), loc(LIMERICK)]
     for order in itertools.permutations(three):
         got = await run_callback(pointer=None, locations=list(order))
-        assert got["square_location_id"] is None
+        assert_no_pointer_written(got)
 
 
 @pytest.mark.asyncio
@@ -170,13 +181,13 @@ async def test_E_a_provider_failure_NO_LONGER_WIPES_the_pointer():
 @pytest.mark.asyncio
 async def test_F_a_provider_failure_on_a_fresh_connect_leaves_it_unset():
     got = await run_callback(pointer=None, locations=[], list_raises=True)
-    assert got["square_location_id"] is None
+    assert_no_pointer_written(got)
 
 
 @pytest.mark.asyncio
 async def test_G_zero_locations_leaves_it_unset():
     got = await run_callback(pointer=None, locations=[])
-    assert got["square_location_id"] is None
+    assert_no_pointer_written(got)
 
 
 @pytest.mark.asyncio
@@ -199,7 +210,7 @@ async def test_I_the_rest_of_the_oauth_update_is_unchanged():
 async def test_J_a_DANI_shaped_merchant_connecting_fresh_gets_no_default():
     """The shape W7F created: three ACTIVE Irish locations."""
     got = await run_callback(pointer=None, locations=[loc(CORK), loc(DUBLIN), loc(LIMERICK)])
-    assert got["square_location_id"] is None
+    assert_no_pointer_written(got)
     assert "square_location_timezone" not in got, "OAuth should not write a timezone"
 
 
