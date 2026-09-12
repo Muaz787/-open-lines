@@ -1345,3 +1345,43 @@ async def get_call_details(call_id: str, api_key: str | None = None) -> dict:
     except httpx.RequestError as e:
         logger.error("Network error fetching Vapi call %s: %s", call_id, e)
         raise
+
+
+# ---------------------------------------------------------------------------
+# W9F.1 — does a stored Vapi phone-number id still refer to anything?
+#
+# Three-state on purpose, matching telephony.fetch_subaccount_numbers(): a stale
+# pointer may only be cleared when the provider CONFIRMS the resource is gone.
+# "We could not ask" must never be read as "it is gone".
+# ---------------------------------------------------------------------------
+PHONE_EXISTS = "exists"
+PHONE_ABSENT = "absent"
+PHONE_UNKNOWN = "unknown"
+
+
+async def phone_number_state(phone_id: str, api_key: str | None = None) -> str:
+    """PHONE_EXISTS / PHONE_ABSENT / PHONE_UNKNOWN. Never raises.
+
+    Only a 404 is treated as absent. A 401/403 means our credentials are wrong, not
+    that the resource vanished, and any other status or transport failure is equally
+    inconclusive -- so all of them return UNKNOWN.
+    """
+    pid = str(phone_id or "").strip()
+    if not pid:
+        return PHONE_UNKNOWN
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"{VAPI_BASE_URL}/phone-number/{pid}",
+                headers=_headers(api_key),
+                timeout=30.0,
+            )
+    except Exception as e:
+        logger.error("Vapi phone-number probe failed for %s: %s", pid, type(e).__name__)
+        return PHONE_UNKNOWN
+    if res.status_code == 404:
+        return PHONE_ABSENT
+    if res.status_code == 200:
+        return PHONE_EXISTS
+    logger.error("Vapi phone-number probe for %s returned HTTP %s", pid, res.status_code)
+    return PHONE_UNKNOWN
