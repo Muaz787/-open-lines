@@ -907,7 +907,22 @@ def _next_setup_stage(*, needs_reg: bool, reg_done: bool, reg_blocked: bool,
 
     Ordered by what blocks them, not by how they arrived: a live number ends
     setup whatever else is unfinished, and a filing needing correction outranks
-    everything else, because nothing downstream can succeed while it waits.
+    everything else, because a regulator is waiting on the customer and nothing
+    downstream can succeed while it waits.
+
+    WHY THE FIRST FILING COMES LAST
+    Regulatory verification asks for a CRO number, a named representative and a
+    registered address -- the only step a customer cannot complete from memory,
+    and the one they are most likely to abandon. Asked first, it stood between a
+    paying customer and every part of setup they COULD finish, and any tenant
+    parked on it had configured nothing. Asked after the calendar and
+    notification steps, it is the last thing before provisioning, so the filing
+    still precedes the number it authorises -- which is the only ordering
+    constraint that is actually regulatory.
+
+    A filing already BLOCKED is different, and still runs first: that is not a
+    step the customer has yet to reach, it is a correction a regulator has
+    asked for, and delaying it delays their number.
 
     A STEP IS DONE WHEN IT HAS BEEN ANSWERED, NOT ONLY WHEN IT SUCCEEDED.
     "No integration token" and "no notification preference" are absences, and an
@@ -923,12 +938,14 @@ def _next_setup_stage(*, needs_reg: bool, reg_done: bool, reg_blocked: bool,
     """
     if permanent:
         return "ready"
-    if needs_reg and (reg_blocked or not reg_done):
+    if needs_reg and reg_blocked:
         return "verification"
     if not (integration_connected or booking_skipped):
         return "calendar"
     if not (notifications_set or notifications_deferred):
         return "notifications"
+    if needs_reg and not reg_done:
+        return "verification"
     if temporary:
         return "ready"
     return "final_setup"
