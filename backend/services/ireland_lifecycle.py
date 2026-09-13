@@ -529,11 +529,64 @@ async def record_temporary_usage(*, tenant_id: str, called_number: str,
 
 
 async def temporary_testing_allowed(tenant_id: str) -> bool:
-    """May this tenant still receive temporary test calls?"""
+    """May this tenant still receive temporary test calls?
+
+    THE authority for a temporary_test line, and the only one. Suspension is
+    where every approved limit lands -- the 60-minute allowance, the 30-day
+    pending ceiling, the 14-day correction window and the 7-day rejected grace
+    are all recorded by stamping suspended_at with a reason, so this reads one
+    durable fact rather than recomputing four clocks on the call path.
+
+    A lifecycle with no row yet is allowed: the number was just provisioned and
+    nothing has been spent. A suspended one is not, and is never automatically
+    un-suspended.
+    """
     access = await ita.get(tenant_id)
     if not access:
         return True
     return not access.get("suspended_at")
+
+
+async def inbound_call_allowed(tenant: dict, called_number: str) -> bool:
+    """May this inbound call be answered? Routed by CANONICAL PHONE PURPOSE.
+
+    THE DEFECT THIS CLOSES
+    Every inbound call was gated on trial_status(), whose derived branch is a
+    7-day clock from tenant.created_at with a 30-minute cap. For a regulated
+    tenant waiting on a regulator that is the wrong clock entirely: it would
+    switch off a temporary TEST line a week after signup, while the approved
+    policy grants 60 minutes over 30 days -- and the customer has no permanent
+    number to fall back to.
+
+    So the line's purpose decides which policy applies:
+
+        temporary_test  ->  the Ireland temporary-access policy
+        permanent       ->  the existing subscription/trial gate, UNCHANGED
+
+    Neither policy is reimplemented here; this only chooses between them. And it
+    is decided from the canonical row, never from a country, a dialling prefix,
+    or the legacy scalar -- the scalar cannot answer, because a tenant in
+    cutover holds two live numbers and it can only name one.
+
+    Fails to the EXISTING behaviour: if the canonical row cannot be read, the
+    ordinary trial gate applies, exactly as before this function existed.
+    """
+    from services import trial
+
+    e164 = str(called_number or "").strip()
+    tenant_id = str(tenant.get("id") or "")
+    if e164 and tenant_id:
+        try:
+            row = await db_phones.find_routable_by_e164(e164)
+        except Exception as e:
+            logger.error("call gate: canonical lookup failed for a number: %s",
+                         type(e).__name__)
+            row = None
+        if (row and str(row.get("tenant_id") or "") == tenant_id
+                and row.get("purpose") == lifecycle.PURPOSE_TEMPORARY):
+            return await temporary_testing_allowed(tenant_id)
+
+    return bool(trial.trial_status(tenant)["line_active"])
 
 
 async def transfer_allowed(tenant_id: str) -> bool:

@@ -485,9 +485,42 @@ async def provision(request: Request, body: ProvisionRequest):
                 if not spent["ok"]:
                     logger.error("Ireland pilot grant did not converge for tenant "
                                  "%s: %s", result.get("tenant_id"), spent.get("reason"))
+            # ── THE BILLING HAND-OFF, WHICH THIS EXIT USED TO DROP ────────
+            # The customer completed the payment step: a Stripe Customer was
+            # created and positively adopted into the payment session. But the
+            # only writer of tenants.stripe_customer_id is
+            # create_trial_subscription, which this exit deliberately skips --
+            # and `plan` is excluded from provision_data, so the selection
+            # reached nothing durable either.
+            #
+            # Weeks later, permanent_activation._ensure_trial reads both off the
+            # tenant, finds neither, and returns BILLING_SETUP_REQUIRED --
+            # leaving a customer who paid with a live number, no trial, and no
+            # activation email. Recorded here instead.
+            #
+            # This creates NO Stripe object: the Customer already exists, the
+            # plan is already server-validated, and the subscription and trial
+            # still begin only at permanent activation.
+            _billing: dict = {}
+            if stripe_customer_id:
+                _billing["stripe_customer_id"] = stripe_customer_id
+            if body.plan:
+                _billing["subscription_plan"] = body.plan
+            if _billing:
+                try:
+                    await db.update_tenant(result["tenant_id"], _billing)
+                except Exception as e:
+                    # The tenant and the payment session both exist and the
+                    # Customer is recoverable from the session, so this is
+                    # reported rather than allowed to fail a signup that
+                    # otherwise succeeded.
+                    logger.error("Regulated signup for tenant %s: could not "
+                                 "persist the billing hand-off: %s",
+                                 result.get("tenant_id"), e)
             logger.info(
-                "Regulated signup for tenant %s: skipping trial start and welcome "
-                "email until the permanent number is active",
+                "Regulated signup for tenant %s: billing identity recorded; "
+                "skipping trial start and welcome email until the permanent "
+                "number is active",
                 result.get("tenant_id"))
             analytics.capture(distinct_id, "tenant_created", {
                 "tenant_id": result.get("tenant_id"),
