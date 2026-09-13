@@ -61,24 +61,28 @@ def test_verification_is_a_first_class_onboarding_stage():
     assert m and "'verification'" in m.group(1)
 
 
-def test_a_regulated_tenant_enters_verification_instead_of_done():
-    assert "onboarding_state === 'regulatory_required'" in ONB
-    i = ONB.index("onboarding_state === 'regulatory_required'")
-    assert "setStage('verification')" in ONB[i:i + 300]
+#: Where the wizard sends a tenant the moment provisioning returns.
+_AFTER_PROVISION = ONB[ONB.index("setItem('ol_onboarding_tenant'"):][:700]
+
+
+def test_a_fresh_tenant_is_routed_by_the_server_not_by_its_country():
+    """This branch used to read onboarding_state itself and pick a stage, which
+    is a second derivation of an answer the server already owns — and it drifted:
+    the unregulated side jumped to notifications, skipping the calendar step
+    setup-state would bounce them back to on the next refresh."""
+    assert "advance(" in _AFTER_PROVISION
 
 
 def test_the_wizard_reads_the_state_rather_than_deciding_it():
     """Server-authoritative: no country test decides the stage."""
-    i = ONB.index("onboarding_state === 'regulatory_required'")
-    window = ONB[i - 400:i + 400]
     for smell in ("'IE'", '"IE"', "+353", "country ===", "country =="):
-        assert smell not in window, smell
+        assert smell not in _AFTER_PROVISION, smell
 
 
 def test_no_premature_account_ready_for_a_regulated_tenant():
     """The old flow declared success before the customer could get a number."""
-    i = ONB.index("onboarding_state === 'regulatory_required'")
-    assert "Your account is ready" not in ONB[i:i + 400]
+    assert "Your account is ready" not in _AFTER_PROVISION
+    assert "setStage('done')" not in _AFTER_PROVISION
 
 
 # ═══ 3. durable resume — the part that actually matters ═════════════════
@@ -232,15 +236,22 @@ BANNER = (FE / "app" / "dashboard" / "[tenantId]" / "TrialBanner.tsx").read_text
 
 def test_the_stage_machine_has_the_reordered_tail():
     m = re.search(r"type Stage =([^\n]+)", ONB)
-    for stage in ("'verification'", "'calendar'", "'notifications'", "'finalsetup'", "'done'"):
+    for stage in ("'calendar'", "'notifications'", "'verification'", "'finalsetup'", "'done'"):
         assert stage in m.group(1), stage
     order = [m.group(1).index(x) for x in
-             ("'verification'", "'calendar'", "'notifications'", "'finalsetup'", "'done'")]
+             ("'calendar'", "'notifications'", "'verification'", "'finalsetup'", "'done'")]
     assert order == sorted(order), "stages are declared out of order"
 
 
-def test_verification_continues_into_calendar():
-    assert "setStage('calendar')" in ONB
+def test_verification_completion_asks_the_server_where_to_go():
+    """It used to name 'calendar'. With the filing moved to the end of setup
+    that answer is simply wrong, which is the point: no step names its own
+    successor, so moving one is a change in the resolver and nowhere else."""
+    i = ONB.index("onReady={")
+    window = ONB[i:i + 200]
+    assert "advance(" in window
+    for smell in ("setStage('calendar')", "setStage('notifications')", "setStage('done')"):
+        assert smell not in window, smell
 
 
 def test_calendar_skip_records_the_answer_instead_of_forcing_a_stage():
@@ -251,8 +262,13 @@ def test_calendar_skip_records_the_answer_instead_of_forcing_a_stage():
     assert "setStage('notifications')" not in window
 
 
-def test_notifications_continue_into_final_setup():
-    assert "onSaved={() => setStage('finalsetup')}" in ONB
+def test_notifications_completion_cannot_skip_an_unfinished_filing():
+    """Hardcoding 'finalsetup' here would send a regulated tenant straight to
+    provisioning and try to buy a +353 no regulator has authorised."""
+    i = ONB.index("onSaved={")
+    window = ONB[i:i + 400]
+    assert "advance(" in window
+    assert "setStage('finalsetup')" not in window
 
 
 def test_deferring_notifications_records_the_answer_instead_of_forcing_a_stage():
@@ -279,8 +295,10 @@ def test_the_stage_map_covers_every_server_stage():
 # ── the server decides the order, and nothing else does ─────────────────
 
 @pytest.mark.parametrize("kw,expected", [
+    # The FIRST filing is now the last step before provisioning, so an untouched
+    # regulated tenant starts at the calendar like everyone else.
     (dict(needs_reg=True, reg_done=False, reg_blocked=False, integration_connected=False,
-          notifications_set=False, permanent=False, temporary=False), "verification"),
+          notifications_set=False, permanent=False, temporary=False), "calendar"),
     (dict(needs_reg=True, reg_done=True, reg_blocked=True, integration_connected=True,
           notifications_set=True, permanent=False, temporary=True), "verification"),
     (dict(needs_reg=True, reg_done=True, reg_blocked=False, integration_connected=False,
@@ -305,6 +323,52 @@ def test_a_live_permanent_number_ends_setup_whatever_else_is_unfinished():
     assert onboarding._next_setup_stage(
         needs_reg=True, reg_done=False, reg_blocked=True, integration_connected=False,
         notifications_set=False, permanent=True, temporary=False) == "ready"
+
+
+def test_the_first_filing_is_the_last_step_before_provisioning():
+    """Verification sits after the calendar and notification steps and before
+    final setup, so a customer completes everything they CAN before being asked
+    for a CRO number, a named representative and a registered address."""
+    base = dict(needs_reg=True, reg_done=False, reg_blocked=False,
+                permanent=False, temporary=False)
+    assert onboarding._next_setup_stage(
+        **base, integration_connected=False, notifications_set=False) == "calendar"
+    assert onboarding._next_setup_stage(
+        **base, integration_connected=True, notifications_set=False) == "notifications"
+    assert onboarding._next_setup_stage(
+        **base, integration_connected=True, notifications_set=True) == "verification"
+
+
+def test_a_declined_calendar_and_notifications_still_reach_verification():
+    """Skip and defer are answers, so they advance — to the filing, not past it.
+    Reaching final_setup here would try to provision a regulated number that no
+    regulator has authorised."""
+    assert onboarding._next_setup_stage(
+        needs_reg=True, reg_done=False, reg_blocked=False,
+        integration_connected=False, notifications_set=False,
+        booking_skipped=True, notifications_deferred=True,
+        permanent=False, temporary=False) == "verification"
+
+
+def test_provisioning_is_never_reached_with_an_unfinished_filing():
+    """The one ordering constraint that is actually regulatory."""
+    for connected in (True, False):
+        for notified in (True, False):
+            for skipped in (True, False):
+                for deferred in (True, False):
+                    stage = onboarding._next_setup_stage(
+                        needs_reg=True, reg_done=False, reg_blocked=False,
+                        integration_connected=connected, notifications_set=notified,
+                        booking_skipped=skipped, notifications_deferred=deferred,
+                        permanent=False, temporary=False)
+                    assert stage != "final_setup", (connected, notified, skipped, deferred)
+
+
+def test_an_unregulated_tenant_is_unaffected_by_the_move():
+    assert onboarding._next_setup_stage(
+        needs_reg=False, reg_done=False, reg_blocked=False,
+        integration_connected=True, notifications_set=True,
+        permanent=False, temporary=False) == "final_setup"
 
 
 def test_a_blocked_filing_outranks_everything_downstream():

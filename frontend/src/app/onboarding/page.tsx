@@ -178,7 +178,7 @@ interface Detection {
   website_url: string
 }
 
-type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'verification' | 'calendar' | 'notifications' | 'finalsetup' | 'done'
+type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'calendar' | 'notifications' | 'verification' | 'finalsetup' | 'done'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -449,16 +449,12 @@ export default function OnboardingPage() {
       // Remember the tenant so a refresh can resume from durable server state
       // rather than dropping the customer back at the start of the wizard.
       try { localStorage.setItem('ol_onboarding_tenant', String(provisioned.tenant_id)) } catch {}
-      // A tenant whose country needs regulatory clearance goes to verification
-      // FIRST. Telling them "your account is ready" here was premature: they
-      // have no number and cannot get one until a regulator is satisfied.
-      // Server-authoritative -- the wizard reads the state the backend decided,
-      // it does not decide it from the country.
-      if (provisioned.onboarding_state === 'regulatory_required') {
-        setStage('verification')
-      } else {
-        setStage('notifications')
-      }
+      // Where a fresh tenant belongs is the same question resume asks, so ask it
+      // the same way instead of re-deriving it from onboarding_state. Telling a
+      // regulated customer "your account is ready" here was premature -- they
+      // have no number and cannot get one until a regulator is satisfied -- and
+      // the unregulated branch skipped the calendar step outright.
+      await advance(String(provisioned.tenant_id), 'calendar')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       // Back to the card step. It re-runs setup-card on mount, so the retry gets a
@@ -518,6 +514,24 @@ export default function OnboardingPage() {
     setSetup(st)
     return st
   }, [])
+
+  /** A step finished — ask the server where this tenant belongs now, and go.
+   *
+   *  Every completed step routes through this rather than naming its own
+   *  successor. Two derivations of "what comes next" drift, and the browser's
+   *  is the one that lies: the wizard used to send an unregulated signup
+   *  straight from provisioning to notifications, skipping the calendar step
+   *  that /onboarding/setup-state would bounce them back to on the next
+   *  refresh. With this, the ORDER lives in exactly one place — the resolver —
+   *  and moving a step is a change there and nowhere else.
+   *
+   *  `fallback` applies only when the server cannot be reached at all. */
+  const advance = useCallback(async (tid: string, fallback: Stage) => {
+    try {
+      const st = await syncSetupState(tid)
+      setStage(st ? STAGE_FOR(st.next_stage) : fallback)
+    } catch { setStage(fallback) }
+  }, [syncSetupState, STAGE_FOR])
 
   useEffect(() => {
     let cancelled = false
@@ -1253,7 +1267,7 @@ export default function OnboardingPage() {
               <BusinessVerification
                 tenantId={String(result.tenant_id)}
                 embedded
-                onReady={() => { setStage('calendar'); if (result) void syncSetupState(String(result.tenant_id)) }}
+                onReady={() => { if (result) void advance(String(result.tenant_id), 'finalsetup') }}
               />
             </motion.div>
           )}
@@ -1307,7 +1321,13 @@ export default function OnboardingPage() {
                 tenantId={String(result.tenant_id)}
                 country={form.country}
                 saveLabel="Save and continue →"
-                onSaved={() => setStage('finalsetup')}
+                // NOT a hardcoded 'finalsetup': with verification now the last
+                // step before provisioning, a regulated tenant goes to it from
+                // here, and naming the stage locally would skip the filing and
+                // try to provision a +353 that no regulator has authorised.
+                onSaved={() => { if (result) void advance(String(result.tenant_id),
+                  setup?.needs_regulatory_verification && !setup?.regulatory?.done
+                    ? 'verification' : 'finalsetup') }}
               />
               {/* SECONDARY, and genuinely deferred. It saves nothing, so it
                   cannot enable Email, cannot stamp notification_prefs_set_at,
