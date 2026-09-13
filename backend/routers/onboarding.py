@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 
 from db import supabase as db
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
+from services import ireland_pilot
 from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
@@ -300,15 +301,35 @@ async def provision(request: Request, body: ProvisionRequest):
     # tenant or a sub-account exists, with a controlled message -- not the raw
     # "Phone Number Requires an Address but AddressSid was empty" a customer
     # gets today.
+    pilot_grant = False
     if (lifecycle_ob.needs_regulatory_clearance(body.country)
             and not lifecycle_ob.ireland_onboarding_enabled()):
-        raise HTTPException(
-            status_code=503,
-            detail={"status": "country_onboarding_not_open",
-                    "country": body.country,
-                    "message": "We are not yet accepting online signups for this "
-                               "country. Please contact us and we will set your "
-                               "account up directly."})
+        # ── ONE OPERATOR-AUTHORIZED SIGNUP MAY CROSS (W9I-H.0) ────────────
+        # Scoped to this exact onboarding_key, which the request model has
+        # already validated as a uuid4. Nothing else in the request influences
+        # the decision -- no header, no body flag -- so a spoofing attempt gets
+        # the identical response below, which is also what a real customer of a
+        # closed country sees. The grant opens THIS gate and nothing further:
+        # regulatory filing, number purchase, billing and public launch each have
+        # their own, and none of them reads it.
+        verdict = await ireland_pilot.decide(
+            onboarding_key=body.onboarding_key, iso_country=body.country)
+        if verdict["outcome"] == ireland_pilot.INTEGRITY:
+            # A grant whose key resolves to a tenant it never produced. Never
+            # repaired automatically, and never explained to the caller.
+            logger.error("Ireland pilot grant integrity failure: %s",
+                         verdict.get("reason"))
+        pilot_grant = verdict["outcome"] in (ireland_pilot.ALLOW_CREATE,
+                                             ireland_pilot.ALLOW_RESUME)
+        if not pilot_grant:
+            raise HTTPException(
+                status_code=503,
+                detail={"status": "country_onboarding_not_open",
+                        "country": body.country,
+                        "message": "We are not yet accepting online signups for this "
+                                   "country. Please contact us and we will set your "
+                                   "account up directly."})
+        logger.warning("Ireland pilot signup authorized (%s)", verdict["outcome"])
 
     _started = time.monotonic()
     try:
@@ -362,6 +383,17 @@ async def provision(request: Request, body: ProvisionRequest):
         # W9I-G's activation path starts the trial and sends the Irish activation
         # email, together, after the number is genuinely live.
         if str(result.get("onboarding_state") or "") == lifecycle_ob.REGULATORY_REQUIRED:
+            # The grant is spent HERE, once a durable tenant exists -- not at the
+            # gate. Consuming earlier would let a transient provisioning failure
+            # burn the invitation and brick the pilot; consuming later would
+            # leave it reusable after a tenant already owns the key.
+            if pilot_grant:
+                spent = await ireland_pilot.consume(
+                    onboarding_key=body.onboarding_key,
+                    tenant_id=str(result.get("tenant_id") or ""))
+                if not spent["ok"]:
+                    logger.error("Ireland pilot grant did not converge for tenant "
+                                 "%s: %s", result.get("tenant_id"), spent.get("reason"))
             logger.info(
                 "Regulated signup for tenant %s: skipping trial start and welcome "
                 "email until the permanent number is active",
