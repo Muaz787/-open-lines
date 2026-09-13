@@ -46,6 +46,7 @@ VALID_INDUSTRIES = {
     "realtor", "clinic", "parliament",
     "plumber", "restaurant", "builder", "dental", "legal", "beauty",
     "automotive", "insurance", "public_office", "courier",
+    "fashion_apparel",
     "custom",
 }
 

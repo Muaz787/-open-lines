@@ -42,6 +42,7 @@ const INDUSTRIES = [
   { value: 'builder',    label: 'Builder / Contractor' },
   { value: 'restaurant', label: 'Restaurant / Café' },
   { value: 'beauty',     label: 'Hair & Beauty Salon' },
+  { value: 'fashion_apparel', label: 'Fashion & Apparel' },
   { value: 'automotive', label: 'Automotive — Dealership, Repair & Body' },
   { value: 'insurance',  label: 'Insurance — Broker / Agency' },
   { value: 'public_office', label: 'Government & Public Office' },

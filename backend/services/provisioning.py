@@ -72,6 +72,11 @@ QUALIFICATION_FIELDS = {
         "preferred_time": "Do you have a preferred day or time?",
         "stylist": "Do you have a preferred stylist or therapist, or are you happy with whoever is available?",
     },
+    "fashion_apparel": {
+        "occasion": "What's the occasion you're shopping for?",
+        "event_date": "Do you have a date for it yet?",
+        "preferred_time": "Do you have a preferred day or time to come in?",
+    },
     "automotive": {
         "reason": "Are you calling about buying or selling a vehicle, service and repairs, or body/collision work?",
         "vehicle": "What's the year, make, and model of the vehicle?",
