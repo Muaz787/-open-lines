@@ -409,12 +409,12 @@ async def provision(request: Request, body: ProvisionRequest):
             detail="A plan and payment method are required to start your free trial",
         )
 
-    # Ireland is a real, working path in this build, but the billing policy it
-    # depends on (trial starts only when a permanent +353 is ACTIVE) is not
-    # implemented yet, so it stays closed to the public. Refused HERE, before a
-    # tenant or a sub-account exists, with a controlled message -- not the raw
-    # "Phone Number Requires an Address but AddressSid was empty" a customer
-    # gets today.
+    # Ireland is a normal supported onboarding country. Country access was
+    # decided at the top of this function, before anything was asked of the
+    # customer; what remains below is the ordinary flow, and the regulated
+    # diversion inside provision_tenant is what keeps an Irish signup from
+    # reaching telephony. The trial is started further down ONLY for countries
+    # that leave here with a working line -- see the regulated exit below.
     _started = time.monotonic()
     try:
         provision_data = body.model_dump(exclude={

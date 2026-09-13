@@ -86,17 +86,30 @@ def is_resumable(state: str) -> bool:
 # ── rollout control ────────────────────────────────────────────────────────
 
 def ireland_onboarding_enabled() -> bool:
-    """Is the Irish onboarding path open to the public yet?
+    """Is the Irish onboarding path open to the public?
 
-    OFF by default, and the reason is billing rather than telephony. The approved
-    Ireland trial policy is that the 7-day trial starts only once a permanent
-    +353 number is acquired, configured, health-checked and active -- and that
-    change belongs to a later gate. Until it lands, an Irish signup that reached
-    the billing block would start a trial clock at signup, against a tenant that
-    cannot receive a call for days. So the path stays closed to the public and
-    open to internal QA, which is strictly better than today's behaviour: right
-    now Ireland is offered in the form and fails with a raw Twilio AddressSid
-    error after a sub-account has already been created.
+    THE AUTHORITATIVE IRELAND POLICY, which this flag opens:
+
+      * Public onboarding. An Irish business signs up through the ordinary form.
+        No pilot grant, no invite, no operator step -- migration 033's grant
+        mechanism is the way past a CLOSED gate and is dormant while this is on.
+      * Free temporary test access WHILE A GENUINE REGULATORY REVIEW IS PENDING.
+        Both halves are load-bearing: entitlement comes from a Bundle the
+        provider is actually holding, never from the country, the account or a
+        form having been opened.
+      * THE 7-DAY TRIAL STARTS ONLY AFTER THE PERMANENT +353 IS ACTIVE --
+        approval verified directly at the provider, number acquired, routing and
+        Vapi configured, health PASS, canonical permanent row ACTIVE. Nothing
+        earlier starts it: not signup, not the card, not the filing, not the
+        Bundle entering review, and NOT the temporary test line, however long
+        the customer has been using it.
+
+    W9I-G.1 implemented that deferral and W9I-H.PRE measured it; this docstring
+    previously said the opposite, which was true only before those gates landed.
+
+    Separate from IRELAND_PERMANENT_NUMBER_PURCHASE_ENABLED, which governs
+    whether we are willing to buy Irish numbering commercially. They move
+    independently and for different reasons.
     """
     return os.getenv("IRELAND_ONBOARDING_ENABLED", "false").strip().lower() in (
         "1", "true", "yes", "on")

@@ -1240,6 +1240,23 @@ async def reprovision_tenant_number(tenant: dict) -> dict:
         return {"provisioned": False, "number": "", "reason": "no_assistant_on_tenant"}
 
     country = str(tenant.get("country") or "CA")
+
+    # ── REGULATED COUNTRIES ARE NOT REPROVISIONED HERE (W9I-H.AUTO) ───────
+    # This path buys through the unregulated purchase, which passes no
+    # AddressSid and no BundleSid. For an Irish tenant that is wrong twice: it
+    # sidesteps IRELAND_PERMANENT_NUMBER_PURCHASE_ENABLED, and it would attach a
+    # number carrying none of the regulatory bindings the filing requires.
+    #
+    # W9I-H.PRE found this refused only INCIDENTALLY -- by the tenant having no
+    # Vapi assistant, and then by Twilio. Neither is a gate we own, and the first
+    # disappears the moment a regulated tenant legitimately has an assistant.
+    # permanent_numbers.ensure_permanent_irish_number is the only correct route.
+    if lifecycle_ob.needs_regulatory_clearance(country):
+        logger.error("reprovision: refusing regulated tenant %s (%s) -- regulated "
+                     "acquisition is owned by permanent_numbers", tenant_id, country)
+        return {"provisioned": False, "number": "",
+                "reason": "country_requires_regulated_acquisition"}
+
     # Keep them local to the number they already publish, if we know it.
     preferred_ac = ""
     try:

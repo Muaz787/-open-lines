@@ -137,6 +137,14 @@ def source_problem(policy: TemporarySource) -> str:
         return "no_source_country_configured"
     if policy.iso_country not in telephony.SUPPORTED_COUNTRIES:
         return f"source_country_not_supported:{policy.iso_country}"
+    from services import onboarding_lifecycle as ob
+    if ob.needs_regulatory_clearance(policy.iso_country):
+        # A regulated source would buy through the unregulated path, which carries
+        # no Bundle and no Address -- sidestepping the permanent gate and the
+        # filing the number is supposed to depend on. It would also hand the
+        # customer a +353 that is NOT the one their regulatory filing covers,
+        # while the whole point of the temporary line is that it is not theirs.
+        return f"source_country_is_regulated:{policy.iso_country}"
     return ""
 
 
