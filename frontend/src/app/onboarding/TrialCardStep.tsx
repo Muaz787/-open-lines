@@ -251,6 +251,7 @@ export function TrialCardStep({
   email,
   businessName,
   country = 'CA',
+  onboardingKey,
   onComplete,
   onBack,
   busy = false,
@@ -259,6 +260,7 @@ export function TrialCardStep({
   email: string
   businessName: string
   country?: string
+  onboardingKey: string
   onComplete: (r: CardResult) => void
   onBack: () => void
   busy?: boolean
@@ -284,7 +286,13 @@ export function TrialCardStep({
         const res = await fetch(`${API}/onboarding/setup-card`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plan, email, business_name: businessName }),
+          // country + onboardingKey are REQUIRED (W9I-H.0.2): the server decides
+          // availability before touching Stripe, and binds one Stripe Customer to
+          // this signup so a remount or "Try again" cannot mint another.
+          body: JSON.stringify({
+            plan, email, business_name: businessName,
+            country, onboarding_key: onboardingKey,
+          }),
         })
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json()
@@ -297,7 +305,7 @@ export function TrialCardStep({
     }
     void run()
     return () => { cancelled = true }
-  }, [plan, email, businessName, attempt])
+  }, [plan, email, businessName, country, onboardingKey, attempt])
 
   if (loadError) {
     return (

@@ -297,6 +297,12 @@ def _signup(monkeypatch, *, verdict, country="IE"):
     monkeypatch.setattr(onboarding.subscriptions, "create_trial_subscription", trial)
     monkeypatch.setattr(onboarding.subscriptions, "read_card_setup_token",
                         lambda t: "cus_123")
+    # W9I-H.0.2: provision now resolves the Customer from the payment session
+    # rather than believing the client's token. Stated explicitly -- conftest
+    # stubs Supabase with a truthy MagicMock, so an unpatched lookup "finds" a
+    # binding that does not exist and the mismatch guard fires.
+    monkeypatch.setattr(onboarding.payment_customer, "resolve_for_tenant",
+                        AsyncMock(return_value="cus_123"))
     monkeypatch.setattr("services.email.send_welcome_email", welcome)
     return seen
 

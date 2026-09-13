@@ -70,6 +70,9 @@ done
 | `stage_s_activation_notification.py` | **migration 032** itself — 23 proofs, run against a clean slate each time by first applying the file's own documented rollback: first apply, replay twice, three nullable columns with no defaults, no index, RLS and policy count unchanged, a send without a claim refused, a provider id without a send refused, a completed notification unable to lose its claim, four concurrent claims yielding one winner, and a REPLACEMENT number keeping an independent notification lifecycle |
 | `stage_t_activation.py` | **W9I-G**'s activation races — 15 proofs: four concurrent promotions yield one winner and an already-active row cannot be re-promoted; a stale worker with the wrong E.164 matches nothing; the temporary line is untouched and both numbers may ring during the grace window; four concurrent notification claims yield one winner; a completed notification cannot be re-confirmed; and a replacement number is claimable independently |
 | `stage_o_release.py` | **W9I-B.1**'s phone release lifecycle — 18 proofs: a live permanent transitions to `released`; a released row leaves every partial index (not routable, not a live permanent, its E.164 re-purchasable) while keeping `tpn_provider_object_key`; the identity fence refuses a stale E.164, SID, account or tenant; re-release matches zero rows and does not restamp; and four OS processes releasing one row yield exactly one winner |
+| `stage_u_pilot_grant.py` | **migration 033** — 40 proofs: the pilot grant table's shape, constraints and RLS; a grant is single-use and expiry-fenced; the consumed columns must agree; and four concurrent consumptions yield exactly one winner |
+| `stage_v_payment_session.py` | **migration 034** — 31 proofs: the payment-session table's shape and CHECKs; the claim is idempotent and elects one winner; the fenced attach binds a Customer exactly once and never overwrites; one Customer cannot serve two signups (`ops_customer_key`); and four OS processes claiming one signup produce one row, one Customer, and one value every worker agrees on |
+| `stage_w_provider_attempt.py` | **migration 035** — 26 proofs, the ones this workstream turns on: `ops_attach_implies_attempt_chk` refuses a Customer with no recorded attempt; an unattempted claim MAY be retaken because Stripe provably was never called; an **attempted** one never may — including after 30 days, because elapsed time is not evidence; and four concurrent workers yield exactly one that was permitted to call the provider |
 
 ```bash
 cd backend/scripts/verify_027
@@ -82,6 +85,9 @@ python stage_q_temporary.py parent
 python stage_r_permanent.py parent
 python stage_s_activation_notification.py parent
 python stage_t_activation.py parent
+python stage_u_pilot_grant.py parent
+python stage_v_payment_session.py parent
+python stage_w_provider_attempt.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.
