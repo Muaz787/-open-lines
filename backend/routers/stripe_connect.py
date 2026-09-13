@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 
 from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi
+from services import entitlements
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,9 @@ async def onboard(tenant_id: str, authorization: Annotated[str | None, Header()]
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    plan   = (tenant.get("subscription_plan") or "").lower()
-    status = tenant.get("subscription_status") or ""
-    if plan not in ("pro", "business") or status not in ("active", "trialing", "canceling"):
+    # See entitlements.entitled_plan: a subscription that cannot start yet is not
+    # a subscription the customer lacks.
+    if not entitlements.entitled_plan(tenant):
         raise HTTPException(status_code=403, detail="Stripe payments require a Pro or Business plan")
 
     account_id = tenant.get("stripe_account_id")
