@@ -84,6 +84,28 @@ _VISIBLE_CONFIG = [
     # tenant comped ONLY via this variable is invisible here if it is set on the
     # web service and not this one — and would then be eligible for release.
     "BILLING_EXEMPT_TENANT_IDS",
+    # ── Ireland lifecycle ────────────────────────────────────────────────
+    # This service runs ireland_lifecycle.run_scheduled() and
+    # regulatory_reconcile.run_scheduled() below, so it reads these itself.
+    # They were missing here, which is the same fault this preflight exists
+    # for, a fourth time -- and the worst-placed instance of it yet:
+    #
+    #   * IRELAND_PERMANENT_NUMBER_PURCHASE_ENABLED unset HERE means an Irish
+    #     filing approved AFTER the customer finished onboarding is found by
+    #     the sweep, refused at the commercial gate, and never bought. The web
+    #     service reports the flag as on, because on the web service it is.
+    #   * TEMP_NUMBER_* unset here means a tenant whose review starts later
+    #     never gets the test line the web service would have given them.
+    #
+    # /admin/health reports the WEB service's view and cannot see this one.
+    # These lines are the only place the scheduled service says what it holds.
+    #
+    # IRELAND_ONBOARDING_ENABLED is deliberately absent: it gates SIGNUP, which
+    # this process never performs. Listing it would invite someone to set it
+    # here, where nothing reads it -- the mirror-image mistake described above.
+    "TEMP_NUMBER_ENABLED", "TEMP_NUMBER_SOURCE_COUNTRY", "TEMP_NUMBER_TYPE",
+    "IRELAND_PERMANENT_NUMBER_PURCHASE_ENABLED",
+    "REGULATORY_RECONCILE_APPLY",
 ]
 
 
