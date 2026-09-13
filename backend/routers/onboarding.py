@@ -435,6 +435,12 @@ async def provision(request: Request, body: ProvisionRequest):
                 user_id = await db.create_auth_user(body.email, body.password, result["tenant_id"])
                 # Default email call-summaries ON, sent to the owner's account email
                 # (matches the marketing promise; tenant can change/disable in Settings).
+                # The account email is the DEFAULT suggestion, not a decision.
+                # It is written so a tenant who never reaches the notification
+                # step still receives summaries exactly as before; the step then
+                # asks, and notification_prefs_set_at records that they answered.
+                # Changing the account email later must not rewrite an explicit
+                # notification address -- see update_settings.
                 await db.update_tenant(result["tenant_id"], {
                     "user_id":             user_id,
                     "email":               body.email,
@@ -592,6 +598,7 @@ class SettingsUpdateRequest(BaseModel):
     whatsapp_enabled:     bool | None = None
     business_phone:       str | None = None
     sms_alert_number:     str | None = None
+    whatsapp_alert_number: str | None = None
     business_hours_start: int | None = None
     business_hours_end:   int | None = None
     business_days:        list[int] | None = None
@@ -615,7 +622,8 @@ class SettingsUpdateRequest(BaseModel):
             raise ValueError("slot_capacity must be between 1 and 50")
         return v
 
-    @field_validator("business_phone", "sms_alert_number")
+    @field_validator("business_phone", "sms_alert_number",
+                     "whatsapp_alert_number")
     @classmethod
     def _clean_phone(cls, v: str | None) -> str | None:
         # Permissive: allow +, digits, spaces, dashes, parentheses. Empty -> null
@@ -628,7 +636,60 @@ class SettingsUpdateRequest(BaseModel):
         if len(v) > 32 or not re.fullmatch(r"[+]?[0-9 ()\-.]{6,32}", v):
             raise ValueError("Enter a valid phone number")
         # Store E.164 so SMS/WhatsApp sends work (formatting breaks 'whatsapp:<num>').
-        return telephony.normalize_phone(v)
+        normalized = telephony.normalize_phone(v)
+        # The NORMALISED value is what gets stored and dialled, so it is what has
+        # to be valid. The permissive pattern above only says the input LOOKED
+        # like a phone number; plenty of strings pass it and are not one.
+        #
+        # telephony.is_e164 rather than a regex here: migration 037's CHECK
+        # encodes the same rule, and a restated pattern is precisely how the two
+        # drift into the API accepting what the database rejects.
+        if not telephony.is_e164(normalized):
+            raise ValueError("Enter a valid phone number, including country code")
+        return normalized
+
+
+@router.get("/notification-options/{tenant_id}")
+async def notification_options(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Which call-summary channels this tenant may choose, and what they chose.
+
+    The ONE source both onboarding and Settings render from, so neither can
+    offer a channel the backend cannot deliver. Tenant-authenticated and
+    tenant-scoped like every other settings read.
+
+    Destinations are returned because the owner is editing their own; they are
+    masked in logs, never in this response.
+    """
+    await verify_tenant_owner(tenant_id, authorization)
+    from services import notification_channels as nch
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception:
+        tenant = None
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    eligible = await nch.eligible_channels(tenant)
+    prefs = nch.preferences(tenant)
+    return {
+        "channels": {
+            name: {
+                "available": eligible[name]["eligible"],
+                "enabled": prefs["channels"][name]["enabled"],
+                "destination": prefs["channels"][name]["destination"],
+            } for name in nch.CHANNELS
+        },
+        "dashboard_only": prefs["dashboard_only"],
+        # The UI prefills Email with this when the tenant selects Email. It is a
+        # convenience, never a rule: nothing is sent anywhere until they save.
+        "suggested_email": str(tenant.get("email") or ""),
+        # Lets the UI ask a legacy tenant to confirm rather than silently
+        # presenting defaults as if they had chosen them.
+        "explicitly_set": prefs["semantics"] == "explicit",
+    }
 
 
 @router.patch("/settings/{tenant_id}")
@@ -643,6 +704,37 @@ async def update_settings(
     update_data = body.model_dump(exclude_unset=True)
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields provided")
+
+    # ── CALL-SUMMARY PREFERENCES (W9I notification workstream) ────────────
+    # The timestamp is SERVER-CONTROLLED and one-way. A client cannot forge it,
+    # choose it, or clear it to fall back into legacy semantics: it is not on
+    # the request model at all, so there is nothing to strip.
+    from services import notification_channels as nch
+    _PREF_FIELDS = {"email_enabled", "sms_enabled", "whatsapp_enabled",
+                    "notification_email", "sms_alert_number",
+                    "whatsapp_alert_number"}
+    _touches_prefs = bool(_PREF_FIELDS & update_data.keys())
+    if _touches_prefs:
+        try:
+            _current = await db.get_tenant_by_id(tenant_id)
+        except Exception:
+            _current = None
+        # Validated server-side against the MERGED result, so enabling a channel
+        # in one request and its destination in another cannot slip through.
+        try:
+            nch.validate_explicit(update_data, current=_current or {})
+            # Capability is enforced HERE, not only in the picker. The API is
+            # reachable directly, and a channel that cannot deliver must not be
+            # storable however the request was crafted.
+            await nch.validate_capability(update_data, current=_current or {},
+                                          tenant=_current or {"id": tenant_id})
+        except nch.PreferenceError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        # The first successful explicit save leaves legacy semantics for good.
+        if not (_current or {}).get("notification_prefs_set_at"):
+            from datetime import datetime as _dt, timezone as _tz
+            update_data["notification_prefs_set_at"] = \
+                _dt.now(_tz.utc).isoformat()
     # Owner-supplied free text is injected into the prompt — validate for
     # prompt-injection / unsafe-use before it can reach the assistant.
     if update_data.get("booking_instructions"):

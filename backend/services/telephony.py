@@ -177,6 +177,24 @@ _NATIONAL_PREFIX: dict[str, str] = {
 }
 
 
+#: THE canonical E.164 shape: '+', a non-zero country digit, then 6-14 more --
+#: 7 to 15 digits in total, which is the ITU maximum. Defined here, in the shared
+#: phone utility, because it had already been restated once (customer_identity)
+#: and a third copy is how a 16-digit destination reaches a provider that will
+#: not dial it. A test asserts the two agree.
+E164_RE = re.compile(r"^\+[1-9][0-9]{6,14}$")
+
+
+def is_e164(value: str) -> bool:
+    """Is this EXACTLY a storable, dialable E.164 number?
+
+    Deliberately strict and applied to the NORMALISED value, not user input:
+    formatting is the input layer's problem, and what gets persisted is what has
+    to be valid.
+    """
+    return bool(E164_RE.fullmatch(str(value or "")))
+
+
 def normalize_phone(phone: str, default_country: str = "") -> str:
     """Best-effort E.164 normalization (strips spaces/parens/dashes) so numbers are
     safe for Twilio SMS and 'whatsapp:<E.164>'. An existing '+' is preserved.
@@ -855,3 +873,30 @@ async def search_candidate_numbers(subaccount_sid: str, subaccount_token: str, *
                       else "national"))
     except Exception as e:
         return NumberCandidates(status="error", error_detail=_safe_provider_error(e))
+
+
+async def number_capabilities(subaccount_sid: str, subaccount_token: str,
+                              e164: str) -> dict | None:
+    """What the provider says THIS number can do, or None if we could not ask.
+
+    None is deliberately distinct from "no capabilities": a channel we could not
+    confirm must not be offered, and an outage is not evidence that a number
+    cannot send a text. Never raises -- the caller is choosing what to display,
+    not deciding whether to spend money.
+    """
+    if not (subaccount_sid and subaccount_token and e164):
+        return None
+    try:
+        client = _sub_client(subaccount_sid, subaccount_token)
+        rows = client.incoming_phone_numbers.list(phone_number=e164, limit=1)
+    except Exception as e:
+        logger.error("Could not read capabilities for a number on %s: %s",
+                     subaccount_sid, _safe_provider_error(e))
+        return None
+    if not rows:
+        return None
+    caps = getattr(rows[0], "capabilities", None) or {}
+    if not isinstance(caps, dict):
+        caps = {k: getattr(caps, k, False) for k in ("voice", "sms", "mms")}
+    return {"voice": bool(caps.get("voice")), "sms": bool(caps.get("sms")),
+            "mms": bool(caps.get("mms"))}

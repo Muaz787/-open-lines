@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 import { authedFetch } from '@/lib/api'
+import NotificationPreferences from '@/components/NotificationPreferences'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -42,12 +43,6 @@ function SettingsPage() {
 
   const [tenant, setTenant]               = useState<Tenant | null>(null)
 
-  const [notifEmail, setNotifEmail]               = useState('')
-  const [emailEnabled, setEmailEnabled]           = useState(true)
-  const [smsEnabled, setSmsEnabled]               = useState(false)
-  const [whatsappEnabled, setWhatsappEnabled]     = useState(false)
-  const [smsNumber, setSmsNumber]                 = useState('')
-  const [notifEmailState, setNotifEmailState]     = useState<SaveState>('idle')
   const [bizPhone, setBizPhone]                   = useState('')
   const [bizPhoneState, setBizPhoneState]         = useState<SaveState>('idle')
   const [email, setEmail]                         = useState('')
@@ -79,11 +74,6 @@ function SettingsPage() {
       if (tRes.ok) {
         const d = await tRes.json()
         setTenant(d)
-        if (d?.notification_email) setNotifEmail(d.notification_email)
-        if (d?.email_enabled != null) setEmailEnabled(!!d.email_enabled)
-        if (d?.sms_enabled != null) setSmsEnabled(!!d.sms_enabled)
-        if (d?.whatsapp_enabled != null) setWhatsappEnabled(!!d.whatsapp_enabled)
-        if (d?.sms_alert_number) setSmsNumber(d.sms_alert_number)
         if (d?.business_phone) setBizPhone(d.business_phone)
         if (d?.extra_instructions) setBizInstructions(d.extra_instructions)
         if (d?.business_subtype) setSubtype(d.business_subtype)
@@ -102,6 +92,11 @@ function SettingsPage() {
       return next
     })
   }
+
+  // Initial dial code for the destination pickers. A convenience only -- the
+  // owner may nominate a number in any country.
+  const notifCountry = String((tenant as Record<string, unknown> | null)?.business_country_code
+                              || (tenant as Record<string, unknown> | null)?.country || 'CA').toUpperCase()
 
   const saveBehavior = async () => {
     setBehaviorState('saving'); setBehaviorMsg('')
@@ -124,21 +119,6 @@ function SettingsPage() {
     } catch { setBehaviorState('error'); setBehaviorMsg('Save failed — try again') }
   }
 
-  const saveNotifEmail = async () => {
-    setNotifEmailState('saving')
-    try {
-      const res = await authedFetch(`${API}/onboarding/settings/${tenantId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notification_email: notifEmail.trim(), email_enabled: emailEnabled, sms_enabled: smsEnabled, whatsapp_enabled: whatsappEnabled, sms_alert_number: smsNumber.trim() }),
-      })
-      setNotifEmailState(res.ok ? 'saved' : 'error')
-      setTimeout(() => setNotifEmailState('idle'), 3000)
-    } catch {
-      setNotifEmailState('error')
-      setTimeout(() => setNotifEmailState('idle'), 3000)
-    }
-  }
 
   const saveBizPhone = async () => {
     setBizPhoneState('saving')
@@ -223,79 +203,24 @@ function SettingsPage() {
             <section>
             <div className="db-page-heading">Notifications</div>
 
-            {/* ── Call summary notifications ── */}
+            {/* ── Call summary notifications ──────────────────────────────
+                The SAME component onboarding uses, against the same canonical
+                API — so a channel the backend cannot deliver is never offered
+                here either, and the two surfaces cannot drift apart. */}
             <div className="db-card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)' }}>
+              <div style={{ padding: '18px 20px' }}>
                 <label style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)' }}>
                   Call summary notifications
                 </label>
-                <div className="db-field-help">
-                  Get a summary after every call. Turn on each channel you&rsquo;d like.
+                <div className="db-field-help" style={{ marginBottom: 14 }}>
+                  Choose where OpenLines should send a quick recap after each call.
                 </div>
-
-                {/* Per-channel toggles */}
-                {([
-                  ['Email', 'A summary email after every call.', emailEnabled, setEmailEnabled],
-                  ['SMS', 'A text message to your mobile.', smsEnabled, setSmsEnabled],
-                  ['WhatsApp', 'A WhatsApp message to your mobile.', whatsappEnabled, setWhatsappEnabled],
-                ] as const).map(([label, desc, on, setOn]) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderTop: '1px solid var(--db-border-lt)' }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>{label}</div>
-                      <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>{desc}</div>
-                    </div>
-                    <button
-                      type="button"
-                      className={`db-switch${on ? ' on' : ''}`}
-                      onClick={() => setOn(v => !v)}
-                      aria-pressed={on}
-                      aria-label={`Toggle ${label} notifications`}
-                    />
-                  </div>
-                ))}
-
-                {/* Email destination */}
-                {emailEnabled && (
-                  <div style={{ marginTop: 14 }}>
-                    <label className="db-field-label" style={{ fontSize: 12 }}>Email address</label>
-                    <input
-                      type="email" value={notifEmail} onChange={e => setNotifEmail(e.target.value)}
-                      placeholder="you@example.com" className="db-input"
-                    />
-                    <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>Can differ from your login email.</div>
-                  </div>
-                )}
-
-                {/* Shared mobile destination — for SMS and/or WhatsApp */}
-                {(smsEnabled || whatsappEnabled) && (
-                  <div style={{ marginTop: 14 }}>
-                    <label className="db-field-label" style={{ fontSize: 12 }}>Mobile number</label>
-                    <input
-                      type="tel" value={smsNumber} onChange={e => setSmsNumber(e.target.value)}
-                      placeholder={bizPhone.trim() ? `Defaults to ${bizPhone}` : '+1 (647) 555-0123'}
-                      className="db-input"
-                    />
-                    <div className="db-field-help" style={{ marginBottom: 0, marginTop: 4 }}>
-                      Used for {smsEnabled && whatsappEnabled ? 'SMS and WhatsApp' : smsEnabled ? 'SMS' : 'WhatsApp'} alerts — use a mobile/SMS-capable number.
-                      {bizPhone.trim() && ' Leave blank to use your business phone.'}
-                      {whatsappEnabled && ' WhatsApp alerts use an approved message template and require this number to be on WhatsApp.'}
-                      {!smsNumber.trim() && !bizPhone.trim() && (
-                        <span style={{ color: 'var(--db-danger-text)' }}> Add a number here or a business phone below.</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button
-                  className="db-btn db-btn--accent-ghost"
-                  onClick={saveNotifEmail}
-                  disabled={notifEmailState === 'saving' || (emailEnabled && !notifEmail.trim())}
-                >
-                  {notifEmailState === 'saving' ? 'Saving…' : 'Save'}
-                </button>
-                {notifEmailState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
-                {notifEmailState === 'error'  && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Save failed — try again</span>}
+                <NotificationPreferences
+                  tenantId={tenantId}
+                  country={notifCountry}
+                  saveLabel="Save notification settings"
+                  compact
+                />
               </div>
             </div>
             </section>
