@@ -201,6 +201,9 @@ export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
   const [showPassword, setShowPassword] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
+  /** The stage the RESUME effect dropped us on, or null if we arrived normally.
+   *  Only used to offer a way out of it — never to decide where to go. */
+  const [resumedStage, setResumedStage] = useState<Stage | null>(null)
   const [finalError, setFinalError] = useState('')
   const [declining, setDeclining] = useState(false)
   const [declineError, setDeclineError] = useState('')
@@ -489,6 +492,25 @@ export default function OnboardingPage() {
     setStage(STAGE_FOR(st.next_stage))
   }, [STAGE_FOR])
 
+  /** Leave a resumed setup and begin a fresh one.
+   *
+   *  A FULL RELOAD, not a state reset, and deliberately so. The card step's
+   *  onboarding key is captured once per mount (useState(getOnboardingKey)), so
+   *  resetting in place would carry THIS attempt's key into the next one — and
+   *  that key is what binds a Stripe Customer and claims a tenant. Reloading
+   *  past a cleared sessionStorage is the only way to guarantee the new attempt
+   *  gets its own.
+   *
+   *  It forgets a pointer in this browser and nothing else. The tenant, its
+   *  subscription and any filing in progress are untouched and still reachable
+   *  from the dashboard, which is why the copy must never say "cancel". */
+  function startNewSetup() {
+    try { localStorage.removeItem('ol_onboarding_tenant') } catch {}
+    try { sessionStorage.removeItem('ol_onboarding_key') } catch {}
+    trackEvent('onboarding_new_setup_chosen', { from_stage: stage })
+    window.location.href = '/onboarding?new=1'
+  }
+
   const syncSetupState = useCallback(async (tid: string) => {
     const res = await authedFetch(`${API}/onboarding/setup-state/${tid}`)
     if (!res.ok) return null
@@ -500,6 +522,16 @@ export default function OnboardingPage() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      // An explicit "start a new setup" outranks the pointer. Honour it before
+      // reading anything, then drop the marker from the URL so the attempt the
+      // customer is about to make can still resume on its own refresh.
+      let startingNew = false
+      try { startingNew = new URLSearchParams(window.location.search).has('new') } catch {}
+      if (startingNew) {
+        try { localStorage.removeItem('ol_onboarding_tenant') } catch {}
+        try { window.history.replaceState(null, '', '/onboarding') } catch {}
+        return
+      }
       let tid = ''
       try { tid = localStorage.getItem('ol_onboarding_tenant') || '' } catch { return }
       if (!tid) return
@@ -512,6 +544,7 @@ export default function OnboardingPage() {
         // from `setup`, which the server just gave us.
         setResult(prev => prev ?? ({ tenant_id: tid } as ProvisionResult))
         setStage(STAGE_FOR(st.next_stage))
+        setResumedStage(STAGE_FOR(st.next_stage))
         if (st.phone?.permanent) {
           try { localStorage.removeItem('ol_onboarding_tenant') } catch {}
         }
@@ -543,6 +576,27 @@ export default function OnboardingPage() {
           <LogoMark />
           <span style={{ fontSize: 14, fontWeight: 400, letterSpacing: '0.04em', color: 'var(--text)' }}>open lines</span>
         </div>
+
+        {/* A resume with no way out is a trap: every visit to /onboarding landed
+            a customer back on the stage they left, and the pointer that put them
+            there is only cleared once a permanent number exists — which for a
+            regulated country is days away. Resume stays; it just says so now,
+            and offers the door. */}
+        {resumedStage !== null && stage === resumedStage
+          && stage !== 'finalsetup' && stage !== 'done' && (
+          <div className="ob-resume">
+            <p className="ob-resume-lead">Picking up where you left off.</p>
+            <p className="ob-resume-copy">
+              You already have a setup in progress, so we&rsquo;ve brought you back to it.
+            </p>
+            <button type="button" className="ob-resume-btn" onClick={startNewSetup}>
+              Start a new setup instead
+            </button>
+            <p className="ob-resume-note">
+              Your current setup stays safe — you can finish it any time from your dashboard.
+            </p>
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
 
