@@ -2375,3 +2375,35 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   .np-card { transition: none; }
 }
+
+/* ── Password visibility toggle ────────────────────────────────────────── */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap .form-input { padding-right: 44px; width: 100%; }
+.pw-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 34px; height: 34px;
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+  color: currentColor; opacity: 0.55;
+}
+.pw-toggle:hover { opacity: 0.9; }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent, #2f5d4f); outline-offset: 1px; opacity: 1; }
+
+/* The preferences primary action. Its own class rather than the wizard's
+   btn-primary, because the component also renders inside Settings — where that
+   class does not exist, which is why it was appearing as plain text. */
+.np-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 11px 20px; border: 0; border-radius: 10px; cursor: pointer;
+  font: inherit; font-weight: 600; font-size: 0.95rem;
+  background: var(--accent, #0b2545); color: #fff;
+}
+.np-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.np-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.np-primary:focus-visible { outline: 2px solid var(--accent, #2f5d4f); outline-offset: 2px; }
+.np-defer {
+  align-self: flex-start; background: none; border: 0; padding: 6px 2px;
+  font: inherit; font-size: 0.9rem; cursor: pointer; opacity: 0.7;
+  text-decoration: underline;
+}
+.np-defer:hover { opacity: 1; }
+.np-defer:focus-visible { outline: 2px solid var(--accent, #2f5d4f); outline-offset: 2px; }

@@ -56,7 +56,7 @@ function splitE164(value: string, fallbackIso: string) {
 }
 
 export default function NotificationPreferences({
-  tenantId, country = 'CA', onSaved, saveLabel = 'Save preferences', compact = false,
+  tenantId, country = 'CA', onSaved, saveLabel = 'Save and continue \u2192', compact = false,
 }: {
   tenantId: string
   country?: string
@@ -256,7 +256,7 @@ export default function NotificationPreferences({
       )}
 
       <div className="np-actions">
-        <button type="button" className="btn-primary" disabled={!canSave} onClick={save}>
+        <button type="button" className="np-primary" disabled={!canSave} onClick={save}>
           {state === 'saving' ? 'Saving…' : saveLabel}
         </button>
         {state === 'saved' && <span className="np-ok" role="status">Saved</span>}

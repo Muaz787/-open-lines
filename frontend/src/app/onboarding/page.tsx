@@ -9,6 +9,8 @@ import { trackEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
 import { PLANS, type PlanId } from '@/lib/plans'
 import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 import NotificationPreferences from '@/components/NotificationPreferences'
+import BusinessVerification from '@/components/BusinessVerification'
+import { authedFetch } from '@/lib/api'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -175,7 +177,7 @@ interface Detection {
   website_url: string
 }
 
-type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'notifications' | 'done'
+type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'verification' | 'notifications' | 'done'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -196,6 +198,7 @@ const Check = () => (
 
 export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
+  const [showPassword, setShowPassword] = useState(false)
   // Minted once per signup attempt and reused by both the card step and the
   // provisioner. useState's initialiser runs exactly once, so a re-render cannot
   // mint a second key and quietly create a second Stripe Customer.
@@ -435,10 +438,19 @@ export default function OnboardingPage() {
         trackEvent('trial_started', { tenant_id: provisioned.tenant_id, plan })
       }
       setResult(provisioned)
-      // Ask how they want call summaries BEFORE the ready-to-test screen: the
-      // tenant exists and the owner is signed in by now, which is what the
-      // tenant-scoped preferences API requires.
-      setStage('notifications')
+      // Remember the tenant so a refresh can resume from durable server state
+      // rather than dropping the customer back at the start of the wizard.
+      try { localStorage.setItem('ol_onboarding_tenant', String(provisioned.tenant_id)) } catch {}
+      // A tenant whose country needs regulatory clearance goes to verification
+      // FIRST. Telling them "your account is ready" here was premature: they
+      // have no number and cannot get one until a regulator is satisfied.
+      // Server-authoritative -- the wizard reads the state the backend decided,
+      // it does not decide it from the country.
+      if (provisioned.onboarding_state === 'regulatory_required') {
+        setStage('verification')
+      } else {
+        setStage('notifications')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       // Back to the card step. It re-runs setup-card on mount, so the retry gets a
@@ -446,6 +458,37 @@ export default function OnboardingPage() {
       setStage('payment')
     }
   }
+
+
+  // ── RESUME FROM DURABLE SERVER STATE ───────────────────────────────────
+  // Onboarding now spans account creation, payment, and a regulatory review
+  // that takes days. A refresh must not drop the customer back at "paste your
+  // website". localStorage only carries the tenant ID -- a pointer, never a
+  // decision; the SERVER says which stage that tenant belongs in.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      let tid = ''
+      try { tid = localStorage.getItem('ol_onboarding_tenant') || '' } catch { return }
+      if (!tid) return
+      try {
+        const { data } = await supabase.auth.getSession()
+        if (!data?.session) return            // not signed in: nothing to resume
+        const res = await authedFetch(`${API}/onboarding/status/${tid}`)
+        if (!res.ok) return
+        const t = await res.json()
+        if (cancelled) return
+        setResult((prev: ProvisionResult | null) => prev ?? { tenant_id: tid, ...t })
+        if (t.onboarding_state === 'regulatory_required') {
+          setStage('verification')
+        } else if (t.onboarding_state === 'active') {
+          try { localStorage.removeItem('ol_onboarding_tenant') } catch {}
+        }
+      } catch { /* resume is best-effort; the wizard still works from the top */ }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const provisionTotal = files.length > 0 ? PROVISION_STEPS.length : PROVISION_STEPS.length - 1
   const provisionPct = stage === 'provisioning' ? ((stepIndex + 1) / provisionTotal) * 100 : 0
@@ -856,7 +899,10 @@ export default function OnboardingPage() {
                   ['Industry', INDUSTRY_LABEL[form.industry] || form.industry],
                   ['Website', form.website_url || '—'],
                   ['AI receptionist', form.agent_name || 'Alex'],
-                  ['Call summaries', form.email ? `Emailed to ${form.email}` : 'Emailed to you'],
+                  // NOT "Emailed to <address>": nothing is chosen yet. The
+                  // customer picks their channels later, and the account email
+                  // is only offered there as a suggestion.
+                  ['Call summaries', 'Choose during setup'],
                   ['Detected services', detected?.services?.length ? `${detected.services.length} found` : '—'],
                   ['Knowledge base', (detected?.knowledge_chars || files.length) ? 'Ready' : 'Will use defaults'],
                 ].map(([k, v], idx, arr) => (
@@ -880,14 +926,40 @@ export default function OnboardingPage() {
                   <input className="form-input" name="email" type="email" value={form.email}
                     onChange={handleChange} placeholder="you@business.com" required autoFocus />
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 5 }}>
-                    Your dashboard login — we&rsquo;ll also email your call summaries here.
+                    Your dashboard login email.
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Create a Password *</label>
-                  <input className="form-input" name="password" type="password" value={form.password}
-                    onChange={handleChange} placeholder="Min. 8 characters" required minLength={8} />
+                  <label className="form-label" htmlFor="ol-password">Create a Password *</label>
+                  <div className="pw-wrap">
+                    <input className="form-input" id="ol-password" name="password"
+                      type={showPassword ? 'text' : 'password'} value={form.password}
+                      onChange={handleChange} placeholder="Min. 8 characters"
+                      required minLength={8} autoComplete="new-password" />
+                    {/* type="button" so it never submits the form. The VALUE is
+                        untouched -- only the input's type changes. */}
+                    <button type="button" className="pw-toggle"
+                      onClick={() => setShowPassword(v => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}>
+                      {showPassword ? (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                          <path d="M3 3l18 18" />
+                          <path d="M10.6 10.6a2 2 0 002.8 2.8" />
+                          <path d="M9.4 5.2A9.7 9.7 0 0112 5c5 0 9 4.5 9 7a11 11 0 01-2.6 3.5" />
+                          <path d="M6.2 6.7C3.9 8.2 3 10.4 3 12c0 2.5 4 7 9 7a9.6 9.6 0 003.7-.7" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                          <path d="M3 12s3.6-7 9-7 9 7 9 7-3.6 7-9 7-9-7-9-7z" />
+                          <circle cx="12" cy="12" r="2.6" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Trust row. No longer claims "no credit card" — a card IS collected
@@ -1079,6 +1151,24 @@ export default function OnboardingPage() {
               form itself arrives in W9I-C; nothing about the requirements is
               hardcoded here, because Twilio's Regulation API is the only source of
               truth for what Ireland asks. */}
+          {stage === 'verification' && result && (
+            <motion.div key="verification" className="np-step"
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}>
+              <h2 className="np-title">Verify your business</h2>
+              <p className="np-sub">
+                Irish phone numbers require a short business verification before
+                they can be activated. We submit these details securely to our
+                telecoms provider.
+              </p>
+              <BusinessVerification
+                tenantId={String(result.tenant_id)}
+                embedded
+                onReady={() => setStage('notifications')}
+              />
+            </motion.div>
+          )}
+
           {stage === 'notifications' && result && (
             <motion.div key="notifications" className="np-step"
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -1086,10 +1176,16 @@ export default function OnboardingPage() {
               <NotificationPreferences
                 tenantId={String(result.tenant_id)}
                 country={form.country}
-                saveLabel="Save and continue"
+                saveLabel="Save and continue →"
                 onSaved={() => setStage('done')}
               />
-              <button type="button" className="btn-ghost np-skip"
+              {/* SECONDARY, and genuinely deferred. It saves nothing, so it
+                  cannot enable Email, cannot stamp notification_prefs_set_at,
+                  and cannot be mistaken later for a choice the customer made.
+                  They stay LEGACY until they answer -- on this screen or in
+                  Settings -- which is exactly what the explicit-preference
+                  model means by "never asked". */}
+              <button type="button" className="np-defer"
                       onClick={() => setStage('done')}>
                 I&apos;ll decide later
               </button>
