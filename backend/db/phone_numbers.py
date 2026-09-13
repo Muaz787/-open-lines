@@ -172,3 +172,84 @@ async def get_by_id(number_id: str) -> dict | None:
     res = (get_client().table("tenant_phone_numbers").select("*")
            .eq("id", number_id).limit(1).execute())
     return (res.data or [None])[0]
+
+
+# ── activation-notification state (migration 032, W9I-G) ───────────────────
+#
+# Scoped to the PHONE ROW, not the tenant. A tenant can replace a +353, and a
+# tenant-global flag would suppress the activation email for the replacement --
+# the customer would get a new number and never be told.
+
+async def claim_activation_email(number_id: str) -> list[dict]:
+    """Take responsibility for sending this activation's email. Fenced.
+
+    Matches only a row nobody has claimed, so exactly one concurrent worker gets
+    a row back. Returns the rows it changed: one for the winner, none for
+    everybody else.
+    """
+    return ((get_client().table("tenant_phone_numbers")
+             .update({"activation_email_claimed_at": _now_iso(),
+                      "updated_at": _now_iso()})
+             .eq("id", number_id)
+             .is_("activation_email_claimed_at", "null")
+             .execute().data) or [])
+
+
+async def confirm_activation_email(number_id: str, provider_id: str = "") -> list[dict]:
+    """Record that the provider accepted the email.
+
+    Fenced on the claim still being present and the send not already recorded,
+    so a stale worker cannot overwrite a completed notification -- and migration
+    032's CHECK refuses a send with no claim even if this fence were removed.
+    """
+    patch = {"activation_email_sent_at": _now_iso(), "updated_at": _now_iso()}
+    if provider_id:
+        patch["activation_email_provider_id"] = provider_id[:255]
+    return ((get_client().table("tenant_phone_numbers").update(patch)
+             .eq("id", number_id)
+             .not_.is_("activation_email_claimed_at", "null")
+             .is_("activation_email_sent_at", "null")
+             .execute().data) or [])
+
+
+async def release_activation_email_claim(number_id: str) -> list[dict]:
+    """Hand a claim back after a send that definitely did NOT happen.
+
+    Only for outcomes that prove nothing was delivered -- a refusal before the
+    request went out. NEVER for a timeout: there, the send may have landed, and
+    releasing the claim would let another worker send again outside the
+    provider's deduplication. Fenced on the send not being recorded, which 032's
+    CHECK also enforces.
+    """
+    return ((get_client().table("tenant_phone_numbers")
+             .update({"activation_email_claimed_at": None,
+                      "updated_at": _now_iso()})
+             .eq("id", number_id)
+             .is_("activation_email_sent_at", "null")
+             .execute().data) or [])
+
+
+async def promote_permanent_cas(*, number_id: str, tenant_id: str, e164: str,
+                                provider_sid: str, provider_account_sid: str) -> list[dict]:
+    """provisioning -> active for ONE permanent number. Fenced on its identity.
+
+    Every field is in the WHERE clause, not just the row id, for the reason
+    W9I-B.1 established: a worker that stalled before promoting and woke after
+    the row was replaced would otherwise promote the replacement on the strength
+    of a decision made about a different number.
+
+    `expected prior status = provisioning` is part of the fence, so a second
+    worker cannot re-promote an already-active row and restamp its activation.
+    """
+    return ((get_client().table("tenant_phone_numbers")
+             .update({"status": lifecycle.STATUS_ACTIVE,
+                      "activated_at": _now_iso(),
+                      "activated_at_source": "promotion",
+                      "updated_at": _now_iso()})
+             .eq("id", number_id)
+             .eq("tenant_id", tenant_id)
+             .eq("e164", e164)
+             .eq("provider_sid", provider_sid)
+             .eq("provider_account_sid", provider_account_sid)
+             .eq("status", lifecycle.STATUS_PROVISIONING)
+             .execute().data) or [])
