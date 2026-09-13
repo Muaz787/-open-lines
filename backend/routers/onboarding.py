@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 
 from db import supabase as db
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
+from services import country_access
 from services import ireland_pilot
 from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
@@ -274,6 +275,33 @@ async def provision(request: Request, body: ProvisionRequest):
     validate_business_instructions(body.extra_instructions, field="extra instructions")
     validate_business_instructions(body.business_description, field="business description")
 
+    # ── COUNTRY ACCESS, BEFORE ANYTHING IS ASKED OF THE CUSTOMER ──────────
+    # Availability is knowable from the country and the onboarding key alone, so
+    # it is decided first. Live proof in W9I-H.0 found the card requirement being
+    # enforced ahead of it: a business in a country we do not serve was told to
+    # enter payment details and only then learned we could not sell to them, and
+    # an authorized Irish pilot had to complete card setup before their grant was
+    # even consulted.
+    #
+    # Deciding here changes ONLY the order. Every requirement below still applies
+    # in full -- Ireland does not become cardless by being refused earlier -- and
+    # nothing is consumed by asking: the pilot grant is spent later, once a
+    # durable tenant exists, so a customer who abandons at the card step has not
+    # burned their invitation on a question.
+    access = await country_access.decide(
+        iso_country=body.country, onboarding_key=body.onboarding_key)
+    if access["access"] != country_access.ALLOWED:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "country_onboarding_not_open",
+                    "country": body.country,
+                    "message": "We are not yet accepting online signups for this "
+                               "country. Please contact us and we will set your "
+                               "account up directly."})
+    pilot_grant = access["pilot_grant"]
+    if pilot_grant:
+        logger.warning("Ireland pilot signup authorized (%s)", access["reason"])
+
     # Resolve the card BEFORE provisioning. Everything below buys a real phone
     # number and creates a Vapi assistant, so a bad payment session must fail here
     # rather than after we have spent money on the tenant.
@@ -301,36 +329,6 @@ async def provision(request: Request, body: ProvisionRequest):
     # tenant or a sub-account exists, with a controlled message -- not the raw
     # "Phone Number Requires an Address but AddressSid was empty" a customer
     # gets today.
-    pilot_grant = False
-    if (lifecycle_ob.needs_regulatory_clearance(body.country)
-            and not lifecycle_ob.ireland_onboarding_enabled()):
-        # ── ONE OPERATOR-AUTHORIZED SIGNUP MAY CROSS (W9I-H.0) ────────────
-        # Scoped to this exact onboarding_key, which the request model has
-        # already validated as a uuid4. Nothing else in the request influences
-        # the decision -- no header, no body flag -- so a spoofing attempt gets
-        # the identical response below, which is also what a real customer of a
-        # closed country sees. The grant opens THIS gate and nothing further:
-        # regulatory filing, number purchase, billing and public launch each have
-        # their own, and none of them reads it.
-        verdict = await ireland_pilot.decide(
-            onboarding_key=body.onboarding_key, iso_country=body.country)
-        if verdict["outcome"] == ireland_pilot.INTEGRITY:
-            # A grant whose key resolves to a tenant it never produced. Never
-            # repaired automatically, and never explained to the caller.
-            logger.error("Ireland pilot grant integrity failure: %s",
-                         verdict.get("reason"))
-        pilot_grant = verdict["outcome"] in (ireland_pilot.ALLOW_CREATE,
-                                             ireland_pilot.ALLOW_RESUME)
-        if not pilot_grant:
-            raise HTTPException(
-                status_code=503,
-                detail={"status": "country_onboarding_not_open",
-                        "country": body.country,
-                        "message": "We are not yet accepting online signups for this "
-                                   "country. Please contact us and we will set your "
-                                   "account up directly."})
-        logger.warning("Ireland pilot signup authorized (%s)", verdict["outcome"])
-
     _started = time.monotonic()
     try:
         provision_data = body.model_dump(exclude={
