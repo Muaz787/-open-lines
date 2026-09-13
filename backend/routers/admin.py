@@ -751,7 +751,23 @@ async def system_health(x_admin_key: str | None = Header(None)):
     ]:
         checks.append({"name": n, "status": s, "message": m})
 
-    return {"checks": checks, "generated_at": datetime.now(timezone.utc).isoformat()}
+    # ── EFFECTIVE IRELAND POLICY, OBSERVED (W9I-H.AUTO.2R.1) ─────────────
+    # Telemetry, never authority: every value comes from the same function the
+    # real decision calls, and nothing reads it back to decide anything. An
+    # explicit five-field allowlist rather than a filtered environment dump --
+    # a dump is one careless addition away from printing a provider credential
+    # onto this page. Behind the existing admin key, like the rest of it.
+    ireland_policy = None
+    try:
+        from services import ireland_policy as _pol
+        ireland_policy = _pol.snapshot()
+    except Exception as e:
+        # Health must still render. A page that cannot say what the flags are
+        # is worth strictly more than no page at all.
+        logger.error("ireland policy snapshot unavailable: %s", type(e).__name__)
+
+    return {"checks": checks, "generated_at": datetime.now(timezone.utc).isoformat(),
+            "ireland_policy": ireland_policy}
 
 
 # ---------------------------------------------------------------------------
