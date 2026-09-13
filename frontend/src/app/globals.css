@@ -2500,7 +2500,9 @@ footer {
 .bv-h { font-size: 16px; font-weight: 700; line-height: 1.35; margin: 0; color: var(--bv-ink); text-wrap: balance; }
 .bv-lede { font-size: 13px; line-height: 1.55; margin: -8px 0 0; color: var(--bv-ink-2); }
 .bv-prose { font-size: 14px; line-height: 1.6; margin: 0; color: var(--bv-ink-2); }
-.bv-note { font-size: 12px; line-height: 1.5; margin: 0; color: var(--bv-faint); }
+.bv-note { font-size: 12px; line-height: 1.5; margin: 0; color: var(--bv-ink-2); }
+/* Not --bv-faint: on the wizard's ground that resolves to --text-3, which
+   renders this reassurance at roughly 2.3:1 — too light to read. */
 
 /* ── Fields ──
    Label, control, then help beneath in a visibly quieter colour. The help text
@@ -2593,3 +2595,24 @@ footer {
   .bv-actions { flex-direction: column-reverse; align-items: stretch; }
   .bv-btn { width: 100%; }
 }
+
+/* ── Resumed-setup notice (onboarding wizard) ─────────────────────────────
+   Shown only on the stage the resume effect dropped the customer on, and only
+   until they engage with it. Quiet by design: this is orientation, not an
+   error — the resume is correct behaviour, it simply used to be silent and
+   inescapable. */
+.ob-resume {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  padding: 13px 15px; margin-bottom: 22px; border-radius: 12px;
+  background: var(--bg-3, #f2f2f2); border: 1px solid var(--border-2, rgba(0,31,63,0.13));
+}
+.ob-resume-lead { font-size: 13.5px; font-weight: 650; color: var(--text); margin: 0; }
+.ob-resume-copy { font-size: 13px; line-height: 1.5; color: var(--text-2); margin: 0; }
+.ob-resume-btn {
+  margin-top: 5px; padding: 0; border: 0; background: none; font: inherit;
+  font-size: 13px; font-weight: 600; color: var(--accent-text, #15803d);
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.ob-resume-btn:hover { opacity: 0.8; }
+.ob-resume-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.ob-resume-note { font-size: 12px; line-height: 1.45; color: var(--text-2); margin: 2px 0 0; }
