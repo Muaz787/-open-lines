@@ -51,11 +51,16 @@ def _require_admin(x_admin_key: str | None) -> None:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
-def _calls_allowed(tenant: dict) -> bool:
-    """True if the tenant may take live AI calls: an active subscription, OR an
-    active free trial (within 7 days AND under the 30-minute trial cap)."""
-    from services import trial
-    return trial.trial_status(tenant)["line_active"]
+async def _calls_allowed(tenant: dict, called_number: str = "") -> bool:
+    """True if the tenant may take live AI calls.
+
+    Delegates to ireland_lifecycle.inbound_call_allowed, which picks the right
+    policy from the CANONICAL PHONE PURPOSE: a temporary test line is governed
+    by the temporary-access allowance, a permanent line by the existing
+    subscription/trial gate. Neither policy lives here.
+    """
+    from services import ireland_lifecycle
+    return await ireland_lifecycle.inbound_call_allowed(tenant, called_number)
 
 
 def _gated_assistant_response(assistant_id: str) -> dict:
@@ -176,7 +181,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # "line not active" message and hang up instead of engaging the receptionist.
     from services import trial as _trial
     _ts = _trial.trial_status(tenant)
-    if not _ts["line_active"]:
+    if not await _calls_allowed(tenant, called_number):
         logger.info(
             "assistant-request: tenant %s GATED reason=%s (status=%s, created=%s, trial_min_used=%s) — playing inactive message",
             tenant_id, _trial.blocked_reason(tenant), tenant.get("subscription_status"),
