@@ -114,8 +114,40 @@ def test_resume_requires_a_session():
 
 
 def test_a_completed_tenant_stops_being_resumed():
-    i = ONB.index("removeItem('ol_onboarding_tenant')")
+    """Resume ends on exactly one condition: a live permanent number.
+
+    Anchored on the clear that follows the resume path's own READ, not on the
+    first textual match. Two other sites now clear the same key -- an explicit
+    ?new=1 and the "start a new setup" button -- and both sit earlier in the
+    file, so a bare index() finds one of those and asserts nothing about resume.
+    """
+    start = ONB.index("getItem('ol_onboarding_tenant')")
+    i = ONB.index("removeItem('ol_onboarding_tenant')", start)
     assert "phone?.permanent" in ONB[i - 200:i], "only a live permanent number ends resume"
+
+
+def test_a_resumed_setup_offers_a_way_out():
+    """A resume with no exit is a trap.
+
+    The pointer clears only once a permanent number exists, which for a
+    regulated tenant is days away — so every visit to /onboarding, including
+    both "Build your own agent" CTAs, silently returned the customer to the
+    stage they left, through hard refreshes and all. Resume is right; being
+    silent and inescapable was not.
+    """
+    assert "resumedStage" in ONB, "the wizard must know it resumed, to be able to say so"
+    assert "startNewSetup" in ONB, "and must offer a way out of the stage it resumed into"
+
+
+def test_starting_fresh_reloads_rather_than_resetting_in_place():
+    """The card step's onboarding key is captured once per mount, and that key
+    binds a Stripe Customer and claims a tenant. Resetting state in place would
+    carry this attempt's key into the next one and mint a duplicate; only a
+    reload past a cleared sessionStorage guarantees a fresh one."""
+    i = ONB.index("function startNewSetup")
+    body = ONB[i:i + 800]
+    assert "removeItem('ol_onboarding_key')" in body, "a new attempt needs its own key"
+    assert "location.href" in body, "must reload, not reset in place"
 
 
 def test_the_status_endpoint_is_tenant_authenticated():
