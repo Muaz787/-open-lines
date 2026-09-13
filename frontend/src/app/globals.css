@@ -2616,3 +2616,14 @@ footer {
 .ob-resume-btn:hover { opacity: 0.8; }
 .ob-resume-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 .ob-resume-note { font-size: 12px; line-height: 1.45; color: var(--text-2); margin: 2px 0 0; }
+
+/* ── Booking-system connect, inside onboarding ────────────────────────────
+   Built on the np-card primitives so the step matches the notification step
+   beside it; only the parts specific to connecting live here. */
+/* One column, not auto-fit: the step sits in the wizard's 480px card, where
+   three providers lay out two-up and leave the third alone in its own row with
+   its name wrapped across two lines. Full width fits every name on one. */
+.cc-cards { grid-template-columns: 1fr; }
+.cc-card { padding: 14px 16px; gap: 4px; }
+.cc-card:disabled { opacity: 0.55; cursor: progress; }
+.cc-note { font-size: 0.78rem; line-height: 1.4; color: var(--text-2); opacity: 0.9; }

@@ -12,6 +12,7 @@ import NotificationPreferences from '@/components/NotificationPreferences'
 import BusinessVerification from '@/components/BusinessVerification'
 import { authedFetch } from '@/lib/api'
 import FinalSetup, { type SetupState } from '@/components/FinalSetup'
+import CalendarConnect from '@/components/CalendarConnect'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -1282,20 +1283,20 @@ export default function OnboardingPage() {
                 straight into the calendar you already use. You can do this later
                 if you&apos;d rather.
               </p>
-              {setup?.integration_connected ? (
-                <p className="np-ok" role="status">✓ Connected</p>
-              ) : null}
+              {/* Authorisation happens in a popup so the wizard survives it. The
+                  link this replaced sent the customer to the dashboard, where the
+                  provider's redirect landed them -- ending onboarding at the step
+                  whose whole job is to show what the receptionist can do. */}
+              <CalendarConnect
+                tenantId={String(result.tenant_id)}
+                connected={Boolean(setup?.integration_connected)}
+                onConnected={() => {
+                  trackEvent('calendar_connected',
+                    { location: 'onboarding_calendar', tenant_id: result.tenant_id })
+                  void advance(String(result.tenant_id), 'notifications')
+                }}
+              />
               <div className="np-actions">
-                {/* The integrations page owns every provider and its OAuth. This
-                    links to it rather than growing a second connect flow; the
-                    customer returns here and resume puts them on the right step. */}
-                <Link href={`/dashboard/${result.tenant_id}/calendar`}
-                      onClick={() => trackEvent('calendar_connect_started',
-                        { location: 'onboarding_calendar', tenant_id: result.tenant_id })}>
-                  <button type="button" className="np-primary">
-                    Connect a booking system →
-                  </button>
-                </Link>
                 <button type="button" className="np-defer" disabled={declining}
                         onClick={async () => {
                           if (!result) return
