@@ -9,6 +9,7 @@ import { LoadingState, EmptyState } from '../components/PageStates'
 import SquareAppointmentsCard from './SquareAppointmentsCard'
 
 import { authedFetch } from '@/lib/api'
+import { CALENDAR_PROVIDERS } from '@/lib/calendarProviders'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CalendarStatus {
@@ -131,6 +132,15 @@ function CalendarPage() {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [tenantId])
+
+  /** The route for a provider, from the one list both surfaces read. A second
+   *  hardcoded path here is a connect button that stops working the day a route
+   *  moves -- silently, because nothing renders differently until it is clicked. */
+  const connectPath = (id: 'google' | 'microsoft', tid: string) => {
+    const p = CALENDAR_PROVIDERS.find(x => x.id === id)
+    if (!p || p.start.kind !== 'url') throw new Error(`no url start for ${id}`)
+    return p.start.path(tid)
+  }
 
   // Owner-authenticated connect: mint the OAuth URL via authedFetch, then redirect.
   const startConnect = async (path: string, provider: string) => {
@@ -328,7 +338,7 @@ function CalendarPage() {
                   type="button"
                   className="db-btn db-btn--dark"
                   style={{ fontSize: 12 }}
-                  onClick={() => startConnect(`/calendar/connect/${tenantId}`, 'google')}
+                  onClick={() => startConnect(connectPath('google', tenantId), 'google')}
                 >
                   Connect
                 </button>
@@ -371,7 +381,7 @@ function CalendarPage() {
                   type="button"
                   className="db-btn db-btn--dark"
                   style={{ fontSize: 12 }}
-                  onClick={() => startConnect(`/calendar/microsoft/connect?tenant_id=${tenantId}`, 'microsoft')}
+                  onClick={() => startConnect(connectPath('microsoft', tenantId), 'microsoft')}
                 >
                   Connect
                 </button>
