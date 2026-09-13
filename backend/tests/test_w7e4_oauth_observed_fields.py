@@ -283,7 +283,10 @@ async def test_I2_merchant_absent_preserves_merchant_AND_obeys_the_other_rules()
 async def test_I3_a_conflicting_merchant_writes_NOTHING():
     got, redirect = await run(stored=CONNECTED, token={"merchant_id": OTHER}, want_redirect=True)
     assert got == {}, f"a refused reconnect still wrote {sorted(got)}"
-    assert "square=error" in redirect
+    # Gate C.1 moved every OAuth exit onto the completion page, so the error
+    # is carried as status=error rather than square=error. The property under
+    # test is unchanged: this refusal redirects as an error and persists nothing.
+    assert "status=error" in redirect
 
 
 @pytest.mark.asyncio
@@ -291,7 +294,10 @@ async def test_I4_first_connect_with_no_merchant_identity_writes_NOTHING():
     got, redirect = await run(stored={}, token={"merchant_id": ""}, info_raises=True,
                               want_redirect=True)
     assert got == {}
-    assert "square=error" in redirect
+    # Gate C.1 moved every OAuth exit onto the completion page, so the error
+    # is carried as status=error rather than square=error. The property under
+    # test is unchanged: this refusal redirects as an error and persists nothing.
+    assert "status=error" in redirect
 
 
 @pytest.mark.asyncio

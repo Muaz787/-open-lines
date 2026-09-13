@@ -13,7 +13,7 @@ from services.calendar import CalendarTokenExpiredError
 from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 import httpx
-from services import analytics, vapi, oauth_state
+from services import analytics, vapi, oauth_state, oauth_return
 from services.oauth_state import OAuthStateError
 from db import supabase as db
 
@@ -57,13 +57,18 @@ class CalendarSettingsRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/connect/{tenant_id}")
-async def calendar_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+async def calendar_connect(tenant_id: str, origin: str = oauth_return.DEFAULT_ORIGIN,
+                           authorization: Annotated[str | None, Header()] = None):
     # Owner-only: only the verified tenant owner may mint an OAuth state and start
     # a connection. Returns the URL as JSON; the frontend redirects to it.
+    #
+    # `origin` says which of OUR pages this began on, so the round trip can end
+    # there instead of always on the dashboard. It is normalised to a closed set
+    # and can never express a URL; see services/oauth_return.
     await verify_tenant_owner(tenant_id, authorization)
     try:
-        state = await oauth_state.issue_state(tenant_id, "google_calendar")
-        url = cal_svc.build_oauth_url(state=state)
+        nonce = await oauth_state.issue_state(tenant_id, "google_calendar")
+        url = cal_svc.build_oauth_url(state=oauth_return.encode_state(nonce, origin))
     except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"url": url}
@@ -75,53 +80,61 @@ async def calendar_connect(tenant_id: str, authorization: Annotated[str | None, 
 
 @router.get("/callback")
 async def calendar_callback(code: str | None = None, state: str | None = None, error: str | None = None):
-    # Validate the state nonce first — it yields the tenant_id. Never trust raw input.
+    # Validate the state nonce first — it yields the tenant_id. Never trust raw
+    # input: the context travels beside the nonce, but the IDENTITY comes only
+    # from the nonce the store validates.
+    nonce, origin = oauth_return.decode_state(state)
     try:
-        tenant_id = await oauth_state.consume_state(state, "google_calendar")
+        tenant_id = await oauth_state.consume_state(nonce, "google_calendar")
     except OAuthStateError as e:
         logger.warning("Google OAuth state rejected: %s", e)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=error")
+        # No validated tenant, so no tenant page can be addressed.
+        return RedirectResponse(oauth_return.completion_url(
+            FRONTEND_URL, origin=origin, tenant_id="", provider="google", status="error"))
 
-    cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
+    def _done(status: str) -> RedirectResponse:
+        return RedirectResponse(oauth_return.completion_url(
+            FRONTEND_URL, origin=origin, tenant_id=tenant_id,
+            provider="google", status=status))
 
     if error or not code:
         logger.warning("Google OAuth error for tenant %s: %s", tenant_id, error)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     # Exchange code for tokens
     try:
         tokens = await cal_svc.exchange_code(code)
     except Exception as e:
         logger.error("Token exchange failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         logger.error("No refresh_token in Google response for tenant %s", tenant_id)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     # Validate the token works before storing — catches bad tokens from Testing-mode
     # expiry edge cases or misconfigured OAuth apps before they silently break calls.
     token_ok = await cal_svc.verify_token(refresh_token)
     if not token_ok:
         logger.error("Token verification failed immediately after exchange for tenant %s — rejecting", tenant_id)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
         logger.error("Tenant lookup failed for %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     if not tenant:
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     # Store refresh token
     try:
         await db.update_tenant(tenant_id, {"google_refresh_token": refresh_token})
     except Exception as e:
         logger.error("Failed to store Google refresh token for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=error")
+        return _done("error")
 
     # Re-fetch tenant so patch_assistant_tools sees the new refresh token
     try:
@@ -142,7 +155,7 @@ async def calendar_callback(code: str | None = None, state: str | None = None, e
         "calendar_connected",
         {"tenant_id": tenant_id},
     )
-    return RedirectResponse(f"{cal_page}?calendar=connected")
+    return _done("connected")
 
 
 # ---------------------------------------------------------------------------
@@ -311,11 +324,12 @@ async def get_appointments(tenant_id: str, authorization: Annotated[str | None, 
 # ---------------------------------------------------------------------------
 
 @router.get("/microsoft/connect")
-async def microsoft_connect(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
+async def microsoft_connect(tenant_id: str, origin: str = oauth_return.DEFAULT_ORIGIN,
+                            authorization: Annotated[str | None, Header()] = None):
     await verify_tenant_owner(tenant_id, authorization)
     try:
-        state = await oauth_state.issue_state(tenant_id, "microsoft_calendar")
-        url = ms_cal_svc.build_oauth_url(state=state)
+        nonce = await oauth_state.issue_state(tenant_id, "microsoft_calendar")
+        url = ms_cal_svc.build_oauth_url(state=oauth_return.encode_state(nonce, origin))
     except (RuntimeError, OAuthStateError) as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"url": url}
@@ -327,42 +341,47 @@ async def microsoft_connect(tenant_id: str, authorization: Annotated[str | None,
 
 @router.get("/microsoft/callback")
 async def microsoft_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    nonce, origin = oauth_return.decode_state(state)
     try:
-        tenant_id = await oauth_state.consume_state(state, "microsoft_calendar")
+        tenant_id = await oauth_state.consume_state(nonce, "microsoft_calendar")
     except OAuthStateError as e:
         logger.warning("Microsoft OAuth state rejected: %s", e)
-        return RedirectResponse(f"{FRONTEND_URL}/dashboard?calendar=ms_error")
+        return RedirectResponse(oauth_return.completion_url(
+            FRONTEND_URL, origin=origin, tenant_id="", provider="microsoft", status="error"))
 
-    cal_page = f"{FRONTEND_URL}/dashboard/{tenant_id}/calendar"
+    def _done(status: str) -> RedirectResponse:
+        return RedirectResponse(oauth_return.completion_url(
+            FRONTEND_URL, origin=origin, tenant_id=tenant_id,
+            provider="microsoft", status=status))
 
     if error or not code:
         logger.warning("Microsoft OAuth error for tenant %s: %s", tenant_id, error)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     try:
         tokens = await ms_cal_svc.exchange_code(code)
     except Exception as e:
         logger.error("Microsoft token exchange failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
         logger.error("No refresh_token in Microsoft response for tenant %s", tenant_id)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     token_ok = await ms_cal_svc.verify_token(refresh_token)
     if not token_ok:
         logger.error("Microsoft token verification failed immediately after exchange for tenant %s", tenant_id)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception as e:
         logger.error("Tenant lookup failed for %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     if not tenant:
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     # Fetch the user's email to display in the dashboard
     ms_user_email = await ms_cal_svc.get_user_email(refresh_token)
@@ -374,7 +393,7 @@ async def microsoft_callback(code: str | None = None, state: str | None = None, 
         })
     except Exception as e:
         logger.error("Failed to store Microsoft refresh token for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(f"{cal_page}?calendar=ms_error")
+        return _done("error")
 
     # Only patch Vapi assistant if Google Calendar is NOT already connected —
     # Google takes priority, so if Google is connected the tools are already set.
@@ -407,7 +426,7 @@ async def microsoft_callback(code: str | None = None, state: str | None = None, 
         "calendar_connected",
         {"tenant_id": tenant_id, "provider": "microsoft"},
     )
-    return RedirectResponse(f"{cal_page}?calendar=ms_connected")
+    return _done("connected")
 
 
 # ---------------------------------------------------------------------------

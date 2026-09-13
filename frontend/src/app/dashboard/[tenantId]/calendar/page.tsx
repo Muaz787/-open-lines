@@ -139,7 +139,7 @@ function CalendarPage() {
   const connectPath = (id: 'google' | 'microsoft', tid: string) => {
     const p = CALENDAR_PROVIDERS.find(x => x.id === id)
     if (!p) throw new Error(`unknown provider ${id}`)
-    return p.start.path(tid)
+    return p.start.path(tid, 'calendar')
   }
 
   // Owner-authenticated connect: mint the OAuth URL via authedFetch, then redirect.

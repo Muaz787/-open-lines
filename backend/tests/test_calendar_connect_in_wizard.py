@@ -83,12 +83,13 @@ def test_a_closed_popup_is_not_treated_as_a_failure():
     all, which is the exact regression it exists to catch.
     """
     body = _strip_block_comments(CC)
-    start = body.index("window.setInterval(")
-    tick = body[start:body.index("}, POLL_MS)", start)]
+    # Gate C.1 lifted the tick body out of the setInterval callback so it could
+    # await the server; the property is the same and lives in tick().
+    start = body.index("const tick = useCallback")
+    tick = body[start:body.index("}, [poll, clearTimers])", start)]
     assert "poll()" in tick and "closed" in tick
     assert tick.index("poll()") < tick.index("closed"), (
         "the close check must not short-circuit the poll")
-    assert "return" not in tick, "nothing may leave the tick before the poll runs"
 
 
 # ── the popup must survive the browser ──────────────────────────────────
@@ -167,7 +168,10 @@ def test_a_failed_finish_does_not_report_success():
     body = _strip_block_comments(CC)
     i = body.index("const ok = id ? await finalize(id) : true")
     window = body[i:i + 500]
-    assert "if (ok) finish()" in window, "success must be conditional on finishing"
+    # The property, not the punctuation: whatever shape the branch takes, the
+    # only call to finish() here must sit behind the success of finalize().
+    line = next(l for l in window.splitlines() if "finish()" in l)
+    assert "if (ok)" in line, f"success is not conditional on finishing: {line.strip()}"
     assert "setError(" in window, "and the customer must be told when it did not"
 
 

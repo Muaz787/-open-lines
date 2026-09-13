@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
 from services import square_service as sq_svc, square_booking, vapi
+from services import oauth_return
 from services import entitlements
 from services import location_sync
 from services.security import encrypt, verify_tenant_owner
@@ -20,15 +21,18 @@ router = APIRouter(prefix="/square-connect", tags=["square-connect"])
 _FRONTEND = sq_svc.FRONTEND_URL
 
 
-def _payments_page(tenant_id: str) -> str:
-    return f"{_FRONTEND}/dashboard/{tenant_id}/payments"
+def _dest(tenant_id: str, origin: str, status: str) -> str:
+    """The lightweight completion page, which decides between closing itself and
+    continuing to the page this round trip began on.
 
-
-def _dest_page(tenant_id: str, origin: str = "payments") -> str:
-    """Return the page the user should land back on after OAuth — the one they
-    started from (calendar for Square Appointments, else Deposit Collection)."""
-    page = "calendar" if origin == "calendar" else "payments"
-    return f"{_FRONTEND}/dashboard/{tenant_id}/{page}"
+    Square already carried an origin through its OAuth state and mapped it to a
+    page here. The mapping moved to services/oauth_return so Google and
+    Microsoft use the same one rather than a second and third scheme; the
+    vocabulary simply gained `onboarding`.
+    """
+    return oauth_return.completion_url(_FRONTEND, origin=origin,
+                                       tenant_id=tenant_id, provider="square",
+                                       status=status)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +61,7 @@ async def onboard(
     if not entitlements.entitled_plan(tenant):
         raise HTTPException(status_code=403, detail="Square requires a Pro or Business plan")
 
-    origin = "calendar" if origin == "calendar" else "payments"
+    origin = oauth_return.normalize(origin)
     state = secrets.token_urlsafe(24)
     try:
         await db.update_tenant(tenant_id, {"square_oauth_state": state})
@@ -105,41 +109,41 @@ def _observed_expiry(value) -> str | None:
 @router.get("/callback")
 async def callback(request: Request, code: str = "", error: str = "", state: str = ""):
     """Square OAuth callback — exchanges code for tokens and stores them."""
-    tenant_id = state.split(":")[0] if ":" in state else ""
-    fallback  = _payments_page(tenant_id) if tenant_id else f"{_FRONTEND}/"
+    # Every exit goes through the completion page, INCLUDING the ones taken
+    # before the state has been validated. A popup that lands on a real page --
+    # even the marketing root -- renders it, which is the flash this gate exists
+    # to remove; and the customer who denied at Square deserves the same quiet
+    # close as the one who accepted.
+    parts = state.split(":", 2)
+    tenant_id = parts[0] if len(parts) >= 2 else ""
+    origin = oauth_return.normalize(parts[2] if len(parts) > 2 else None)
 
     if error:
         logger.warning("Square OAuth error: %s", error)
-        return RedirectResponse(url=f"{fallback}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
-    if not code or not state:
-        return RedirectResponse(url=f"{_FRONTEND}/?square=error")
-
-    parts = state.split(":", 2)
-    if len(parts) < 2:
-        return RedirectResponse(url=f"{_FRONTEND}/?square=error")
-    tenant_id, received_state = parts[0], parts[1]
-    origin = parts[2] if len(parts) > 2 else "payments"
-    dest = _dest_page(tenant_id, origin)
+    if not code or not state or len(parts) < 2:
+        return RedirectResponse(url=_dest("", origin, "error"))
+    received_state = parts[1]
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
     except Exception:
-        return RedirectResponse(url=f"{_FRONTEND}/?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     if not tenant:
-        return RedirectResponse(url=f"{_FRONTEND}/?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     stored_state = tenant.get("square_oauth_state", "")
     if not stored_state or not secrets.compare_digest(stored_state, received_state):
         logger.warning("Square OAuth: state mismatch for tenant %s", tenant_id)
-        return RedirectResponse(url=f"{dest}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     try:
         token_data = await sq_svc.exchange_code(code)
     except Exception as e:
         logger.error("Square OAuth token exchange failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(url=f"{dest}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     access_token  = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
@@ -148,7 +152,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
 
     if not access_token:
         logger.error("Square OAuth: no access_token in response for tenant %s", tenant_id)
-        return RedirectResponse(url=f"{dest}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     # W7E.3: the legacy pointer starts from whatever the tenant already has, not
     # from empty. This callback used to begin at "" and then write
@@ -224,7 +228,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
                 "Square OAuth: no merchant id from either the token response or "
                 "get_merchant_info for tenant %s — refusing to complete a connection "
                 "with no merchant identity", tenant_id)
-            return RedirectResponse(url=f"{dest}?square=error")
+            return RedirectResponse(url=_dest(tenant_id, origin, "error"))
         logger.warning(
             "Square OAuth: merchant id unavailable this time for tenant %s — keeping "
             "the established one rather than clearing it", tenant_id)
@@ -235,7 +239,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
             "presents merchant %s — refusing. Re-pointing an established integration "
             "would orphan its location bindings and mirrored appointments.",
             tenant_id, existing_merchant_id, observed_merchant_id)
-        return RedirectResponse(url=f"{dest}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
     else:
         merchant_id = observed_merchant_id
 
@@ -273,7 +277,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         await db.update_tenant(tenant_id, update)
     except Exception as e:
         logger.error("Square OAuth: DB update failed for tenant %s: %s", tenant_id, e)
-        return RedirectResponse(url=f"{dest}?square=error")
+        return RedirectResponse(url=_dest(tenant_id, origin, "error"))
 
     # Re-patch Vapi assistant so the deposit tool appears
     try:
@@ -291,7 +295,7 @@ async def callback(request: Request, code: str = "", error: str = "", state: str
         logger.warning("Square OAuth: appointments sync kickoff failed for %s: %s", tenant_id, e)
 
     logger.info("Square Connect completed for tenant %s merchant %s (origin=%s)", tenant_id, merchant_id, origin)
-    return RedirectResponse(url=f"{dest}?square=connected")
+    return RedirectResponse(url=_dest(tenant_id, origin, "connected"))
 
 
 # ---------------------------------------------------------------------------

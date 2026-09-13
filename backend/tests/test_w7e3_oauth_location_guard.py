@@ -292,7 +292,10 @@ async def test_M3_a_DIFFERENT_authoritative_merchant_is_REFUSED_not_swapped():
                                        locations=[loc(CORK)], merchant=OTHER,
                                        want_redirect=True)
     assert got == {}, "a conflicting merchant identity was persisted"
-    assert "square=error" in redirect
+    # Gate C.1 moved every OAuth exit onto the completion page, so the error
+    # is carried as status=error rather than square=error. The property under
+    # test is unchanged: this refusal redirects as an error and persists nothing.
+    assert "status=error" in redirect
 
 
 @pytest.mark.asyncio
@@ -326,7 +329,10 @@ async def test_M6_first_connect_with_NO_merchant_identity_persists_nothing():
     got, redirect = await run_callback(pointer=None, stored_merchant=None, locations=[loc(CORK)],
                                        merchant="", info_raises=True, want_redirect=True)
     assert got == {}, "a half-configured Square integration was persisted"
-    assert "square=error" in redirect
+    # Gate C.1 moved every OAuth exit onto the completion page, so the error
+    # is carried as status=error rather than square=error. The property under
+    # test is unchanged: this refusal redirects as an error and persists nothing.
+    assert "status=error" in redirect
 
 
 @pytest.mark.asyncio
