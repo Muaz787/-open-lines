@@ -138,7 +138,7 @@ function CalendarPage() {
    *  moves -- silently, because nothing renders differently until it is clicked. */
   const connectPath = (id: 'google' | 'microsoft', tid: string) => {
     const p = CALENDAR_PROVIDERS.find(x => x.id === id)
-    if (!p || p.start.kind !== 'url') throw new Error(`no url start for ${id}`)
+    if (!p) throw new Error(`unknown provider ${id}`)
     return p.start.path(tid)
   }
 

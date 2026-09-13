@@ -129,25 +129,83 @@ def test_both_surfaces_read_one_provider_list():
         assert "/calendar/microsoft/connect" not in body, f"{name} hardcodes a route"
 
 
-def test_square_is_not_presented_as_a_one_click_connect():
-    """Authorising Square leaves services and staff unsynced and booking not yet
-    enabled. A wizard button implying otherwise would report success for a
-    calendar that cannot take a booking -- and Square also refuses outright on a
-    subscription that has not started, which every regulated tenant has."""
-    tree_src = _strip_block_comments(PROVIDERS)
-    i = tree_src.index("id: 'square'")
-    entry = tree_src[i:i + 400]
-    assert "kind: 'page'" in entry, "Square must hand off, not claim to connect"
-    assert "kind: 'url'" not in entry
+def test_no_provider_hands_off_to_the_dashboard():
+    """A customer in onboarding is there to reach a working phone number. A step
+    that sends them elsewhere to finish IS the flow ending: the provider's
+    redirect lands them on the dashboard and the wizard is simply over.
+
+    Square was the last one doing this, because authorising it leaves services
+    and staff unimported and booking switched off."""
+    array = _strip_block_comments(PROVIDERS)
+    array = array[array.index("CALENDAR_PROVIDERS"):]
+    assert "/dashboard/" not in array, "a provider still hands off to the dashboard"
+
+
+def test_square_declares_what_finishing_it_takes():
+    """Connected is not bookable: Square imports services and staff and then has
+    to be switched on. Reporting success in between is the same lie as the old
+    hand-off, just quieter."""
+    array = _strip_block_comments(PROVIDERS)
+    array = array[array.index("CALENDAR_PROVIDERS"):]
+    i = array.index("id: 'square'")
+    entry = array[i:i + 500]
+    assert "finalize" in entry
+    assert "syncPath" in entry and "enablePath" in entry
+
+
+def test_finishing_runs_before_success_is_reported():
+    """An ORDER, and the reason this component exists: a connected Square with
+    nothing synced looks identical to a working one from the outside."""
+    body = _strip_block_comments(CC)
+    i = body.index("const ok = id ? await finalize(id) : true")
+    after = body[i:i + 200]
+    assert "finish()" in after, "success must follow the finalize call"
+    assert body.index("finish()", i) > i
+
+
+def test_a_failed_finish_does_not_report_success():
+    body = _strip_block_comments(CC)
+    i = body.index("const ok = id ? await finalize(id) : true")
+    window = body[i:i + 500]
+    assert "if (ok) finish()" in window, "success must be conditional on finishing"
+    assert "setError(" in window, "and the customer must be told when it did not"
+
+
+def test_only_one_poll_may_finish_a_connection():
+    """The interval keeps firing while finalize awaits. A second pass would
+    re-sync and re-enable behind the first."""
+    body = _strip_block_comments(CC)
+    i = body.index("claimed.current = true")
+    before = body[max(0, i - 300):i]
+    assert "if (claimed.current) return" in before
 
 
 def test_every_provider_declares_how_it_starts():
     """The list is the contract; an entry without a start is a dead button."""
     src = _strip_block_comments(PROVIDERS)
-    # The array literal only. The type union above it declares both kinds by
-    # definition, and counting those would make this assertion meaningless.
     array = src[src.index("CALENDAR_PROVIDERS"):]
     ids = re.findall(r"id: '([a-z]+)'", array)
-    kinds = re.findall(r"kind: '(url|page)'", array)
+    starts = re.findall(r"start: \{", array)
     assert len(ids) >= 3
-    assert len(kinds) == len(ids), f"{len(ids)} providers but {len(kinds)} starts"
+    assert len(starts) == len(ids), f"{len(ids)} providers but {len(starts)} starts"
+
+
+# ── the success screen ──────────────────────────────────────────────────
+
+def test_the_success_screen_connects_inline_rather_than_linking_out():
+    """It offered "one more step: connect your calendar" as a link to the
+    dashboard — the same hand-off the calendar step itself no longer does."""
+    body = _strip_block_comments(ONB)
+    i = body.index("One more step: connect your calendar")
+    panel = body[i - 400:i + 1400]
+    assert "CalendarConnect" in panel
+    assert "/calendar`}" not in panel, "the panel links out again"
+
+
+def test_the_success_screen_does_not_nag_a_customer_who_connected():
+    """It used to render unconditionally, telling someone who had just connected
+    a calendar that they still had one more step."""
+    body = _strip_block_comments(ONB)
+    i = body.index("One more step: connect your calendar")
+    guard = body[max(0, i - 500):i]
+    assert "!setup?.integration_connected" in guard
