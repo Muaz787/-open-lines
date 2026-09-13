@@ -11,6 +11,7 @@ import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 import NotificationPreferences from '@/components/NotificationPreferences'
 import BusinessVerification from '@/components/BusinessVerification'
 import { authedFetch } from '@/lib/api'
+import FinalSetup, { type SetupState } from '@/components/FinalSetup'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -177,7 +178,7 @@ interface Detection {
   website_url: string
 }
 
-type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'verification' | 'notifications' | 'done'
+type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'verification' | 'calendar' | 'notifications' | 'finalsetup' | 'done'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -199,6 +200,8 @@ const Check = () => (
 export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
   const [showPassword, setShowPassword] = useState(false)
+  const [setup, setSetup] = useState<SetupState | null>(null)
+  const [finalError, setFinalError] = useState('')
   // Minted once per signup attempt and reused by both the card step and the
   // provisioner. useState's initialiser runs exactly once, so a re-render cannot
   // mint a second key and quietly create a second Stripe Customer.
@@ -461,10 +464,25 @@ export default function OnboardingPage() {
 
 
   // ── RESUME FROM DURABLE SERVER STATE ───────────────────────────────────
-  // Onboarding now spans account creation, payment, and a regulatory review
-  // that takes days. A refresh must not drop the customer back at "paste your
-  // website". localStorage only carries the tenant ID -- a pointer, never a
-  // decision; the SERVER says which stage that tenant belongs in.
+  // Setup spans account creation, payment, a regulatory review that takes days,
+  // an OAuth round trip and phone provisioning. Its position cannot live in
+  // React state a refresh discards -- and it must not be re-derived here from
+  // scattered fields, because two derivations drift and the browser's is the
+  // one that lies. /onboarding/setup-state returns the stage; this obeys it.
+  // localStorage carries the tenant ID only: a pointer, never a decision.
+  const STAGE_FOR = useCallback((next: string): Stage => (({
+    verification: 'verification', calendar: 'calendar',
+    notifications: 'notifications', final_setup: 'finalsetup', ready: 'done',
+  } as Record<string, Stage>)[next] ?? 'done'), [])
+
+  const syncSetupState = useCallback(async (tid: string) => {
+    const res = await authedFetch(`${API}/onboarding/setup-state/${tid}`)
+    if (!res.ok) return null
+    const st = await res.json()
+    setSetup(st)
+    return st
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -474,14 +492,13 @@ export default function OnboardingPage() {
       try {
         const { data } = await supabase.auth.getSession()
         if (!data?.session) return            // not signed in: nothing to resume
-        const res = await authedFetch(`${API}/onboarding/status/${tid}`)
-        if (!res.ok) return
-        const t = await res.json()
-        if (cancelled) return
-        setResult((prev: ProvisionResult | null) => prev ?? { tenant_id: tid, ...t })
-        if (t.onboarding_state === 'regulatory_required') {
-          setStage('verification')
-        } else if (t.onboarding_state === 'active') {
+        const st = await syncSetupState(tid)
+        if (cancelled || !st) return
+        // Only the tenant id matters for resume; the rest of the screen reads
+        // from `setup`, which the server just gave us.
+        setResult(prev => prev ?? ({ tenant_id: tid } as ProvisionResult))
+        setStage(STAGE_FOR(st.next_stage))
+        if (st.phone?.permanent) {
           try { localStorage.removeItem('ol_onboarding_tenant') } catch {}
         }
       } catch { /* resume is best-effort; the wizard still works from the top */ }
@@ -1164,8 +1181,43 @@ export default function OnboardingPage() {
               <BusinessVerification
                 tenantId={String(result.tenant_id)}
                 embedded
-                onReady={() => setStage('notifications')}
+                onReady={() => { setStage('calendar'); if (result) void syncSetupState(String(result.tenant_id)) }}
               />
+            </motion.div>
+          )}
+
+          {stage === 'calendar' && result && (
+            <motion.div key="calendar" className="np-step"
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}>
+              <h2 className="np-title">Connect your booking system</h2>
+              <p className="np-sub">
+                So your receptionist can check availability and book appointments
+                straight into the calendar you already use. You can do this later
+                if you&apos;d rather.
+              </p>
+              {setup?.integration_connected ? (
+                <p className="np-ok" role="status">✓ Connected</p>
+              ) : null}
+              <div className="np-actions">
+                {/* The integrations page owns every provider and its OAuth. This
+                    links to it rather than growing a second connect flow; the
+                    customer returns here and resume puts them on the right step. */}
+                <Link href={`/dashboard/${result.tenant_id}/calendar`}
+                      onClick={() => trackEvent('calendar_connect_started',
+                        { location: 'onboarding_calendar', tenant_id: result.tenant_id })}>
+                  <button type="button" className="np-primary">
+                    Connect a booking system →
+                  </button>
+                </Link>
+                <button type="button" className="np-defer"
+                        onClick={async () => {
+                          if (result) await syncSetupState(String(result.tenant_id))
+                          setStage('notifications')
+                        }}>
+                  Skip for now
+                </button>
+              </div>
             </motion.div>
           )}
 
@@ -1177,7 +1229,7 @@ export default function OnboardingPage() {
                 tenantId={String(result.tenant_id)}
                 country={form.country}
                 saveLabel="Save and continue →"
-                onSaved={() => setStage('done')}
+                onSaved={() => setStage('finalsetup')}
               />
               {/* SECONDARY, and genuinely deferred. It saves nothing, so it
                   cannot enable Email, cannot stamp notification_prefs_set_at,
@@ -1186,40 +1238,126 @@ export default function OnboardingPage() {
                   Settings -- which is exactly what the explicit-preference
                   model means by "never asked". */}
               <button type="button" className="np-defer"
-                      onClick={() => setStage('done')}>
+                      onClick={() => setStage('finalsetup')}>
                 I&apos;ll decide later
               </button>
             </motion.div>
           )}
 
-          {stage === 'done' && result && result.onboarding_state === 'regulatory_required' && (
-            <motion.div key="done-regulatory" className="success-wrap"
+          {stage === 'finalsetup' && result && (
+            <motion.div key="finalsetup" className="np-step"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <FinalSetup
+                tenantId={String(result.tenant_id)}
+                onDone={st => { setSetup(st); setStage('done') }}
+                onBlocked={msg => { setFinalError(msg); setStage('verification') }}
+              />
+            </motion.div>
+          )}
+
+          {/* READY — the real one. Which variant appears is decided by what the
+              tenant actually HAS, read from the server, never by their country
+              or by how they got here. The old screen said "your account is
+              ready" to someone with no number and no way to get one. */}
+          {stage === 'done' && result && setup?.phone?.permanent && (
+            <motion.div key="ready-permanent" className="success-wrap"
               initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
               <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-                Your account is ready
+                Your AI receptionist is ready
               </div>
-              <div style={{
-                padding: '14px 16px', borderRadius: 10, border: '1px solid var(--border)',
-                margin: '18px 0', textAlign: 'left',
-              }}>
-                <div style={{ fontSize: 13, lineHeight: 1.55 }}>
-                  Phone numbers in {COUNTRIES.find(c => c.code === form.country)?.name ?? 'your country'}{' '}
-                  require a short business verification step before they can be
-                  activated. We&apos;ll ask for a few details about your business and
-                  its registered address, then set your number up.
-                </div>
+              <div className="ready-number">
+                <span className="ready-number-label">Your OpenLines number</span>
+                <span className="ready-number-value">{setup.phone.permanent}</span>
+                <span className="ready-number-status">Active</span>
               </div>
-              <Link href={`/dashboard/${result.tenant_id}/verification`}>
-                <button className="btn-primary" style={{ width: '100%' }}>
-                  Start business verification
-                </button>
-              </Link>
+              <p className="np-sub" style={{ textAlign: 'center' }}>
+                {setup.trial?.ends_at
+                  ? `Your free trial ends on ${new Date(setup.trial.ends_at)
+                      .toLocaleDateString('en-CA', { month: 'long', day: 'numeric' })}.`
+                  : 'Your 7-day free trial starts today.'}
+              </p>
+              <div className="np-actions" style={{ justifyContent: 'center' }}>
+                <a href={`tel:${setup.phone.permanent}`}
+                   onClick={() => trackEvent('test_call_started',
+                     { tenant_id: result.tenant_id, line: 'permanent' })}>
+                  <button type="button" className="np-primary">
+                    Test your AI receptionist →
+                  </button>
+                </a>
+                <Link href={`/dashboard/${result.tenant_id}`}>
+                  <button type="button" className="np-defer">Go to dashboard →</button>
+                </Link>
+              </div>
             </motion.div>
           )}
 
-          {stage === 'done' && result && result.onboarding_state !== 'regulatory_required' && (
+          {stage === 'done' && result && !setup?.phone?.permanent
+            && setup?.phone?.temporary_test && (
+            <motion.div key="ready-temporary" className="success-wrap"
+              initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>🧪</div>
+              <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
+                Your test line is ready
+              </div>
+              <p className="np-sub" style={{ textAlign: 'center' }}>
+                Your business number is still being verified. In the meantime you
+                can use this temporary number to try your AI receptionist.
+              </p>
+              <div className="ready-number is-temp">
+                <span className="ready-number-label">Temporary test number</span>
+                <span className="ready-number-value">{setup.phone.temporary_test}</span>
+                {/* Said plainly, because a business that mistakes this for its
+                    own number will put it on its website. */}
+                <span className="ready-number-status">Not your business number</span>
+              </div>
+              <p className="np-sub" style={{ textAlign: 'center' }}>
+                Your 7-day free trial hasn&apos;t started yet — it begins when your
+                permanent number is approved and activated.
+              </p>
+              <div className="np-actions" style={{ justifyContent: 'center' }}>
+                <a href={`tel:${setup.phone.temporary_test}`}
+                   onClick={() => trackEvent('test_call_started',
+                     { tenant_id: result.tenant_id, line: 'temporary' })}>
+                  <button type="button" className="np-primary">
+                    Test your AI receptionist →
+                  </button>
+                </a>
+                <Link href={`/dashboard/${result.tenant_id}`}>
+                  <button type="button" className="np-defer">Go to dashboard →</button>
+                </Link>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Filed, and nobody has a number yet. Honest about the wait rather
+              than claiming a readiness that has not happened. */}
+          {stage === 'done' && result && !setup?.phone?.permanent
+            && !setup?.phone?.temporary_test && setup?.needs_regulatory_verification && (
+            <motion.div key="done-waiting" className="success-wrap"
+              initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>⏳</div>
+              <div className="success-msg" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
+                We&apos;re verifying your business
+              </div>
+              <p className="np-sub" style={{ textAlign: 'center' }}>
+                Your details are with our telecoms provider. We&apos;ll set your
+                number up as soon as it&apos;s approved and let you know — nothing
+                further is needed from you. Your free trial hasn&apos;t started.
+              </p>
+              <div className="np-actions" style={{ justifyContent: 'center' }}>
+                <Link href={`/dashboard/${result.tenant_id}`}>
+                  <button type="button" className="np-primary">Go to dashboard →</button>
+                </Link>
+              </div>
+            </motion.div>
+          )}
+
+          {stage === 'done' && result && !setup?.needs_regulatory_verification
+            && !setup?.phone?.permanent && !setup?.phone?.temporary_test && (
             <motion.div key="done" className="success-wrap"
               initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4 }}>

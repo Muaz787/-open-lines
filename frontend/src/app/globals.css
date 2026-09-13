@@ -2407,3 +2407,21 @@ footer {
 }
 .np-defer:hover { opacity: 1; }
 .np-defer:focus-visible { outline: 2px solid var(--accent, #2f5d4f); outline-offset: 2px; }
+
+/* ── Ready screen number plate ─────────────────────────────────────────── */
+.ready-number {
+  display: flex; flex-direction: column; gap: 4px; align-items: center;
+  padding: 16px 18px; margin: 16px 0; border-radius: 12px;
+  border: 1.5px solid var(--border, #d8d4cc);
+}
+.ready-number.is-temp { border-style: dashed; }
+.ready-number-label { font-size: 0.78rem; letter-spacing: 0.06em;
+                      text-transform: uppercase; opacity: 0.6; }
+.ready-number-value { font-size: 1.35rem; font-weight: 700;
+                      font-variant-numeric: tabular-nums; }
+.ready-number-status { font-size: 0.8rem; opacity: 0.7; }
+.fs-spinner { width: 26px; height: 26px; border-radius: 50%; margin: 8px auto;
+  border: 3px solid var(--border, #d8d4cc); border-top-color: var(--accent, #2f5d4f);
+  animation: fs-spin 0.9s linear infinite; }
+@keyframes fs-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .fs-spinner { animation-duration: 3s; } }
