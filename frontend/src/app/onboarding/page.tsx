@@ -202,6 +202,8 @@ export default function OnboardingPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [finalError, setFinalError] = useState('')
+  const [declining, setDeclining] = useState(false)
+  const [declineError, setDeclineError] = useState('')
   // Minted once per signup attempt and reused by both the card step and the
   // provisioner. useState's initialiser runs exactly once, so a re-render cannot
   // mint a second key and quietly create a second Stripe Customer.
@@ -474,6 +476,18 @@ export default function OnboardingPage() {
     verification: 'verification', calendar: 'calendar',
     notifications: 'notifications', final_setup: 'finalsetup', ready: 'done',
   } as Record<string, Stage>)[next] ?? 'done'), [])
+
+  /** Record an explicitly declined step, then go where the SERVER says.
+   *  Until this existed, "Skip for now" and "I'll decide later" lived only in
+   *  React state, so a refresh asked again forever. */
+  const declineStep = useCallback(async (tid: string, step: 'booking' | 'notifications') => {
+    const res = await authedFetch(`${API}/onboarding/decline-step/${tid}/${step}`,
+                                  { method: 'POST' })
+    if (!res.ok) throw new Error(String(res.status))
+    const st: SetupState = await res.json()
+    setSetup(st)
+    setStage(STAGE_FOR(st.next_stage))
+  }, [STAGE_FOR])
 
   const syncSetupState = useCallback(async (tid: string) => {
     const res = await authedFetch(`${API}/onboarding/setup-state/${tid}`)
@@ -1210,13 +1224,19 @@ export default function OnboardingPage() {
                     Connect a booking system →
                   </button>
                 </Link>
-                <button type="button" className="np-defer"
+                <button type="button" className="np-defer" disabled={declining}
                         onClick={async () => {
-                          if (result) await syncSetupState(String(result.tenant_id))
-                          setStage('notifications')
+                          if (!result) return
+                          setDeclining(true); setDeclineError('')
+                          try { await declineStep(String(result.tenant_id), 'booking') }
+                          // Do NOT force the next stage on failure: the answer was
+                          // not recorded, so advancing would lose it on refresh.
+                          catch { setDeclineError("We couldn't save that. Please try again.") }
+                          finally { setDeclining(false) }
                         }}>
-                  Skip for now
+                  {declining ? 'Saving…' : 'Skip for now'}
                 </button>
+                {declineError && <p className="np-error" role="alert">{declineError}</p>}
               </div>
             </motion.div>
           )}
@@ -1237,10 +1257,17 @@ export default function OnboardingPage() {
                   They stay LEGACY until they answer -- on this screen or in
                   Settings -- which is exactly what the explicit-preference
                   model means by "never asked". */}
-              <button type="button" className="np-defer"
-                      onClick={() => setStage('finalsetup')}>
-                I&apos;ll decide later
+              <button type="button" className="np-defer" disabled={declining}
+                      onClick={async () => {
+                        if (!result) return
+                        setDeclining(true); setDeclineError('')
+                        try { await declineStep(String(result.tenant_id), 'notifications') }
+                        catch { setDeclineError("We couldn't save that. Please try again.") }
+                        finally { setDeclining(false) }
+                      }}>
+                {declining ? 'Saving…' : "I'll decide later"}
               </button>
+              {declineError && <p className="np-error" role="alert">{declineError}</p>}
             </motion.div>
           )}
 

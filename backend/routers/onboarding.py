@@ -852,6 +852,10 @@ async def setup_state(
 
     # ── notification preferences ──────────────────────────────────────────
     notifications_set = bool(tenant.get("notification_prefs_set_at"))
+    # Answered-but-declined. Read HERE and nowhere in the dispatcher: declining
+    # records an onboarding fact, never a delivery one.
+    booking_skipped = bool(tenant.get("booking_setup_skipped_at"))
+    notifications_deferred = bool(tenant.get("notification_prefs_deferred_at"))
 
     # ── the phone ─────────────────────────────────────────────────────────
     rows = await db_phones.list_for_tenant(tenant_id)
@@ -871,6 +875,8 @@ async def setup_state(
                                 None)) if needs_reg else None},
         "integration_connected": integration_connected,
         "notifications_set": notifications_set,
+        "booking_skipped": booking_skipped,
+        "notifications_deferred": notifications_deferred,
         "phone": {
             # The permanent number is theirs. The temporary one is explicitly
             # labelled so no surface can present it as their business number.
@@ -886,30 +892,98 @@ async def setup_state(
             needs_reg=needs_reg, reg_done=reg_done, reg_blocked=reg_blocked,
             integration_connected=integration_connected,
             notifications_set=notifications_set,
+            booking_skipped=booking_skipped,
+            notifications_deferred=notifications_deferred,
             permanent=bool(permanent), temporary=bool(temporary)),
     }
 
 
 def _next_setup_stage(*, needs_reg: bool, reg_done: bool, reg_blocked: bool,
                       integration_connected: bool, notifications_set: bool,
-                      permanent: bool, temporary: bool) -> str:
+                      permanent: bool, temporary: bool,
+                      booking_skipped: bool = False,
+                      notifications_deferred: bool = False) -> str:
     """The one place that decides where a resuming customer belongs.
 
     Ordered by what blocks them, not by how they arrived: a live number ends
     setup whatever else is unfinished, and a filing needing correction outranks
     everything else, because nothing downstream can succeed while it waits.
+
+    A STEP IS DONE WHEN IT HAS BEEN ANSWERED, NOT ONLY WHEN IT SUCCEEDED.
+    "No integration token" and "no notification preference" are absences, and an
+    absence cannot say whether the customer was never offered the step or was
+    offered it and declined. Reading only the positive signal sent someone who
+    skipped the calendar straight back to it on every refresh -- and someone who
+    skipped AND deferred back two steps.
+
+    Positive state still wins on its own: a connected integration completes the
+    calendar step whatever the skip stamp holds, and explicit preferences
+    complete notifications whatever the defer stamp holds. Nothing is ever
+    unwound, so the two writes cannot race.
     """
     if permanent:
         return "ready"
     if needs_reg and (reg_blocked or not reg_done):
         return "verification"
-    if not integration_connected:
+    if not (integration_connected or booking_skipped):
         return "calendar"
-    if not notifications_set:
+    if not (notifications_set or notifications_deferred):
         return "notifications"
     if temporary:
         return "ready"
     return "final_setup"
+
+
+#: The onboarding steps a customer may explicitly decline, and the column that
+#: records each. Server-owned: the browser names an ACTION, never a value and
+#: never a time.
+_DECLINABLE_STEPS = {
+    "booking": "booking_setup_skipped_at",
+    "notifications": "notification_prefs_deferred_at",
+}
+
+
+@router.post("/decline-step/{tenant_id}/{step}")
+async def decline_setup_step(
+    tenant_id: str,
+    step: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Record that the customer explicitly declined an optional setup step.
+
+    "Skip for now" and "I'll decide later" are real answers. Until this existed
+    they lived only in React state, so a refresh asked again -- forever.
+
+    WHAT THIS IS NOT. Declining the notification step does not set preferences,
+    enable a channel, choose Dashboard-only, or move the tenant out of legacy
+    dispatch semantics. It writes one timestamp in its own column, which the
+    notification dispatcher never reads. Declining booking setup does not mean
+    an integration failed or was unavailable.
+
+    Idempotent and monotonic: the stamp is written only when absent, so a
+    repeated click changes nothing and cannot move the time. Nothing clears it
+    either -- a customer who later connects a calendar is complete because the
+    TOKEN exists, not because the stamp was unwound.
+    """
+    await verify_tenant_owner(tenant_id, authorization)
+    column = _DECLINABLE_STEPS.get(step)
+    if not column:
+        raise HTTPException(status_code=404, detail="Unknown setup step")
+
+    from datetime import datetime as _dt, timezone as _tz
+    try:
+        # Compare-and-set on NULL: the first answer is the one kept, and a double
+        # click is inert rather than a second write.
+        (db.get_client().table("tenants")
+         .update({column: _dt.now(_tz.utc).isoformat()})
+         .eq("id", tenant_id).is_(column, "null").execute())
+    except Exception as e:
+        logger.error("decline-step: could not record %s for tenant %s: %s",
+                     step, tenant_id, type(e).__name__)
+        raise HTTPException(status_code=500,
+                            detail="We couldn't save that. Please try again.")
+    # The resolver decides where they go next, not the browser.
+    return await setup_state(tenant_id, authorization)
 
 
 @router.post("/finalize/{tenant_id}")
