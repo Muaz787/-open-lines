@@ -565,14 +565,24 @@ async def process_trial_reminders(limit: int = 200) -> dict:
         res = (
             db.get_client().table("tenants")
             .select(
-                # billing_exempt and marketing_unsubscribed_at were missing here
-                # while the loop below reads both. That silently disabled two
-                # guards: comped tenants were not recognised as having a live
-                # line, and — worse — the CASL unsubscribe check could never fire,
-                # because the column it tests was never fetched.
+                # EVERY COLUMN A GUARD BELOW READS MUST BE LISTED HERE.
+                # billing_exempt and marketing_unsubscribed_at were once missing
+                # while the loop read both. That silently disabled two guards:
+                # comped tenants were not recognised as having a live line, and —
+                # worse — the CASL unsubscribe check could never fire, because the
+                # column it tests was never fetched. Nothing raised; the guard was
+                # simply always false.
+                #
+                # The last four are read by _trial_pending_activation() via
+                # trial_status(). Drop any one of them and that guard goes the same
+                # way: business_country_code reads None, needs_regulatory_clearance
+                # returns False, and a tenant waiting on a regulator is nudged about
+                # a trial it never had. test_trial_reminder_select_columns pins this.
                 "id, business_name, email, created_at, subscription_status, "
                 "minutes_used_this_period, billing_exempt, marketing_unsubscribed_at, is_active, "
-                "trial_email_day3_sent, trial_email_day6_sent, trial_email_ended_sent"
+                "trial_email_day3_sent, trial_email_day6_sent, trial_email_ended_sent, "
+                "business_country_code, twilio_phone_number, "
+                "stripe_trial_ends_at, stripe_subscription_id"
             )
             .execute()
         )
@@ -629,6 +639,15 @@ async def process_trial_reminders(limit: int = 200) -> dict:
             continue
 
         ts = trial_status(t)
+        # A trial that has not begun has nothing to count down. For a tenant in a
+        # regulated country with no permanent number yet, the derived branch above
+        # computes a 7-day window from created_at anyway -- so without this the
+        # cron cheerfully emails "your free trial ends in 2 days" to someone with
+        # no line, no subscription, no charge and a filing still with a regulator.
+        # The dashboard banner already refuses to say it; this is the same truth,
+        # applied to the outbound mail.
+        if ts["trial_pending_activation"]:
+            continue
         days_elapsed = (now - created).days
 
         kind = flag = None
