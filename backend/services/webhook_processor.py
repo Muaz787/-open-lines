@@ -386,12 +386,19 @@ async def process_end_of_call(payload: dict) -> None:
                 tenant_id=tenant_id, called_number=called_number,
                 duration_secs=int(duration))
         except Exception as e:
-            # UNKNOWN whether this was a free test call. Bill nothing: charging a
-            # free test call is worse than missing a billable minute, and this
-            # path only runs at all for a regulated tenant with a live temp line.
+            # UNKNOWN whether this was a free test call. Fail safe only for the
+            # tenants who could possibly have one: a regulated tenant is not
+            # billed on a maybe, and everyone else bills exactly as before. A
+            # blanket "do not bill" here would silently drop revenue for every
+            # CA/US tenant on one transient database error.
+            from services import onboarding_lifecycle as _ob
+            regulated = _ob.needs_regulatory_clearance(
+                str(tenant.get("business_country_code") or ""))
             logger.error("temporary-usage accounting failed for tenant %s call %s: "
-                         "%s -- not billing this call", tenant_id, call_id, e)
-            free_test = True
+                         "%s -- %s", tenant_id, call_id, e,
+                         "not billing (regulated tenant)" if regulated
+                         else "billing normally")
+            free_test = regulated
         if not free_test:
             try:
                 from services.usage import record_call_minutes

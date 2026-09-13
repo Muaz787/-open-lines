@@ -848,3 +848,18 @@ async def test_suspension_keeps_the_first_reason_recorded():
         assert await ita.suspend(tenant_id=T, reason=il.SUSPEND_ALLOWANCE) is True
     assert ("suspended_at", "null") in q.nulls
     assert q.patch["suspend_reason"] == il.SUSPEND_ALLOWANCE
+
+
+@pytest.mark.asyncio
+async def test_a_usage_accounting_failure_does_not_drop_ordinary_billing():
+    """The fail-safe must be scoped to tenants who could HAVE a temporary line.
+    A blanket "do not bill" would silently lose revenue for every CA/US tenant
+    on one transient database error."""
+    import ast, inspect, textwrap
+    from services import webhook_processor as wp
+    src = inspect.getsource(wp)
+    i = src.index("temporary-usage accounting failed")
+    window = src[i - 900:i + 400]
+    assert "needs_regulatory_clearance" in window
+    assert "free_test = regulated" in window
+    assert "free_test = True" not in window
