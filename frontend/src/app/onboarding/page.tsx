@@ -11,6 +11,27 @@ import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+/**
+ * The id for THIS signup attempt, stable across the card step, a remount and a
+ * retry. The card step binds a Stripe Customer to it and the provisioner claims
+ * or resumes a tenant by it, so both must see the same value -- a fresh one at
+ * either point creates a second Customer or a second tenant.
+ */
+function getOnboardingKey(): string {
+  try {
+    const existing = sessionStorage.getItem('ol_onboarding_key')
+    if (existing) return existing
+    const minted = crypto.randomUUID()
+    sessionStorage.setItem('ol_onboarding_key', minted)
+    return minted
+  } catch {
+    // Private mode or storage disabled. Signup still works; it simply cannot
+    // resume, and the card step will mint its own Customer for this attempt.
+    return crypto.randomUUID()
+  }
+}
+
+
 const INDUSTRIES = [
   { value: 'realtor',    label: 'Realtor / Real Estate' },
   { value: 'clinic',     label: 'Medical Clinic' },
@@ -173,6 +194,10 @@ const Check = () => (
 
 export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
+  // Minted once per signup attempt and reused by both the card step and the
+  // provisioner. useState's initialiser runs exactly once, so a re-render cannot
+  // mint a second key and quietly create a second Stripe Customer.
+  const [onboardingKeyForCard] = useState(getOnboardingKey)
   const [path, setPath]   = useState<'website' | 'manual'>('website')
   const [form, setForm] = useState({
     website_url:          '',
@@ -361,19 +386,9 @@ export default function OnboardingPage() {
     // One opaque key per signup ATTEMPT, kept in sessionStorage so a refresh or a
     // second click resumes the same onboarding instead of creating another tenant.
     // The tenant is now created before any provider work, so this is what replaces
-    // the accidental protection the old ordering gave us.
-    let onboardingKey = ''
-    try {
-      onboardingKey = sessionStorage.getItem('ol_onboarding_key') || ''
-      if (!onboardingKey) {
-        onboardingKey = crypto.randomUUID()
-        sessionStorage.setItem('ol_onboarding_key', onboardingKey)
-      }
-    } catch {
-      // Private mode or storage disabled: fall back to a per-call key. Signup
-      // still works; it simply cannot resume.
-      onboardingKey = crypto.randomUUID()
-    }
+    // the accidental protection the old ordering gave us. Shared with the card
+    // step, which binds one Stripe Customer to this same key (W9I-H.0.2).
+    const onboardingKey = getOnboardingKey()
     body.onboarding_key = onboardingKey
 
     try {
@@ -1015,6 +1030,7 @@ export default function OnboardingPage() {
                 plan={plan}
                 email={form.email}
                 businessName={form.business_name}
+                onboardingKey={onboardingKeyForCard}
                 country={form.country}
                 onComplete={handleProvision}
                 onBack={() => setStage('plan')}

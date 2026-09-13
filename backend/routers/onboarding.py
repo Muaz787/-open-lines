@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator
 from db import supabase as db
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
 from services import country_access
+from services import payment_customer
 from services import ireland_pilot
 from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
@@ -200,6 +201,35 @@ class SetupCardRequest(BaseModel):
     plan: str
     email: str = ""
     business_name: str = ""
+    # W9I-H.0.2: both are REQUIRED to answer "may this signup pay us?" before
+    # Stripe is touched, and to bind the Customer to one signup attempt. The
+    # country is never inferred -- not from IP, not from the email domain, not
+    # from Stripe -- because a guess here creates billing state for a business we
+    # may be about to refuse.
+    country: str = "CA"
+    onboarding_key: str = ""
+
+    @field_validator("onboarding_key")
+    @classmethod
+    def _setup_key_is_uuid4(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            return ""
+        try:
+            import uuid as _uuid
+            if str(_uuid.UUID(v, version=4)) != v.lower():
+                raise ValueError
+        except Exception:
+            raise ValueError("onboarding_key must be a uuid4")
+        return v.lower()
+
+    @field_validator("country")
+    @classmethod
+    def _setup_country(cls, v: str) -> str:
+        v = (v or "").strip().upper()
+        if v not in telephony.SUPPORTED_COUNTRIES:
+            raise ValueError(f"country must be one of {sorted(telephony.SUPPORTED_COUNTRIES)}")
+        return v
 
     @field_validator("plan")
     @classmethod
@@ -232,37 +262,77 @@ async def setup_card(request: Request, body: SetupCardRequest):
     if email and not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="Please enter a valid email address")
 
+    # ── COUNTRY ACCESS, BEFORE ANY STRIPE MUTATION ────────────────────────
+    # W9I-H.0.1 put this ahead of the card requirement in /provision; this is the
+    # other half. Without it a business in a country we do not serve got a Stripe
+    # Customer and a SetupIntent created for them, and only learned at the next
+    # step that we could not sell to them. Nothing is created for a signup we are
+    # about to refuse, and the refusal is the same one /provision gives.
+    access = await country_access.decide(
+        iso_country=body.country, onboarding_key=body.onboarding_key)
+    if access["access"] != country_access.ALLOWED:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "country_onboarding_not_open",
+                    "country": body.country,
+                    "message": "We are not yet accepting online signups for this "
+                               "country. Please contact us and we will set your "
+                               "account up directly."})
+    # The Ireland pilot grant is NOT consumed here. It is spent only once a
+    # durable tenant exists, so a customer who abandons at the card step keeps
+    # their invitation.
+
+    if not body.onboarding_key:
+        # Without it there is no identity to bind a Customer to, and every call
+        # would create another -- the defect this gate closes.
+        raise HTTPException(status_code=400,
+                            detail="Your signup session expired. Please reload and try again.")
+
     key = os.getenv("STRIPE_SECRET_KEY", "")
     if not key:
         logger.error("setup-card: STRIPE_SECRET_KEY not configured")
         raise HTTPException(status_code=503, detail="Payments are not available right now")
     stripe.api_key = key
 
-    try:
-        params: dict = {"metadata": {"signup_plan": body.plan, "source": "onboarding"}}
-        if email:
-            params["email"] = email
-        if body.business_name.strip():
-            params["name"] = body.business_name.strip()[:200]
-        customer = stripe.Customer.create(**params)
+    # ── ONE CUSTOMER PER SIGNUP, decided durably before Stripe is called ───
+    resolved = await payment_customer.ensure_customer(
+        onboarding_key=body.onboarding_key, iso_country=body.country,
+        email=email, business_name=body.business_name.strip(), plan=body.plan)
+    if resolved["status"] != payment_customer.OK or not resolved["customer_id"]:
+        # Reconciliation, an in-flight attempt, or an integrity problem. None of
+        # them is a reason to create a second Customer, and none of them is
+        # explained to the caller.
+        logger.error("setup-card: could not resolve a payment customer (%s)",
+                     resolved["status"])
+        raise HTTPException(
+            status_code=503,
+            detail="We couldn't start the payment step. Please try again shortly.")
+    customer_id = resolved["customer_id"]
 
+    # A FRESH SetupIntent per call, always on the canonical Customer. The
+    # frontend re-runs this endpoint on mount and on "Try again", and a reused
+    # intent may already be consumed or cancelled -- which is why intents are
+    # disposable here and the Customer is not. Many intents are harmless; many
+    # Customers are duplicate billing identities.
+    try:
         si = stripe.SetupIntent.create(
-            customer=customer.id,
+            customer=customer_id,
             payment_method_types=["card"],
             # The card is charged later, with nobody at the keyboard, so the
             # mandate has to be set up for off-session use now.
             usage="off_session",
-            metadata={"signup_plan": body.plan, "source": "onboarding"},
+            metadata={"signup_plan": body.plan, "source": "onboarding",
+                      payment_customer.METADATA_KEY: body.onboarding_key},
         )
     except Exception as e:
-        logger.error("setup-card: Stripe failed (plan=%s): %s", body.plan, e)
+        logger.error("setup-card: SetupIntent failed (plan=%s): %s", body.plan, e)
         raise HTTPException(status_code=502, detail="We couldn't start the payment step. Please try again.")
 
-    analytics.capture(email or customer.id, "card_setup_started", {"plan": body.plan})
+    analytics.capture(email or customer_id, "card_setup_started", {"plan": body.plan})
 
     return {
         "client_secret":    si.client_secret,
-        "card_setup_token": subscriptions.issue_card_setup_token(customer.id),
+        "card_setup_token": subscriptions.issue_card_setup_token(customer_id),
     }
 
 
@@ -315,6 +385,22 @@ async def provision(request: Request, body: ProvisionRequest):
                 status_code=400,
                 detail="Your payment session expired. Please re-enter your card details.",
             )
+        # ── THE SERVER'S OWN RECORD WINS (W9I-H.0.2) ──────────────────────
+        # The token is authenticated, so its contents are ours -- but it is held
+        # by the browser, and the Customer it names is a billing identity. The
+        # onboarding key is already trusted (it claims and resumes the tenant),
+        # so the Customer is resolved from the payment session instead and the
+        # token's value is only allowed to agree with it.
+        if body.onboarding_key:
+            bound = await payment_customer.resolve_for_tenant(body.onboarding_key)
+            if bound and bound != stripe_customer_id:
+                logger.error("provision: card setup token names a Customer this "
+                             "signup is not bound to -- refusing")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Your payment session expired. Please re-enter your card details.")
+            if bound:
+                stripe_customer_id = bound
 
     has_card = bool(stripe_customer_id and body.payment_method_id and body.plan)
     if card_required() and not has_card:
