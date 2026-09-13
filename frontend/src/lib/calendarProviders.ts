@@ -6,6 +6,11 @@
  * that silently stops working the day a route moves. The dashboard keeps its own
  * richer presentation — status, disconnect, re-sync — but the ROUTES live here.
  *
+ * THE ORIGIN TRAVELS WITH THE REQUEST. Each start path takes the context the
+ * connection began in, so the OAuth round trip can end where it started rather
+ * than always on the dashboard. It is one of a closed set of words the server
+ * re-validates (services/oauth_return.py); it is never a URL.
+ *
  * NOTHING HERE HANDS OFF TO THE DASHBOARD. A customer in onboarding is there to
  * reach a working phone number, and a step that sends them to another part of
  * the product to finish is a step that ends the flow: the provider's redirect
@@ -19,7 +24,7 @@ export type CalendarProvider = {
   label: string
   blurb: string
   /** Ask the API for an OAuth URL, then send the customer to it. */
-  start: { method: 'GET' | 'POST'; path: (tenantId: string) => string }
+  start: { method: 'GET' | 'POST'; path: (tenantId: string, origin: string) => string }
   /**
    * Providers that are NOT bookable the moment OAuth returns.
    *
@@ -40,19 +45,19 @@ export const CALENDAR_PROVIDERS: CalendarProvider[] = [
     id: 'google',
     label: 'Google Calendar',
     blurb: 'Books straight into the calendar you already use.',
-    start: { method: 'GET', path: t => `/calendar/connect/${t}` },
+    start: { method: 'GET', path: (t, o) => `/calendar/connect/${t}?origin=${o}` },
   },
   {
     id: 'microsoft',
     label: 'Microsoft Outlook',
     blurb: 'For Outlook, Microsoft 365 and Exchange calendars.',
-    start: { method: 'GET', path: t => `/calendar/microsoft/connect?tenant_id=${t}` },
+    start: { method: 'GET', path: (t, o) => `/calendar/microsoft/connect?tenant_id=${t}&origin=${o}` },
   },
   {
     id: 'square',
     label: 'Square Appointments',
     blurb: 'Books into your existing Square schedule.',
-    start: { method: 'POST', path: t => `/square-connect/onboard/${t}?origin=calendar` },
+    start: { method: 'POST', path: (t, o) => `/square-connect/onboard/${t}?origin=${o}` },
     finalize: {
       syncPath:   t => `/square-connect/appointments/sync/${t}`,
       enablePath: t => `/square-connect/appointments/enable/${t}`,

@@ -36,7 +36,11 @@ import { CALENDAR_PROVIDERS, type CalendarProviderId } from '@/lib/calendarProvi
 
 /** How often we ask the server, and for how long. A customer reading Google's
  *  consent screen is not stuck; they are reading. */
-const POLL_MS = 2000
+/** The context this connection begins in, carried to the server so the OAuth
+ *  round trip returns here instead of the dashboard. */
+const ORIGIN = 'onboarding'
+
+const POLL_MS = 1500
 const GIVE_UP_MS = 5 * 60 * 1000
 
 export default function CalendarConnect({
@@ -98,38 +102,53 @@ export default function CalendarConnect({
   }, [tenantId])
 
   /** Ask OUR server, never the popup. */
-  const poll = useCallback(async () => {
+  const poll = useCallback(async (): Promise<boolean> => {
     try {
       const res = await authedFetch(`${API}/onboarding/setup-state/${tenantId}`)
-      if (!res.ok) return
+      if (!res.ok) return false
       const st = await res.json()
-      if (!st?.integration_connected) return
+      if (!st?.integration_connected) return false
       // Claimed once: the interval is still running while finalize awaits, and
       // a second pass would re-sync and re-enable behind the first.
-      if (claimed.current) return
+      if (claimed.current) return true
       claimed.current = true
       const id = started.current
       const ok = id ? await finalize(id) : true
-      if (ok) finish()
-      else {
-        clearTimers(); setStage('idle'); setBusy(null)
-        setError('Connected, but we could not import your services. '
-                 + 'You can finish setting this up from your dashboard afterwards.')
-      }
+      if (ok) { finish(); return true }
+      clearTimers(); setStage('idle'); setBusy(null)
+      setError('Connected, but we could not import your services. '
+               + 'You can finish setting this up from your dashboard afterwards.')
+      return true
     } catch { /* transient; the next tick tries again */ }
+    return false
   }, [tenantId, finish, finalize, clearTimers])
+
+  /** One pass: ask the server, THEN consider the window.
+   *
+   *  The order is the property. A closed popup is not a verdict -- the customer
+   *  may have finished in the instant before it closed, and the connection is
+   *  the server's to confirm. But once the server has said no AND the window is
+   *  gone, the interaction is over: someone denied at the provider, or closed
+   *  the window. Saying so beats spinning for five minutes. */
+  const tick = useCallback(async () => {
+    if (done.current) return
+    const connected = await poll()
+    if (connected || done.current) return
+    if (popup.current?.closed) {
+      clearTimers()
+      setBusy(null)
+      setStage('idle')
+      setError('That didn\u2019t finish. Please try again.')
+    }
+  }, [poll, clearTimers])
 
   const watch = useCallback(() => {
     clearTimers()
-    timers.current.poll = window.setInterval(() => {
-      // A closed popup is a reason to check once more, not a verdict: the
-      // customer may have completed the connection in the instant before it
-      // closed. Only the server's answer ends this.
-      void poll()
-      if (popup.current?.closed) { setBusy(null) }
-    }, POLL_MS)
-    timers.current.stop = window.setTimeout(() => { clearTimers(); setBusy(null) }, GIVE_UP_MS)
-  }, [clearTimers, poll])
+    timers.current.poll = window.setInterval(() => { void tick() }, POLL_MS)
+    timers.current.stop = window.setTimeout(() => {
+      clearTimers(); setBusy(null); setStage('idle')
+    }, GIVE_UP_MS)
+  }, [clearTimers, tick])
 
   async function start(id: CalendarProviderId) {
     const provider = CALENDAR_PROVIDERS.find(p => p.id === id)
@@ -146,7 +165,7 @@ export default function CalendarConnect({
     popup.current = win
 
     try {
-      const res = await authedFetch(`${API}${provider.start.path(tenantId)}`,
+      const res = await authedFetch(`${API}${provider.start.path(tenantId, ORIGIN)}`,
                                     { method: provider.start.method })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body?.url) {
