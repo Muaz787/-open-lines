@@ -341,6 +341,42 @@ async def provision(request: Request, body: ProvisionRequest):
             except Exception as e:
                 logger.error("Auth user creation failed for tenant %s: %s", result.get("tenant_id"), e)
 
+        # ── REGULATED COUNTRIES EXIT HERE (W9I-G Stage I) ─────────────────
+        # A tenant whose country needs regulatory clearance has an account and an
+        # owner login -- created just above, because the verification flow is
+        # authenticated and cannot start without one -- but NO phone number and no
+        # working line. Everything below this point assumes both.
+        #
+        # Running it anyway did two wrong things. It started the 7-day Stripe
+        # trial at signup, when the authoritative Ireland policy says the trial
+        # begins only once an approved permanent +353 is ACTIVE: the customer
+        # would have been billed while waiting on a regulator, for a line that
+        # does not exist yet. And it sent the "your number is ready" welcome
+        # email with phone_number="" -- an empty number, presented as theirs.
+        #
+        # Not reachable today only because the IE refusal above returns 503 while
+        # the public flag is off. That makes this latent, not harmless: it becomes
+        # live the moment the flag is turned on, which is exactly when nobody
+        # would be looking for it.
+        #
+        # W9I-G's activation path starts the trial and sends the Irish activation
+        # email, together, after the number is genuinely live.
+        if str(result.get("onboarding_state") or "") == lifecycle_ob.REGULATORY_REQUIRED:
+            logger.info(
+                "Regulated signup for tenant %s: skipping trial start and welcome "
+                "email until the permanent number is active",
+                result.get("tenant_id"))
+            analytics.capture(distinct_id, "tenant_created", {
+                "tenant_id": result.get("tenant_id"),
+                "business_name": body.business_name,
+                "industry": body.industry,
+                "country": body.country,
+            })
+            analytics.capture(distinct_id, "regulatory_clearance_required", {
+                "tenant_id": result.get("tenant_id"), "country": body.country,
+            })
+            return result
+
         # Start the trial subscription LAST, once the line actually exists. Doing
         # it here rather than before provisioning means a provisioning failure can
         # never leave a subscription attached to a tenant that does not work.
