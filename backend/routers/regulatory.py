@@ -295,4 +295,14 @@ async def twilio_regulatory_callback(
     logger.info("Regulatory callback applied for profile %s: %s -> %s (%s, signed "
                 "with the %s credential)", profile.get("id"), profile.get("state"),
                 applied.get("state"), ledger.get("action"), credential)
+
+    # ── THE FAST WAKE-UP, AND ONLY A WAKE-UP (W9I-H.AUTO.1) ───────────────
+    # The lifecycle is told to look again; it is NOT told what it will find.
+    # advance() re-reads the Bundle from Twilio with the tenant's own credentials
+    # before it spends money or hands out free service, so this payload can never
+    # by itself cause a +353 to be bought. Never raises: a callback must still be
+    # acknowledged even if the next step cannot run yet, or Twilio retries it.
+    from services import ireland_lifecycle
+    await ireland_lifecycle.wake(str(profile.get("tenant_id") or ""),
+                                 source="callback")
     return {"status": "ok", "event": ledger["action"], "state": applied["state"]}

@@ -230,6 +230,19 @@ async def main() -> int:
     except Exception as e:
         logger.error("regulatory reconcile failed: %s", e)
 
+    # ── the Irish lifecycle's RECOVERY wake-up (W9I-H.AUTO.1) ─────────────
+    # The callback is the fast path; this is what makes progress inevitable when
+    # one is never delivered -- Twilio documents no callback on
+    # pending-review -> in-review -- and what applies the time-based limits,
+    # which no event announces. Bounded, never raises, and one tenant's failure
+    # never touches another's.
+    try:
+        from services import ireland_lifecycle
+        swept = await ireland_lifecycle.run_scheduled()
+        logger.info("ireland lifecycle sweep done: %s", swept)
+    except Exception as e:
+        logger.error("ireland lifecycle sweep failed: %s", e)
+
     # Heartbeat for the admin health page — proves the daily cron is running.
     try:
         from datetime import datetime, timezone

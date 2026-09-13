@@ -83,6 +83,42 @@ def _headers(api_key: str | None = None) -> dict:
     }
 
 
+#: A tenant key could not be recovered. NOT the same as "this tenant has none".
+KEY_UNAVAILABLE = "tenant_vapi_key_unavailable"
+
+
+def resolve_tenant_key(tenant: dict) -> dict:
+    """The tenant's Vapi credential, or an explicit refusal. Fails CLOSED.
+
+    Three cases, and the middle one is the whole point:
+
+      * no sub-org key stored     -> {"ok": True, "key": None}. The tenant is
+        INTENDED to live in the parent org; that is how every historical tenant
+        works and nothing about it is broken.
+      * a key is stored and decrypts -> {"ok": True, "key": "..."}.
+      * a key is stored and does NOT decrypt -> {"ok": False}. We know this
+        tenant is meant to own its resources, and we cannot prove which
+        organisation we would be creating them in. get_tenant_vapi_key() returns
+        None here, which silently provisions into the SHARED PARENT POOL -- the
+        wrong owner for a brand-new autonomous tenant, and invisible afterwards.
+
+    Retryable by construction: the credential may decrypt on the next pass once
+    the key material is available again, and nothing was created meanwhile.
+    """
+    encrypted = (tenant or {}).get("vapi_suborg_api_key")
+    if not encrypted:
+        return {"ok": True, "key": None, "reason": "no_suborg_key"}
+    try:
+        from services.security import decrypt
+        return {"ok": True, "key": decrypt(encrypted), "reason": ""}
+    except Exception as e:
+        logger.error("REFUSING to provision for tenant %s: its Vapi sub-org key "
+                     "could not be decrypted (%s) -- provisioning now would "
+                     "create resources in the shared parent organisation",
+                     (tenant or {}).get("id", "?"), type(e).__name__)
+        return {"ok": False, "key": None, "reason": KEY_UNAVAILABLE}
+
+
 def get_tenant_vapi_key(tenant: dict) -> str | None:
     """Return the decrypted sub-org API key for a tenant, or None to use the
     parent VAPI_API_KEY. Call sites should pass the result into api_key=."""

@@ -73,6 +73,7 @@ done
 | `stage_u_pilot_grant.py` | **migration 033** — 40 proofs: the pilot grant table's shape, constraints and RLS; a grant is single-use and expiry-fenced; the consumed columns must agree; and four concurrent consumptions yield exactly one winner |
 | `stage_v_payment_session.py` | **migration 034** — 31 proofs: the payment-session table's shape and CHECKs; the claim is idempotent and elects one winner; the fenced attach binds a Customer exactly once and never overwrites; one Customer cannot serve two signups (`ops_customer_key`); and four OS processes claiming one signup produce one row, one Customer, and one value every worker agrees on |
 | `stage_w_provider_attempt.py` | **migration 035** — 26 proofs, the ones this workstream turns on: `ops_attach_implies_attempt_chk` refuses a Customer with no recorded attempt; an unattempted claim MAY be retaken because Stripe provably was never called; an **attempted** one never may — including after 30 days, because elapsed time is not evidence; and four concurrent workers yield exactly one that was permitted to call the provider |
+| `stage_x_temporary_access.py` | **migration 036** — 35 proofs: the temporary-access lifecycle's shape, constraints and RLS; a number cannot be recorded without a recorded provider attempt; an attempted lifecycle can never be retaken, including at 30 days; retiring the number does NOT reset the spent allowance and re-claiming the row is a no-op rather than a reset; six concurrent 100-second calls total exactly 600 through the in-database increment; and four OS processes yield exactly one worker permitted to buy |
 
 ```bash
 cd backend/scripts/verify_027
@@ -88,6 +89,7 @@ python stage_t_activation.py parent
 python stage_u_pilot_grant.py parent
 python stage_v_payment_session.py parent
 python stage_w_provider_attempt.py parent
+python stage_x_temporary_access.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.

@@ -210,7 +210,8 @@ async def test_an_unconfigured_source_returns_unavailable_and_spends_nothing(mon
          patch.object(tmp, "get_client", return_value=_client_with(_tenant())), \
          patch.object(tmp.telephony, "purchase_number_with_sid", new=AsyncMock()) as buy, \
          patch.object(tmp.tenant_subaccount, "ensure", new=AsyncMock()) as sub:
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
     assert out["status"] == tmp.UNAVAILABLE
     buy.assert_not_called()
     sub.assert_not_called()          # not even a sub-account is created
@@ -539,7 +540,8 @@ async def test_an_unknown_purchase_outcome_does_not_buy_a_second_number():
          patch.object(tmp.telephony, "purchase_number_with_sid", new=buy), \
          patch.object(tmp, "_register_and_activate",
                       new=AsyncMock(return_value={"status": tmp.OK})) as reg:
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
 
     assert len(buys) == 1, "bought more than once after an unknown outcome"
     assert out["status"] == tmp.OK
@@ -566,7 +568,8 @@ async def test_an_unverifiable_purchase_fails_closed_for_an_operator():
          patch.object(tmp.telephony, "find_available_number",
                       new=AsyncMock(return_value=TEMP_E164)), \
          patch.object(tmp.telephony, "purchase_number_with_sid", new=buy):
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
     assert out["status"] == tmp.PURCHASE_OUTCOME_UNKNOWN
 
 
@@ -587,7 +590,8 @@ async def test_a_number_already_held_is_adopted_rather_than_bought_again():
          patch.object(tmp.telephony, "purchase_number_with_sid", new=AsyncMock()) as buy, \
          patch.object(tmp, "_register_and_activate",
                       new=AsyncMock(return_value={"status": tmp.OK})) as reg:
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
     buy.assert_not_called()
     assert reg.call_args.kwargs["adopted"] is True
 
@@ -607,7 +611,8 @@ async def test_no_inventory_is_reported_not_retried_forever():
          patch.object(tmp.telephony, "find_available_number",
                       new=AsyncMock(return_value="")), \
          patch.object(tmp.telephony, "purchase_number_with_sid", new=AsyncMock()) as buy:
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
     assert out["status"] == tmp.NO_INVENTORY
     buy.assert_not_called()
 
@@ -620,7 +625,8 @@ async def test_an_ineligible_tenant_never_reaches_the_provider():
          patch.object(tmp.tenant_subaccount, "ensure", new=AsyncMock()) as sub, \
          patch.object(tmp.telephony, "find_available_number", new=AsyncMock()) as find, \
          patch.object(tmp.telephony, "purchase_number_with_sid", new=AsyncMock()) as buy:
-        out = await tmp.ensure_temporary_number(TENANT)
+        out = await tmp.ensure_temporary_number(TENANT,
+        verified_provider_status="pending-review")
     assert out["status"] == tmp.NOT_ELIGIBLE
     sub.assert_not_called(); find.assert_not_called(); buy.assert_not_called()
 

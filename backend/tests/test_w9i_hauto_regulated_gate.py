@@ -167,7 +167,8 @@ async def test_a_regulated_source_stops_before_any_provider_call(monkeypatch):
                                                   "existing": None, "active": False})), \
          patch.object(temp.tenant_subaccount, "ensure",
                       new=AsyncMock(side_effect=AssertionError("REACHED PROVIDER"))):
-        out = await temp.ensure_temporary_number("t1")
+        out = await temp.ensure_temporary_number("t1",
+        verified_provider_status="pending-review")
     assert out["status"] == temp.UNAVAILABLE
     assert out["reason"] == "source_country_is_regulated:IE"
 

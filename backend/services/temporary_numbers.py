@@ -62,6 +62,13 @@ NOT_FOUND = "tenant_not_found"
 #: so it is not approval, but it IS the provider holding the filing.
 REVIEW_PENDING_STATES = (st.PENDING_REVIEW,)
 
+#: The PROVIDER's own status strings that mean a regulator is genuinely holding
+#: the filing. Deliberately distinct from the local state map above: this is what
+#: a fresh Bundle read must return before a number may be issued. Draft,
+#: unsubmitted, rejected, action-required and expired are all absent, and so is
+#: every local-only value -- none of them is a review in progress.
+PROVIDER_REVIEW_STATES = ("pending-review", "in-review", "provisionally-approved")
+
 #: The provider has decided, or asked for corrections. The customer KEEPS a
 #: temporary number they already have -- taking a working line away on a
 #: correction request would punish someone for a form -- but no NEW one is
@@ -216,7 +223,8 @@ def _no(reason: str, detail=None) -> dict:
 
 # ── Stage E: the one acquisition entry point ───────────────────────────────
 
-async def ensure_temporary_number(tenant_id: str) -> dict:
+async def ensure_temporary_number(tenant_id: str, *,
+                                  verified_provider_status: str) -> dict:
     """Give this tenant a working test line, if they are genuinely entitled to one.
 
     Server-owned end to end. The caller names a tenant and nothing else: not a
@@ -225,7 +233,21 @@ async def ensure_temporary_number(tenant_id: str) -> dict:
 
     Never purchases twice. Never marks a number routable before the voice path is
     proved. Never touches billing.
+
+    `verified_provider_status` is REQUIRED and must be a state the caller read
+    DIRECTLY from the provider moments ago. It is a keyword with no default so
+    that acquiring a number without provider proof is not something a caller can
+    do by forgetting: W9I-H.AUTO found eligibility resting on
+    tenant_regulatory_profiles.state, a local memory of a delivery, where a
+    stale or forged `pending_review` would have bought someone a free line.
     """
+    if str(verified_provider_status or "").strip().lower() not in PROVIDER_REVIEW_STATES:
+        # Includes "" -- a caller with nothing to show gets nothing.
+        logger.error("temporary number refused for tenant %s: provider status %r "
+                     "is not a verified review state", tenant_id,
+                     verified_provider_status)
+        return {"status": NOT_ELIGIBLE, "reason": "provider_review_not_verified",
+                "detail": str(verified_provider_status or "")}
     rows = (get_client().table("tenants").select("*")
             .eq("id", tenant_id).limit(1).execute().data or [])
     if not rows:
@@ -261,15 +283,24 @@ async def ensure_temporary_number(tenant_id: str) -> dict:
     # A previous attempt may have bought a number and lost the response. Asking
     # the provider what this sub-account already holds is what stops a purchase
     # loop, and it is cheap compared with what it prevents.
-    held = await _held_numbers(sub_sid, sub_tok)
+    held = await held_numbers(sub_sid, sub_tok)
     if held["status"] != OK:
         return {"status": PROVIDER_UNAVAILABLE, "reason": "inventory_unreadable"}
     if held["numbers"]:
         # We already own something on this tenant's account. Adopt it rather than
         # buy another; the canonical row is what was missing, not the number.
-        existing = held["numbers"][0]
-        logger.warning("tenant %s already holds %d number(s) on its sub-account -- "
-                       "adopting rather than purchasing", tenant_id, len(held["numbers"]))
+        existing = pick_unambiguous(held["numbers"])
+        if existing is None:
+            # More than one candidate and no way to tell which is ours. Guessing
+            # would bind a test line -- and its eventual RELEASE -- to an
+            # arbitrary number. Nothing is bought and nothing is adopted.
+            logger.error("tenant %s holds %d unassigned numbers -- operator review "
+                         "required before a temporary line can be adopted",
+                         tenant_id, len(held["numbers"]))
+            return {"status": PURCHASE_OUTCOME_UNKNOWN,
+                    "reason": "multiple_unassigned_numbers"}
+        logger.warning("tenant %s already holds a number on its sub-account -- "
+                       "adopting rather than purchasing", tenant_id)
         return await _register_and_activate(
             tenant=tenant, e164=existing["e164"], provider_sid=existing["sid"],
             sub_sid=sub_sid, sub_tok=sub_tok, iso_country=policy.iso_country,
@@ -299,15 +330,22 @@ async def ensure_temporary_number(tenant_id: str) -> dict:
         # blind retry is how a tenant ends up paying for two numbers. Ask the
         # provider what it now holds, exactly as the submission path does.
         logger.error("temporary number purchase errored for tenant %s: %s", tenant_id, e)
-        recheck = await _held_numbers(sub_sid, sub_tok)
+        recheck = await held_numbers(sub_sid, sub_tok)
         if recheck["status"] != OK:
             # We cannot tell. Fail closed and say so: an operator reconciles, and
             # nothing here loops.
             return {"status": PURCHASE_OUTCOME_UNKNOWN,
                     "reason": "provider_unreachable_after_purchase"}
-        if not recheck["numbers"]:
-            return {"status": PROVIDER_UNAVAILABLE, "reason": "purchase_failed"}
-        got = recheck["numbers"][0]
+        got = pick_unambiguous(recheck["numbers"])
+        if got is None:
+            if not recheck["numbers"]:
+                # Nothing held. That may mean the purchase failed, or that the
+                # listing is momentarily wrong. Neither is proof, so the caller
+                # reconciles rather than buying again.
+                return {"status": PURCHASE_OUTCOME_UNKNOWN,
+                        "reason": "purchase_unconfirmed_and_nothing_held"}
+            return {"status": PURCHASE_OUTCOME_UNKNOWN,
+                    "reason": "multiple_unassigned_numbers"}
         logger.warning("temporary purchase for tenant %s errored but the provider "
                        "holds %s -- adopting", tenant_id, got["sid"][:8])
         e164, provider_sid = got["e164"], got["sid"]
@@ -317,14 +355,40 @@ async def ensure_temporary_number(tenant_id: str) -> dict:
         sub_tok=sub_tok, iso_country=policy.iso_country, adopted=False)
 
 
-async def _held_numbers(sub_sid: str, sub_tok: str) -> dict:
-    """What this sub-account actually holds. The answer to "did I already buy?"."""
+async def held_numbers(sub_sid: str, sub_tok: str) -> dict:
+    """What this sub-account actually holds. The answer to "did I already buy?".
+
+    Twilio's per-sub-account listing is authoritative and immediately consistent,
+    which is what makes it a usable oracle here -- unlike a search index, whose
+    silence proves nothing.
+    """
     listing = await telephony.fetch_subaccount_numbers(sub_sid, sub_tok)
     if not listing.ok:
         return {"status": PROVIDER_UNAVAILABLE, "numbers": []}
     return {"status": OK,
             "numbers": [{"e164": n.phone_number, "sid": n.sid}
                         for n in listing.numbers]}
+
+
+#: Kept only for tests written against the old private name. NOT used by this
+#: module: an alias binds at definition time, so calling through it would make
+#: the real function unpatchable and silently skip a test's fake.
+_held_numbers = held_numbers
+
+
+def pick_unambiguous(numbers: list[dict]) -> dict | None:
+    """The one number this tenant's temporary line is, or None.
+
+    W9I-H.AUTO found this path adopting numbers[0]. The permanent path already
+    refuses to guess, and the reason applies just as hard here: picking
+    arbitrarily attaches a customer's test line -- and later its retirement,
+    which RELEASES a number -- to whichever row happened to sort first.
+
+    Zero is not ambiguous, it is absent. Two or more is a question for a human.
+    """
+    if len(numbers) != 1:
+        return None
+    return numbers[0]
 
 
 async def _register_and_activate(*, tenant: dict, e164: str, provider_sid: str,
@@ -368,12 +432,18 @@ async def _register_and_activate(*, tenant: dict, e164: str, provider_sid: str,
     if not assistant_id:
         return {"status": HEALTH_FAILED, "reason": "no_assistant_on_tenant",
                 "row": row}
+    # FAIL CLOSED on an unrecoverable tenant credential (W9I-H.AUTO.1 Stage J).
+    # Falling back to the parent organisation here would create this tenant's
+    # phone record under shared ownership, autonomously and invisibly.
+    key = vapi.resolve_tenant_key(tenant)
+    if not key["ok"]:
+        return {"status": HEALTH_FAILED, "reason": vapi.KEY_UNAVAILABLE, "row": row}
     try:
         vapi_phone_id = await vapi.import_twilio_number(
             phone_number=e164, twilio_account_sid=sub_sid, twilio_auth_token=sub_tok,
             label=f"{tenant.get('business_name') or 'Open Lines'} (temporary)",
             server_url=f"{vapi.APP_BACKEND_URL}/webhooks/vapi-call-ended",
-            api_key=vapi.get_tenant_vapi_key(tenant),
+            api_key=key["key"],
             assistant_id=assistant_id)
     except Exception as e:
         logger.error("Vapi import failed for temporary number on tenant %s: %s",
