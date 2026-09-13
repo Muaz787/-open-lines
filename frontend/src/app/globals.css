@@ -2425,3 +2425,171 @@ footer {
   animation: fs-spin 0.9s linear infinite; }
 @keyframes fs-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .fs-spinner { animation-duration: 3s; } }
+
+/* ══════════════════════════════════════════════
+   Business verification — onboarding wizard + dashboard route
+   ══════════════════════════════════════════════
+   ONE FORM, TWO SURFACES, ONE STYLESHEET.
+
+   This form was originally written in the dashboard's db-* classes, whose
+   tokens are declared on .db-root — an ancestor that exists under /dashboard
+   and /admin and nowhere else. Rendered inside the onboarding wizard, every
+   var(--db-*) was therefore invalid at computed-value time and the property
+   fell back to its initial value: `border: 1px solid var(--db-border)` became
+   border-style:none, so the inputs had no edges; .db-card lost its background;
+   and .db-btn--primary dropped its fill while keeping `color:#fff`, painting
+   white labels on a white card. The result read as a page with no fields and
+   no buttons, which is exactly what it was.
+
+   The tokens below therefore resolve on BOTH surfaces: they inherit the
+   dashboard's warm palette where one is in scope, and fall back to the
+   marketing palette otherwise. Nothing here may depend on an ancestor that
+   only one of the two surfaces provides. */
+.bv {
+  --bv-panel:      var(--db-card, var(--bg-2, #ffffff));
+  --bv-sunken:     var(--db-bg, var(--bg-3, #f2f2f2));
+  --bv-line:       var(--db-border, var(--border-2, rgba(0,31,63,0.13)));
+  --bv-line-lt:    var(--db-border-lt, var(--border, rgba(0,31,63,0.07)));
+  --bv-ink:        var(--db-text, var(--text, #001f3f));
+  --bv-ink-2:      var(--db-text-2, var(--text-2, #5a6a7a));
+  --bv-faint:      var(--db-faint, var(--text-3, #9aabbb));
+  /* The primary fill is the dashboard's forest green where it exists and the
+     wizard's navy otherwise — both carry white text at a readable contrast,
+     which the brand's bright --accent does not. */
+  --bv-cta:        var(--db-accent, var(--text, #001f3f));
+  --bv-cta-hover:  var(--db-accent-hover, var(--text, #001f3f));
+  --bv-focus:      var(--db-accent, var(--accent, #34c759));
+  --bv-accent-ink: var(--db-accent-text, var(--accent-text, #15803d));
+  --bv-accent-bg:  var(--db-accent-bg, var(--accent-dim, rgba(52,199,89,0.12)));
+  --bv-danger:     var(--db-danger-text, #b4402f);
+  --bv-danger-bg:  var(--db-danger-bg, rgba(180,64,47,0.07));
+
+  display: flex; flex-direction: column; gap: 18px;
+  text-align: left; color: var(--bv-ink);
+}
+
+/* ── Progress ──
+   Dots and one-line labels on a single row: three stacked two-line cells were
+   what made the step list read as loose body copy rather than progress. */
+.bv-steps {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 6px 10px; list-style: none; padding: 0; margin: 0;
+}
+.bv-step { display: flex; align-items: center; gap: 7px; }
+.bv-step-n {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 50%;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  border: 1.5px solid var(--bv-line); color: var(--bv-faint);
+  background: transparent;
+}
+.bv-step-l {
+  font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--bv-ink-2);
+}
+.bv-step.is-now .bv-step-n { background: var(--bv-cta); border-color: var(--bv-cta); color: #fff; }
+.bv-step.is-now .bv-step-l { color: var(--bv-ink); font-weight: 650; }
+.bv-step.is-done .bv-step-n { background: var(--bv-accent-bg); border-color: var(--bv-accent-bg); color: var(--bv-accent-ink); }
+.bv-step-rule { flex: 1 1 12px; min-width: 8px; height: 1.5px; background: var(--bv-line); border-radius: 1px; }
+
+/* ── Panel ── */
+.bv-panel {
+  display: flex; flex-direction: column; gap: 16px;
+  padding: 22px; border-radius: 14px;
+  background: var(--bv-panel); border: 1px solid var(--bv-line);
+}
+.bv-h { font-size: 16px; font-weight: 700; line-height: 1.35; margin: 0; color: var(--bv-ink); text-wrap: balance; }
+.bv-lede { font-size: 13px; line-height: 1.55; margin: -8px 0 0; color: var(--bv-ink-2); }
+.bv-prose { font-size: 14px; line-height: 1.6; margin: 0; color: var(--bv-ink-2); }
+.bv-note { font-size: 12px; line-height: 1.5; margin: 0; color: var(--bv-faint); }
+
+/* ── Fields ──
+   Label, control, then help beneath in a visibly quieter colour. The help text
+   previously inherited body ink, so hints and labels carried identical weight
+   and the eye could not find the field. */
+.bv-fields { display: flex; flex-direction: column; gap: 15px; }
+.bv-field { display: flex; flex-direction: column; gap: 5px; }
+.bv-label {
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 600; color: var(--bv-ink);
+}
+.bv-opt { font-size: 11.5px; font-weight: 500; color: var(--bv-faint); }
+.bv-input {
+  width: 100%; box-sizing: border-box;
+  padding: 10px 12px; font: inherit; font-size: 14px;
+  color: var(--bv-ink); background: var(--bv-sunken);
+  border: 1.5px solid var(--bv-line); border-radius: 9px;
+  outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.bv-input::placeholder { color: var(--bv-faint); }
+.bv-input:hover:not(:focus) { border-color: var(--bv-ink-2); }
+.bv-input:focus { border-color: var(--bv-focus); box-shadow: 0 0 0 3px var(--bv-accent-bg); }
+.bv-help { font-size: 12px; line-height: 1.45; margin: 0; color: var(--bv-ink-2); opacity: 0.85; }
+
+/* ── Actions ──
+   Always a real, visible button row. Primary first on wide, and full-width
+   stacked once the card is too narrow to hold two side by side. */
+.bv-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.bv-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 18px; border-radius: 10px; border: 1.5px solid transparent;
+  font: inherit; font-size: 14px; font-weight: 600; line-height: 1.2;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s, opacity .15s;
+}
+.bv-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.bv-btn:focus-visible { outline: 2px solid var(--bv-focus); outline-offset: 2px; }
+.bv-btn--primary { background: var(--bv-cta); color: #fff; border-color: var(--bv-cta); }
+.bv-btn--primary:hover:not(:disabled) { background: var(--bv-cta-hover); filter: brightness(1.08); }
+.bv-btn--ghost { background: transparent; color: var(--bv-ink-2); border-color: var(--bv-line); }
+.bv-btn--ghost:hover:not(:disabled) { color: var(--bv-ink); border-color: var(--bv-ink-2); }
+.bv-btn--grow { flex: 1 1 auto; }
+
+/* ── Alert ── */
+.bv-alert {
+  padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+  background: var(--bv-panel); border: 1.5px solid var(--bv-line); color: var(--bv-ink);
+}
+.bv-alert.is-blocking { background: var(--bv-danger-bg); border-color: var(--bv-danger); }
+.bv-alert-more { margin: 6px 0 0; font-size: 12px; color: var(--bv-ink-2); }
+
+/* ── Review ──
+   Stacked label-over-value rows. A two-column grid collapsed unreadably inside
+   the wizard's narrow card. */
+.bv-facts { margin: 0; display: flex; flex-direction: column; border-top: 1px solid var(--bv-line-lt); }
+.bv-fact { padding: 10px 0; border-bottom: 1px solid var(--bv-line-lt); }
+.bv-fact dt { font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--bv-faint); }
+.bv-fact dd { margin: 3px 0 0; font-size: 14px; font-weight: 600; color: var(--bv-ink); word-break: break-word; }
+.bv-fact dd.is-empty { font-weight: 500; color: var(--bv-faint); }
+
+/* ── Consent ── */
+.bv-consent {
+  display: flex; gap: 11px; align-items: flex-start; cursor: pointer;
+  padding: 14px; border-radius: 10px;
+  background: var(--bv-sunken); border: 1.5px solid var(--bv-line);
+}
+.bv-consent:focus-within { border-color: var(--bv-focus); box-shadow: 0 0 0 3px var(--bv-accent-bg); }
+.bv-consent input { width: 17px; height: 17px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--bv-cta); cursor: pointer; }
+.bv-consent span { font-size: 13px; line-height: 1.55; color: var(--bv-ink); }
+
+/* ── Done ── */
+.bv-tick {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--bv-accent-bg); color: var(--bv-accent-ink);
+  font-size: 17px; font-weight: 700; line-height: 1;
+}
+
+/* ── Loading ── */
+.bv-loading { display: flex; align-items: center; gap: 10px; padding: 26px 0; font-size: 13px; color: var(--bv-ink-2); }
+.bv-spinner {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--bv-line); border-top-color: var(--bv-cta);
+  animation: bv-spin 0.9s linear infinite;
+}
+@keyframes bv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .bv-spinner { animation-duration: 3s; } }
+
+@media (max-width: 560px) {
+  .bv-panel { padding: 18px 16px; }
+  .bv-actions { flex-direction: column-reverse; align-items: stretch; }
+  .bv-btn { width: 100%; }
+}
