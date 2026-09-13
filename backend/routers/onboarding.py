@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator
 from db import supabase as db
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
 from services import country_access
+from services import regulatory_filing as filing
 from services import payment_customer
 from services import ireland_pilot
 from services import onboarding_lifecycle as lifecycle_ob
@@ -793,6 +794,146 @@ async def update_settings(
             logger.warning("Prompt rebuild after settings update failed for tenant %s (non-fatal): %s", tenant_id, e)
 
     return _sanitize_tenant(updated)
+
+
+@router.get("/setup-state/{tenant_id}")
+async def setup_state(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Where this tenant is in setup, and what to show them. Read-only.
+
+    ONE AUTHORITY FOR THE WIZARD. Onboarding now spans account creation,
+    payment, a regulatory review that takes days, an OAuth round trip and phone
+    provisioning. The stage cannot live in React state that a refresh discards,
+    and it must not be re-derived by the browser from scattered fields -- two
+    derivations drift, and the one in the browser is the one that lies.
+
+    Every value here is read from durable state the backend already keeps:
+    the tenant row, the regulatory profiles and the canonical phone rows.
+    Nothing is inferred from a country.
+    """
+    await verify_tenant_owner(tenant_id, authorization)
+    try:
+        tenant = await db.get_tenant_by_id(tenant_id)
+    except Exception as e:
+        logger.error("setup-state: tenant lookup failed for %s: %s", tenant_id, e)
+        raise HTTPException(status_code=500, detail="Could not read your setup state")
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    from db import phone_numbers as db_phones
+    from db import regulatory as db_reg
+    from services import notification_channels as nch
+    from services import phone_lifecycle as pl
+    from services import regulatory_state as st
+    from services import trial as trial_svc
+
+    country = str(tenant.get("business_country_code") or "").strip().upper()
+    needs_reg = lifecycle_ob.needs_regulatory_clearance(country)
+
+    # ── the regulatory step ───────────────────────────────────────────────
+    reg_state, reg_done, reg_blocked = "", not needs_reg, False
+    if needs_reg:
+        profiles = [p for p in await db_reg.list_profiles(tenant_id)
+                    if str(p.get("iso_country") or "").upper() == country]
+        states = {str(p.get("state") or "") for p in profiles}
+        reg_state = sorted(states)[0] if states else st.NOT_STARTED
+        # "Done" means the customer has nothing left to do right now -- filed and
+        # being reviewed counts, because waiting is not a task.
+        reg_done = bool(states & {st.PENDING_REVIEW, st.APPROVED,
+                                  st.NUMBER_PROVISIONING, st.ACTIVE})
+        reg_blocked = bool(states & {st.MORE_INFORMATION_REQUIRED, st.REJECTED})
+
+    # ── the booking integration ───────────────────────────────────────────
+    integration_connected = any(bool(str(tenant.get(f) or "").strip()) for f in
+                                ("google_refresh_token", "microsoft_refresh_token",
+                                 "square_access_token"))
+
+    # ── notification preferences ──────────────────────────────────────────
+    notifications_set = bool(tenant.get("notification_prefs_set_at"))
+
+    # ── the phone ─────────────────────────────────────────────────────────
+    rows = await db_phones.list_for_tenant(tenant_id)
+    permanent = next((r for r in rows if r.get("purpose") == pl.PURPOSE_PERMANENT
+                      and r.get("status") == pl.STATUS_ACTIVE), None)
+    temporary = next((r for r in rows if r.get("purpose") == pl.PURPOSE_TEMPORARY
+                      and r.get("status") == pl.STATUS_ACTIVE), None)
+
+    ts = trial_svc.trial_status(tenant)
+    return {
+        "tenant_id": tenant_id,
+        "needs_regulatory_verification": needs_reg,
+        "regulatory": {"done": reg_done, "blocked": reg_blocked,
+                       "customer_status": filing.customer_status(
+                           next((p for p in (await db_reg.list_profiles(tenant_id))
+                                 if str(p.get("iso_country") or "").upper() == country),
+                                None)) if needs_reg else None},
+        "integration_connected": integration_connected,
+        "notifications_set": notifications_set,
+        "phone": {
+            # The permanent number is theirs. The temporary one is explicitly
+            # labelled so no surface can present it as their business number.
+            "permanent": permanent.get("e164") if permanent else None,
+            "temporary_test": temporary.get("e164") if temporary else None,
+        },
+        "trial": {"started": bool(tenant.get("stripe_trial_ends_at")),
+                  "ends_at": tenant.get("stripe_trial_ends_at"),
+                  "pending_activation": ts.get("trial_pending_activation", False)},
+        # The stage the wizard should show. Computed HERE so the browser never
+        # has to re-derive it from the pieces above.
+        "next_stage": _next_setup_stage(
+            needs_reg=needs_reg, reg_done=reg_done, reg_blocked=reg_blocked,
+            integration_connected=integration_connected,
+            notifications_set=notifications_set,
+            permanent=bool(permanent), temporary=bool(temporary)),
+    }
+
+
+def _next_setup_stage(*, needs_reg: bool, reg_done: bool, reg_blocked: bool,
+                      integration_connected: bool, notifications_set: bool,
+                      permanent: bool, temporary: bool) -> str:
+    """The one place that decides where a resuming customer belongs.
+
+    Ordered by what blocks them, not by how they arrived: a live number ends
+    setup whatever else is unfinished, and a filing needing correction outranks
+    everything else, because nothing downstream can succeed while it waits.
+    """
+    if permanent:
+        return "ready"
+    if needs_reg and (reg_blocked or not reg_done):
+        return "verification"
+    if not integration_connected:
+        return "calendar"
+    if not notifications_set:
+        return "notifications"
+    if temporary:
+        return "ready"
+    return "final_setup"
+
+
+@router.post("/finalize/{tenant_id}")
+async def finalize_setup(
+    tenant_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    """Ask the lifecycle to take this tenant as far as it safely can.
+
+    A WAKE-UP, NOT A COMMAND. It invokes the existing autonomous lifecycle and
+    decides nothing itself: whether the customer ends up with a permanent
+    number or a temporary test line depends on what the PROVIDER says about
+    their filing, read fresh inside advance(). The browser cannot choose, and
+    neither can this endpoint.
+
+    Idempotent -- advance() converges, so a double click, a refresh or a retry
+    costs one provider read and changes nothing twice.
+    """
+    await verify_tenant_owner(tenant_id, authorization)
+    from services import ireland_lifecycle
+    await ireland_lifecycle.wake(tenant_id, source="onboarding")
+    # Never return the lifecycle's internal outcome: it names provider states and
+    # internal steps. The customer gets the same setup view as any other refresh.
+    return await setup_state(tenant_id, authorization)
 
 
 @router.get("/status/{tenant_id}")

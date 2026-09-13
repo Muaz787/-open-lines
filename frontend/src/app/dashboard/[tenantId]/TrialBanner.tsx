@@ -21,6 +21,11 @@ export interface TrialInfo {
   subscription_required: boolean
   /** A Stripe trial with a card on file, as opposed to the legacy card-free trial. */
   card_trial?: boolean
+  /** No trial has begun, and none can until a real line exists — a regulated
+   *  tenant still waiting on their number. Server-decided; never inferred here
+   *  from a date, which is how this banner came to announce a trial that did
+   *  not exist. */
+  trial_pending_activation?: boolean
   /** The first charge after a trial bounced — the line is gated until it's paid. */
   payment_required?: boolean
   plan?: string | null
@@ -67,7 +72,14 @@ export function TrialBanner({ trial, tenantId }: { trial?: TrialInfo | null; ten
   let message: string
   let cta: { label: string; href?: string; onClick?: () => void }
 
-  if (trial.payment_required) {
+  if (trial.trial_pending_activation) {
+    // No subscription, no charge, and no working line to spend a trial on. The
+    // derived 7-day window is real arithmetic about something that has not
+    // started, so it is not shown: this says what is actually true instead.
+    tone = 'info'
+    message = 'Your 7-day free trial will start when your business number is activated.'
+    cta = { label: 'View verification', href: `/dashboard/${tenantId}/verification` }
+  } else if (trial.payment_required) {
     // Trial ended, the card bounced, and the line is off until it's paid.
     tone = 'danger'
     message = 'Your payment didn’t go through, so your AI receptionist is paused. Update your card to bring it back online.'

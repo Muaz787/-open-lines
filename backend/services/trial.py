@@ -271,7 +271,40 @@ def trial_status(tenant: dict) -> dict:
         status = {**status, "line_active": False, "deactivated": True}
     else:
         status["deactivated"] = False
+
+    # ── HAS THE TRIAL ACTUALLY STARTED? ───────────────────────────────────
+    # The derived branch computes a 7-day window from created_at for any tenant
+    # without a Stripe subscription. For a regulated tenant waiting on a
+    # regulator that window is real arithmetic about a trial that does not
+    # exist: no subscription, no charge, and no working line to spend it on.
+    # The dashboard rendered "your free trial ends in 7 days" at a customer who
+    # had none.
+    #
+    # This says so, so the surfaces can stop inferring it from a date. Pure and
+    # DB-free like the rest of the hot path: the tenant row already carries
+    # everything needed, and twilio_phone_number is written ONLY for a permanent
+    # number -- a temporary test line never mirrors into it.
+    status["trial_pending_activation"] = _trial_pending_activation(tenant)
     return status
+
+
+def _trial_pending_activation(tenant: dict) -> bool:
+    """True when no trial has begun and none can until a real line exists.
+
+    Deliberately not "is this tenant Irish": the condition is a country whose
+    numbers need regulatory clearance AND no permanent number yet. A tenant
+    anywhere in that position has the same truth to be told, and one whose
+    number goes live stops matching without a code change.
+    """
+    if tenant.get("stripe_trial_ends_at") or tenant.get("stripe_subscription_id"):
+        return False                      # a real Stripe trial or subscription
+    if has_active_subscription(tenant):
+        return False
+    from services import onboarding_lifecycle as _ob
+    if not _ob.needs_regulatory_clearance(
+            str(tenant.get("business_country_code") or "")):
+        return False
+    return not str(tenant.get("twilio_phone_number") or "").strip()
 
 
 def blocked_reason(tenant: dict) -> str:
