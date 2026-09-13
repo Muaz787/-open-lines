@@ -2491,6 +2491,17 @@ async def _do_classify_and_route(tenant_id: str, body: dict) -> dict:
 
     # Map decision -> AI directive. Transfer only if the telephony layer is live.
     if decision.decision == "transfer":
+        # A temporary TEST line may never bridge a call to the PSTN, whatever the
+        # assistant decided and whatever the entitlement says. The free line is
+        # there to let a customer hear their own receptionist work; a transfer
+        # turns an inbound test into billable outbound minutes to wherever the
+        # caller can talk the assistant into dialling. Server-side, so no prompt
+        # and no tool argument can reach past it.
+        from services import ireland_lifecycle
+        if not await ireland_lifecycle.transfer_allowed(tenant_id):
+            logger.warning("classify-and-route: transfer refused -- tenant %s is "
+                           "on a temporary test line", tenant_id)
+            return _result(tc_id, _CALLBACK_MSG)
         if entitlements.transfer_execution_enabled():
             return _result(tc_id, _TRANSFER_MSG)
         logger.info("classify-and-route: transfer decided but execution disabled — callback fallback (%s)", tenant_id)

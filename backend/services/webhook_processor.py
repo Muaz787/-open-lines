@@ -373,13 +373,31 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
 
-    # Record minutes for metered overage billing — cast to int (Vapi sends floats)
+    # ── USAGE: the temporary test line is FREE, and must stay free ────────
+    # record_call_minutes accumulates into tenants.minutes_used_this_period,
+    # which both reports overage to Stripe AND auto-converts a card trial. Either
+    # would charge a customer for minutes they were promised free while waiting
+    # on a regulator, so a call that arrived on a temporary_test number is
+    # accounted against its own allowance instead and never reaches billing.
     if duration is not None and duration > 0:
         try:
-            from services.usage import record_call_minutes
-            await record_call_minutes(tenant_id, int(duration))
+            from services import ireland_lifecycle
+            free_test = await ireland_lifecycle.record_temporary_usage(
+                tenant_id=tenant_id, called_number=called_number,
+                duration_secs=int(duration))
         except Exception as e:
-            logger.error("usage.record_call_minutes failed for tenant %s call %s: %s", tenant_id, call_id, e)
+            # UNKNOWN whether this was a free test call. Bill nothing: charging a
+            # free test call is worse than missing a billable minute, and this
+            # path only runs at all for a regulated tenant with a live temp line.
+            logger.error("temporary-usage accounting failed for tenant %s call %s: "
+                         "%s -- not billing this call", tenant_id, call_id, e)
+            free_test = True
+        if not free_test:
+            try:
+                from services.usage import record_call_minutes
+                await record_call_minutes(tenant_id, int(duration))
+            except Exception as e:
+                logger.error("usage.record_call_minutes failed for tenant %s call %s: %s", tenant_id, call_id, e)
 
     logger.info("Processed end-of-call-report for call %s tenant %s", call_id, tenant_id)
 

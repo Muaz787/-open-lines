@@ -529,6 +529,42 @@ async def filing_status(tenant_id: str):
             "revisit_step": cx.STEP_DETAILS if view["action_required"] else "",
         })
 
+    # ── THE TEMPORARY TEST LINE (W9I-H.AUTO.1 Stage L) ───────────────────
+    # Built and tested in W9I-E, but nothing ever showed it to anyone. It is
+    # always labelled temporary and never described as their Irish number: a
+    # business that believes a +1 number is its new Irish line will put it on
+    # its website. Carries no SID, no Vapi id, no fingerprint, no provider text.
+    from db import ireland_temp_access as ita
+    from db import phone_numbers as db_phones
+    from services import ireland_lifecycle as il
+    from services import phone_lifecycle as pl
+    from services import temporary_numbers as temp
+
+    temp_view = None
+    try:
+        rows = await db_phones.list_for_tenant(tenant_id)
+        live = [r for r in rows if r.get("purpose") == pl.PURPOSE_TEMPORARY
+                and r.get("status") in pl.LIVE_TEMPORARY_STATUSES]
+        access = await ita.get(tenant_id) or {}
+        if live or access:
+            temp_view = temp.customer_view(live[0] if live else None)
+            used = int(access.get("seconds_used") or 0)
+            temp_view["minutes_remaining"] = max(
+                0, (il.FREE_SECONDS - used + 59) // 60)
+            if access.get("suspended_at"):
+                # A durable state with a plain reason, rather than letting the
+                # customer discover it as a line that stopped answering.
+                temp_view["status"] = _SUSPEND_VIEW.get(
+                    str(access.get("suspend_reason") or ""), "TEMPORARY_TEST_ENDED")
+                temp_view["message"] = _SUSPEND_MESSAGE.get(
+                    str(access.get("suspend_reason") or ""),
+                    "Your temporary test line has ended. Your registration is "
+                    "still being handled and this does not affect it.")
+    except Exception as e:
+        # Never fail the whole status page because the test line cannot be read.
+        logger.error("temporary line view unavailable for tenant %s: %s",
+                     tenant_id, type(e).__name__)
+
     return {
         "iso_country": country,
         "filings": filings,
@@ -536,7 +572,32 @@ async def filing_status(tenant_id: str):
         # looks like between authorising and the first orchestration pass.
         "any_submitted": any(f["submitted"] for f in filings),
         "any_action_required": any(f["action_required"] for f in filings),
+        "temporary_line": temp_view,
     }
+
+
+#: Why testing stopped, in the customer's terms. Each one says plainly that the
+#: registration itself is unaffected, because that is the question they will ask.
+_SUSPEND_VIEW = {
+    "test_allowance_exhausted":     "TEMPORARY_TEST_LIMIT_REACHED",
+    "pending_review_period_expired": "TEMPORARY_TEST_PERIOD_EXPIRED",
+    "correction_window_expired":     "TEMPORARY_TEST_PERIOD_EXPIRED",
+    "registration_rejected":         "TEMPORARY_TEST_ENDED",
+}
+_SUSPEND_MESSAGE = {
+    "test_allowance_exhausted":
+        "You have used all of your free test minutes. Your registration is "
+        "still being reviewed and this does not affect it.",
+    "pending_review_period_expired":
+        "Your free testing period has ended while we wait for your "
+        "registration. We will set up your number as soon as it is approved.",
+    "correction_window_expired":
+        "Testing has paused because your registration still needs changes. "
+        "Update your details and we will pick it up again.",
+    "registration_rejected":
+        "Testing has ended because your registration was not accepted. You can "
+        "review your details and submit again.",
+}
 
 
 #: Derived, not stored. tenants.onboarding_state stays `regulatory_required` --
