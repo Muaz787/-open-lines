@@ -80,14 +80,62 @@ _TIERS: dict[str, dict] = {
 }
 
 
-def tier_for(tenant: dict) -> str:
-    """Resolve the effective tier. Requires an active subscription; otherwise the
-    tenant is treated as having no routing capabilities (tier 'starter'/_OFF)."""
+def entitled_plan(tenant: dict) -> str | None:
+    """The paid plan IN FORCE for this tenant right now, or None.
+
+    The one definition of "has this customer got the plan they chose", so the
+    per-feature gates stop each deciding it for themselves. Square, Stripe
+    Connect, deposits and the knowledge-base caps all asked the same question
+    four different times, which is why they could disagree.
+
+    A SUBSCRIPTION THAT CANNOT START YET IS NOT A SUBSCRIPTION THEY LACK.
+    The ordinary case is a live subscription, `trialing` included -- a card
+    trial is a real Stripe subscription and has always passed. But a tenant in a
+    regulated country has no billable line until a regulator approves their
+    number, so the subscription is deliberately not started at signup and their
+    status sits at 'none' for as long as the filing takes. They chose Pro, they
+    gave us a card, and the only thing they are waiting on is an authority
+    neither they nor we control. Withholding the plan through that wait charges
+    them for someone else's queue.
+
+    So the second branch is narrow and evidenced, never "is this tenant Irish":
+      * they picked a paid plan, and
+      * they completed the payment step -- a Stripe Customer exists, which the
+        regulated exit persists precisely so this is knowable, and
+      * no trial has begun and none can until a real line exists.
+
+    That last condition stops holding the moment their number goes live, with no
+    code change, because it is the same predicate the dashboard banner and the
+    trial-reminder sweep already read. And the window is bounded: a filing that
+    stalls is suspended by the Ireland lifecycle (30 / 14 / 7 days), so this can
+    never become indefinite free access.
+    """
     plan = (tenant.get("subscription_plan") or "").lower()
-    status = (tenant.get("subscription_status") or "").lower()
-    if status in _ACTIVE_SUB_STATUSES and plan in ("pro", "business"):
+    if plan not in ("pro", "business"):
+        return None
+    if (tenant.get("subscription_status") or "").lower() in _ACTIVE_SUB_STATUSES:
         return plan
-    return "starter"
+    if _awaiting_activation(tenant):
+        return plan
+    return None
+
+
+def _awaiting_activation(tenant: dict) -> bool:
+    """Committed to a plan, but the subscription cannot start yet.
+
+    Imported inside the function: services.trial reaches back into onboarding
+    lifecycle, and a module-level import here would close the loop.
+    """
+    if not str(tenant.get("stripe_customer_id") or "").strip():
+        return False               # never completed payment; nothing was chosen
+    from services import trial as _trial
+    return _trial._trial_pending_activation(tenant)
+
+
+def tier_for(tenant: dict) -> str:
+    """Resolve the effective tier, or 'starter'/_OFF when no paid plan is in
+    force. Routing-specific; the plan question itself lives in entitled_plan."""
+    return entitled_plan(tenant) or "starter"
 
 
 def _tenant_opted_in(tenant: dict) -> bool:

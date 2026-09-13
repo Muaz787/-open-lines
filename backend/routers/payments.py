@@ -9,14 +9,17 @@ from pydantic import BaseModel
 
 from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi, telephony
+from services import entitlements
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
-_ELIGIBLE_PLANS   = {"pro", "business"}
-_ELIGIBLE_STATUSES = {"active", "trialing", "canceling"}
+# The plan question is answered by services.entitlements; a local copy of the
+# eligible plans and statuses here is a fourth definition that can disagree with
+# the other three -- which is how Square, Stripe Connect and deposits came to
+# admit slightly different sets of tenants.
 
 
 _COUNTRY_CURRENCY: dict[str, str] = {
@@ -30,9 +33,13 @@ def _currency_for(tenant: dict) -> str:
 
 
 def _is_eligible(tenant: dict) -> bool:
-    plan   = (tenant.get("subscription_plan") or "").lower()
-    status = tenant.get("subscription_status") or ""
-    return plan in _ELIGIBLE_PLANS and status in _ELIGIBLE_STATUSES
+    """Deposits follow the plan, and the plan question has one answer.
+
+    Connecting a provider but being unable to collect would be a worse half-state
+    than refusing both, so this reads the same resolver Square and Stripe Connect
+    do rather than repeating the status test a third time.
+    """
+    return entitlements.entitled_plan(tenant) is not None
 
 
 def _effective_currency(tenant: dict) -> str:

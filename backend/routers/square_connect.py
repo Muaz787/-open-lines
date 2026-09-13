@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 
 from services import square_service as sq_svc, square_booking, vapi
+from services import entitlements
 from services import location_sync
 from services.security import encrypt, verify_tenant_owner
 from db import supabase as db
@@ -50,9 +51,10 @@ async def onboard(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
-    plan   = (tenant.get("subscription_plan") or "").lower()
-    status = tenant.get("subscription_status") or ""
-    if plan not in ("pro", "business") or status not in ("active", "trialing", "canceling"):
+    # entitled_plan, not a local status test: a regulated tenant's subscription
+    # cannot start until a regulator approves their number, and refusing them
+    # Square through that wait withholds the plan they already paid for.
+    if not entitlements.entitled_plan(tenant):
         raise HTTPException(status_code=403, detail="Square requires a Pro or Business plan")
 
     origin = "calendar" if origin == "calendar" else "payments"

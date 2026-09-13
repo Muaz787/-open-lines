@@ -23,12 +23,22 @@ MAX_FILES_PER_UPLOAD = 10
 
 
 def kb_limits(tenant: dict) -> dict:
-    """Return {tier, max_file_mb, max_bytes, max_pages, ocr_pages} for a tenant."""
+    """Return {tier, max_file_mb, max_bytes, max_pages, ocr_pages} for a tenant.
+
+    Pro and Business come from entitlements.entitled_plan, so a tenant whose
+    subscription cannot start yet — a regulated signup waiting on a regulator to
+    approve their number — keeps the caps they paid for instead of being quietly
+    demoted to trial limits for the length of someone else's queue.
+
+    Starter keeps its own resolution: entitled_plan answers only the paid-tier
+    question, and routing Starter through it would drop those tenants to trial
+    caps, which is the opposite of the point.
+    """
+    from services import entitlements
     plan = (tenant.get("subscription_plan") or "").lower()
     status = (tenant.get("subscription_status") or "").lower()
-    if status in _ACTIVE_SUB_STATUSES and plan in _LIMITS:
-        tier = plan
-    else:
-        tier = "trial"  # no active paid plan → trial tier (upload gating handled elsewhere)
+    tier = (entitlements.entitled_plan(tenant)
+            or ("starter" if status in _ACTIVE_SUB_STATUSES and plan == "starter"
+                else "trial"))
     base = _LIMITS[tier]
     return {"tier": tier, "max_bytes": base["max_file_mb"] * 1024 * 1024, **base}
