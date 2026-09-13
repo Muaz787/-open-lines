@@ -312,66 +312,9 @@ async def process_end_of_call(payload: dict) -> None:
         except Exception as e:
             logger.error("Slack notification failed for tenant %s: %s", tenant_id, e)
 
-    # ── Call-summary notifications — independent per-channel toggles ──
-    notification_email = tenant.get("notification_email", "")
-    # SMS + WhatsApp both go to the dedicated mobile (else the business phone).
-    mobile_to = (tenant.get("sms_alert_number") or tenant.get("business_phone") or "").strip()
-
-    # Email (non-fatal)
-    if tenant.get("email_enabled", True) and notification_email:
-        try:
-            from services.email import send_call_summary_email
-            await send_call_summary_email(
-                to=notification_email,
-                business_name=business_name,
-                analysis=analysis,
-                caller_number=caller_number,
-                tenant_id=tenant.get("id", ""),
-            )
-            analytics.capture(_distinct, "owner_notification_sent", {
-                "tenant_id": tenant_id, "channel": "email",
-            })
-        except Exception as e:
-            logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
-
-    # SMS (non-fatal) — from the tenant's own Twilio line
-    if tenant.get("sms_enabled", False) and mobile_to:
-        try:
-            sub_sid  = tenant.get("twilio_subaccount_sid", "")
-            sub_tok  = tenant.get("twilio_auth_token", "")
-            from_num = tenant.get("twilio_phone_number", "")
-            if sub_sid and sub_tok and from_num:
-                await telephony.send_sms(
-                    subaccount_sid=sub_sid,
-                    subaccount_token=sub_tok,
-                    from_number=from_num,
-                    to_number=mobile_to,
-                    body=_format_sms_summary(business_name, analysis, caller_number),
-                )
-                analytics.capture(_distinct, "owner_notification_sent", {
-                    "tenant_id": tenant_id, "channel": "sms",
-                })
-            else:
-                logger.warning("SMS notification skipped for tenant %s: missing Twilio creds", tenant_id)
-        except Exception as e:
-            logger.error("SMS notification failed for tenant %s: %s", tenant_id, e)
-
-    # WhatsApp (non-fatal) — PRODUCTION ONLY, via an approved Twilio Content
-    # Template from the central OpenLines WhatsApp sender. Never freeform. Skips
-    # silently if the sender/template env vars aren't configured.
-    if tenant.get("whatsapp_enabled", False) and mobile_to:
-        try:
-            sent = await telephony.send_whatsapp_template(
-                mobile_to,
-                telephony.TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID,
-                _whatsapp_summary_vars(business_name, analysis, caller_number),
-            )
-            if sent:
-                analytics.capture(_distinct, "owner_notification_sent", {
-                    "tenant_id": tenant_id, "channel": "whatsapp",
-                })
-        except Exception as e:
-            logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)
+    await _dispatch_call_summary(
+        tenant=tenant, business_name=business_name, analysis=analysis,
+        caller_number=caller_number, tenant_id=tenant_id, _distinct=_distinct)
 
     # ── USAGE: the temporary test line is FREE, and must stay free ────────
     # record_call_minutes accumulates into tenants.minutes_used_this_period,
@@ -536,3 +479,84 @@ async def _processor_loop() -> None:
 
 def start_background_processor() -> None:
     asyncio.create_task(_processor_loop())
+
+
+async def _dispatch_call_summary(*, tenant: dict, business_name: str,
+                                 analysis: dict, caller_number: str,
+                                 tenant_id: str, _distinct: str) -> None:
+    """Owner call-summary delivery. Secondary to the call, the booking and the
+    persisted summary -- none of which it can affect.
+
+    A function rather than an inline block so that "Dashboard only sends nothing"
+    and "a failing channel never diverts to another" can be asserted against the
+    real code instead of a re-implementation of it.
+    """
+    from services import notification_channels as nch
+
+    # Destinations come from ONE place -- notification_channels.preferences --
+    # and each channel has its own. An EXPLICIT tenant gets no fallback at all:
+    # a channel without its own destination is simply off, and a failing channel
+    # never diverts to another. A LEGACY tenant (never asked) keeps today's
+    # behaviour exactly, including the shared destination, so releasing this
+    # changes nothing for them.
+    prefs = nch.preferences(tenant)["channels"]
+    notification_email = prefs[nch.EMAIL]["destination"]
+
+    # Email (non-fatal)
+    if prefs[nch.EMAIL]["enabled"]:
+        try:
+            from services.email import send_call_summary_email
+            await send_call_summary_email(
+                to=notification_email,
+                business_name=business_name,
+                analysis=analysis,
+                caller_number=caller_number,
+                tenant_id=tenant.get("id", ""),
+            )
+            analytics.capture(_distinct, "owner_notification_sent", {
+                "tenant_id": tenant_id, "channel": "email",
+            })
+        except Exception as e:
+            logger.error("Email notification failed for tenant %s: %s", tenant_id, e)
+
+    # SMS (non-fatal) — from the tenant's own Twilio line. A voice-only number
+    # cannot send one, which is why the picker never offers SMS to a tenant
+    # whose long-term number lacks the capability.
+    if prefs[nch.SMS]["enabled"]:
+        mobile_to = prefs[nch.SMS]["destination"]
+        try:
+            sub_sid  = tenant.get("twilio_subaccount_sid", "")
+            sub_tok  = tenant.get("twilio_auth_token", "")
+            from_num = tenant.get("twilio_phone_number", "")
+            if sub_sid and sub_tok and from_num:
+                await telephony.send_sms(
+                    subaccount_sid=sub_sid,
+                    subaccount_token=sub_tok,
+                    from_number=from_num,
+                    to_number=mobile_to,
+                    body=_format_sms_summary(business_name, analysis, caller_number),
+                )
+                analytics.capture(_distinct, "owner_notification_sent", {
+                    "tenant_id": tenant_id, "channel": "sms",
+                })
+            else:
+                logger.warning("SMS notification skipped for tenant %s: missing Twilio creds", tenant_id)
+        except Exception as e:
+            logger.error("SMS notification failed for tenant %s: %s", tenant_id, e)
+
+    # WhatsApp (non-fatal) — PRODUCTION ONLY, via an approved Twilio Content
+    # Template from the central OpenLines WhatsApp sender. Never freeform. Skips
+    # silently if the sender/template env vars aren't configured.
+    if prefs[nch.WHATSAPP]["enabled"]:
+        try:
+            sent = await telephony.send_whatsapp_template(
+                prefs[nch.WHATSAPP]["destination"],
+                telephony.TWILIO_WHATSAPP_SUMMARY_TEMPLATE_SID,
+                _whatsapp_summary_vars(business_name, analysis, caller_number),
+            )
+            if sent:
+                analytics.capture(_distinct, "owner_notification_sent", {
+                    "tenant_id": tenant_id, "channel": "whatsapp",
+                })
+        except Exception as e:
+            logger.error("WhatsApp notification failed for tenant %s: %s", tenant_id, e)

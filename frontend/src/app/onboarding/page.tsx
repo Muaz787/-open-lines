@@ -8,6 +8,7 @@ import MicButton from '@/app/components/MicButton'
 import { trackEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
 import { PLANS, type PlanId } from '@/lib/plans'
 import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
+import NotificationPreferences from '@/components/NotificationPreferences'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -173,7 +174,7 @@ interface Detection {
   website_url: string
 }
 
-type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'done'
+type Stage = 'url' | 'analyzing' | 'customize' | 'review' | 'plan' | 'payment' | 'provisioning' | 'notifications' | 'done'
 
 const LogoMark = () => (
   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style={{ color: 'var(--text)', flexShrink: 0 }}>
@@ -433,7 +434,10 @@ export default function OnboardingPage() {
         trackEvent('trial_started', { tenant_id: provisioned.tenant_id, plan })
       }
       setResult(provisioned)
-      setStage('done')
+      // Ask how they want call summaries BEFORE the ready-to-test screen: the
+      // tenant exists and the owner is signed in by now, which is what the
+      // tenant-scoped preferences API requires.
+      setStage('notifications')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       // Back to the card step. It re-runs setup-card on mount, so the retry gets a
@@ -1074,6 +1078,23 @@ export default function OnboardingPage() {
               form itself arrives in W9I-C; nothing about the requirements is
               hardcoded here, because Twilio's Regulation API is the only source of
               truth for what Ireland asks. */}
+          {stage === 'notifications' && result && (
+            <motion.div key="notifications" className="np-step"
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35 }}>
+              <NotificationPreferences
+                tenantId={String(result.tenant_id)}
+                country={form.country}
+                saveLabel="Save and continue"
+                onSaved={() => setStage('done')}
+              />
+              <button type="button" className="btn-ghost np-skip"
+                      onClick={() => setStage('done')}>
+                I&apos;ll decide later
+              </button>
+            </motion.div>
+          )}
+
           {stage === 'done' && result && result.onboarding_state === 'regulatory_required' && (
             <motion.div key="done-regulatory" className="success-wrap"
               initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}

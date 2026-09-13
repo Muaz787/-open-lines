@@ -2317,3 +2317,61 @@ footer {
   .mq-track { animation: none; transform: translateX(0); }
   .marquee { overflow-x: auto; }
 }
+
+/* ── Call-summary preferences (onboarding + settings) ─────────────────────
+   Selection is carried by a border, a tint AND a tick — never colour alone,
+   so it survives a monochrome display and colour-vision differences. */
+.np { display: flex; flex-direction: column; gap: 18px; text-align: left; }
+.np-title { font-family: var(--font-syne), sans-serif; font-size: 1.35rem;
+            line-height: 1.3; margin: 0; text-wrap: balance; }
+.np-sub { margin: 0; font-size: 0.92rem; line-height: 1.55; opacity: 0.75; max-width: 46ch; }
+.np-muted { opacity: 0.7; font-size: 0.92rem; }
+
+.np-cards { display: grid; gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+
+.np-card { position: relative; display: flex; flex-direction: column; gap: 4px;
+           padding: 16px 16px 16px 44px; border-radius: 12px; text-align: left;
+           border: 1.5px solid var(--border, #d8d4cc); background: transparent;
+           cursor: pointer; transition: border-color .15s, background .15s; }
+.np-card:hover:not(:disabled) { border-color: var(--accent, #2f5d4f); }
+.np-card:focus-visible { outline: 2px solid var(--accent, #2f5d4f); outline-offset: 2px; }
+.np-card:disabled { opacity: 0.45; cursor: not-allowed; }
+.np-card.is-selected { border-color: var(--accent, #2f5d4f); border-width: 2px;
+                       background: color-mix(in srgb, var(--accent, #2f5d4f) 7%, transparent); }
+
+.np-card-check { position: absolute; left: 14px; top: 16px; width: 18px; height: 18px;
+                 border-radius: 5px; border: 1.5px solid var(--border, #d8d4cc);
+                 display: grid; place-items: center; font-size: 12px; line-height: 1;
+                 color: #fff; }
+.np-card.is-selected .np-card-check { background: var(--accent, #2f5d4f);
+                                      border-color: var(--accent, #2f5d4f); }
+.np-card-title { font-weight: 600; font-size: 0.98rem; }
+.np-card-copy { font-size: 0.85rem; line-height: 1.45; opacity: 0.72; }
+
+.np-dest { display: flex; flex-direction: column; gap: 6px; }
+.np-dest-label { font-size: 0.85rem; font-weight: 600; opacity: 0.85; }
+.np-dest input, .np-phone select, .np-phone input {
+  padding: 10px 12px; border-radius: 9px; font: inherit;
+  border: 1.5px solid var(--border, #d8d4cc); background: var(--surface, #fff); }
+.np-dest input:focus-visible, .np-phone select:focus-visible, .np-phone input:focus-visible {
+  outline: 2px solid var(--accent, #2f5d4f); outline-offset: 1px; }
+.np-dest input[aria-invalid='true'] { border-color: #b4402f; }
+.np-phone { display: grid; grid-template-columns: minmax(140px, auto) 1fr; gap: 8px; }
+
+.np-error { color: #b4402f; font-size: 0.84rem; margin: 0; }
+.np-ok { color: var(--accent, #2f5d4f); font-size: 0.88rem; font-weight: 600; }
+.np-link { background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+           color: var(--accent, #2f5d4f); text-decoration: underline; align-self: flex-start; }
+.np-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.np-step { display: flex; flex-direction: column; gap: 18px; }
+.np-skip { align-self: flex-start; }
+.np-compact { gap: 14px; }
+
+@media (max-width: 520px) {
+  .np-cards { grid-template-columns: 1fr; }
+  .np-phone { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-card { transition: none; }
+}
