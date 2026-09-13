@@ -100,6 +100,40 @@ _COUNTRY_CONFIG: dict[str, dict] = {
 SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 
 
+#: E.164 prefixes of the countries a regulator must clear before we may hold a
+#: number there. Derived from onboarding_lifecycle.REGULATED_COUNTRIES so the two
+#: cannot drift: adding a regulated country there closes this path too.
+_REGULATED_DIAL_PREFIXES = {"IE": "+353"}
+
+
+def _regulated_country_of(phone_number: str) -> str:
+    """The regulated country this E.164 belongs to, or "".
+
+    Matched on the dialling prefix rather than on a caller-supplied country, so
+    it holds even when the caller believed it was buying something else.
+    """
+    from services import onboarding_lifecycle as _ob
+    num = str(phone_number or "").strip()
+    for iso in _ob.REGULATED_COUNTRIES:
+        prefix = _REGULATED_DIAL_PREFIXES.get(iso)
+        if prefix and num.startswith(prefix):
+            return iso
+    return ""
+
+
+class RegulatedNumberRefused(Exception):
+    """A regulated number was offered to the unregulated purchase path.
+
+    Its own type so a caller can report it honestly rather than as a generic
+    provider failure, and so a test can assert the refusal happened HERE and not
+    at Twilio.
+    """
+
+    def __init__(self, iso_country: str):
+        self.iso_country = iso_country
+        super().__init__(f"{iso_country} numbers require regulated acquisition")
+
+
 class CountryNotSupported(Exception):
     """A country we have no number inventory configuration for.
 
@@ -395,6 +429,24 @@ async def purchase_number_with_sid(
     than matching on a string that could have been re-issued. purchase_number()
     below still returns only the E.164, so every existing caller is unchanged.
     """
+    # ── THE UNREGULATED PATH MAY NEVER BUY A REGULATED NUMBER (W9I-H.AUTO) ──
+    # This function passes no AddressSid and no BundleSid, because the CA/US
+    # numbers it exists for need neither. A regulated number bought through here
+    # would bypass BOTH the commercial gate in permanent_numbers and the
+    # regulatory bindings the number is required to carry.
+    #
+    # Twilio does refuse such a purchase today ("Phone Number Requires an Address
+    # but AddressSid was empty"), and that refusal was the only thing standing
+    # between an admin reprovision of an Irish tenant and an ungated purchase.
+    # Provider-side protection is not a gate we control: it is a behaviour we
+    # observed. This makes it ours, and fails closed.
+    regulated = _regulated_country_of(phone_number)
+    if regulated:
+        logger.error("refusing to buy regulated number %s through the unregulated "
+                     "path -- permanent_numbers owns regulated acquisition",
+                     phone_number)
+        raise RegulatedNumberRefused(regulated)
+
     try:
         client = _sub_client(subaccount_sid, subaccount_token)
         incoming = client.incoming_phone_numbers.create(phone_number=phone_number)
