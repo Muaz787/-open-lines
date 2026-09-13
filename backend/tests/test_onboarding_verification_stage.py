@@ -109,15 +109,13 @@ def test_local_storage_carries_only_a_pointer_never_a_decision():
 
 
 def test_resume_requires_a_session():
-    i = ONB.index("STAGE_FOR(st.next_stage)")
-    assert "getSession" in ONB[i - 900:i]
+    i = ONB.index("getItem('ol_onboarding_tenant')")
+    assert "getSession" in ONB[i:i + 500]
 
 
 def test_a_completed_tenant_stops_being_resumed():
-    i = ONB.index("STAGE_FOR(st.next_stage)")
-    window = ONB[i:i + 400]
-    assert "removeItem('ol_onboarding_tenant')" in window
-    assert "phone?.permanent" in window, "only a live permanent number ends resume"
+    i = ONB.index("removeItem('ol_onboarding_tenant')")
+    assert "phone?.permanent" in ONB[i - 200:i], "only a live permanent number ends resume"
 
 
 def test_the_status_endpoint_is_tenant_authenticated():
@@ -127,8 +125,8 @@ def test_the_status_endpoint_is_tenant_authenticated():
 
 
 def test_resume_is_best_effort_and_cannot_break_the_wizard():
-    i = ONB.index("STAGE_FOR(st.next_stage)")
-    assert "catch" in ONB[i:i + 500]
+    i = ONB.index("getItem('ol_onboarding_tenant')")
+    assert "catch" in ONB[i:i + 1200]
 
 
 # ═══ 4. the UX corrections ══════════════════════════════════════════════
@@ -178,17 +176,19 @@ def test_the_primary_action_says_save_and_continue():
     assert "Save and continue" in PREFS or "Save and continue" in ONB
 
 
-def test_deferring_saves_nothing_at_all():
+def test_deferring_saves_only_its_own_onboarding_stamp():
     """'I'll decide later' must not enable Email or stamp an explicit
     preference — a deferred customer stays legacy until they answer."""
     import re as _re
-    i = ONB.index("I&apos;ll decide later")
-    window = ONB[i - 700:i + 200]
+    i = ONB.index("declineStep(String(result.tenant_id), 'notifications')")
+    window = ONB[i - 700:i + 300]
     # Strip the JSX comment first: it EXPLAINS that nothing is stamped, and
     # scanning the prose would flag the explanation as the act.
     code = _re.sub(r"\{/\*.*?\*/\}", "", window, flags=_re.S)
-    assert "setStage('finalsetup')" in code
-    for write in ("authedFetch", "PATCH", "email_enabled", "notification_prefs_set_at"):
+    assert "declineStep" in code
+    # It may record the deferral. It may not touch a preference.
+    for write in ("PATCH", "email_enabled", "sms_enabled", "whatsapp_enabled",
+                  "notification_prefs_set_at", "notification_email"):
         assert write not in code, write
 
 
@@ -211,18 +211,23 @@ def test_verification_continues_into_calendar():
     assert "setStage('calendar')" in ONB
 
 
-def test_calendar_continues_into_notifications():
-    i = ONB.index("Skip for now")
-    assert "setStage('notifications')" in ONB[i - 500:i + 200]
+def test_calendar_skip_records_the_answer_instead_of_forcing_a_stage():
+    """Gate B.1: forcing 'notifications' here lost the answer on refresh."""
+    i = ONB.index("declineStep(String(result.tenant_id), 'booking')")
+    window = ONB[i - 300:i + 400]
+    assert "declineStep" in window
+    assert "setStage('notifications')" not in window
 
 
 def test_notifications_continue_into_final_setup():
     assert "onSaved={() => setStage('finalsetup')}" in ONB
 
 
-def test_deferring_notifications_still_reaches_final_setup():
-    i = ONB.index("I&apos;ll decide later")
-    assert "setStage('finalsetup')" in ONB[i - 400:i + 200]
+def test_deferring_notifications_records_the_answer_instead_of_forcing_a_stage():
+    i = ONB.index("declineStep(String(result.tenant_id), 'notifications')")
+    window = ONB[i - 300:i + 400]
+    assert "declineStep" in window
+    assert "setStage('finalsetup')" not in window
 
 
 def test_the_wizard_obeys_the_server_stage_rather_than_deriving_it():
@@ -426,3 +431,218 @@ def test_a_regulated_tenant_still_waiting_is_marked_pending():
     from services import trial as trial_svc
     assert trial_svc._trial_pending_activation(
         {"business_country_code": "IE", "twilio_phone_number": None}) is True
+
+
+# ═══ 6. Gate B.1: "asked and declined" is not "never asked" ═════════════
+# The resolver read only positive signals -- a connected integration, a set
+# preference. Both are absences otherwise, and an absence cannot say whether the
+# customer was never offered the step or offered it and said no. So someone who
+# skipped the calendar was sent back to it on every refresh.
+
+BASE = dict(needs_reg=True, reg_done=True, reg_blocked=False,
+            permanent=False, temporary=False)
+
+
+def _stage(**over):
+    return onboarding._next_setup_stage(**{
+        **BASE, "integration_connected": False, "notifications_set": False,
+        "booking_skipped": False, "notifications_deferred": False, **over})
+
+
+# ── calendar ────────────────────────────────────────────────────────────
+
+def test_calendar_unanswered_still_returns_calendar():
+    assert _stage() == "calendar"
+
+
+@pytest.mark.parametrize("field", ["google_refresh_token", "microsoft_refresh_token",
+                                   "square_access_token"])
+def test_any_connected_provider_completes_the_calendar_step(field):
+    """The three tokens setup_state reads, each on its own."""
+    import inspect
+    src = inspect.getsource(onboarding.setup_state)
+    assert field in src
+    assert _stage(integration_connected=True) != "calendar"
+
+
+def test_an_explicit_skip_completes_the_calendar_step():
+    assert _stage(booking_skipped=True) == "notifications"
+
+
+def test_a_skip_survives_a_refresh():
+    """The defect: identical inputs but for the stamp, and the stamp is what
+    stops the customer being asked again."""
+    assert _stage(booking_skipped=False) == "calendar"
+    assert _stage(booking_skipped=True) != "calendar"
+
+
+def test_a_skipped_then_connected_tenant_stays_complete():
+    """Positive state wins on its own -- nothing has to be unwound."""
+    assert _stage(booking_skipped=True, integration_connected=True) != "calendar"
+
+
+# ── notifications ───────────────────────────────────────────────────────
+
+def test_notifications_unanswered_still_returns_notifications():
+    assert _stage(integration_connected=True) == "notifications"
+
+
+def test_explicit_preferences_complete_the_step():
+    assert _stage(integration_connected=True, notifications_set=True) != "notifications"
+
+
+def test_an_explicit_defer_completes_the_step():
+    assert _stage(integration_connected=True, notifications_deferred=True) == "final_setup"
+
+
+def test_a_defer_survives_a_refresh():
+    assert _stage(integration_connected=True, notifications_deferred=False) == "notifications"
+    assert _stage(integration_connected=True, notifications_deferred=True) != "notifications"
+
+
+def test_a_deferred_then_configured_tenant_stays_complete():
+    assert _stage(integration_connected=True, notifications_set=True,
+                  notifications_deferred=True) != "notifications"
+
+
+# ── combined, and priority preserved ────────────────────────────────────
+
+def test_skip_plus_defer_reaches_final_setup():
+    assert _stage(booking_skipped=True, notifications_deferred=True) == "final_setup"
+
+
+def test_skip_plus_defer_does_not_bounce_back_to_calendar():
+    """Before the fix this returned 'calendar' -- two steps backwards."""
+    assert _stage(booking_skipped=True, notifications_deferred=True) != "calendar"
+
+
+def test_a_blocked_filing_still_outranks_both_declines():
+    assert onboarding._next_setup_stage(
+        **{**BASE, "reg_blocked": True, "integration_connected": True,
+           "notifications_set": True, "booking_skipped": True,
+           "notifications_deferred": True}) == "verification"
+
+
+def test_a_permanent_number_still_wins_over_everything():
+    assert onboarding._next_setup_stage(
+        **{**BASE, "permanent": True, "reg_blocked": True,
+           "integration_connected": False, "notifications_set": False,
+           "booking_skipped": False, "notifications_deferred": False}) == "ready"
+
+
+def test_a_temporary_number_still_ranks_after_the_setup_steps():
+    assert _stage(temporary=True) == "calendar"
+    assert _stage(temporary=True, booking_skipped=True,
+                  notifications_deferred=True) == "ready"
+
+
+# ── the endpoint ────────────────────────────────────────────────────────
+
+def test_only_the_two_declinable_steps_are_addressable():
+    assert set(onboarding._DECLINABLE_STEPS) == {"booking", "notifications"}
+    assert onboarding._DECLINABLE_STEPS["booking"] == "booking_setup_skipped_at"
+    assert onboarding._DECLINABLE_STEPS["notifications"] == "notification_prefs_deferred_at"
+
+
+def test_the_decline_endpoint_is_tenant_authenticated():
+    import inspect
+    assert "verify_tenant_owner" in inspect.getsource(onboarding.decline_setup_step)
+
+
+def test_the_timestamp_is_server_written_and_idempotent():
+    import inspect
+    src = inspect.getsource(onboarding.decline_setup_step)
+    assert "_dt.now(_tz.utc)" in src           # the server decides the time
+    assert '.is_(column, "null")' in src       # and only when it is absent
+
+
+def test_a_caller_cannot_supply_a_time_or_a_column():
+    """The path names a STEP; the column is looked up server-side from a fixed
+    map, so there is no field in which a value or a column name could travel."""
+    import inspect
+    sig = inspect.signature(onboarding.decline_setup_step)
+    assert set(sig.parameters) == {"tenant_id", "step", "authorization"}
+    src = inspect.getsource(onboarding.decline_setup_step)
+    assert "_DECLINABLE_STEPS.get(step)" in src
+
+
+def test_declining_writes_nothing_but_its_own_column():
+    import ast, inspect, textwrap
+    fn = ast.parse(textwrap.dedent(
+        inspect.getsource(onboarding.decline_setup_step))).body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)):
+        fn.body = fn.body[1:]
+    code = ast.unparse(fn)
+    for forbidden in ("notification_prefs_set_at", "email_enabled", "sms_enabled",
+                      "whatsapp_enabled", "notification_email", "sms_alert_number",
+                      "whatsapp_alert_number", "subscription", "trial"):
+        assert forbidden not in code, forbidden
+
+
+# ── the dispatcher must never see the defer stamp ───────────────────────
+
+def test_the_notification_dispatcher_never_reads_the_defer_stamp():
+    """An ONBOARDING fact only. If delivery ever consulted it, deferring would
+    silently change what a tenant receives."""
+    import inspect
+    from services import notification_channels as nch
+    from services import webhook_processor as wp
+    for mod in (nch, wp):
+        assert "notification_prefs_deferred_at" not in inspect.getsource(mod), mod.__name__
+
+
+def test_deferring_leaves_a_tenant_in_legacy_dispatch_semantics():
+    from services import notification_channels as nch
+    deferred = {"id": "t", "notification_prefs_deferred_at": "2026-09-13T12:00:00+00:00",
+                "notification_email": "owner@acme.com", "whatsapp_enabled": True,
+                "sms_alert_number": "+14165551111"}
+    p = nch.preferences(deferred)
+    assert p["semantics"] == "legacy"
+    assert p["dashboard_only"] is False
+    # ...and the legacy destinations still resolve exactly as before
+    assert p["channels"][nch.WHATSAPP]["destination"] == "+14165551111"
+
+
+def test_deferring_does_not_enable_email():
+    from services import notification_channels as nch
+    a = nch.preferences({"id": "t", "email_enabled": False, "notification_email": ""})
+    b = nch.preferences({"id": "t", "email_enabled": False, "notification_email": "",
+                         "notification_prefs_deferred_at": "2026-09-13T12:00:00+00:00"})
+    assert a["channels"][nch.EMAIL] == b["channels"][nch.EMAIL]
+
+
+# ── historical compatibility ────────────────────────────────────────────
+
+def test_historical_tenants_are_null_on_both_and_unaffected():
+    """No backfill: an existing tenant with a connected calendar and legacy
+    notifications is still complete on the strength of its positive state."""
+    assert _stage(integration_connected=True, notifications_set=True) == "final_setup"
+    assert onboarding._next_setup_stage(
+        **{**BASE, "needs_reg": False, "integration_connected": True,
+           "notifications_set": True, "booking_skipped": False,
+           "notifications_deferred": False, "permanent": True}) == "ready"
+
+
+# ── the wiring ──────────────────────────────────────────────────────────
+
+def test_both_declines_call_the_durable_endpoint():
+    assert "decline-step" in ONB
+    assert "declineStep(String(result.tenant_id), 'booking')" in ONB
+    assert "declineStep(String(result.tenant_id), 'notifications')" in ONB
+
+
+def test_the_wizard_obeys_the_returned_stage_rather_than_forcing_one():
+    i = ONB.index("const declineStep")
+    window = ONB[i:i + 700]
+    assert "STAGE_FOR(st.next_stage)" in window
+    for forced in ("setStage('notifications')", "setStage('finalsetup')"):
+        assert forced not in window, forced
+
+
+def test_a_failed_decline_does_not_advance():
+    """Advancing on failure would lose the answer at the next refresh."""
+    i = ONB.index("declineStep(String(result.tenant_id), 'booking')")
+    window = ONB[i:i + 400]
+    assert "catch" in window and "setDeclineError" in window
+    assert "setStage(" not in window
