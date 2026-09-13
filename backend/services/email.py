@@ -194,11 +194,48 @@ def _send(
     html_body: str,
     text_body: str | None = None,
     headers: dict | None = None,
+    idempotency_key: str = "",
 ) -> bool:
-    """Single choke-point for sending. Never raises — returns success as a bool."""
+    """Single choke-point for sending. Never raises — returns success as a bool.
+
+    `idempotency_key` is passed to Resend as a REQUEST option, which its client
+    turns into the `Idempotency-Key` header on POST /emails (measured against
+    resend 2.44.0's request builder, not inferred). Same key plus same body is
+    deduplicated by the provider for about 24 hours; same key with a DIFFERENT
+    body is rejected rather than silently delivering something else.
+
+    Distinct from `headers`, which sets headers on the EMAIL (List-Unsubscribe
+    and friends) rather than on the API request -- an easy and expensive thing to
+    confuse, so they are separate parameters.
+
+    Callers that need to act on WHY a send failed use `send_with_outcome` below;
+    this keeps returning a bool because every existing caller treats it that way.
+    """
+    return send_with_outcome(
+        to=to, subject=subject, html_body=html_body, text_body=text_body,
+        headers=headers, idempotency_key=idempotency_key)["ok"]
+
+
+def send_with_outcome(
+    *,
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str | None = None,
+    headers: dict | None = None,
+    idempotency_key: str = "",
+) -> dict:
+    """Send, and report the outcome in enough detail to decide what to do next.
+
+    Returns {"ok": bool, "provider_id": str, "error": Exception|None}. The
+    exception is handed back rather than logged-and-swallowed because the
+    activation path has to tell a concurrent idempotent request (retry with the
+    same key) from an invalid one (stop, a human is needed), and that
+    distinction lives in the provider's error_type.
+    """
     if not resend.api_key:
         logger.warning("RESEND_API_KEY not set — skipping email '%s' to %s", subject, to)
-        return False
+        return {"ok": False, "provider_id": "", "error": None}
     payload: dict = {
         "from": f"Open Lines <{EMAIL_FROM}>",
         "to": [to],
@@ -209,13 +246,19 @@ def _send(
     }
     if headers:
         payload["headers"] = headers
+    options = {"idempotency_key": idempotency_key} if idempotency_key else None
     try:
-        resend.Emails.send(payload)
+        sent = resend.Emails.send(payload, options) if options else resend.Emails.send(payload)
         logger.info("Email sent to %s: %s", to, subject)
-        return True
+        provider_id = ""
+        if isinstance(sent, dict):
+            provider_id = str(sent.get("id") or "")
+        else:
+            provider_id = str(getattr(sent, "id", "") or "")
+        return {"ok": True, "provider_id": provider_id, "error": None}
     except Exception as e:
         logger.error("Email send failed to %s (%s): %s", to, subject, e)
-        return False
+        return {"ok": False, "provider_id": "", "error": e}
 
 
 # ---------------------------------------------------------------------------

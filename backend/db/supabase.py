@@ -1165,3 +1165,36 @@ def _is_unique_violation(e: Exception) -> bool:
     if str(code) == "23505":
         return True
     return "23505" in str(e)
+
+
+async def mirror_permanent_number_fenced(tenant_id: str, e164: str) -> list[dict]:
+    """Point the legacy scalar at a newly promoted permanent number. Fenced.
+
+    Added for W9I-G. The scalar is the compatibility pointer to the tenant's ONE
+    live business line, and several readers still treat it that way, so it is
+    written together with onboarding_state in a single row update -- one row, one
+    statement, so the two cannot disagree.
+
+    The fence admits only a tenant whose scalar is empty or already this number.
+    A tenant already pointing at a DIFFERENT number is not overwritten: that is
+    either a replacement this worker does not know about, or a promotion racing
+    another, and silently clobbering it would unlink a line that is ringing.
+    Zero rows changed is the caller's signal to reconcile, not to retry harder.
+    """
+    from services import onboarding_lifecycle as _ob
+    q = (get_client().table("tenants")
+         .update({"twilio_phone_number": e164,
+                  "onboarding_state": _ob.ACTIVE})
+         .eq("id", tenant_id))
+    # PostgREST cannot express "IS NULL OR = value" in one filter, so the empty
+    # case is tried first and the idempotent case second. Both are fenced; the
+    # dangerous write -- onto some OTHER number -- is impossible either way.
+    changed = (q.is_("twilio_phone_number", "null").execute().data) or []
+    if changed:
+        return changed
+    return ((get_client().table("tenants")
+             .update({"twilio_phone_number": e164,
+                      "onboarding_state": _ob.ACTIVE})
+             .eq("id", tenant_id)
+             .eq("twilio_phone_number", e164)
+             .execute().data) or [])

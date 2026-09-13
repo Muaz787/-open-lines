@@ -67,6 +67,8 @@ done
 | `stage_p_authorization_api.py` | **W9I-C**'s authorisation model — 18 proofs: two premises fingerprint differently and are independently authorisable; an identical active authorisation is refused by `tra_auth_active_key`; editing a fact needs new consent while history stays intact; restoring it reproduces the original digest; revocation frees the scope; another tenant cannot authorise this tenant's address; four concurrent consents yield exactly one row; and authorising creates no profile, claim or number |
 | `stage_q_temporary.py` | **W9I-E**'s temporary-number model — 14 proofs: a live temporary coexists with a live permanent while only one of each is allowed; a RETIRING temporary still blocks a second (stricter than permanent, deliberately, because a test number has no replacement story); released frees the slot; both live numbers route unambiguously; an E.164 another tenant holds cannot be taken; and four concurrent acquisitions yield exactly one row, every loser on `tpn_one_live_temporary` |
 | `stage_r_permanent.py` | **W9I-F**'s transitional state — 12 proofs: an ACTIVE temporary and a PROVISIONING permanent coexist on one tenant while only the temporary is routable; a second live permanent is refused; promotion then retirement leaves the permanent live; another tenant cannot claim the +353; and four concurrent acquisitions record exactly one permanent without touching the temporary |
+| `stage_s_activation_notification.py` | **migration 032** itself — 23 proofs, run against a clean slate each time by first applying the file's own documented rollback: first apply, replay twice, three nullable columns with no defaults, no index, RLS and policy count unchanged, a send without a claim refused, a provider id without a send refused, a completed notification unable to lose its claim, four concurrent claims yielding one winner, and a REPLACEMENT number keeping an independent notification lifecycle |
+| `stage_t_activation.py` | **W9I-G**'s activation races — 15 proofs: four concurrent promotions yield one winner and an already-active row cannot be re-promoted; a stale worker with the wrong E.164 matches nothing; the temporary line is untouched and both numbers may ring during the grace window; four concurrent notification claims yield one winner; a completed notification cannot be re-confirmed; and a replacement number is claimable independently |
 | `stage_o_release.py` | **W9I-B.1**'s phone release lifecycle — 18 proofs: a live permanent transitions to `released`; a released row leaves every partial index (not routable, not a live permanent, its E.164 re-purchasable) while keeping `tpn_provider_object_key`; the identity fence refuses a stale E.164, SID, account or tenant; re-release matches zero rows and does not restamp; and four OS processes releasing one row yield exactly one winner |
 
 ```bash
@@ -78,6 +80,8 @@ python stage_o_release.py parent
 python stage_p_authorization_api.py parent
 python stage_q_temporary.py parent
 python stage_r_permanent.py parent
+python stage_s_activation_notification.py parent
+python stage_t_activation.py parent
 ```
 
 Each prints `ALL PASS` / `N/N passed`, or names the failures.
