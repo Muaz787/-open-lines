@@ -204,3 +204,70 @@ async def mark_released(*, tenant_id: str, number_row_id: str, expected_e164: st
 
     return {"status": OK, "released": True, "idempotent": idempotent,
             "scalar_cleared": bool(cleared), "row": row, "detail": ""}
+
+
+async def register_temporary(*, tenant_id: str, e164: str, provider_account_sid: str,
+                             provider_sid: str, iso_country: str) -> dict:
+    """Record a temporary test number that now exists at the provider (W9I-E).
+
+    THE LEGACY SCALAR IS NOT WRITTEN, HERE OR IN mark_temporary_active.
+    `tenants.twilio_phone_number` was built around one primary business number
+    and every reader treats it as such: the reclaim sweep selects on it, the
+    release path clears it, the retention purge gates on it, and the welcome
+    email prints it as "your number". Putting a temporary number there would make
+    all of those describe a number that is by design going away -- and the
+    reclaim sweep in particular would start counting a free test line against a
+    trial deadline.
+
+    Routing does not need it. `get_tenant_by_phone` consults the canonical model
+    FIRST and only falls back to the scalar, so an ACTIVE temporary row resolves
+    on its own. W9I-B.1 proved that path; this relies on it rather than
+    re-teaching the scalar a second meaning.
+    """
+    existing = await db_phones.find_owned_by_e164(e164)
+    if existing and str(existing.get("tenant_id")) == str(tenant_id):
+        return {"status": OK, "row": existing, "created": False}
+    if existing:
+        logger.error("Temporary number already owned by a different tenant — "
+                     "refusing to register it for tenant %s", tenant_id)
+        return {"status": CONFLICT, "row": None, "created": False,
+                "detail": "number_owned_by_another_tenant"}
+
+    rows = await db_phones.list_for_tenant(tenant_id)
+    candidate = {"purpose": lifecycle.PURPOSE_TEMPORARY,
+                 "status": lifecycle.STATUS_PROVISIONING, "e164": e164}
+    conflict = lifecycle.live_conflict(rows, candidate)
+    if conflict:
+        logger.error("Tenant %s already holds a live temporary number — refusing "
+                     "a second (%s)", tenant_id, conflict)
+        return {"status": CONFLICT, "row": None, "created": False,
+                "detail": conflict}
+
+    row = await db_phones.insert_number({
+        "tenant_id": tenant_id, "e164": e164,
+        "purpose": lifecycle.PURPOSE_TEMPORARY,
+        "status": lifecycle.STATUS_PROVISIONING,
+        "provider": "twilio", "provider_account_sid": provider_account_sid,
+        "provider_sid": provider_sid, "iso_country": iso_country})
+    return {"status": OK, "row": row, "created": True}
+
+
+async def mark_temporary_active(*, tenant_id: str, number_row_id: str,
+                                vapi_phone_number_id: str = "") -> dict:
+    """The temporary number's voice path is proved: make it routable.
+
+    The counterpart to mark_active, and deliberately a SEPARATE function rather
+    than a flag on it. mark_active mirrors the legacy scalar, which is exactly
+    what must not happen here -- and a boolean argument controlling whether the
+    scalar gets written is the kind of thing that gets passed wrongly once.
+
+    The Vapi phone id is stored ON THE CANONICAL ROW, not on the tenant.
+    `tenants.vapi_phone_number_id` holds the permanent number's record and is
+    what the release path detaches; a temporary number's record belongs beside
+    the temporary number, so the two can be retired independently in W9I-G.
+    """
+    patch = {"status": lifecycle.STATUS_ACTIVE}
+    if vapi_phone_number_id:
+        patch["vapi_phone_number_id"] = vapi_phone_number_id
+    row = await db_phones.update_number(number_row_id, patch)
+    return {"status": OK, "row": row}

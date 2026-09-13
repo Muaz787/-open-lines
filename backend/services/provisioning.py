@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from services import onboarding_lifecycle as lifecycle_ob
 from services import phone_registry
+from services import tenant_subaccount
 from services import telephony, vapi, knowledge
 from db import supabase as db
 
@@ -535,6 +536,25 @@ async def provision_tenant(payload: dict) -> dict:
     if lifecycle_ob.needs_regulatory_clearance(country):
         logger.info("[Step 0] %s requires regulatory clearance — tenant %s created "
                     "without telephony", country, tenant_id)
+        # THE TENANT'S SUB-ACCOUNT, HERE (W9I-E Stage F). This return is BEFORE
+        # Step 3, where the sub-account is normally created -- so a regulated
+        # tenant had none, and every regulatory resource needs one:
+        # ensure_address gets no client without credentials and refuses. W9I-C's
+        # live QA only worked because a disposable sub-account was made by hand.
+        #
+        # Non-fatal on purpose. The account exists and is resumable, and failing a
+        # signup because Twilio was briefly unreachable would be worse than
+        # starting verification a moment later -- tenant_subaccount.ensure is
+        # idempotent and the verification flow calls it again when it needs one.
+        try:
+            sub = await tenant_subaccount.ensure(tenant)
+            if sub["status"] != tenant_subaccount.OK:
+                logger.error("Could not create the Twilio sub-account for regulated "
+                             "tenant %s (%s) -- verification will retry",
+                             tenant_id, sub["status"])
+        except Exception as e:
+            logger.error("Sub-account creation raised for regulated tenant %s: %s",
+                         tenant_id, e)
         return _regulatory_pending_result(tenant, country)
 
     # Step 1 — Load system prompt template (skip for custom industry)

@@ -34,6 +34,7 @@ from services import regulatory_engine as engine
 from services import regulatory_filing as filing
 from services import regulatory_ireland as ie_ux
 from services import regulatory_review as review
+from services import tenant_subaccount
 from services.security import authenticated_tenant_user, require_tenant_owner
 
 logger = logging.getLogger(__name__)
@@ -295,6 +296,16 @@ async def validate_address(tenant_id: str, body: dict):
     if not customer_name:
         _fail(engine.INVALID_CUSTOMER_DATA, {"missing": ["business_name"]})
     submitted["customer_name"] = customer_name
+
+    # The tenant's sub-account must exist before ANY provider call: every
+    # regulatory resource lives in it, and W9I-E found regulated signups reaching
+    # this point without one. Idempotent, so a tenant that already has one pays
+    # nothing for asking.
+    sub = await tenant_subaccount.ensure(tenant)
+    if sub["status"] != tenant_subaccount.OK:
+        _fail(engine.PROVIDER_UNAVAILABLE)
+    tenant = {**tenant, "twilio_subaccount_sid": sub["sid"],
+              "twilio_auth_token": sub["auth_token"]}
 
     result = await engine.ensure_address(
         tenant, submitted=submitted,
