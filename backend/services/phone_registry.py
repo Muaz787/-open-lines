@@ -271,3 +271,22 @@ async def mark_temporary_active(*, tenant_id: str, number_row_id: str,
         patch["vapi_phone_number_id"] = vapi_phone_number_id
     row = await db_phones.update_number(number_row_id, patch)
     return {"status": OK, "row": row}
+
+
+async def attach_routing(*, number_row_id: str,
+                         vapi_phone_number_id: str = "") -> dict:
+    """Record the voice-routing resource for a number WITHOUT activating it.
+
+    Added for W9I-F, where a permanent number is bought and wired but must stay
+    `provisioning` until W9I-G proves the voice path and promotes it. There is
+    deliberately no status in the patch: acquisition and promotion are separate
+    acts with different consequences, and a function that could do both would
+    eventually be called for the wrong one.
+    """
+    patch = {}
+    if vapi_phone_number_id:
+        patch["vapi_phone_number_id"] = vapi_phone_number_id
+    if not patch:
+        return {"status": OK, "row": None}
+    row = await db_phones.update_number(number_row_id, patch)
+    return {"status": OK, "row": row}
