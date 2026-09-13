@@ -250,6 +250,23 @@ async def main() -> int:
     except Exception as e:
         logger.error("cron heartbeat write failed: %s", e)
 
+    # ── WHAT THIS PROCESS ACTUALLY SAW (W9I-H.AUTO.2R.1) ─────────────────
+    # The cron carries its own environment, separately from web, and W9I-H.AUTO
+    # recorded five production faults caused by the two drifting. None of those
+    # values is observable from any request, because they are consulted only on
+    # a path that needs an eligible Irish tenant.
+    #
+    # LAST, and isolated. This runs after every job above precisely so a failure
+    # to write telemetry cannot cost a reconciliation or a lifecycle sweep. It
+    # is a report about the run, not a part of it.
+    try:
+        import json
+        from services import ireland_policy
+        await db.set_system_meta("ireland_policy_snapshot",
+                                 json.dumps(ireland_policy.snapshot_record()))
+    except Exception as e:
+        logger.error("ireland policy snapshot write failed: %s", e)
+
     return 0
 
 
