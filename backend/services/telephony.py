@@ -269,6 +269,119 @@ async def find_available_number(
     raise ValueError(f"No available local numbers found in {twilio_code}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Regulated inventory and purchase  (W9I-F)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# DELIBERATELY SEPARATE from find_available_number/purchase_number_with_sid,
+# which are the CA/US path and must not change. Two differences make sharing
+# them wrong rather than merely inconvenient:
+#
+#   * A regulated purchase REQUIRES provider bindings. W9C measured Twilio
+#     refusing an Irish number with "Phone Number Requires an Address but
+#     AddressSid was empty"; the North American path passes neither an
+#     AddressSid nor a BundleSid and never needs to.
+#   * The North American search SUBSTITUTES. It walks a province's area codes
+#     and then falls back to a national search, which is right when any local
+#     number will do and wrong when a customer named a premises -- silently
+#     handing them a number for a different city is the thing Stage F forbids.
+
+
+class NumberCandidate:
+    """One available number, with what the provider says about it.
+
+    `locality` is carried because a UI may want to show it, NOT because it is
+    proof of anything: W9C found provider locality labels misleading, and
+    purchase-time acceptance is the only authority on whether a number is
+    compatible with a regulatory address.
+    """
+
+    __slots__ = ("phone_number", "locality", "region", "capabilities")
+
+    def __init__(self, phone_number: str, locality: str, region: str,
+                 capabilities: dict):
+        self.phone_number = phone_number
+        self.locality = locality or ""
+        self.region = region or ""
+        self.capabilities = capabilities or {}
+
+    def supports(self, *required: str) -> bool:
+        return all(bool(self.capabilities.get(c)) for c in required)
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        return f"NumberCandidate({self.phone_number}, locality={self.locality!r})"
+
+
+async def find_regulated_candidates(subaccount_sid: str, subaccount_token: str,
+                                    iso_country: str, *, locality: str = "",
+                                    limit: int = 10) -> list["NumberCandidate"]:
+    """Available local inventory in ONE country, optionally in one locality.
+
+    Returns [] when there is nothing -- an empty shelf is a state the caller
+    reports, not an exception. NEVER widens the search: if a locality was asked
+    for and has no inventory, the answer is "none", not a number somewhere else.
+    """
+    cc = str(iso_country or "").strip().upper()
+    if cc not in _COUNTRY_CONFIG:
+        raise CountryNotSupported(cc)
+    client = _sub_client(subaccount_sid, subaccount_token)
+    kwargs: dict = {"limit": max(1, int(limit))}
+    if locality:
+        kwargs["in_locality"] = locality
+    try:
+        results = client.available_phone_numbers(
+            _COUNTRY_CONFIG[cc]["twilio_code"]).local.list(**kwargs)
+    except TwilioRestException as e:
+        logger.error("Regulated inventory search failed for %s on sub-account %s: %s",
+                     cc, subaccount_sid, e)
+        raise
+    out = []
+    for r in results:
+        caps = getattr(r, "capabilities", None) or {}
+        if not isinstance(caps, dict):
+            caps = {k: getattr(caps, k, False) for k in ("voice", "SMS", "MMS")}
+        out.append(NumberCandidate(
+            phone_number=str(getattr(r, "phone_number", "") or ""),
+            locality=str(getattr(r, "locality", "") or ""),
+            region=str(getattr(r, "region", "") or ""),
+            capabilities={str(k).lower(): bool(v) for k, v in caps.items()}))
+    return [c for c in out if c.phone_number]
+
+
+async def purchase_regulated_number(subaccount_sid: str, subaccount_token: str,
+                                    phone_number: str, *, address_sid: str,
+                                    bundle_sid: str) -> tuple[str, str]:
+    """Buy a number that a regulator requires identity documents for.
+
+    BOTH bindings are required arguments with no defaults, and are refused when
+    empty. Twilio rejects the purchase itself without an AddressSid, so a missing
+    one would surface as a provider error -- but a missing BUNDLE would not
+    necessarily, and a regulated number bought without its bundle is a number
+    whose compliance record does not point at it. Refusing here makes that
+    impossible rather than unlikely.
+
+    Both SIDs must come from the SAME sub-account as the credentials: Numbers v2
+    is credential-scoped (W9C), so another account's bundle is invisible here and
+    a parent-account bundle cannot be used at all.
+    """
+    if not address_sid:
+        raise ValueError("purchase_regulated_number requires an address_sid")
+    if not bundle_sid:
+        raise ValueError("purchase_regulated_number requires a bundle_sid")
+    client = _sub_client(subaccount_sid, subaccount_token)
+    try:
+        incoming = client.incoming_phone_numbers.create(
+            phone_number=phone_number, address_sid=address_sid, bundle_sid=bundle_sid)
+    except TwilioRestException as e:
+        # The number, not the identity data, is what goes in the log.
+        logger.error("Regulated purchase of %s on sub-account %s failed: %s",
+                     phone_number, subaccount_sid, e)
+        raise
+    logger.info("Purchased regulated number %s on sub-account %s (SID %s)",
+                incoming.phone_number, subaccount_sid, incoming.sid)
+    return incoming.phone_number, incoming.sid
+
+
 async def purchase_number_with_sid(
     subaccount_sid: str,
     subaccount_token: str,
