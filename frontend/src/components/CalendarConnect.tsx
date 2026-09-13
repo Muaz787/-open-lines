@@ -20,6 +20,14 @@
  * A BLOCKED POPUP IS NOT A DEAD END. If window.open returns null the same URL
  * is opened in this tab, which is exactly the behaviour that shipped before
  * this component existed.
+ *
+ * AND NO PROVIDER HANDS OFF. Square used to open its dashboard card, because
+ * authorising it leaves services and staff unimported and booking switched off.
+ * That made the step end the flow for anyone who picked it. The two calls that
+ * finish the job are ordinary POSTs, so this makes them -- a customer who chose
+ * Square in onboarding chose it as their booking calendar, and importing their
+ * services and switching it on is the thing they just asked for, not a separate
+ * decision to be taken somewhere else.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -42,8 +50,13 @@ export default function CalendarConnect({
   onConnected: () => void
 }) {
   const [busy, setBusy] = useState<CalendarProviderId | null>(null)
+  const [stage, setStage] = useState<'idle' | 'finishing'>('idle')
   const [error, setError] = useState('')
   const popup = useRef<Window | null>(null)
+  /** Which provider this attempt is for, and whether a poll has already taken
+   *  ownership of finishing it. */
+  const started = useRef<CalendarProviderId | null>(null)
+  const claimed = useRef(false)
   const timers = useRef<{ poll?: number; stop?: number }>({})
   const done = useRef(false)
 
@@ -65,15 +78,46 @@ export default function CalendarConnect({
     onConnected()
   }, [clearTimers, onConnected])
 
+  /** Import what a provider needs before it can actually take a booking.
+   *
+   *  Only Square has any. Failures here are reported, never swallowed: a
+   *  connected Square with nothing synced looks identical to a working one from
+   *  the outside, and that is the state this whole component exists to avoid. */
+  const finalize = useCallback(async (id: CalendarProviderId) => {
+    const steps = CALENDAR_PROVIDERS.find(p => p.id === id)?.finalize
+    if (!steps) return true
+    setStage('finishing')
+    const sync = await authedFetch(`${API}${steps.syncPath(tenantId)}`, { method: 'POST' })
+    if (!sync.ok) return false
+    const enable = await authedFetch(`${API}${steps.enablePath(tenantId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    })
+    return enable.ok
+  }, [tenantId])
+
   /** Ask OUR server, never the popup. */
   const poll = useCallback(async () => {
     try {
       const res = await authedFetch(`${API}/onboarding/setup-state/${tenantId}`)
       if (!res.ok) return
       const st = await res.json()
-      if (st?.integration_connected) finish()
+      if (!st?.integration_connected) return
+      // Claimed once: the interval is still running while finalize awaits, and
+      // a second pass would re-sync and re-enable behind the first.
+      if (claimed.current) return
+      claimed.current = true
+      const id = started.current
+      const ok = id ? await finalize(id) : true
+      if (ok) finish()
+      else {
+        clearTimers(); setStage('idle'); setBusy(null)
+        setError('Connected, but we could not import your services. '
+                 + 'You can finish setting this up from your dashboard afterwards.')
+      }
     } catch { /* transient; the next tick tries again */ }
-  }, [tenantId, finish])
+  }, [tenantId, finish, finalize, clearTimers])
 
   const watch = useCallback(() => {
     clearTimers()
@@ -90,7 +134,9 @@ export default function CalendarConnect({
   async function start(id: CalendarProviderId) {
     const provider = CALENDAR_PROVIDERS.find(p => p.id === id)
     if (!provider || busy) return
-    setBusy(id); setError('')
+    setBusy(id); setError(''); setStage('idle')
+    started.current = id
+    claimed.current = false
 
     // Opened synchronously from the click, before any await: a popup opened
     // after a network round trip is one the browser treats as unsolicited and
@@ -100,20 +146,15 @@ export default function CalendarConnect({
     popup.current = win
 
     try {
-      let target: string
-      if (provider.start.kind === 'page') {
-        target = provider.start.path(tenantId)
-      } else {
-        const res = await authedFetch(`${API}${provider.start.path(tenantId)}`,
-                                      { method: provider.start.method })
-        const body = await res.json().catch(() => ({}))
-        if (!res.ok || !body?.url) {
-          // The server's own reason, when it gave one -- Square refuses a plan
-          // that cannot use it, and inventing a message here would hide that.
-          throw new Error(typeof body?.detail === 'string' ? body.detail : '')
-        }
-        target = body.url
+      const res = await authedFetch(`${API}${provider.start.path(tenantId)}`,
+                                    { method: provider.start.method })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body?.url) {
+        // The server's own reason, when it gave one -- inventing a message here
+        // would hide why it actually refused.
+        throw new Error(typeof body?.detail === 'string' ? body.detail : '')
       }
+      const target: string = body.url
 
       if (win) { win.location.href = target; watch() }
       else {
@@ -149,12 +190,11 @@ export default function CalendarConnect({
                   disabled={busy !== null} onClick={() => void start(p.id)}>
             <span className="np-card-title">{p.label}</span>
             <span className="np-card-copy">{p.blurb}</span>
-            {p.start.kind === 'page' && (
-              <span className="cc-note">{p.start.note}</span>
-            )}
             {busy === p.id && (
               <span className="cc-note" role="status">
-                Waiting for you to finish in the other window…
+                {stage === 'finishing'
+                  ? 'Importing your services…'
+                  : 'Waiting for you to finish in the other window…'}
               </span>
             )}
           </button>
