@@ -525,7 +525,11 @@ export default function OnboardingPage() {
   const provisionPct = stage === 'provisioning' ? ((stepIndex + 1) / provisionTotal) * 100 : 0
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
 
-  const cardWide = stage === 'customize' || stage === 'review' || stage === 'plan' || stage === 'payment'
+  // Verification joins the wide stages: it carries a three-step progress row,
+  // six labelled fields and a review table, none of which read well in the
+  // 480px column the short stages use.
+  const cardWide = stage === 'customize' || stage === 'review' || stage === 'plan'
+    || stage === 'payment' || stage === 'verification'
 
   return (
     <div className="ob-page" id="onboarding">
