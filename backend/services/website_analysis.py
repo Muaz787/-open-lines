@@ -26,7 +26,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 _INDUSTRIES = (
     "realtor", "clinic", "dental", "legal", "plumber",
     "builder", "restaurant", "beauty", "automotive", "insurance",
-    "public_office", "courier", "parliament", "custom",
+    "public_office", "courier", "parliament", "fashion_apparel", "custom",
 )
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ Website content (markdown, truncated):
 Return valid JSON only with these keys:
 {{
   "business_name": "the business's name, or empty string if unclear",
-  "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, automotive (car dealerships, mechanics/auto repair, body/collision shops), insurance (brokers/agencies), public_office (an elected official's office — federal MP, provincial MPP/MLA, municipal/city councillor, or school board trustee), courier (courier, delivery, and same-day dispatch companies), custom",
+  "industry": "ONE of: realtor, clinic, dental, legal, plumber, builder, restaurant, beauty, automotive (car dealerships, mechanics/auto repair, body/collision shops), insurance (brokers/agencies), public_office (an elected official's office — federal MP, provincial MPP/MLA, municipal/city councillor, or school board trustee), courier (courier, delivery, and same-day dispatch companies), fashion_apparel (shops whose OWN business is selling clothing — boutiques, dress and gown shops, bridal and formalwear, evening wear, general apparel retail), custom",
   "industry_confidence": 0.0-1.0,
   "business_subtype": "a short, specific business type in 1-4 words (e.g. 'sushi restaurant', 'med spa', 'appliance repair', 'real estate team', 'pediatric dental clinic'), or empty string if unclear",
   "business_description": "a natural, FIRST-PERSON 1-2 sentence description of the business in its own voice, suitable to pre-fill a 'describe your business' field (e.g. 'We are a family-run pet grooming salon offering baths, haircuts, and nail trims.'). Base it ONLY on what the site supports. Empty string if the site is too sparse to describe.",
@@ -154,7 +154,7 @@ Return valid JSON only with these keys:
 
 Classify by what THIS business itself does for its OWN customers. Ignore industries it merely mentions as examples, case studies, integrations, or client verticals it serves — e.g. a software/SaaS/marketing/agency site that lists industries it helps is 'custom', NOT those industries. Set industry_confidence honestly: use below 0.5 when the site is generic, ambiguous, or is itself a tool/platform rather than a local service business.
 
-industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contractor/renovation -> builder; medical/physio clinic -> clinic; dentist/orthodontist -> dental; lawyer -> legal; salon/spa/barber -> beauty; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; flight school / aviation / driving school / tutoring / software / SaaS / other services -> custom; if none fit -> custom."""
+industry hints: HVAC/roofing/plumbing/appliance-repair -> plumber; general contractor/renovation -> builder; medical/physio clinic -> clinic; dentist/orthodontist -> dental; lawyer -> legal; salon/spa/barber (hair, nails, lashes, facials, massage — services PERFORMED ON the customer) -> beauty; clothing boutique / dress or gown shop / bridal or formalwear / evening wear / apparel retail (GARMENTS SOLD TO the customer, even when fittings or try-on appointments are offered) -> fashion_apparel; cafe/bar/eatery -> restaurant; estate agent/property -> realtor; flight school / aviation / driving school / tutoring / software / SaaS / other services -> custom; if none fit -> custom."""
 
     try:
         resp = await client.chat.completions.create(
