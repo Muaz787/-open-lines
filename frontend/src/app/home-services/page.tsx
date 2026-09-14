@@ -57,7 +57,7 @@ const HOME_SERVICES: VerticalContent = {
     ],
   },
   intake: {
-    heading: 'Example service intake',
+    heading: 'A callout enquiry, start to finish',
     fields: [
       'Service address and postal code',
       'Nature of the fault (what’s happening)',
@@ -79,7 +79,7 @@ const HOME_SERVICES: VerticalContent = {
     { q: 'Does it capture the address and the problem?', a: 'Every time. You get the address, the nature of the fault, the equipment, and any access notes — everything a tech needs before rolling to site.' },
     { q: 'Does it check my service area?', a: 'It screens the caller’s address or postal code against the areas you cover, so out-of-area calls are handled without wasting a truck roll.' },
     { q: 'What happens after hours?', a: 'It answers 24/7. The late-night and weekend breakdowns you’re missing today get captured and booked, and urgent ones are flagged immediately.' },
-    { q: 'What does it sound like?', a: 'A friendly, natural human voice. It always discloses that it’s a virtual assistant and books into your live calendar.' },
+    { q: 'What will a homeowner hear when they ring?', a: 'A friendly, natural human voice. It always discloses that it’s a virtual assistant and books into your live calendar.' },
   ],
 
   related: {

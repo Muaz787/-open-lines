@@ -57,7 +57,7 @@ const SALONS: VerticalContent = {
     ],
   },
   intake: {
-    heading: 'Example booking intake',
+    heading: 'A booking call, start to finish',
     fields: [
       'Service requested (and add-ons)',
       'Preferred stylist',
@@ -76,8 +76,8 @@ const SALONS: VerticalContent = {
 
   faqs: [
     { q: 'Can it book with a specific stylist?', a: 'Yes. If a client asks for a particular stylist and service, it books exactly that — into your live calendar with real availability.' },
-    { q: 'Does it work with my calendar?', a: 'It books into Google Calendar, Outlook and Square Appointments with real live availability, so there’s nothing to rip out.' },
-    { q: 'What does it sound like?', a: 'A warm, natural human voice. Callers rarely realise it’s AI — and it always discloses that it’s a virtual assistant, as required.' },
+    { q: 'Does it book into the salon calendar we already use?', a: 'It books into Google Calendar, Outlook and Square Appointments with real live availability, so there’s nothing to rip out.' },
+    { q: 'What does it sound like to a client booking in?', a: 'A warm, natural human voice. Callers rarely realise it’s AI — and it always discloses that it’s a virtual assistant, as required.' },
     { q: 'What if it can’t answer something?', a: 'It never guesses. It captures the details and texts or emails you to follow up, so nothing falls through.' },
   ],
 

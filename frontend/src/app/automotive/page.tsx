@@ -79,7 +79,7 @@ const AUTOMOTIVE: VerticalContent = {
     { q: 'Does it capture the vehicle details?', a: 'It takes the year, make, model, and the problem (and the VIN when the caller has it), so your service advisor has the full picture before the car ever arrives.' },
     { q: 'How does it handle breakdowns and towing calls?', a: 'No-starts, breakdowns, and collision calls are flagged as urgent so a stranded driver reaches you quickly instead of sitting in voicemail.' },
     { q: 'Does it book into my calendar?', a: 'It books service appointments and estimates straight into your Google or Outlook calendar using your live availability.' },
-    { q: 'What does it sound like?', a: 'A friendly, natural human voice. It always discloses that it’s a virtual assistant and answers 24/7 — even after you close.' },
+    { q: 'Will it sound right to someone ringing about their car?', a: 'A friendly, natural human voice. It always discloses that it’s a virtual assistant and answers 24/7 — even after you close.' },
   ],
 
   related: {

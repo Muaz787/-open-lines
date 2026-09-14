@@ -78,7 +78,7 @@ const REALTORS: VerticalContent = {
     { q: 'Does it really text back missed calls?', a: 'Yes — the moment a call is missed, the lead gets an SMS in your business name, so they know you’re on it instead of moving to the next agent.' },
     { q: 'Can it qualify leads?', a: 'It captures intent (buy/sell), timeline, budget, pre-approval status and target area, then hands you a clean summary.' },
     { q: 'Does it connect to my CRM?', a: 'It pushes qualified leads into HubSpot automatically, and emails you a full summary after every call so nothing needs manual entry.' },
-    { q: 'Will callers know it’s AI?', a: 'It sounds natural and professional, and always discloses that it’s a virtual assistant, as required.' },
+    { q: 'Do buyers and sellers realise it is AI?', a: 'It sounds natural and professional, and always discloses that it’s a virtual assistant, as required.' },
   ],
 
   related: {

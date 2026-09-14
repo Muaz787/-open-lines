@@ -79,7 +79,7 @@ const COURIER: VerticalContent = {
     { q: 'What happens when our line is busy?', a: 'That’s exactly what it’s for — it answers the overflow so new orders never hit a busy signal or ring out during a rush.' },
     { q: 'Can it check our service zones?', a: 'It checks pickup and drop-off addresses against the areas you cover and flags anything out of zone before the order is booked.' },
     { q: 'Can it run after hours?', a: 'It answers 24/7, so late-night and early-morning order calls get captured while your team is off the phones.' },
-    { q: 'What does it sound like?', a: 'A clear, natural human voice. It always discloses that it’s a virtual assistant and sends every order to you by text and email.' },
+    { q: 'How does it sound to someone chasing a delivery?', a: 'A clear, natural human voice. It always discloses that it’s a virtual assistant and sends every order to you by text and email.' },
   ],
 
   related: {

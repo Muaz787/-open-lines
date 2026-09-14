@@ -56,17 +56,20 @@ export const INTEGRATIONS: IntegrationContent[] = [
       { icon: '🧩', title: 'Nothing to replace', body: 'Keep working in Google Calendar exactly as you do today. Open Lines just fills it for you.' },
     ],
     faqs: [
-      { q: 'Does it check my real availability before booking?', a: 'Yes. Before offering a caller a time, Open Lines reads your live Google Calendar free/busy, so it only books slots that are actually open.' },
-      { q: 'How do I connect Google Calendar?', a: 'From your Open Lines dashboard, click to connect your Google account and authorize access. It takes a couple of clicks and there’s nothing to install.' },
-      { q: 'Will bookings include the caller’s details?', a: 'Yes. Each event is created with the caller’s name and the details captured on the call, so your calendar is ready to go.' },
-      { q: 'Can I use more than one calendar?', a: 'Open Lines books into the Google Calendar you connect. You can also connect Outlook or Square Appointments if you run more than one system.' },
+      { q: 'Which calendar does it book into?', a: 'Your primary Google Calendar — the one your phone already shows. There is no separate booking calendar to keep an eye on.' },
+      { q: 'Will it book over something already in my diary?', a: 'No. Anything in your calendar makes that time unavailable, including personal blocks you added yourself.' },
+      { q: 'Can I stop it offering evenings and early mornings?', a: 'Yes. It offers times inside the working hours you set, rather than any gap that happens to be empty.' },
+      { q: 'Does it need access to my whole Google account?', a: 'It asks for calendar access, and you can see exactly what was granted in your Google account’s security settings at any time.' },
+      { q: 'How do I revoke access?', a: 'From your Open Lines dashboard, or directly in your Google account alongside every other connected app. It takes effect immediately.' },
+      { q: 'Does the customer get a calendar invitation?', a: 'The appointment is created in your calendar with their details, and they receive a confirmation from Open Lines by text or email.' },
     ],
     unique: {
       heading: 'How the Google Calendar booking works',
       points: [
-        { title: 'Reads free/busy before it offers a time', body: 'On every call it checks your live calendar so it never offers a slot that overlaps an existing event — no double-bookings.' },
-        { title: 'Writes a complete event', body: 'The confirmed booking is created with the caller’s name, the reason for the call, and the details it captured, so the entry is ready to work from.' },
-        { title: 'Works with the calendar you choose', body: 'Point it at the Google Calendar you want it to book into; the rest of your calendars stay untouched.' },
+        { title: 'It books into your primary calendar', body: 'The same calendar your phone already shows. There is no separate booking calendar to check, and nothing to keep in sync, because there is only ever one copy.' },
+        { title: 'Existing events block the slot', body: 'Anything already in your calendar makes that time unavailable — a school run, a supplier meeting, a block you added yourself. The assistant cannot offer a time you have already spoken for.' },
+        { title: 'Your working hours are respected', body: 'It offers times inside the hours you set rather than any gap in the day, so nobody gets booked in at seven in the morning because the calendar happened to be empty.' },
+        { title: 'Revoking access is immediate', body: 'The connection is an ordinary Google authorisation, visible in your Google account alongside every other app, and removable from there at any time without contacting anyone.' },
       ],
     },
     related: {
@@ -105,17 +108,20 @@ export const INTEGRATIONS: IntegrationContent[] = [
       { icon: '🧩', title: 'Nothing to migrate', body: 'Keep using Outlook exactly as you do today. Open Lines simply books into it for you.' },
     ],
     faqs: [
-      { q: 'Does it work with Microsoft 365?', a: 'Yes. The integration works with Outlook and Microsoft 365 calendars — connect your Microsoft account and Open Lines books straight in.' },
-      { q: 'Does it check availability first?', a: 'Always. Open Lines reads your live Outlook free/busy before offering a caller a time, so it only books open slots.' },
-      { q: 'How do I connect Outlook?', a: 'From your Open Lines dashboard, click to connect your Microsoft account and authorize access. It’s a couple of clicks with nothing to install.' },
-      { q: 'Can I connect more than one calendar?', a: 'Open Lines books into the calendar you connect. You can also connect Google Calendar or Square Appointments if you run multiple systems.' },
+      { q: 'Does it work with Microsoft 365 and Exchange?', a: 'Yes. You authorise it from your own Microsoft account and it reads the calendar that account can see — whether that is a personal mailbox, a shared one, or a room.' },
+      { q: 'Will it see meetings other people put in my diary?', a: 'Yes. It reads free/busy, so an invitation you accepted blocks that time just as an appointment you created does.' },
+      { q: 'Can it book into a shared or room calendar?', a: 'Yes, if the account you connect has access to it. Teams that already book into a shared mailbox keep doing exactly that.' },
+      { q: 'Does our IT administrator need to approve it?', a: 'That depends on your tenant. Some organisations require admin consent for new applications; if yours does, your administrator approves it once.' },
+      { q: 'Is anything copied out of Microsoft 365?', a: 'No. Availability is read at the moment of the call and the booking is written back. The calendar remains the only copy.' },
+      { q: 'How do I disconnect it?', a: 'From your Open Lines dashboard, or by revoking the application in your Microsoft account. Either stops it immediately.' },
     ],
     unique: {
       heading: 'How the Outlook booking works',
       points: [
-        { title: 'Microsoft 365 and Outlook', body: 'Connect your Microsoft account and it books into your Outlook / Microsoft 365 calendar — the same one your team already lives in.' },
-        { title: 'Reads free/busy first', body: 'It checks your live Outlook availability before offering a time, so it never books over an existing meeting.' },
-        { title: 'Visible across your team', body: 'The event appears in Outlook the moment the caller confirms, so everyone sharing the calendar sees it right away.' },
+        { title: 'It reads free/busy, not just your diary', body: 'Microsoft 365 exposes free/busy across your organisation, so the assistant can see that a slot is genuinely clear before offering it — including time blocked by meetings you were invited to rather than ones you created.' },
+        { title: 'Shared and room calendars', body: 'Teams that book into a shared mailbox or a room calendar rather than an individual one keep doing exactly that; the appointment lands where your colleagues already look.' },
+        { title: 'Your tenant, your rules', body: 'The connection is authorised through your own Microsoft account, so whatever your administrator has set — conditional access, retention, sharing limits — continues to apply. Nothing is copied out of Microsoft 365 to make booking work.' },
+        { title: 'Invitations behave normally', body: 'A booked appointment is an ordinary calendar item. It syncs to phones, shows in Teams, and can be forwarded or edited by your team like anything else in the diary.' },
       ],
     },
     related: {
@@ -277,11 +283,12 @@ export const INTEGRATIONS: IntegrationContent[] = [
       { q: 'How do I connect Slack?', a: 'From your Open Lines dashboard, connect Slack, authorize access, and choose your channel. It takes a couple of clicks.' },
     ],
     unique: {
-      heading: 'How the Slack notifications work',
+      heading: 'What lands in Slack, and what it changes',
       points: [
-        { title: 'You pick the channel', body: 'Choose the channel when you connect — front desk, sales, or on-call — and every call update posts exactly there.' },
-        { title: 'The anatomy of one message', body: 'Caller name and number, an urgency tag, the AI summary, and the suggested next step — one tidy message, no transcripts to scroll.' },
-        { title: 'Signal, not noise', body: 'It’s deliberately one message per call, so the channel stays useful instead of turning into a firehose.' },
+        { title: 'The summary, not the transcript', body: 'A short account of who called, what they wanted and what happened — short enough to read in the channel without opening anything. The full transcript stays in the dashboard for the rare call that needs it.' },
+        { title: 'The urgent ones stand out', body: 'A call flagged as urgent reads differently in the channel, so someone can pick it up without reading every message in order.' },
+        { title: 'It ends the forwarding habit', body: 'Teams without this forward voicemails and screenshots to each other. One channel that every call reaches removes the step where a message sits in one person’s inbox while they are out.' },
+        { title: 'Nobody has to be watching', body: 'A call at 9pm is in the channel in the morning, in order, with everything needed to act on it — rather than a voicemail icon and a guess about what it was.' },
       ],
     },
     related: {
@@ -325,11 +332,13 @@ export const INTEGRATIONS: IntegrationContent[] = [
       { q: 'Is taking deposits on every plan?', a: 'Deposit collection is available on eligible paid plans. You can start a free trial and connect Stripe from your dashboard.' },
     ],
     unique: {
-      heading: 'How the Stripe deposit flow works',
+      heading: 'How the deposit actually works',
       points: [
-        { title: 'Deposit requested at booking', body: 'When it books the appointment, it texts the caller a secure Stripe link for the deposit amount you set — no card details are ever read out over the phone.' },
-        { title: 'Refunds & cancellations', body: 'Because deposits sit in your own Stripe account, cancellations and refunds are handled with your normal Stripe controls and policy.' },
-        { title: 'If a payment doesn’t complete', body: 'The booking still comes through with the deposit marked unpaid, so you can decide whether to hold, follow up, or release the slot.' },
+        { title: 'A link by text, never card details by voice', body: 'The caller receives a secure Stripe payment link and pays on their own phone. Card numbers are never spoken aloud, never transcribed, and never stored by us.' },
+        { title: 'Taken while they are still committed', body: 'The link goes out during the booking call, when the customer has just chosen a time — not the next day, when the moment has passed and someone has to chase.' },
+        { title: 'It lands in your own Stripe account', body: 'Payouts, refunds and disputes stay where your accountant already looks. Open Lines does not hold the money at any point.' },
+        { title: 'You choose when it applies', body: 'Set an amount and whether the deposit is required to confirm, so a long or high-value appointment can require one while a quick job does not.' },
+        { title: 'Refunds follow your policy, not ours', body: 'Cancellation terms are yours to set and yours to apply. The assistant tells the caller what they are; it does not decide them.' },
       ],
     },
     related: {
