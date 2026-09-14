@@ -877,6 +877,265 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Take the deposit while they are still on the phone.',
     ctaSub: 'Available on Pro and Business. Seven days free, cancel anytime before you are charged.',
   },
+  {
+    slug: 'how-an-ai-receptionist-learns-your-business',
+    category: 'Feature guide',
+    shortTitle: 'How it learns',
+    metaTitle: 'How Does an AI Receptionist Learn About My Business? — Open Lines',
+    metaDescription: 'Where the answers come from, why a website beats a script, what to upload when your site is thin, and how to find the gaps from your own call summaries.',
+    h1: 'How does an AI receptionist learn about my business?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'From whatever you give it — and the difference between a useful assistant and a frustrating one is almost entirely here, not in the voice. An assistant that knows your cancellation policy sounds competent. One that does not sounds like a phone menu with better manners.',
+    sections: [
+      {
+        heading: 'Three places the answers come from',
+        bullets: [
+          { title: 'Your website', body: 'The fastest start, because it already exists. Services, hours, locations and pricing get read and turned into something the assistant can answer from — no forms to fill in.' },
+          { title: 'Documents you upload', body: 'For everything your website does not say out loud: price lists, policies, aftercare instructions, the answers your team gives twenty times a week. A scanned menu or PDF works as well as a typed one.' },
+          { title: 'What you tell it directly', body: 'The greeting, the name it answers as, your opening hours and the specific things you want it always to say — or never to.' },
+        ],
+      },
+      {
+        heading: 'Why a website beats a script',
+        paras: ['A scripted assistant knows exactly what somebody thought to write down, which is never enough. Real callers ask about parking, whether you take walk-ins, if you do gift vouchers. Learning from your site means the assistant starts with everything you have already published, and the gaps that remain are real gaps rather than transcription failures.'],
+      },
+      {
+        heading: 'What to add when your website is thin',
+        paras: ['Most sites are marketing, not reference. They say "expert colour services" and not "a full head of highlights takes three hours and costs from £120". If your assistant keeps missing questions, the answer is usually a one-page document written the way you would actually answer on the phone — not a website rewrite.'],
+      },
+      {
+        heading: 'Finding the gaps without guessing',
+        paras: ['Read a week of call summaries. The questions that keep coming back unanswered are your list, and it is usually shorter than expected — five or six things covering most of what the assistant could not handle. Add those, and the difference in the following week is obvious.'],
+      },
+      {
+        heading: 'Keeping it current',
+        paras: ['Prices change and pages get edited. A re-crawl on a schedule keeps the assistant aligned with your site without anyone remembering to do it, which matters most for the things that change quietly — hours over a holiday, a service you stopped offering.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do I have to write a script?', a: 'No. Open Lines reads your website and builds the knowledge from that, then you add documents for anything your site does not cover.' },
+      { q: 'What file types can I upload?', a: 'Common documents and PDFs, including scanned ones — a photographed price list is read the same way a typed one is.' },
+      { q: 'How do I know what it does not know?', a: 'Your call summaries. Questions it could not answer appear there with the caller’s details, and the same handful usually accounts for most of them.' },
+      { q: 'What if I change my prices?', a: 'Update your site or your uploaded document. Scheduled re-crawling keeps the assistant aligned with your website without you having to remember.' },
+      { q: 'Can I stop it answering certain things?', a: 'Yes, and you should for anything needing professional judgement. Those become a message and a callback rather than an answer.' },
+    ],
+    related: [
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'What if it does not know?', sub: 'Why guessing is worse.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The basics.' },
+      { href: '/how-it-works', label: 'How setup works', sub: 'Live in under 10 minutes.' },
+    ],
+    ctaHeading: 'Point it at your website and listen.',
+    ctaSub: 'It learns your business before you configure anything. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'ai-receptionist-call-data-privacy',
+    category: 'Compliance',
+    shortTitle: 'Call data and privacy',
+    metaTitle: 'What Happens to My Call Data? AI Receptionist Privacy — Open Lines',
+    metaDescription: 'What gets stored when an AI answers your phone, who it belongs to, how long it is kept, and the questions to ask any vendor before you hand them your callers.',
+    h1: 'What happens to my call data?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'When an AI answers your phone, your callers’ names, numbers and reasons for calling end up in somebody else’s system. That makes you responsible for something you no longer physically hold — so it is worth knowing what is kept, for how long, and what you can do about it. General information, not legal advice.',
+    sections: [
+      {
+        heading: 'What actually gets stored',
+        bullets: [
+          { title: 'The transcript', body: 'What was said, on both sides. This is the most sensitive artefact, because callers volunteer things nobody asked for.' },
+          { title: 'Caller details', body: 'Name, phone number, and whatever the call was about — which is personal data the moment it identifies someone.' },
+          { title: 'The booking', body: 'What was booked, when, and with whom. This usually also lives in your own calendar.' },
+          { title: 'The summary', body: 'A short account of the call, which is the bit you actually read.' },
+        ],
+      },
+      {
+        heading: 'It is your data, and your responsibility',
+        paras: ['In most jurisdictions you are the one who decides why this information is collected, which makes you accountable for it even though a vendor is holding it. That is not a technicality — it means a deletion request from one of your callers is yours to honour, and you need a vendor who can actually carry it out rather than one who has never been asked.'],
+      },
+      {
+        heading: 'The questions worth asking any vendor',
+        bullets: [
+          { title: 'How long do you keep transcripts?', body: '"As long as necessary" is not an answer. A number is.' },
+          { title: 'Can you delete one caller?', body: 'Not one account — one person, on request, because that is what the law contemplates.' },
+          { title: 'What happens when I cancel?', body: 'Ask what is deleted, when, and whether you can export first.' },
+          { title: 'Who else can see it?', body: 'Which sub-processors are involved, and where they operate.' },
+          { title: 'Do you record audio?', body: 'Audio and text carry different risks. Some services keep both; not all need to.' },
+        ],
+      },
+      {
+        heading: 'Decide retention before you collect anything',
+        paras: ['The easiest mistake is keeping everything forever because nobody chose otherwise. Pick a period that matches why you need the data — long enough to handle a dispute, short enough that a breach is bounded — write it down, and make sure it happens automatically. A policy nobody enforces is worse than none, because it is a promise you are not keeping.'],
+      },
+    ],
+    faqs: [
+      { q: 'Who owns the call data?', a: 'You do, in the sense that matters: you decide why it is collected, and you are accountable for it. The vendor processes it on your behalf.' },
+      { q: 'How long should call recordings be kept?', a: 'Only as long as you have a reason. Choose a period, document it, and enforce it automatically — "indefinitely" is difficult to defend to a regulator or a customer.' },
+      { q: 'Can a caller ask for their data to be deleted?', a: 'In most jurisdictions yes, and you have to be able to do it. Check your vendor can delete one individual rather than only a whole account.' },
+      { q: 'Does Open Lines record audio?', a: 'Open Lines is transcript-based rather than audio-archiving. Transcripts and summaries are retained according to the retention settings on your account.' },
+      { q: 'What happens to my data if I cancel?', a: 'Ask before you sign up, not after. Look for a stated deletion timeline and a way to export anything you need to keep.' },
+    ],
+    sources: [
+      { label: 'Office of the Privacy Commissioner of Canada — PIPEDA', url: 'https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/' },
+      { label: 'UK Information Commissioner’s Office — Guide to UK GDPR', url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/' },
+    ],
+    related: [
+      { href: '/learn/call-recording-consent', label: 'Is it legal to record calls?', sub: 'Consent rules by country.' },
+      { href: '/learn/disclosing-ai-to-callers', label: 'Telling callers it is AI', sub: 'A separate obligation.' },
+      { href: '/privacy', label: 'Open Lines privacy policy', sub: 'What we keep, and for how long.' },
+    ],
+    ctaHeading: 'Ask us the questions on this page.',
+    ctaSub: 'We would rather you asked before signing up than after. Start a 7-day free trial.',
+  },
+  {
+    slug: 'irish-business-phone-number',
+    category: 'Guide',
+    shortTitle: 'Irish business numbers',
+    metaTitle: 'Getting an Irish Business Phone Number: What Verification Requires — Open Lines',
+    metaDescription: 'Why Irish numbers need business verification, exactly what documentation is asked for, how long you wait, and what happens to your phone line in the meantime.',
+    h1: 'Getting an Irish business phone number',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Irish numbers are regulated, which surprises most people setting up a business line for the first time. You cannot simply buy one — the regulator requires the registered details of the business it belongs to, a named person responsible for it, and a verified Irish address. Here is what that actually involves.',
+    sections: [
+      {
+        heading: 'Why Ireland is different',
+        paras: ['Some countries issue phone numbers freely; Ireland does not. Numbers are tied to a verified business identity, which is a consumer-protection measure — it means a number can be traced to a real, registered entity. The practical consequence is a short verification step before a number is issued, not after.'],
+      },
+      {
+        heading: 'What you are asked for',
+        bullets: [
+          { title: 'Your registered business name', body: 'Exactly as it appears on the Companies Registration Office register. Trading names and abbreviations cause rejections.' },
+          { title: 'A registration number', body: 'Your CRO number, a Registered Charity Number, or your full organisation name if you are a public-sector body.' },
+          { title: 'An authorised representative', body: 'A named person senior enough to be responsible for the numbers, with an email address that regulatory correspondence can reach.' },
+          { title: 'A verified Irish address', body: 'The premises the number is registered to, including Eircode. It has to be a real address in Ireland, not a forwarding service.' },
+        ],
+      },
+      {
+        heading: 'What the wait looks like',
+        paras: ['The details go to the telecoms provider, who files them with the regulator. Review takes as long as it takes — it is not a queue anyone can jump, and no vendor can promise you a date. What a vendor can tell you is exactly where your filing is, and what to do if corrections are requested.'],
+      },
+      {
+        heading: 'What to do while you wait',
+        paras: ['Not nothing. A temporary number from an unregulated country lets you test the whole system end to end — answering, booking, summaries — before your real line is live. It is not your business number and should never be published as one, but it means verification is not dead time, and you find any problems before real customers are involved.'],
+      },
+      {
+        heading: 'Where it goes wrong',
+        bullets: [
+          { title: 'A name that does not match', body: 'The most common rejection. Copy it from the CRO register rather than from your letterhead.' },
+          { title: 'An address that is not verifiable', body: 'It has to be a genuine premises with a valid Eircode.' },
+          { title: 'A representative who is not authorised', body: 'The named person must actually be able to take responsibility for the numbers.' },
+        ],
+      },
+    ],
+    faqs: [
+      { q: 'Why does an Irish number need business verification?', a: 'Irish numbering is regulated, and numbers must be traceable to a verified business. It is a requirement on the telecoms provider, not a vendor’s choice.' },
+      { q: 'What documents do I need?', a: 'Your registered business name as it appears on the CRO register, a CRO or charity registration number, a named authorised representative with a contact email, and a verifiable Irish address including Eircode.' },
+      { q: 'How long does verification take?', a: 'It depends on the regulator and cannot be promised by any vendor. Treat anyone offering a guaranteed date with suspicion.' },
+      { q: 'Can I use the service while I wait?', a: 'With Open Lines, yes — a temporary test number lets you try the whole system while the filing is reviewed. It is clearly marked as not your business number.' },
+      { q: 'Does my trial start during verification?', a: 'With Open Lines it does not. The trial begins when your permanent Irish number is approved and live, so you are not spending trial days waiting on a regulator.' },
+      { q: 'What if my filing is rejected?', a: 'Usually a detail does not match — most often the business name. The filing is corrected and resubmitted rather than started again.' },
+    ],
+    related: [
+      { href: '/integrations/square-appointments', label: 'Booking into Square', sub: 'Popular with Irish retail.' },
+      { href: '/multi-location', label: 'Several branches?', sub: 'One line, the right location.' },
+      { href: '/pricing', label: 'See pricing', sub: 'From $99/month.' },
+    ],
+    ctaHeading: 'Start the verification, test while you wait.',
+    ctaSub: 'A temporary number lets you try everything before your Irish line is live. Seven days free once it is.',
+  },
+  {
+    slug: 'customising-your-ai-receptionist',
+    category: 'Feature guide',
+    shortTitle: 'Making it sound like you',
+    metaTitle: 'Can I Change What the AI Receptionist Says? — Open Lines',
+    metaDescription: 'What you can actually change — the name it answers as, the greeting, the voice, your hours, and what it must never say — and which of those matter most.',
+    h1: 'Can I change what the AI says?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Yes, and more of it matters than people expect. Most owners go straight to the voice, which is the setting that changes the least. The greeting and the boundaries are what callers actually notice.',
+    sections: [
+      {
+        heading: 'What you can change',
+        bullets: [
+          { title: 'The name it answers as', body: 'Your business name, and a name for the assistant itself if you want callers to have something to refer to.' },
+          { title: 'The greeting', body: 'The first line of every call. Worth more attention than anything else here, because it sets what the caller thinks they have reached.' },
+          { title: 'The voice', body: 'Tone and character. Pick something plain — an unusually theatrical voice draws attention to itself.' },
+          { title: 'Your hours and days', body: 'What counts as open, which shapes what it offers and how it talks about availability.' },
+          { title: 'What it knows', body: 'Everything from your website plus anything you upload, which is the real lever on how competent it sounds.' },
+          { title: 'What it must not do', body: 'The boundaries. Which questions become a message instead of an answer.' },
+        ],
+      },
+      {
+        heading: 'Why the greeting matters most',
+        paras: ['It is the only line every single caller hears, and it does three jobs at once: confirms they rang the right place, discloses that this is a virtual assistant, and invites them to say what they want. Get it short and specific and the rest of the call goes better. A long greeting gets talked over, which means the disclosure is missed too.'],
+      },
+      {
+        heading: 'The setting most people neglect',
+        paras: ['The boundaries. Deciding what the assistant should refuse to answer is more valuable than any amount of tuning, because a confident wrong answer about your pricing or your policies reaches the caller as fact. Write down the questions where being wrong is expensive, and make those a message and a callback.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I write the greeting myself?', a: 'Yes, and you should — it should sound like your business. Keep it short enough that nobody talks over the disclosure.' },
+      { q: 'Can I choose the voice?', a: 'Yes. Pick a plain one rather than a characterful one; the goal is not to be noticed.' },
+      { q: 'Can I stop it answering certain questions?', a: 'Yes, and it is the setting worth most of your attention. Anything needing professional judgement should become a message rather than an answer.' },
+      { q: 'Can I change things after it is live?', a: 'Yes, from your dashboard, and changes take effect on the next call rather than needing a rebuild.' },
+      { q: 'Does it use my business name automatically?', a: 'Yes, and it is picked up during setup along with everything else it learns from your website.' },
+    ],
+    related: [
+      { href: '/learn/how-an-ai-receptionist-learns-your-business', label: 'How it learns your business', sub: 'Website, documents, and gaps.' },
+      { href: '/learn/disclosing-ai-to-callers', label: 'Telling callers it is AI', sub: 'What the greeting must include.' },
+      { href: '/learn/do-ai-receptionists-sound-human', label: 'Do they sound human?', sub: 'An honest answer.' },
+    ],
+    ctaHeading: 'Make it sound like your business.',
+    ctaSub: 'Set the greeting, the voice and the boundaries before a single caller hears it. Seven days free.',
+  },
+  {
+    slug: 'stop-missing-calls-while-with-a-customer',
+    category: 'Guide',
+    shortTitle: 'Calls while you are busy',
+    metaTitle: 'Stop Missing Calls While You Are With a Customer — Open Lines',
+    metaDescription: 'The calls you lose are not the ones after hours, they are the ones during your busiest hour. Why interrupting costs more than it looks, and how to stop choosing.',
+    h1: 'Stop missing calls while you are with a customer',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'The worst time to lose a call is the time you are most likely to lose one — mid-appointment, mid-job, hands full. Every option available in that moment is bad: ignore it and lose the work, or answer it and short-change the person in front of you.',
+    sections: [
+      {
+        heading: 'The hidden cost of answering',
+        paras: ['Picking up mid-appointment is not free. The customer in the chair notices, the call gets rushed, and the caller hears someone who wants to get off the phone. You have paid twice — once in the experience you just interrupted, and once in the enquiry you handled badly — and you still had to write the details on something.'],
+      },
+      {
+        heading: 'The cost of not answering',
+        paras: ['Worse, and invisible. The call rings out, they ring the next business, and you never learn it happened. The losses do not show up anywhere: no voicemail, no missed-call note, nothing to review at the end of the week. That is what makes this specific problem so easy to underestimate for years at a time.'],
+      },
+      {
+        heading: 'What a third option looks like',
+        bullets: [
+          { title: 'It answers on the third ring', body: 'While your hands are busy, and without you deciding anything.' },
+          { title: 'It books into the same calendar', body: 'So the appointment is real, not a note to process later.' },
+          { title: 'It marks the urgent ones', body: 'The few that genuinely need you get flagged, so you can step out for those and only those.' },
+          { title: 'It tells you afterwards', body: 'One summary per call, read between appointments rather than during one.' },
+        ],
+      },
+      {
+        heading: 'Set it up so you still get first refusal',
+        paras: ['Forward on no answer rather than forwarding everything. Your phone still rings and you can pick up when you are free; anything you do not reach in a few rings goes to the assistant instead of to nothing. You keep the calls you want and stop losing the ones you cannot take.'],
+      },
+    ],
+    faqs: [
+      { q: 'Will my phone still ring?', a: 'Yes, if you set it to forward on no answer. You get first refusal on every call, and only what you do not reach goes to the assistant.' },
+      { q: 'How many rings before it picks up?', a: 'You choose, in your carrier’s forwarding settings. Most businesses use three or four — long enough to grab it, short enough that the caller does not give up.' },
+      { q: 'Will the caller know I was busy?', a: 'They hear a receptionist answer, not a fault. The assistant discloses that it is virtual, then gets on with helping them.' },
+      { q: 'What about calls that really need me?', a: 'Those get flagged as urgent with the caller’s details, so you can step out for the few that warrant it instead of for all of them.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-after-hours', label: 'After-hours answering', sub: 'Where the alternative is silence.' },
+      { href: '/learn/keep-your-business-phone-number', label: 'Do I need a new number?', sub: 'No — forward your line.' },
+      { href: '/learn/missed-call-text-back', label: 'Missed-call text-back', sub: 'Turn missed calls into jobs.' },
+    ],
+    ctaHeading: 'Stop choosing between the two.',
+    ctaSub: 'Forward on no answer and let it take the ones you cannot. Seven days free, cancel anytime.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
