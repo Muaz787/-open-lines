@@ -4333,6 +4333,335 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Four questions, one month, a real answer.',
     ctaSub: 'And stopping is a legitimate one. Seven days free.',
   },
+  {
+    slug: 'accessibility-and-callers-who-need-more-time',
+    category: 'Guide',
+    shortTitle: 'Accessible calls',
+    metaTitle: 'Callers Who Need More Time on the Phone — Open Lines',
+    metaDescription: 'Older customers, people with hearing loss, anyone speaking through distress. Why patience is a design decision, and what makes a call usable rather than merely answered.',
+    h1: 'Callers who need more time',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'A meaningful share of every business’s callers need the phone to move more slowly than it usually does — because of hearing loss, because English is their second language, because they are eighty-four, or because something has happened and they are not thinking clearly. How your phone treats them is a choice, and mostly an unexamined one.',
+    sections: [
+      {
+        heading: 'Where the phone usually fails them',
+        bullets: [
+          { title: 'Speed', body: 'Information delivered at the pace of somebody who says it forty times a day is not information to somebody hearing it once.' },
+          { title: 'Being cut off mid-sentence', body: 'People who pause to find a word get interrupted by systems that treat silence as the end of a turn. It is the single most common complaint about automated phone systems and it is a design decision, not a limitation.' },
+          { title: 'Menus', body: 'Pressing numbers while holding a phone is harder than it sounds, and the options assume a vocabulary the caller may not share.' },
+          { title: 'Being made to repeat themselves', body: 'Exhausting for anybody and disproportionately so for someone already finding the call difficult.' },
+        ],
+      },
+      {
+        heading: 'What makes a call usable',
+        paras: ['Waiting properly when somebody pauses. Saying one thing at a time. Offering to repeat without being asked twice. Confirming back slowly at the end. None of that is specialised — it is simply what a patient person does, and the useful property of software is that its patience does not vary with how busy the afternoon has been.'],
+      },
+      {
+        heading: 'Getting to a person must always work',
+        paras: ['Whatever else you do, a caller who is struggling should be able to reach a human quickly, and asking for one should not require the right phrase. This is the floor. A system that handles most people well and traps the ones having the hardest time has failed at the part that matters most, and those are the calls people tell other people about.'],
+      },
+      {
+        heading: 'Why this is not only decency',
+        paras: ['In several jurisdictions there are duties to make services reasonably accessible, and a phone line is a service. But the practical case is simpler: older customers are frequently the ones with money and loyalty, they ring rather than book online, and they notice being treated well far more than younger customers do. Businesses that are patient on the phone tend to know exactly which customers keep coming back.'],
+      },
+    ],
+    faqs: [
+      { q: 'What about older callers or people with hearing difficulties?', a: 'They need the call to move slower — one thing at a time, proper pauses, an offer to repeat, and a slow confirmation at the end. Patience is a design decision rather than a limitation.' },
+      { q: 'Will it cut people off if they pause?', a: 'It should not. Treating a pause as the end of a turn is the most common complaint about automated phone systems, and it affects exactly the people who already find calls hardest.' },
+      { q: 'Can a struggling caller reach a person?', a: 'That must always work, without requiring the right phrase. A system that handles most people well and traps the ones having the hardest time has failed at the part that matters.' },
+      { q: 'Is there a legal dimension?', a: 'In several jurisdictions there are duties to make services reasonably accessible, and a phone line is a service. The commercial case is simpler — these customers ring rather than book online, and they notice.' },
+    ],
+    related: [
+      { href: '/learn/when-the-line-is-bad', label: 'Bad lines', sub: 'The other hard case.' },
+      { href: '/learn/phone-menus-and-press-one', label: 'Why menus fail', sub: 'Who they exclude.' },
+      { href: '/learn/how-a-call-should-end', label: 'Confirming back', sub: 'Slowly, and once.' },
+    ],
+    ctaHeading: 'Patience that does not depend on the afternoon.',
+    ctaSub: 'Every caller given the time they need. Seven days free.',
+  },
+  {
+    slug: 'training-it-on-what-you-do-not-do',
+    category: 'Feature guide',
+    shortTitle: 'What you do not do',
+    metaTitle: 'Teaching an AI Receptionist What You Do Not Offer — Open Lines',
+    metaDescription: 'Everyone writes down their services. Almost nobody writes down the adjacent things they refuse — which is where confident wrong answers come from.',
+    h1: 'Tell it what you do not do',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'Every business carefully lists what it offers and almost none writes down what it does not. That gap is where the worst answers come from, because the adjacent thing you refuse sounds exactly like the thing you provide to anyone who is not in your trade.',
+    sections: [
+      {
+        heading: 'The expensive near-misses',
+        bullets: [
+          { title: 'Work you stopped taking', body: 'A service you dropped two years ago is still assumed by customers and still implied by a page nobody updated.' },
+          { title: 'Work that sounds like yours', body: 'A plumber who does not do gas, a salon that does not do extensions, a garage that does not touch electrics. To the caller these are the same category.' },
+          { title: 'Jobs below your minimum', body: 'A twenty-minute call-out you would never send anybody out for.' },
+          { title: 'Customers you cannot serve', body: 'Property types, vehicle ages, anything your insurance excludes. This is the one that costs real money when it is got wrong.' },
+        ],
+      },
+      {
+        heading: 'Why a near-miss is worse than a gap',
+        paras: ['If nothing is known about something, the honest answer is that it will be checked. If the adjacent service is known, the answer sounds informed and points at something you do not sell — and the caller books, takes a morning off work, and finds out on the doorstep. That is not a disappointed enquiry; it is a complaint, a wasted visit, and somebody who tells people about it.'],
+      },
+      {
+        heading: 'Write the refusals down',
+        paras: ['Five minutes, alongside your price list: the things people ask for that you do not do, and the sentence you would say. "We do not do gas work — you will want a registered engineer for that" is better than a hedge, and it gives the caller something usable. A refusal delivered well is a referral, and in most trades referrals come back around.'],
+      },
+      {
+        heading: 'It also makes your yes worth more',
+        paras: ['A business that says no clearly is believed when it says yes. Callers are used to being told everything is possible and discounting it accordingly, so a specific, unembarrassed no is a strong signal that the rest of what you said was accurate — which is exactly the property you want on a first call from somebody who has never used you.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why does it matter what I do not offer?', a: 'Because the adjacent thing you refuse sounds identical to the thing you provide, to anyone not in your trade. That is where confident wrong answers come from.' },
+      { q: 'What should I write down?', a: 'Work you stopped taking, work that sounds like yours but is not, jobs below your minimum, and customers your insurance excludes. Plus the sentence you would actually say.' },
+      { q: 'Is a wrong yes really that costly?', a: 'It is worse than a gap. The caller books, takes a morning off, and finds out on the doorstep — that is a complaint and a story, not a lost enquiry.' },
+      { q: 'Does saying no lose me work?', a: 'A clear no delivered as a referral tends to come back in most trades, and a business that says no clearly is believed when it says yes.' },
+    ],
+    related: [
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'Gaps versus errors', sub: 'Why guessing is worse.' },
+      { href: '/learn/uploading-documents-your-ai-can-answer-from', label: 'Writing it down', sub: 'Where refusals go.' },
+      { href: '/learn/callers-outside-your-service-area', label: 'Saying no well', sub: 'The referral version.' },
+    ],
+    ctaHeading: 'Five minutes on the things you refuse.',
+    ctaSub: 'It prevents the answers that cost you most. Seven days free.',
+  },
+  {
+    slug: 'running-a-cancellation-list',
+    category: 'Guide',
+    shortTitle: 'Cancellation lists',
+    metaTitle: 'Running a Cancellation List That Actually Works — Open Lines',
+    metaDescription: 'Most waiting lists are a notebook nobody opens. What makes one work, why the first name is rarely the right call, and how to fill a slot in ten minutes.',
+    h1: 'Running a cancellation list that works',
+    published: '2026-09-21',
+    updated: '2026-09-21',
+    intro: 'Almost every appointment business keeps a list of people who wanted an earlier slot, and almost none of them fill a cancellation from it. The list exists, the cancellation happens, and the hour goes empty anyway — because using it requires somebody free at exactly the moment nobody is free.',
+    sections: [
+      {
+        heading: 'Why the notebook version fails',
+        paras: ['A cancellation at half nine needs filling before half ten, and the person who could do the ringing is with a customer. By the time there is a gap it is too late to be useful, so the list quietly becomes a gesture — something you offer to disappointed callers rather than a thing you operate. Everybody involved half knows this, which is why so few people ask to be on it twice.'],
+      },
+      {
+        heading: 'What makes one actually work',
+        bullets: [
+          { title: 'Record when they can come, not just that they want to', body: '"Any Tuesday morning" is usable. "Sooner if possible" is not, and it is what most lists contain.' },
+          { title: 'Ring the best match, not the longest wait', body: 'Fairness is appealing and fills fewer slots. The person who said they could come at an hour’s notice is the person to ring.' },
+          { title: 'Ask once, then move on', body: 'A voicemail is not an acceptance. Give it a few minutes, then try the next name, or the slot stays empty while you wait politely.' },
+          { title: 'Take them off when they are booked', body: 'Nothing kills a list faster than ringing somebody about an appointment they already have.' },
+        ],
+      },
+      {
+        heading: 'The slot you fill is worth more than you think',
+        paras: ['It is revenue you had already written off, so it is close to pure margin — there is no acquisition cost and no discount attached. Filling two cancellations a week in most appointment businesses is worth more than a marketing push, and it costs nothing but having a usable list and the means to work it quickly.'],
+      },
+      {
+        heading: 'Where automation helps and where it does not',
+        paras: ['Capturing the list is easy to hand over: anyone who cannot get the slot they wanted can be asked when they could come, without somebody writing it on a pad. Working the list at short notice is the harder half, and honestly it is where most businesses still need a person. The realistic gain is a list that is accurate and specific enough to be worth working, which is more than most have today.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why do cancellation lists never get used?', a: 'Because a slot that opens at half nine needs filling by half ten, and whoever could ring is with a customer. By the time there is a gap it is too late.' },
+      { q: 'Who should I ring first?', a: 'The best match, not the longest wait. The person who said they could come at an hour’s notice is the one who can actually take it.' },
+      { q: 'What should I record?', a: 'When they can come, not just that they want to. "Any Tuesday morning" is usable; "sooner if possible" is what most lists contain and cannot be worked.' },
+      { q: 'Is it worth the effort?', a: 'A filled cancellation is revenue you had already written off, with no acquisition cost. Two a week is worth more than most marketing.' },
+    ],
+    related: [
+      { href: '/learn/when-you-are-fully-booked', label: 'When you are full', sub: 'Where the list comes from.' },
+      { href: '/learn/cancellations-and-rescheduling-by-phone', label: 'Cancellations', sub: 'How slots open.' },
+      { href: '/learn/no-shows-without-taking-deposits', label: 'Reducing no-shows', sub: 'Fewer gaps to fill.' },
+    ],
+    ctaHeading: 'Capture the list properly, at least.',
+    ctaSub: 'Everyone who could not get their slot, with when they could come. Seven days free.',
+  },
+  {
+    slug: 'a-backlog-of-voicemails',
+    category: 'Common problem',
+    shortTitle: 'Voicemail backlog',
+    metaTitle: 'What to Do With a Backlog of Voicemails — Open Lines',
+    metaDescription: 'Fourteen unheard messages and a growing reluctance to open them. How to clear a backlog in one sitting, what to say to the old ones, and how to not build another.',
+    h1: 'The backlog of voicemails',
+    published: '2026-09-21',
+    updated: '2026-09-21',
+    intro: 'It starts as three messages you will get to this evening and becomes fourteen you are actively avoiding. The avoidance is rational — each one is an obligation of unknown size — and it compounds, because the older they get the worse the conversation you imagine having.',
+    sections: [
+      {
+        heading: 'Clear it in one sitting, badly',
+        paras: ['Do not try to handle them properly. Listen to all of them first, writing only a name, a number and three words about what they wanted. Fifteen messages takes about ten minutes. The paralysis comes from treating each message as a task to complete rather than information to collect, and separating those two steps is most of the fix.'],
+      },
+      {
+        heading: 'Then sort them honestly',
+        bullets: [
+          { title: 'Still live', body: 'Anything from the last couple of days. Ring these first and today.' },
+          { title: 'Probably gone, worth a try', body: 'A week or two old. Many will have booked elsewhere; a few will not.' },
+          { title: 'Historic', body: 'Older than that. Ring them anyway if the job was substantial — people remember being called back late far more warmly than being never called back.' },
+          { title: 'Not enquiries', body: 'Suppliers, spam, half a number. Delete without guilt; they are most of the pile and most of the dread.' },
+        ],
+      },
+      {
+        heading: 'What to say to an old one',
+        paras: ['Be straightforward about the delay and do not over-apologise. "I am sorry, I have only just picked this up — are you still looking for someone?" is enough. Elaborate explanations invite a conversation about your organisation rather than their job, and most people are markedly more forgiving than the version of them you have been imagining for a week.'],
+      },
+      {
+        heading: 'Why the backlog forms at all',
+        paras: ['Because voicemail is a promise to do work later, made on your behalf, without your agreement. Every message is an unscheduled task, and unscheduled tasks accumulate wherever they are stored. A call handled at the time produces no backlog because nothing was deferred — which is the actual argument against voicemail, rather than anything about how modern it feels.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I clear a voicemail backlog?', a: 'In two passes. Listen to all of them first, writing only a name, number and three words each — that is ten minutes. Then sort and act. The paralysis comes from treating each as a task rather than information.' },
+      { q: 'Is it worth ringing back a two-week-old message?', a: 'Often, especially if the job was substantial. People remember being called back late far more warmly than never being called back.' },
+      { q: 'What should I say about the delay?', a: '"I am sorry, I have only just picked this up — are you still looking for someone?" Do not over-explain; it invites a conversation about your organisation rather than their job.' },
+      { q: 'How do I stop it happening again?', a: 'Voicemail is a promise to do work later, made without your agreement. A call handled at the time produces no backlog because nothing was deferred.' },
+    ],
+    related: [
+      { href: '/learn/missed-call-text-back', label: 'Missed calls', sub: 'The immediate version.' },
+      { href: '/learn/how-many-calls-do-you-actually-miss', label: 'Measuring it', sub: 'What voicemail hides.' },
+      { href: '/learn/switching-from-an-answering-service', label: 'Messages versus bookings', sub: 'Who does the work.' },
+    ],
+    ctaHeading: 'Nothing deferred, nothing to dread.',
+    ctaSub: 'Calls handled at the time, not stored for later. Seven days free.',
+  },
+  {
+    slug: 'how-long-callers-will-wait',
+    category: 'Common problem',
+    shortTitle: 'How long they wait',
+    metaTitle: 'How Long Will a Caller Wait Before Hanging Up? — Open Lines',
+    metaDescription: 'Less time than your phone system assumes. Why the ring-before-divert setting is quietly costing you calls, and the number worth changing this week.',
+    h1: 'How long will they actually wait?',
+    published: '2026-09-21',
+    updated: '2026-09-21',
+    intro: 'Shorter than almost any phone system is configured for. Most businesses inherited a ring-time setting from whoever installed their system and have never examined it, and it is one of the few things you can change in a minute that changes how many calls you get.',
+    sections: [
+      {
+        heading: 'The setting nobody looks at',
+        paras: ['Somewhere in your phone system is a number of seconds before a call diverts to voicemail or anywhere else. It is usually twenty or thirty, because that is a sensible-sounding default. Thirty seconds is roughly six rings — long enough for a caller in a hurry to decide nobody is there and open the next search result, having never reached anything at all.'],
+      },
+      {
+        heading: 'Patience depends on why they rang',
+        bullets: [
+          { title: 'Urgent problems: almost none', body: 'A leak or a breakdown gets a few rings before they move on, because something is actively going wrong.' },
+          { title: 'Comparing options: very little', body: 'They have three tabs open and no attachment to any of you yet.' },
+          { title: 'An existing customer: considerably more', body: 'They will wait, ring back, and try again, because they specifically want you.' },
+          { title: 'Anyone on a mobile, anywhere: less', body: 'One-handed, distracted, often walking. The threshold drops for everybody in that state.' },
+        ],
+      },
+      {
+        heading: 'Where you lose them invisibly',
+        paras: ['A caller who hangs up during the ringing leaves no trace at all: no voicemail, sometimes not even a missed-call entry your handset shows you. So the calls lost to a too-long ring time are exactly the ones you can never learn about from your own records, which is why this setting survives unexamined for years in businesses that would fix it in a minute if they could see the cost.'],
+      },
+      {
+        heading: 'Change it this week',
+        paras: ['Shorten the divert to around fifteen seconds — three rings — so that something answers while the caller is still committed. If your phones are genuinely staffed, that is long enough for somebody to pick up; if they are not, the caller reaches something useful instead of deciding nobody is home. Either way it is a one-minute change in your provider’s settings with a measurable effect, and it is worth doing before you change anything larger.'],
+      },
+    ],
+    faqs: [
+      { q: 'How long will a caller wait before hanging up?', a: 'Less time than most phone systems assume — often only a few rings, and least of all for urgent problems or people comparing options. Existing customers wait considerably longer.' },
+      { q: 'What should my ring-before-divert be set to?', a: 'Around fifteen seconds, about three rings. Thirty seconds is roughly six, which is long enough for a caller in a hurry to decide nobody is there.' },
+      { q: 'Why have I never noticed this?', a: 'Because a caller who hangs up while it is ringing leaves no voicemail and often no missed-call entry. These are the losses your own records can never show you.' },
+      { q: 'Does it matter if my phones are staffed?', a: 'Fifteen seconds is still long enough for someone to pick up. If nobody does, the caller reaches something useful instead of concluding nobody is home.' },
+    ],
+    related: [
+      { href: '/learn/working-with-an-existing-phone-system', label: 'Your phone system', sub: 'Where the setting lives.' },
+      { href: '/learn/stop-losing-callers-to-the-next-business', label: 'The next number', sub: 'Where they go.' },
+      { href: '/learn/how-many-calls-do-you-actually-miss', label: 'Measuring losses', sub: 'Including invisible ones.' },
+    ],
+    ctaHeading: 'Three rings, then something answers.',
+    ctaSub: 'One setting, and the impatient callers stop leaving. Seven days free.',
+  },
+  {
+    slug: 'answering-from-a-noisy-workplace',
+    category: 'Common problem',
+    shortTitle: 'Noisy workplaces',
+    metaTitle: 'Answering the Phone From a Noisy Workplace — Open Lines',
+    metaDescription: 'Dryers, saws, kitchens and traffic. What your caller actually hears when you pick up on the shop floor, and why the alternative is not a quieter room.',
+    h1: 'Answering the phone from a noisy workplace',
+    published: '2026-09-21',
+    updated: '2026-09-21',
+    intro: 'Plenty of businesses do their work somewhere it is genuinely difficult to hold a phone conversation: a salon with four dryers running, a workshop, a kitchen at seven o’clock, a site. The call gets answered anyway, and what the caller experiences is rarely what the business imagines.',
+    sections: [
+      {
+        heading: 'What the caller hears',
+        paras: ['Not just noise — a conversation being conducted in the gaps of something else. Half-sentences while someone moves away from a machine, a question repeated, a background exchange with a colleague that the caller can hear and is not part of. None of it reads as busy and successful; it reads as being an inconvenience, which is a strange impression to give somebody trying to pay you.'],
+      },
+      {
+        heading: 'The costs you do not see',
+        bullets: [
+          { title: 'Details get taken down wrong', body: 'Numbers and postcodes misheard in a workshop are the most common cause of an uncontactable lead.' },
+          { title: 'Calls get cut short', body: 'The instinct is to finish quickly, which means the second question never gets asked and the booking is thinner than it should be.' },
+          { title: 'The person in front of you is interrupted', body: 'Whoever is in the chair or at the counter watches the whole thing.' },
+          { title: 'Nobody actually stops the machine', body: 'Which is the honest reason this never improves — the answer is always "we manage".' },
+        ],
+      },
+      {
+        heading: 'Why "go somewhere quieter" never works',
+        paras: ['It requires leaving the work, which is the thing you are being paid for and often cannot be left mid-task. Advice to take calls in a quiet room is written by people whose work is already in a quiet room. In a real workshop the choice is answering badly or not answering, and both have been accepted as the only options for so long that neither gets questioned.'],
+      },
+      {
+        heading: 'The third option',
+        paras: ['Not answering, without losing the call. If the routine questions are dealt with somewhere quiet by default, the only calls that reach you on the floor are the ones genuinely worth stopping the machine for — and by then you know who is ringing and what about, so the conversation is short and specific rather than conducted at volume while you work out what they want.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I take calls in a noisy workshop or salon?', a: 'Realistically you cannot do it well — the choice has always been answering badly or not answering. The third option is having routine calls handled elsewhere so only the ones worth stopping for reach you.' },
+      { q: 'What does the caller actually experience?', a: 'A conversation held in the gaps of something else — half-sentences, repeated questions, background exchanges. It reads as being an inconvenience rather than as a busy business.' },
+      { q: 'What does it cost?', a: 'Misheard numbers and postcodes are the most common cause of an uncontactable lead, and calls get cut short so the second question is never asked.' },
+      { q: 'Why not just take calls in a quiet room?', a: 'Because it means leaving the work you are paid for, often mid-task. That advice is written by people whose work is already in a quiet room.' },
+    ],
+    related: [
+      { href: '/learn/when-the-line-is-bad', label: 'Noise at their end', sub: 'The mirror problem.' },
+      { href: '/learn/stop-missing-calls-while-with-a-customer', label: 'Mid-job calls', sub: 'The interruption.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Worth stopping for', sub: 'Which calls reach you.' },
+    ],
+    ctaHeading: 'Stop shouting over the dryers.',
+    ctaSub: 'Only the calls worth stopping the machine for. Seven days free.',
+  },
+  {
+    slug: 'when-a-caller-asks-for-someone-who-left',
+    category: 'Guide',
+    shortTitle: 'Asking for someone gone',
+    metaTitle: 'When a Caller Asks for Someone Who Has Left — Open Lines',
+    metaDescription: 'A regular rings and asks for the person who always did their hair. What to say, what not to say, and why this call decides whether you keep the customer.',
+    h1: 'When they ask for someone who has left',
+    published: '2026-09-21',
+    updated: '2026-09-21',
+    intro: 'It is a short call and a decisive one. Somebody who has come to you for years asks for the person they always see, that person has gone, and what happens in the next fifteen seconds determines whether they book with a colleague or quietly go and find where their stylist went.',
+    sections: [
+      {
+        heading: 'Say it plainly, and immediately',
+        paras: ['Evasion is the common instinct and the worst option. "They are not in today" buys a week and costs the relationship, because they will ring again, get another non-answer, and conclude they are being handled. A caller told straight away that somebody has moved on is mildly disappointed; a caller who works it out over three calls feels lied to, and that is a different kind of loss.'],
+      },
+      {
+        heading: 'What to say instead of nothing',
+        bullets: [
+          { title: 'That they have left, without detail', body: 'Whatever the circumstances, the caller does not need them and the departed person is entitled to their privacy.' },
+          { title: 'Who is genuinely the closest fit', body: 'Not simply whoever is free. "Aisling has taken on most of her clients" is a recommendation; "we have availability Thursday" is not.' },
+          { title: 'That the notes came across', body: 'If you hold their history, say so. For anything personal, the fear is starting again from nothing, and that fear is what sends them elsewhere.' },
+          { title: 'An actual time', body: 'End with a booking. A caller left holding only bad news will use the momentum to ring somewhere else.' },
+        ],
+      },
+      {
+        heading: 'What not to say',
+        paras: ['Where they went, why they left, or anything about the circumstances — all three are somebody else’s business and all three travel. And never be disparaging about the person who has gone, however tempting. The caller liked them, which is the entire reason for this call, and criticising them insults the customer’s judgment at the exact moment you are asking them to trust yours.'],
+      },
+      {
+        heading: 'Handle the availability properly too',
+        paras: ['Whoever answers should not be offering that person’s diary. It sounds obvious and it is a common failure — a name left in a booking system keeps producing bookable slots, and a customer who books with somebody who left and finds out on arrival has had the worst possible version of this call. Removing them properly is a five-minute job that should happen the week they go.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should I say when a caller asks for someone who has left?', a: 'Say plainly and immediately that they have moved on, without detail, then recommend the closest colleague by name and offer an actual time.' },
+      { q: 'Why not just say they are not in today?', a: 'It buys a week and costs the relationship. They ring again, get another non-answer, and conclude they are being handled — which is a worse loss than the disappointment.' },
+      { q: 'Should I say where they went?', a: 'No. Where they went, why they left and the circumstances are all somebody else’s business, and never be disparaging — the caller liked them.' },
+      { q: 'What is the practical mistake to avoid?', a: 'Leaving them in the booking system. A departed name keeps producing bookable slots, and a customer who finds out on arrival has had the worst version of this call.' },
+    ],
+    related: [
+      { href: '/learn/staff-turnover-and-what-leaves-with-them', label: 'When staff leave', sub: 'What else goes.' },
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Named bookings', sub: 'Keeping availability true.' },
+      { href: '/learn/recognising-returning-callers', label: 'Knowing your regulars', sub: 'Who is on the line.' },
+    ],
+    ctaHeading: 'The call that keeps or loses a regular.',
+    ctaSub: 'Answered straight, with the right colleague and a real time. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
