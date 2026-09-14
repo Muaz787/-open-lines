@@ -337,6 +337,25 @@ async def _ensure_temporary(tenant: dict, *, verified_status: str) -> dict:
     if access.get("provider_attempt_at"):
         return await _reconcile_temporary(tenant)
 
+    # NOTHING THAT REACHES NO PROVIDER MAY CONSUME THE ATTEMPT.
+    #
+    # This used to mark the attempt first and find out afterwards. A gap in the
+    # source configuration returns UNAVAILABLE from inside ensure_temporary_number
+    # having contacted nobody -- but the attempt was already recorded, and state 2
+    # has no route back to state 1 (retake_unattempted is gated on
+    # provider_attempt_at being null, deliberately). So an unset
+    # TEMP_NUMBER_SOURCE_COUNTRY on ONE service permanently cost a customer their
+    # test line, on every service, silently.
+    #
+    # The same call the acquisition itself makes, so the two cannot disagree about
+    # what is refusable without spending anything.
+    ready = await temporary_numbers.preflight(
+        tenant_id, verified_provider_status=verified_status)
+    if not ready["ok"]:
+        refusal = ready["refusal"]
+        return {"outcome": TEMP_BLOCKED, "reason": refusal.get("reason"),
+                "status": refusal.get("status"), "attempt_preserved": True}
+
     if not await ita.mark_attempt(tenant_id):
         # Another worker owns the attempt. It may already have finished.
         fresh = await ita.get(tenant_id) or {}
@@ -346,7 +365,8 @@ async def _ensure_temporary(tenant: dict, *, verified_status: str) -> dict:
         return {"outcome": TEMP_BLOCKED, "reason": "acquisition_in_progress"}
 
     # We own the attempt, and it is durably recorded. Everything from here is
-    # recoverable BECAUSE that write committed first.
+    # recoverable BECAUSE that write committed first -- and everything from here
+    # can genuinely reach a provider, which is what the write is for.
     result = await temporary_numbers.ensure_temporary_number(
         tenant_id, verified_provider_status=verified_status)
     status = result.get("status")
