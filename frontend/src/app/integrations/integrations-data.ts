@@ -20,6 +20,10 @@ export interface IntegrationContent {
   /** Unique, integration-specific detail (de-templating): field mapping, deposit flow, etc. */
   unique: { heading: string; points: { title: string; body: string }[] }
   faqs: { q: string; a: string }[]
+  /** A real screenshot or mark for this integration, when we have one worth
+   *  showing. Optional: a placeholder would be worse than nothing on a page
+   *  whose job is to be believed. */
+  hero?: { src: string; alt: string; width: number; height: number }
   /** Contextual internal links: which industries use this, and related integrations. */
   related: {
     industries: { href: string; label: string; sub?: string }[]
@@ -132,6 +136,14 @@ export const INTEGRATIONS: IntegrationContent[] = [
     slug: 'square-appointments',
     name: 'Square Appointments',
     emoji: '🟦',
+    hero: {
+      src: '/integrations/open-lines-square-appointments.png',
+      // Describes what the image SHOWS. Alt text is read by screen readers and
+      // by crawlers building an idea of what this page is about, and "logo" or
+      // "image" tells both of them nothing.
+      alt: 'Open Lines connected to Square — the Open Lines mark linked to the Square logo',
+      width: 1200, height: 513,
+    },
     eyebrow: 'Booking integration',
     metaTitle: 'AI Receptionist for Square Appointments — Open Lines',
     metaDescription: 'Open Lines answers your phone and books straight into Square Appointments using your real availability. Free 7-day trial.',

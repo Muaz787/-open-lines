@@ -3,6 +3,8 @@ import type { Metadata } from 'next'
 import PricingCards from './PricingCards'
 import BookDemoButton from './BookDemoButton'
 import SiteNav from '../components/SiteNav'
+import { ProductJsonLd } from '../components/JsonLd'
+import { PLANS } from '@/lib/plans'
 import SiteFooter from '../components/SiteFooter'
 
 export const metadata: Metadata = {
@@ -54,6 +56,11 @@ export default function PricingPage() {
 
       {/* ── Nav ── */}
       <SiteNav />
+
+      {/* The product and its real prices, from the same PLANS the table below
+          renders — so what a model quotes and what a customer sees cannot
+          disagree. This is the page that should carry it. */}
+      <ProductJsonLd plans={PLANS.map(p => ({ name: p.name, price: p.price }))} />
 
       {/* ── Hero ── */}
       <div className="pricing-hero">
