@@ -21,6 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/industries',   changeFrequency: 'monthly', priority: 0.8 },
     { path: '/canada',       changeFrequency: 'monthly', priority: 0.8 },
     { path: '/united-states', changeFrequency: 'monthly', priority: 0.8 },
+    { path: '/ireland',      changeFrequency: 'monthly', priority: 0.8 },
     // Vertical landing pages
     { path: '/salons',       changeFrequency: 'monthly', priority: 0.8 },
     { path: '/barbers',      changeFrequency: 'monthly', priority: 0.8 },
