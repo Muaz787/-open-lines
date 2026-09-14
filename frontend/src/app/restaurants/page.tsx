@@ -79,7 +79,7 @@ const RESTAURANTS: VerticalContent = {
     { q: 'Does it answer menu and hours questions?', a: 'It answers the questions callers ask on repeat — hours, parking, dietary options, walk-ins — straight from your own website, so your team isn’t pulled off the floor.' },
     { q: 'What about large parties and catering?', a: 'Group dinners, private events, and catering enquiries are captured cleanly and sent to you right away, so your highest-value bookings don’t slip.' },
     { q: 'Can it handle the phone during the rush?', a: 'That’s the point — when every line is busy mid-service it picks up the overflow, so callers get a warm voice instead of a busy signal.' },
-    { q: 'What does it sound like?', a: 'A warm, natural human voice. It always discloses that it’s a virtual assistant, and it answers 24/7 — even after you close.' },
+    { q: 'What does a diner hear when they call?', a: 'A warm, natural human voice. It always discloses that it’s a virtual assistant, and it answers 24/7 — even after you close.' },
   ],
 
   related: {

@@ -79,7 +79,7 @@ const CONTRACTORS: VerticalContent = {
     { q: 'Does it book estimates into my calendar?', a: 'It books site visits and estimates straight into your Google or Outlook calendar using your live availability.' },
     { q: 'Can it screen out-of-area or out-of-scope jobs?', a: 'It checks the property location against the areas you serve and the work you take, and flags anything outside your scope so you don’t waste a trip.' },
     { q: 'What about calls that come in while I’m on site?', a: 'That’s exactly the point — it answers every call, 24/7, so the leads you can’t pick up become booked estimates instead of voicemails.' },
-    { q: 'What does it sound like?', a: 'A professional, natural human voice. It always discloses that it’s a virtual assistant and captures everything you need for the job.' },
+    { q: 'What does it sound like to a customer on a job enquiry?', a: 'A professional, natural human voice. It always discloses that it’s a virtual assistant and captures everything you need for the job.' },
   ],
 
   related: {

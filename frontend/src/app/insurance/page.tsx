@@ -79,7 +79,7 @@ const INSURANCE: VerticalContent = {
     { q: 'How does it handle claims?', a: 'Callers reporting a claim are flagged as urgent and routed for a priority callback, so no one is left waiting on hold after an accident.' },
     { q: 'Can it tell a quote from an existing-policy call?', a: 'Yes. It separates new-quote shoppers, existing-policy questions, and claims, and routes each to the right place with the right details captured.' },
     { q: 'Where does the intake go?', a: 'You get a structured summary after every call — coverage type, details, urgency, and next step — and it can sync to HubSpot as a contact and note.' },
-    { q: 'What does it sound like?', a: 'A calm, professional human voice. It always discloses that it’s a virtual assistant and books callbacks into your live calendar.' },
+    { q: 'How does it sound to someone ringing about a policy?', a: 'A calm, professional human voice. It always discloses that it’s a virtual assistant and books callbacks into your live calendar.' },
   ],
 
   related: {

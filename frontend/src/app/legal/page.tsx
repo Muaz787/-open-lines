@@ -78,8 +78,8 @@ const LEGAL: VerticalContent = {
     { q: 'Does it give legal advice?', a: 'No — and that’s deliberate. It handles intake and scheduling only, captures the details of the matter, and routes the caller to you. It never offers legal opinions or advice.' },
     { q: 'Can it screen the type of case?', a: 'Yes. It identifies the practice area and the nature of the matter so the right lawyer follows up, and flags anything time-sensitive as urgent.' },
     { q: 'Can it help with conflict checks?', a: 'It captures the opposing party and key names on the call so your team can run a conflicts check before agreeing to act. It does not confirm representation itself.' },
-    { q: 'Where does the intake go?', a: 'You get a structured summary by email after every call — name, contact, matter, urgency, and suggested next step — and it can sync to HubSpot as a contact and note.' },
-    { q: 'What does it sound like?', a: 'A calm, professional human voice. It always discloses that it’s a virtual assistant, as required, and books consultations into your live calendar.' },
+    { q: 'Where does a new client enquiry end up?', a: 'You get a structured summary by email after every call — name, contact, matter, urgency, and suggested next step — and it can sync to HubSpot as a contact and note.' },
+    { q: 'What does it sound like to a prospective client?', a: 'A calm, professional human voice. It always discloses that it’s a virtual assistant, as required, and books consultations into your live calendar.' },
   ],
 
   related: {
