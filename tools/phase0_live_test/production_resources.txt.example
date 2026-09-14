@@ -1,0 +1,18 @@
+# production_resources.txt — EXAMPLE (placeholders). Copy to production_resources.txt
+# (gitignored) and replace with REAL production identifiers, one per line.
+# Only keyed HMAC hashes are stored by `seed-denylist`; raw values never persist.
+# Prefix webhook hosts with `host:`.
+#
+# --- phone numbers ---
++1__PRODUCTION_OPENLINES_NUMBER__
+# --- Twilio ---
+AC__PRODUCTION_TWILIO_ACCOUNT_SID__
+AC__PRODUCTION_TWILIO_SUBACCOUNT_SID__
+# --- Vapi ---
+org___PRODUCTION_VAPI_ORG__
+asst___PRODUCTION_ASSISTANT_ID__
+pn___PRODUCTION_PHONE_NUMBER_ID__
+# --- known customer resources (add as needed) ---
+# cust___CUSTOMER_RESOURCE_ID__
+# --- webhook hosts ---
+host:__PRODUCTION_BACKEND_HOST__

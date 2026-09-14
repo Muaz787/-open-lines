@@ -1,0 +1,8 @@
+# Never commit secrets, evidence, or the operational manifest.
+.env
+phase0-evidence/
+*.operational.json
+production_denylist.hashes
+production_resources.txt
+__pycache__/
+*.pyc

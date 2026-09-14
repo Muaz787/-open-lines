@@ -1,0 +1,11 @@
+{
+  "_note": "EXAMPLE masked review manifest — safe to share. No full numbers, no secrets.",
+  "resource_prefix": "OL-PHASE0-DEV",
+  "subaccount_sid": "ACEXAMPLE00000000000000000000000",
+  "number": "+1•••0000",
+  "number_sid": "PNEXAMPLE00000000000000000000000",
+  "suborg_id": "org_EXAMPLE",
+  "assistant_id_m1": "asst_EXAMPLE_M1",
+  "assistant_id_m2": "asst_EXAMPLE_M2",
+  "vapi_phone_number_id": "pn_EXAMPLE"
+}

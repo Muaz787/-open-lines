@@ -1,0 +1,11 @@
+{
+  "_note": "EXAMPLE ONLY — placeholders, not real resources. The real operational manifest is gitignored, chmod 0600, and deleted after teardown verification.",
+  "resource_prefix": "OL-PHASE0-DEV",
+  "subaccount_sid": "ACEXAMPLE00000000000000000000000",
+  "number": "+15550000000",
+  "number_sid": "PNEXAMPLE00000000000000000000000",
+  "suborg_id": "org_EXAMPLE",
+  "assistant_id_m1": "asst_EXAMPLE_M1",
+  "assistant_id_m2": "asst_EXAMPLE_M2",
+  "vapi_phone_number_id": "pn_EXAMPLE"
+}

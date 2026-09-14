@@ -1,0 +1,16 @@
+{
+  "message": {
+    "type": "end-of-call-report",
+    "endedReason": "assistant-forwarded-call",
+    "startedAt": "2026-08-02T15:00:00.000Z",
+    "endedAt": "2026-08-02T15:03:30.000Z",
+    "durationSeconds": 210,
+    "cost": 0.42,
+    "call": {"id": "call_TESTAAA111", "phoneCallProviderId": "CA00000000000000000000000000000000",
+             "customer": {"number": "+16475550123"}},
+    "transcript": "SHOULD NOT BE PERSISTED",
+    "recordingUrl": "https://example.com/rec/SHOULD_NOT_PERSIST.wav",
+    "artifact": {"transcript": "SHOULD NOT BE PERSISTED"},
+    "summary": "SHOULD NOT BE PERSISTED"
+  }
+}

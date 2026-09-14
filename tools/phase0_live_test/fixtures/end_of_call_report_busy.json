@@ -1,0 +1,10 @@
+{
+  "message": {
+    "type": "end-of-call-report",
+    "endedReason": "customer-busy",
+    "durationSeconds": 35,
+    "cost": 0.07,
+    "call": {"id": "call_TESTBBB222", "customer": {"number": "+16475550123"}},
+    "transcript": "SHOULD NOT BE PERSISTED"
+  }
+}
