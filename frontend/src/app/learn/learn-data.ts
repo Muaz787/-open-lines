@@ -62,7 +62,7 @@ export const ARTICLES: LearnArticle[] = [
         paras: ['Add up your monthly call volume and average call length. Multiply by the per-minute rate for a live service, then compare that to an AI plan’s base fee plus its included minutes (and any overage beyond them). For most appointment- and enquiry-driven small businesses, once you’re past a handful of calls a day, an AI plan with a generous included allowance works out cheaper and covers hours a live meter would keep charging for — and it never sends a caller to voicemail after hours.'],
       },
       {
-        heading: 'Where Open Lines fits',
+        heading: 'Where Open Lines sits on price',
         paras: ['Open Lines is an AI receptionist on a simple monthly plan: each plan includes a set number of minutes, with a per-minute overage rate only if you go over — and a call is never cut off mid-conversation. It answers every call in a natural voice, books appointments into your calendar, captures leads, and works 24/7. You can compare plans on the pricing page and start a 7-day free trial — cancel anytime before you’re charged.'],
       },
     ],
@@ -374,7 +374,7 @@ export const ARTICLES: LearnArticle[] = [
         ],
       },
       {
-        heading: 'Where Open Lines fits',
+        heading: 'How routing works in Open Lines',
         paras: ['Open Lines answers every call in a natural voice, handles the routine ones, and — on Pro and Business — warm-transfers the callers who need a person to the right teammate, with a safe callback if no one’s free. You set it up under Call Handling in a few minutes and preview it with the simulator before a single live call is affected. Compare plans on the pricing page and start a 7-day free trial — cancel anytime before you’re charged.'],
       },
     ],
@@ -638,7 +638,7 @@ export const ARTICLES: LearnArticle[] = [
     intro: 'Yes — but "books appointments" covers two very different things, and the difference decides whether it saves you work or makes more. One reads your real calendar and writes a confirmed booking into it. The other takes a preferred time and leaves someone to sort it out later. Only the first is worth having.',
     sections: [
       {
-        heading: 'The distinction that matters',
+        heading: 'Two different things get called booking',
         bullets: [
           { title: 'Real booking', body: 'The assistant reads your live availability before it offers a time, so the slots it names are genuinely free. When the caller says yes, the appointment is written into the same calendar your walk-ins and online bookings live in.' },
           { title: 'A request, dressed up as a booking', body: 'The assistant takes a preferred time and emails it to you. The caller believes they are booked. You still have to check and confirm — and if the slot has gone, you have to ring them back and take it away.' },
@@ -752,8 +752,8 @@ export const ARTICLES: LearnArticle[] = [
         ],
       },
       {
-        heading: 'How to set it up this way',
-        paras: ['Use "forward on no answer" rather than forwarding everything. Your team picks up first during the day; anything nobody reaches goes to the assistant, whatever the hour. That covers evenings and weekends and also lunchtime, sickness and the days you are simply too busy — without you having to manage a schedule.'],
+        heading: 'Measuring a loss that leaves no trace',
+        paras: ['You cannot improve what you cannot see, and missed evening calls are invisible by definition — no voicemail, no note, nothing in the morning. Your phone provider’s records are the exception: they show unanswered calls with timestamps, and the evening column is usually the surprise. Pull a month before you start, so the week you run the assistant has something honest to be compared against.'],
       },
       {
         heading: 'What it can do at 2am',
@@ -1135,6 +1135,254 @@ export const ARTICLES: LearnArticle[] = [
     ],
     ctaHeading: 'Stop choosing between the two.',
     ctaSub: 'Forward on no answer and let it take the ones you cannot. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'your-first-week-with-an-ai-receptionist',
+    category: 'Guide',
+    shortTitle: 'Your first week',
+    metaTitle: 'Your First Week With an AI Receptionist: What to Check — Open Lines',
+    metaDescription: 'A day-by-day list of what to listen for, what to fix, and the three numbers that tell you whether it is working — before you decide whether to keep it.',
+    h1: 'Your first week with an AI receptionist',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Most people set one up, glance at a summary or two, and then decide weeks later on a feeling. A week of deliberate checking gives you an actual answer — and almost everything worth fixing shows up in the first three days.',
+    sections: [
+      {
+        heading: 'Day one: ring it yourself, badly',
+        paras: ['Not a clean test call. Mumble, interrupt it halfway through, ask something your website does not answer, change your mind about the time. You are looking for how it behaves when the call goes wrong, because that is the call you will not be there for. Then ring once as a normal customer would, and listen to the greeting as a stranger: does it say who you are, that this is a virtual assistant, and invite them to speak — in under about six seconds?'],
+      },
+      {
+        heading: 'Day two: read every summary, not the bookings',
+        paras: ['The bookings are the easy part and they are already in your calendar. The value is in the calls that did not book. Why did they ring? What did the assistant not know? A pattern usually appears within ten summaries, and it is normally three or four questions rather than a systemic problem.'],
+      },
+      {
+        heading: 'Day three: close the gaps you found',
+        paras: ['Write the answers to those three or four questions into a short document and upload it. Do not rewrite your website — a page written the way you would answer on the phone is better than a marketing page, and takes twenty minutes. This single step is the difference between an assistant that sounds competent by the end of the week and one that does not.'],
+      },
+      {
+        heading: 'Days four to seven: leave it alone',
+        paras: ['Resist tuning. You need a clean run of ordinary calls to judge it, and changing the greeting every day means you are judging four different assistants. Let it work and collect the week.'],
+      },
+      {
+        heading: 'The three numbers at the end',
+        bullets: [
+          { title: 'Calls answered that previously were not', body: 'Compare against a normal week of missed calls from your phone records. This is the number the whole thing rests on.' },
+          { title: 'Bookings it made unaided', body: 'Not enquiries — appointments in your calendar that you did nothing to create.' },
+          { title: 'Calls you had to rescue', body: 'Where the assistant got it wrong or the caller needed you. A handful is normal. A majority means your call mix needs a person.' },
+        ],
+      },
+      {
+        heading: 'What a bad week actually tells you',
+        paras: ['If it booked nothing and every caller wanted something unusual, that is useful information, not a failed experiment: your calls need judgement and an assistant is the wrong tool. Better to learn that in week one than in month six.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should I check first?', a: 'Ring it yourself and be a difficult caller — mumble, interrupt, ask something obscure. How it handles a call going wrong matters more than how it handles a clean one.' },
+      { q: 'How do I know if it is working?', a: 'Three numbers: calls answered that previously were not, bookings made without you, and calls you had to rescue. The first two against your normal week of missed calls is the answer.' },
+      { q: 'Should I keep adjusting it?', a: 'Fix the gaps on day three, then leave it alone. Changing settings daily means you are judging several different assistants rather than one.' },
+      { q: 'What if it does badly?', a: 'Read why. Callers wanting things that genuinely need a person is a real finding — it means your call mix is not suited to this, which is worth knowing in week one.' },
+    ],
+    related: [
+      { href: '/learn/how-an-ai-receptionist-learns-your-business', label: 'How it learns your business', sub: 'Closing the gaps you find.' },
+      { href: '/learn/is-an-ai-receptionist-worth-it', label: 'Is it worth it?', sub: 'The arithmetic.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'What if it does not know?', sub: 'Why guessing is worse.' },
+    ],
+    ctaHeading: 'Give it one deliberate week.',
+    ctaSub: 'Seven days free is exactly the experiment described above. Cancel anytime before you are charged.',
+  },
+  {
+    slug: 'what-to-do-with-call-summaries',
+    category: 'Feature guide',
+    shortTitle: 'Using call summaries',
+    metaTitle: 'What to Do With AI Call Summaries — Open Lines',
+    metaDescription: 'A summary of every call is only useful if it changes something. How to read them for missed revenue, staffing signals and the questions your website should answer.',
+    h1: 'What to do with call summaries',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'A summary after every call sounds useful and quickly becomes another inbox nobody reads. The difference is knowing what you are looking for — and it is not the bookings, which are already in your calendar.',
+    sections: [
+      {
+        heading: 'Read the calls that did not book',
+        paras: ['Successful bookings need no attention. The information is in the rest: someone who wanted a service you do not offer, who asked a price you no longer charge, who wanted Saturday when you close Fridays. Each of those is either a gap in what the assistant knows or a gap in what you sell, and you cannot tell which until you read a handful together.'],
+      },
+      {
+        heading: 'Four patterns worth watching for',
+        bullets: [
+          { title: 'The same unanswered question', body: 'Three callers asking about parking means your site should say. This is the cheapest improvement available and it shows up within a week.' },
+          { title: 'A service people keep asking for', body: 'Demand you are turning away, in your callers’ own words rather than a survey.' },
+          { title: 'Times you cannot offer', body: 'Repeated requests for hours you do not open is a staffing question with evidence attached.' },
+          { title: 'Callers who wanted a person', body: 'If this is rising, something in the greeting or the boundaries needs changing.' },
+        ],
+      },
+      {
+        heading: 'A ten-minute weekly habit',
+        paras: ['Skim only the non-booking summaries from the week. Note anything that appeared twice. Fix the cheapest one — usually an answer to upload. That is the whole routine, it takes ten minutes, and it compounds: each week the assistant handles slightly more of what your callers actually ask.'],
+      },
+      {
+        heading: 'What not to use them for',
+        paras: ['Not performance monitoring of your staff, and not a substitute for talking to customers. They are a record of what callers wanted and what happened, which is narrower than it looks — a summary tells you someone asked about pricing, not whether your pricing is right.'],
+      },
+    ],
+    faqs: [
+      { q: 'What is in a call summary?', a: 'Who called, what they wanted, how urgent it was, and a suggested next step — plus what was booked if anything was.' },
+      { q: 'How do I get them?', a: 'By email after every call, and optionally by text or WhatsApp for the ones you want to know about immediately.' },
+      { q: 'Which ones should I actually read?', a: 'The calls that did not result in a booking. Those carry the information; the bookings are already in your calendar.' },
+      { q: 'Do I get the full transcript too?', a: 'Yes, in the dashboard, for when a summary is not enough. Most weeks you will not need it.' },
+    ],
+    related: [
+      { href: '/learn/your-first-week-with-an-ai-receptionist', label: 'Your first week', sub: 'What to check, day by day.' },
+      { href: '/learn/how-an-ai-receptionist-learns-your-business', label: 'How it learns', sub: 'Turning gaps into answers.' },
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'What happens to call data', sub: 'Retention and deletion.' },
+    ],
+    ctaHeading: 'Find out what your callers keep asking for.',
+    ctaSub: 'A summary after every call, and the patterns inside them. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'switching-from-an-answering-service',
+    category: 'Guide',
+    shortTitle: 'Switching services',
+    metaTitle: 'Switching From an Answering Service to an AI Receptionist — Open Lines',
+    metaDescription: 'How to move without a gap in cover: running both in parallel, what your script does and does not translate to, and the contract terms to check before you give notice.',
+    h1: 'Switching from an answering service',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'The risk in switching is not that the new thing fails, it is that you cancel the old one first and discover the gap afterwards. You can run both for a fortnight at almost no cost, and it removes nearly all the risk of the decision.',
+    sections: [
+      {
+        heading: 'Run both, deliberately',
+        paras: ['Point your overflow at the new assistant while your existing service keeps handling your main line — or split by time, giving the assistant evenings and weekends first. You get a real comparison on your own calls rather than a demo, and if it is not working you have changed nothing you need to undo.'],
+      },
+      {
+        heading: 'What transfers, and what does not',
+        bullets: [
+          { title: 'Your script mostly does not', body: 'A script written for a human is a set of instructions for a person who will improvise. An assistant works better from the underlying facts — your services, hours and policies — than from someone else’s wording.' },
+          { title: 'Your FAQ answers do', body: 'The document your service used to answer common questions is exactly what to upload. This is the most valuable thing you already own.' },
+          { title: 'Your escalation rules do', body: 'Whatever you told them to put through immediately should become the assistant’s urgent-flag rules.' },
+          { title: 'Your phone setup does', body: 'You are changing where forwarding points, not changing your number.' },
+        ],
+      },
+      {
+        heading: 'Check the contract before you give notice',
+        bullets: [
+          { title: 'Notice period', body: 'Thirty days is common; some are longer. Start the parallel run before you serve it, not after.' },
+          { title: 'Who owns the number', body: 'If they issued you a number you have advertised, find out whether you can port it out. This is the single thing that traps people.' },
+          { title: 'Your call records', body: 'Ask for an export before you leave. Afterwards is harder, and sometimes impossible.' },
+          { title: 'Minimums already paid', body: 'Prepaid call bundles rarely refund. It may be cheaper to run out the term in parallel.' },
+        ],
+      },
+      {
+        heading: 'What you will genuinely miss',
+        paras: ['Judgement on difficult calls. A trained person handles an upset caller, an ambiguous situation or an unusual request better than an assistant does, and that will remain true. If a meaningful share of your calls are like that, the honest answer may be keeping a human service for your main line and using an assistant for overflow — rather than switching at all.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I run both at once?', a: 'Yes, and you should. Give the assistant overflow or evenings while your existing service keeps the main line, then compare on your own calls.' },
+      { q: 'Will I lose my number?', a: 'Not if it is yours. If your answering service issued the number, check whether you can port it out before giving notice — that is the thing that traps people.' },
+      { q: 'Does my script transfer?', a: 'Not directly, and it does not need to. Your FAQ document and escalation rules are the valuable parts; the wording was written for a human who would improvise.' },
+      { q: 'What will I miss?', a: 'Judgement on difficult calls. If a lot of your calls need that, keeping a human service for your main line and using an assistant for overflow may beat switching.' },
+    ],
+    related: [
+      { href: '/compare', label: 'Compare the alternatives', sub: 'Including human services.' },
+      { href: '/learn/answering-service-cost', label: 'What answering services cost', sub: 'Pricing models compared.' },
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'How forwarding works.' },
+    ],
+    ctaHeading: 'Run it alongside what you have.',
+    ctaSub: 'Seven days free, no contract, nothing to cancel first. Compare on your own calls.',
+  },
+  {
+    slug: 'cancellations-and-rescheduling-by-phone',
+    category: 'Feature guide',
+    shortTitle: 'Cancelling and moving',
+    metaTitle: 'Can an AI Receptionist Cancel or Reschedule Appointments? — Open Lines',
+    metaDescription: 'Half of appointment calls are not new bookings. What an assistant should do with a cancellation, why a move is not a cancel-and-rebook, and where it must stop.',
+    h1: 'Can an AI receptionist cancel or reschedule an appointment?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'It should, because a large share of appointment calls are not new bookings at all — they are people moving or cancelling one. An assistant that only takes new bookings sends the rest to voicemail, which is where the slot you could have resold goes to die.',
+    sections: [
+      {
+        heading: 'Why cancellations are worth handling well',
+        paras: ['A cancellation you receive on Tuesday is a slot you can fill. The same cancellation arriving as a voicemail on Thursday, or as a no-show, is lost revenue. Making it easy to cancel sounds like encouraging cancellations; in practice it converts silent no-shows into recoverable gaps, which is strictly better.'],
+      },
+      {
+        heading: 'A move is not a cancel and a rebook',
+        paras: ['This distinction matters more than it sounds. If an assistant cancels the old appointment and then fails to create the new one — the slot went, the call dropped, anything — the customer now has no appointment and believes they have one. A proper reschedule treats the move as a single operation and never leaves the caller worse off than when they rang.'],
+      },
+      {
+        heading: 'What it needs to get right',
+        bullets: [
+          { title: 'Finding the right appointment', body: 'It should list what the caller has and confirm which one, even when there is only one — people book for other people.' },
+          { title: 'Keeping the same service', body: 'A move keeps the service. Wanting something different is a new booking, not a reschedule.' },
+          { title: 'Keeping the same place', body: 'For a multi-branch business, moving between locations is a different matter and should not be automated quietly.' },
+          { title: 'Saying when it is uncertain', body: 'If the outcome is not clear, it must say so, take a contact number and stop — not try again and risk doing it twice.' },
+        ],
+      },
+      {
+        heading: 'The changes that need a person',
+        paras: ['Late cancellations with a fee attached, anything involving a refund, and moves between branches. Those need a person, or at least a policy decision you have made in advance. An assistant that quietly waives your cancellation fee because nobody told it not to is expensive.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can callers cancel an appointment with the AI?', a: 'Yes, on Square Appointments. The cancellation goes into the same calendar as the booking, so the slot is immediately free to resell.' },
+      { q: 'Can it move an appointment to a different time?', a: 'Yes — for the same service at the same location. It confirms which appointment first, then offers genuinely available times.' },
+      { q: 'Can it move an appointment to another branch?', a: 'Not automatically, by design. It tells the caller your team will arrange that, and takes the details — it will not cancel and rebook to imitate a move.' },
+      { q: 'What if something goes wrong mid-change?', a: 'It says so plainly, takes a contact number and stops. It will not retry and risk cancelling an appointment without creating the replacement.' },
+      { q: 'Does this work with Google Calendar or Outlook?', a: 'Cancelling and rescheduling by phone is built on Square Appointments. On Google or Outlook the assistant books, and changes are handled by your team.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How AI booking works', sub: 'Live availability, real bookings.' },
+      { href: '/integrations/square-appointments', label: 'The Square integration', sub: 'Services, staff and branches.' },
+      { href: '/learn/reduce-no-shows-with-deposits', label: 'Reducing no-shows', sub: 'Deposits at booking.' },
+    ],
+    ctaHeading: 'Handle the calls that are not new bookings.',
+    ctaSub: 'Cancellations and moves, straight into your Square calendar. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'handling-busy-periods-and-call-spikes',
+    category: 'Guide',
+    shortTitle: 'Busy periods and spikes',
+    metaTitle: 'Handling Call Spikes and Busy Periods — Open Lines',
+    metaDescription: 'Seasonal rushes, a storm, a promotion, one viral post. Why a queue loses more callers than a busy signal, and how to handle a spike without hiring for a peak you have eleven months a year.',
+    h1: 'Handling call spikes and busy periods',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Most businesses are not evenly busy. There is a January rush, a storm week, the fortnight after a promotion — and staffing for the peak means paying for it all year, while staffing for the average means losing the peak. This is the specific problem an assistant is unusually good at, because capacity is not the constraint it is for people.',
+    sections: [
+      {
+        heading: 'What a spike actually costs',
+        paras: ['Not the calls you answer late — the ones that never reach you. When three people ring at once, two hear ringing or a queue. Queue abandonment is high and fast: most callers with an alternative take it within a minute. On a normal day you might lose one. In a spike week you lose dozens, and they are the calls generated by whatever you just spent money on.'],
+      },
+      {
+        heading: 'Why more than one at a time matters',
+        paras: ['A person handles one call. A second caller waits, and waiting is where you lose them. An assistant handles callers independently rather than in a queue, so the second and third are not penalised for arriving at the same moment — which is exactly the failure mode a spike creates.'],
+      },
+      {
+        heading: 'The spikes worth preparing for',
+        bullets: [
+          { title: 'Seasonal', body: 'Predictable and therefore easy — January for gyms and accountants, spring for landscapers, December for salons.' },
+          { title: 'Weather', body: 'Roofers, plumbers and towing firms get a week of demand in a day, with no notice.' },
+          { title: 'Marketing', body: 'The calls your campaign generates arrive when the campaign runs, not when you are staffed. Missing them is paying twice.' },
+          { title: 'Staff absence', body: 'Not a demand spike but the same effect — normal volume, half the capacity.' },
+        ],
+      },
+      {
+        heading: 'Set it up before you need it',
+        paras: ['A spike is a bad time to configure anything. Put forward-on-no-answer in place during a quiet week, let it handle the ordinary overflow, and it is already working when the storm arrives. The businesses that get caught are the ones who planned to set it up when things got busy.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can it handle more than one caller at a time?', a: 'Yes. Calls are handled independently rather than queued, so a second caller arriving at the same moment is not left waiting behind the first.' },
+      { q: 'Is a queue not good enough?', a: 'Rarely. Abandonment is fast — most callers with an alternative take it within about a minute, which is less time than a queue usually takes to clear.' },
+      { q: 'What if the spike is genuinely huge?', a: 'It will answer, book what it can and summarise the rest. You still get the details of every caller, which beats a week of calls that left no trace.' },
+      { q: 'Should I turn it on only when busy?', a: 'No. Set it up in a quiet week so it is already working when the spike arrives — configuring under pressure is how it gets skipped.' },
+    ],
+    related: [
+      { href: '/learn/stop-missing-calls-while-with-a-customer', label: 'Calls while you are busy', sub: 'The everyday version.' },
+      { href: '/learn/ai-receptionist-after-hours', label: 'After-hours answering', sub: 'The other half of the gap.' },
+      { href: '/learn/is-an-ai-receptionist-worth-it', label: 'Is it worth it?', sub: 'Work out your own number.' },
+    ],
+    ctaHeading: 'Be ready before the busy week.',
+    ctaSub: 'Set it up while things are quiet and let it take the overflow. Seven days free, cancel anytime.',
   },
 ]
 
