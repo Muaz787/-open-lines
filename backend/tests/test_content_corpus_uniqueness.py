@@ -29,10 +29,10 @@ FE = Path(__file__).resolve().parents[2] / "frontend" / "src" / "app"
 #: and busy-periods, say — sit around 0.33. Set with headroom so a legitimate
 #: new page on a neighbouring subject does not fail, while a page written by
 #: find-and-replace does.
-MAX_SIMILARITY = 0.42
+MAX_SIMILARITY = 0.34
 
 #: Below this a page is not saying enough to deserve its own URL.
-MIN_CONTENT_WORDS = 120
+MIN_CONTENT_WORDS = 130
 
 _STOP = set(
     "the a an and or of to in for it is are be with that this your you our on at "
@@ -56,6 +56,33 @@ def _field(src: str, name: str) -> list[str]:
 def _words(text: str) -> set[str]:
     text = re.sub(r"[^A-Za-z' ]", " ", text.lower())
     return {w for w in text.split() if len(w) > 3 and w not in _STOP}
+
+
+#: Keys whose values are navigation furniture rather than the page's argument:
+#: cross-links, their labels, and the shared CTA strip every page carries. A
+#: crawler evaluates a page's MAIN content, so counting shared chrome as body
+#: text both inflates the score for genuinely distinct pages and leaves less
+#: room to detect the duplication that matters. Measured on insurance + legal,
+#: 29 of the identical strings between them were furniture of exactly this kind.
+_CHROME_KEYS = ("href", "label", "sub", "ctaHeading", "ctaSub", "trustLine")
+
+
+def _content_strings(src: str) -> list[str]:
+    """Every quoted literal EXCEPT navigation chrome and code identifiers.
+
+    Deliberately conservative: it drops what is provably furniture (a key from
+    _CHROME_KEYS, an import path, a route) and keeps everything else, so a real
+    duplicated paragraph can never be excluded by accident.
+    """
+    out = []
+    for m in re.finditer(r"(?:(\w+)\s*:\s*)?'((?:[^'\\]|\\.)*)'", src):
+        key, value = m.group(1), m.group(2).replace("\\'", "'")
+        if key in _CHROME_KEYS:
+            continue
+        if value.startswith(("/", "./", "../", "http")) or "/" in value and " " not in value:
+            continue
+        out.append(value)
+    return out
 
 
 def _split_by_slug(src: str) -> dict[str, str]:
@@ -154,7 +181,7 @@ def test_no_two_pages_ask_the_same_faq_question():
 def test_no_page_is_substantially_another_page():
     """Body overlap, which catches the case where every heading was reworded
     but the argument underneath is the same one."""
-    vocab = {p: _words(" ".join(_strings(src))) for p, src in CORPUS.items()}
+    vocab = {p: _words(" ".join(_content_strings(src))) for p, src in CORPUS.items()}
     over = []
     for a, b in itertools.combinations(sorted(vocab), 2):
         wa, wb = vocab[a], vocab[b]
@@ -171,7 +198,7 @@ def test_no_page_is_substantially_another_page():
 def test_no_page_is_too_thin_to_deserve_a_url():
     thin = []
     for page, src in sorted(CORPUS.items()):
-        n = len(_words(" ".join(_strings(src))))
+        n = len(_words(" ".join(_content_strings(src))))
         if n < MIN_CONTENT_WORDS:
             thin.append(f"{n:>4} words  {page}")
     assert not thin, (
