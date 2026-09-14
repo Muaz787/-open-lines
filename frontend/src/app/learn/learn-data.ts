@@ -393,6 +393,239 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Let AI handle the routine calls — and hand the rest to your team.',
     ctaSub: 'Set up call routing on Pro or Business in a few minutes. Start a 7-day free trial — cancel anytime before you’re charged.',
   },
+  {
+    slug: 'do-ai-receptionists-sound-human',
+    category: 'Basics',
+    shortTitle: 'Do AI receptionists sound human',
+    metaTitle: 'Do AI Receptionists Sound Human? An Honest Answer — Open Lines',
+    metaDescription: 'Most callers do not notice, some do, and it matters less than you think. What actually makes an AI receptionist sound natural, what still gives it away, and why disclosure is required anyway.',
+    h1: 'Do AI receptionists sound human?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Mostly, yes — and the honest answer is that it varies by call. A short booking goes by without anyone noticing. A long, rambling or emotional call is where a caller starts to suspect. Here is what makes the difference, and why it matters less than the question implies.',
+    sections: [
+      {
+        heading: 'What makes one sound natural',
+        bullets: [
+          { title: 'It waits properly', body: 'The biggest giveaway is not the voice, it is the turn-taking. An assistant that talks over someone, or leaves a beat of dead air after every sentence, reads as a machine no matter how good the voice is.' },
+          { title: 'It knows your business', body: 'An assistant reading from a thin script hesitates on anything specific. One that has read your website answers "do you do balayage" without a pause, which is what a real receptionist sounds like.' },
+          { title: 'It handles being interrupted', body: 'Real callers cut in. Stopping cleanly when they do is most of what people mean by "natural".' },
+          { title: 'It does not oversell the voice', body: 'An unusually theatrical voice draws attention to itself. A slightly plain one does not.' },
+        ],
+      },
+      {
+        heading: 'What still gives it away',
+        paras: ['Long digressions, strong accents it has not heard much of, heavy background noise, and callers who are upset. An AI receptionist handling a straightforward booking is genuinely hard to place. The same assistant faced with someone angry about an invoice is not — and that is the call you want routed to a person anyway.'],
+      },
+      {
+        heading: 'Why it matters less than you think',
+        paras: ['The comparison is not between an AI and your best receptionist on a good day. It is between an AI and the voicemail the call currently reaches at 7pm on a Saturday. Most callers do not leave voicemails. Whether they noticed the assistant was software is a smaller question than whether anyone picked up at all.'],
+      },
+      {
+        heading: 'You have to tell them anyway',
+        paras: ['In most places a caller must be told they are speaking to an automated system, and a recorded call needs disclosure too. So the goal is not to pass as human — it cannot be. The goal is to be clear, quick and useful enough that the caller does not mind.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can callers tell it is AI?', a: 'Some can, particularly on longer or more difficult calls. On a straightforward booking most callers do not notice — but they are told, because disclosure is generally required.' },
+      { q: 'Does a better voice make a difference?', a: 'Less than turn-taking does. An assistant that waits properly and stops when interrupted sounds more human than one with a better voice that talks over people.' },
+      { q: 'Will callers hang up when they realise?', a: 'Some do, particularly older callers and people who wanted a specific person. Far fewer than hang up on a voicemail. Test it on your own line during a trial and judge it against what happens today, not against a perfect receptionist.' },
+      { q: 'Can I change how it speaks?', a: 'Yes — the greeting, the name it uses, tone and pacing are all configurable, and you can hear it before any real caller does.' },
+    ],
+    related: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The plain-English version.' },
+      { href: '/learn/disclosing-ai-to-callers', label: 'Do you have to tell callers it is AI?', sub: 'What disclosure actually requires.' },
+      { href: '/how-it-works', label: 'Hear what happens on a call', sub: 'Step by step.' },
+    ],
+    ctaHeading: 'Judge it on your own calls.',
+    ctaSub: 'Seven days free. Ring it yourself before a customer does — cancel anytime before you are charged.',
+  },
+  {
+    slug: 'disclosing-ai-to-callers',
+    category: 'Compliance',
+    shortTitle: 'Disclosing AI to callers',
+    metaTitle: 'Do You Have to Tell Callers They Are Speaking to an AI? — Open Lines',
+    metaDescription: 'What disclosure obligations apply when an AI answers your business phone, how they differ from call-recording consent, and what a compliant greeting sounds like.',
+    h1: 'Do you have to tell callers they are speaking to an AI?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'In most places, yes — and it is a separate obligation from telling them the call is recorded. The two get confused constantly, and satisfying one does not satisfy the other. This is general information, not legal advice; check your own jurisdiction before you rely on it.',
+    sections: [
+      {
+        heading: 'Two different obligations',
+        bullets: [
+          { title: 'Disclosing the AI', body: 'The caller should know they are talking to an automated system rather than a person. Several jurisdictions now require this explicitly for voice assistants, and the direction of travel everywhere else is the same.' },
+          { title: 'Disclosing the recording', body: 'A separate question with its own rules, which vary far more by country and by US state. Being told "this is a virtual assistant" is not being told the call is recorded.' },
+        ],
+      },
+      {
+        heading: 'What a compliant greeting sounds like',
+        paras: ['It is shorter than people expect. Naming the business, saying plainly that this is a virtual assistant, and noting that the call is recorded takes about five seconds and does not need a legal paragraph. The mistake is burying it — a disclosure the caller talks over is not a disclosure.'],
+      },
+      {
+        heading: 'Why it is worth doing even where it is not required',
+        paras: ['A caller who works it out halfway through feels misled, and that is a worse outcome than knowing at the start. Being told up front converts the question from "am I being tricked" into "can this thing book me in", which is the question you want them asking.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is AI disclosure legally required?', a: 'In many jurisdictions yes, and the number is growing. Treat it as required unless you have advice saying otherwise for the places you operate.' },
+      { q: 'Is that the same as telling them the call is recorded?', a: 'No. They are separate obligations with different rules, and one does not cover the other.' },
+      { q: 'Does the disclosure have to be at the start?', a: 'It should be, and before anything is recorded or collected. A disclosure after the caller has already given their details is late.' },
+      { q: 'Can I write my own wording?', a: 'Yes, and you should — it should sound like your business. Keep it short enough that nobody talks over it.' },
+    ],
+    sources: [
+      { label: 'Office of the Privacy Commissioner of Canada — PIPEDA fair information principles', url: 'https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/p_principle/' },
+    ],
+    related: [
+      { href: '/learn/call-recording-consent', label: 'Is it legal to record business calls?', sub: 'Consent rules by country.' },
+      { href: '/learn/do-ai-receptionists-sound-human', label: 'Do AI receptionists sound human?', sub: 'An honest answer.' },
+      { href: '/privacy', label: 'How Open Lines handles call data', sub: 'Retention and deletion.' },
+    ],
+    ctaHeading: 'Disclosure handled, by default.',
+    ctaSub: 'Open Lines discloses the assistant and the recording at the start of every call. Start a 7-day free trial.',
+  },
+  {
+    slug: 'call-recording-consent',
+    category: 'Compliance',
+    shortTitle: 'Call recording consent',
+    metaTitle: 'Is It Legal to Record Business Calls? Consent Rules by Country — Open Lines',
+    metaDescription: 'One-party versus all-party consent, how Canada, the US, the UK, Ireland, Australia and New Zealand differ, and what that means when an AI answers your phone.',
+    h1: 'Is it legal to record business calls?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Usually, with consent — but what counts as consent varies enormously, and the differences are the entire point. This is general information rather than legal advice, and it changes; confirm the rules for the places you actually operate before relying on any of it.',
+    methodology: 'Written from the regulators’ own published guidance rather than secondary summaries, and deliberately kept general: consent rules change, and a page that states a specific rule with confidence is the page that becomes wrong first.',
+    sections: [
+      {
+        heading: 'The distinction that matters',
+        bullets: [
+          { title: 'One-party consent', body: 'Only one participant needs to agree to the recording, and as the business on the call, that can be you. Common across Canada and in a majority of US states.' },
+          { title: 'All-party consent', body: 'Everyone on the call must agree. Several US states work this way, which is why national businesses tend to announce recording on every call regardless of where the caller is.' },
+          { title: 'Data-protection consent', body: 'A separate layer. In the EU, the UK and Ireland the recording is personal data, so lawful basis, retention and access rights all apply on top of whether you may record at all.' },
+        ],
+      },
+      {
+        heading: 'What this means in practice',
+        paras: ['Most businesses do not try to work out which rule applies to each caller. They announce the recording at the start of every call, which satisfies the strictest rule they are likely to encounter and removes the need to guess where the caller is ringing from. It is the simplest defensible position and it costs a few seconds.'],
+      },
+      {
+        heading: 'Recording is not the only obligation',
+        paras: ['If you keep recordings or transcripts, you are holding personal data. That brings retention limits, deletion requests and a duty to keep it secure — and those apply whether or not the recording itself was lawful. Decide how long you keep call data before you start collecting it, not after someone asks you to delete theirs.'],
+      },
+      {
+        heading: 'Where the AI changes things',
+        paras: ['It adds a second disclosure rather than replacing the first. A caller should be told both that the call is recorded and that they are speaking to an automated system. They are different obligations and satisfying one does not satisfy the other.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do I need consent to record a business call?', a: 'Almost always, in some form. Whether one party or all parties must consent depends on where you and the caller are, which is why most businesses announce the recording on every call.' },
+      { q: 'Is one-party consent enough in Canada?', a: 'Canada generally operates on one-party consent for the recording itself, but PIPEDA still applies to the personal information in it — including why you collected it and how long you keep it.' },
+      { q: 'What about the UK, Ireland and the EU?', a: 'The recording is personal data under GDPR, so you need a lawful basis, a retention period and a way to honour access and deletion requests — in addition to any rules on recording itself.' },
+      { q: 'What if the caller objects?', a: 'Have an answer ready before it happens. Usually that means offering an alternative — a callback from a person, or an email address — rather than continuing to record someone who has said no.' },
+      { q: 'How long should I keep recordings?', a: 'Only as long as you have a reason to. Pick a period, write it down, and delete on schedule. "Indefinitely" is not a retention policy and is hard to defend.' },
+    ],
+    sources: [
+      { label: 'Office of the Privacy Commissioner of Canada — PIPEDA', url: 'https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/' },
+      { label: 'UK Information Commissioner’s Office — Guide to UK GDPR', url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/' },
+      { label: 'Data Protection Commission (Ireland)', url: 'https://www.dataprotection.ie/' },
+    ],
+    related: [
+      { href: '/learn/disclosing-ai-to-callers', label: 'Do you have to tell callers it is AI?', sub: 'The other disclosure.' },
+      { href: '/privacy', label: 'How Open Lines handles call data', sub: 'Retention and deletion.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The basics.' },
+    ],
+    ctaHeading: 'Recording and disclosure, handled on every call.',
+    ctaSub: 'Open Lines announces both at the start, and you set how long call data is kept. Start a 7-day free trial.',
+  },
+  {
+    slug: 'keep-your-business-phone-number',
+    category: 'Basics',
+    shortTitle: 'Keeping your number',
+    metaTitle: 'Do I Need a New Phone Number for an AI Receptionist? — Open Lines',
+    metaDescription: 'No. How call forwarding works, why you keep the number on your van and your Google listing, and when using the new number directly makes more sense.',
+    h1: 'Do I need a new phone number?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'No. You get a dedicated number, and you choose whether to forward your existing line to it or hand the new one out. Most businesses forward, because the old number is printed on a van, a shopfront and a Google listing, and changing it costs more than it saves.',
+    sections: [
+      {
+        heading: 'The two ways to run it',
+        bullets: [
+          { title: 'Forward your existing line', body: 'Callers keep dialling the number they already know. Your carrier forwards to the AI — either always, or only when you do not pick up within a few rings. Nothing printed anywhere has to change.' },
+          { title: 'Use the new number directly', body: 'Simpler, and worth it if the new number is going somewhere fresh: a new location, a specific campaign, or a line you want measured separately.' },
+        ],
+      },
+      {
+        heading: 'Forward everything, or only what you miss',
+        paras: ['Most carriers offer both. "Forward on no answer" lets your team pick up first and sends only the calls nobody reaches — which is usually the point. "Forward always" suits a business with no one on the phones at all. You can start with the first and move to the second once you trust it.'],
+      },
+      {
+        heading: 'What about porting?',
+        paras: ['Moving the number itself is a bigger step and rarely necessary. Forwarding gets you the same outcome in a few minutes, with none of the downtime risk. Port later if you decide you want the number to live with the service permanently.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I keep my existing business number?', a: 'Yes. Forward it to the number you are issued and callers carry on dialling what they already know.' },
+      { q: 'Do I have to forward every call?', a: 'No. "Forward on no answer" sends only the calls your team does not reach, which is the setup most businesses choose.' },
+      { q: 'Will callers see a different number?', a: 'On a forwarded call they dial yours. Your caller ID for outbound calls is unchanged, because the AI is inbound-only.' },
+      { q: 'Do I need to port my number?', a: 'Not usually. Forwarding achieves the same thing in minutes without the downtime risk that porting carries.' },
+      { q: 'What happens to the new number if I cancel?', a: 'It is released. If you forwarded your existing line, you simply turn the forwarding off and everything goes back to how it was.' },
+    ],
+    related: [
+      { href: '/how-it-works', label: 'How setup works', sub: 'Live in under 10 minutes.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The basics.' },
+      { href: '/pricing', label: 'See pricing', sub: 'From $99/month.' },
+    ],
+    ctaHeading: 'Keep your number. Stop missing calls on it.',
+    ctaSub: 'Forward your line and let the AI answer what you cannot. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'when-ai-does-not-know-the-answer',
+    category: 'Basics',
+    shortTitle: 'When it does not know',
+    metaTitle: 'What Happens When the AI Receptionist Does Not Know? — Open Lines',
+    metaDescription: 'A good AI receptionist does not guess. What it should do with a question it cannot answer, why that matters more than its hit rate, and how to widen what it knows.',
+    h1: 'What happens if the AI does not know the answer?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'It should say so, take the question down, and pass it to you — not invent something. This is the single most important thing to test before you trust an assistant with real callers, and the easiest to check: ask it something obscure about your own business and listen to what it does.',
+    sections: [
+      {
+        heading: 'What good behaviour looks like',
+        bullets: [
+          { title: 'It admits the gap', body: 'Plainly and without drama: it does not have that to hand.' },
+          { title: 'It captures the question', body: 'The actual question, in the caller’s words, not a category. "Do you take my insurance" and "do you do payment plans" need different answers from you.' },
+          { title: 'It commits to a follow-up', body: 'Says someone will come back to them, and takes a number to do it on.' },
+          { title: 'It carries on', body: 'Not knowing one thing should not end the call. It can still take the booking.' },
+        ],
+      },
+      {
+        heading: 'Why this matters more than the hit rate',
+        paras: ['An assistant that answers 95% of questions and invents the other 5% is worse than one that answers 80% and says so. A wrong answer about your prices, your hours or your policies reaches the caller as fact, and you only find out when they turn up expecting something you never offered. Guessing does not fail safely.'],
+      },
+      {
+        heading: 'How to widen what it knows',
+        paras: ['Most gaps are not model problems, they are knowledge problems. Your website does not say whether you take walk-ins, so the assistant cannot either. Read a week of call summaries, notice which questions keep coming back unanswered, and add those answers — a short document beats rewriting your website.'],
+      },
+      {
+        heading: 'The questions it should never answer',
+        paras: ['Some questions should go unanswered on purpose: anything that needs professional judgement, anything about someone else’s account, and anything where being wrong is expensive. The right response is to take a message, not to try harder.'],
+      },
+    ],
+    faqs: [
+      { q: 'Will it make something up?', a: 'It should not, and you should verify that before trusting it. Ask it something obscure about your business during the trial and listen to what it does with the gap.' },
+      { q: 'How do I find out what it is missing?', a: 'Call summaries. The questions that keep arriving without good answers are the gaps, and they are usually the same handful.' },
+      { q: 'Can I teach it something specific?', a: 'Yes. It learns from your website and from documents you upload, so a short FAQ document covers the things your site does not say.' },
+      { q: 'Does it tell me when it could not answer?', a: 'It should appear in the summary for that call, along with the caller’s details, so the follow-up is possible.' },
+    ],
+    related: [
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The basics.' },
+      { href: '/learn/do-ai-receptionists-sound-human', label: 'Do AI receptionists sound human?', sub: 'An honest answer.' },
+      { href: '/how-it-works', label: 'What it does on a call', sub: 'Step by step.' },
+    ],
+    ctaHeading: 'Test it on your hardest question.',
+    ctaSub: 'Seven days free. Ask it something obscure and see what it does — cancel anytime before you are charged.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
