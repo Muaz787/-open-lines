@@ -1384,6 +1384,255 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Be ready before the busy week.',
     ctaSub: 'Set it up while things are quiet and let it take the overflow. Seven days free, cancel anytime.',
   },
+  {
+    slug: 'ai-receptionist-for-uk-businesses',
+    category: 'Guide',
+    shortTitle: 'For UK businesses',
+    metaTitle: 'AI Receptionist for UK Businesses: Numbers, Rules and Setup — Open Lines',
+    metaDescription: 'How UK business numbers differ from Irish ones, what UK GDPR asks of you when calls are recorded, and which number type to pick for a business with one site or several.',
+    h1: 'AI receptionist for UK businesses',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'A UK number is straightforward to obtain, which is not true everywhere — Ireland, next door, requires a verified business identity before one is issued at all. What UK businesses do need to think about is which kind of number they want and what happens to the recordings afterwards.',
+    sections: [
+      {
+        heading: 'No verification step, unlike Ireland',
+        paras: ['UK numbering is not gated behind a business-identity filing. You can have a number and be answering calls the same day, where an Irish business waits on a regulator before their line exists. If you operate on both sides of the Irish Sea, plan for that difference — the Irish line takes longer to stand up and the UK one does not.'],
+      },
+      {
+        heading: 'Which kind of number to ask for',
+        bullets: [
+          { title: 'A geographic number', body: 'An 01 or 02 tied to an area. Still the most trusted by callers, and worth having if your customers are local and judge you on it.' },
+          { title: 'An 03 number', body: 'Non-geographic but charged at standard rates, so callers pay no more than they would to a landline. Suits a business serving the whole country without pretending to be in one town.' },
+          { title: 'A mobile number', body: 'Fine for a sole trader and quietly costly for a business that wants to look established.' },
+        ],
+      },
+      {
+        heading: 'What UK GDPR asks once calls are recorded',
+        paras: ['A recording of a call is personal data, which brings obligations that have nothing to do with whether recording was allowed: you need a reason for holding it, a period after which it goes, and a way to honour a request to see or delete it. The ICO’s guidance is readable and worth twenty minutes before you start collecting rather than after somebody asks.'],
+      },
+      {
+        heading: 'Two disclosures, not one',
+        paras: ['Tell the caller the call is recorded, and tell them they are speaking to an automated system. They are separate things and doing one does not cover the other. Both belong in the opening seconds, before anyone has said anything worth recording.'],
+      },
+      {
+        heading: 'Where a UK business usually gains most',
+        paras: ['Trades and clinics with nobody on the phones during the working day, and anyone whose customers ring in the evening because that is when they get home. The pattern is the same everywhere, but UK small businesses are unusually likely to be running the phone off a mobile in a van — which is the setup that loses the most calls.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do UK numbers need business verification?', a: 'No. Unlike Ireland, a UK number does not require a business-identity filing before it is issued, so you can be answering calls the same day.' },
+      { q: 'Can I keep my existing UK number?', a: 'Yes. Forward it to the number you are issued and callers carry on dialling what they already know.' },
+      { q: 'Is call recording legal in the UK?', a: 'Generally yes with appropriate notice, but the recording is personal data under UK GDPR, so you also need a lawful basis, a retention period and a way to handle access and deletion requests.' },
+      { q: 'Should I get an 01, 02 or 03 number?', a: 'Geographic 01 and 02 numbers still read as local and trusted. An 03 costs callers the same as a landline and suits a national business. A mobile is fine for a sole trader.' },
+      { q: 'Does it work for a business with sites in the UK and Ireland?', a: 'Yes, though allow for the Irish verification step. The UK line can be live immediately while the Irish one is still with the regulator.' },
+    ],
+    sources: [
+      { label: 'UK Information Commissioner’s Office — Guide to UK GDPR', url: 'https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/' },
+      { label: 'Ofcom — telephone numbering', url: 'https://www.ofcom.org.uk/phones-and-broadband/phone-numbers/' },
+    ],
+    related: [
+      { href: '/learn/irish-business-phone-number', label: 'Irish numbers and verification', sub: 'Why Ireland is different.' },
+      { href: '/learn/call-recording-consent', label: 'Call recording consent', sub: 'Rules by country.' },
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'How forwarding works.' },
+    ],
+    ctaHeading: 'Be answering UK calls today.',
+    ctaSub: 'No verification wait, no new number needed. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'recognising-returning-callers',
+    category: 'Feature guide',
+    shortTitle: 'Returning callers',
+    metaTitle: 'How an AI Receptionist Recognises Returning Callers — Open Lines',
+    metaDescription: 'Why greeting someone by name changes a call, what it should and should not reveal to whoever is holding the phone, and the duplicate-record problem it quietly solves.',
+    h1: 'Recognising returning callers',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'A caller whose number you already hold does not want to spell their name again. Recognising them makes a call shorter and warmer — and it introduces a question most businesses have never had to think about, which is what a phone number actually proves.',
+    sections: [
+      {
+        heading: 'What recognition changes about a call',
+        paras: ['Thirty seconds of a two-minute call is usually identification: name, spelling, phone number, have you been here before. Removing that is not only faster, it changes the register — a caller greeted by name is talking to somewhere that knows them, which is most of what people mean when they say a small business feels personal.'],
+      },
+      {
+        heading: 'The duplicate problem it solves quietly',
+        paras: ['Without recognition, every phone booking risks creating a second record for someone you already have. Two records means their history is split across both, reminders go to whichever one was used, and your customer count is wrong. Matching on the number the call arrived from attaches the booking to the person who already exists.'],
+      },
+      {
+        heading: 'A number is not proof of identity',
+        bullets: [
+          { title: 'Phones get shared', body: 'A household landline, a work mobile, a partner ringing on someone else’s behalf. The number identifies a handset, not a person.' },
+          { title: 'Numbers get reassigned', body: 'A mobile number recycled to somebody new should not greet them as your customer of six years.' },
+          { title: 'So it greets, it does not disclose', body: 'Using a name is friendly. Reading out an address, a balance or a medical history to whoever happens to be holding that phone is a different thing entirely, and it is the line worth drawing before you need it.' },
+        ],
+      },
+      {
+        heading: 'What it should do with a new number',
+        paras: ['Take the details and create the record, so the second call is the one that gets recognised. Nothing is lost by not knowing somebody — the assistant simply asks, which is what a receptionist would do.'],
+      },
+    ],
+    faqs: [
+      { q: 'How does it know who is calling?', a: 'By the number the call arrives from, matched against the customer records you already hold. A caller it recognises is greeted by name; one it does not is asked.' },
+      { q: 'Does it create duplicate customer records?', a: 'It should not, and that is much of the point. Matching an existing customer attaches the booking to them rather than creating a second record with half their history.' },
+      { q: 'What if somebody else is using their phone?', a: 'Then the greeting is wrong and nothing worse, which is why a recognised caller should be greeted by name rather than told anything about their account.' },
+      { q: 'Can I turn recognition off?', a: 'Yes. Some businesses prefer every caller treated identically, particularly where a shared phone is common.' },
+      { q: 'Does it work for withheld numbers?', a: 'No. A withheld or unavailable number cannot be matched, so the caller is treated as new and asked for their details.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How AI booking works', sub: 'Live availability, real bookings.' },
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'What happens to call data', sub: 'Retention and deletion.' },
+      { href: '/integrations/square-appointments', label: 'Square customer records', sub: 'Where the match happens.' },
+    ],
+    ctaHeading: 'Stop asking regulars to spell their name.',
+    ctaSub: 'Recognised callers, attached to the record you already hold. Seven days free.',
+  },
+  {
+    slug: 'urgent-calls-and-emergencies',
+    category: 'Guide',
+    shortTitle: 'Urgent calls',
+    metaTitle: 'How Should an AI Receptionist Handle Urgent Calls? — Open Lines',
+    metaDescription: 'What an assistant should do when a call is genuinely urgent, the one thing it must never be used for, and how to write escalation rules that work at 2am.',
+    h1: 'How should an AI receptionist handle urgent calls?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Most calls are routine. The ones that are not are the reason people hesitate to let software answer at all — and that hesitation is reasonable. The answer is not a cleverer assistant, it is a clear set of rules about what it stops doing.',
+    sections: [
+      {
+        heading: 'The line that is not negotiable',
+        paras: ['An AI receptionist is not an emergency service and must never be presented as a route to one. It is not a path to 999, 911 or 112, it cannot dispatch anybody, and no configuration makes that safe. If there is any chance your callers might treat your business line as an emergency contact, say so on your website and in your greeting, and make sure everyone on your team understands the same thing.'],
+      },
+      {
+        heading: 'Urgent is not the same as an emergency',
+        paras: ['A burst pipe, a locked-out tenant, a dog that has stopped eating, a client whose hearing is tomorrow. None of those is an emergency service matter and all of them need somebody tonight rather than Tuesday. This is the band where an assistant earns its place: recognising the difference and making sure the right person finds out quickly.'],
+      },
+      {
+        heading: 'What it should actually do',
+        bullets: [
+          { title: 'Recognise urgency from what was said', body: 'Not from a menu. People in trouble do not press two.' },
+          { title: 'Take the details that matter', body: 'What has happened, where, and a number that will be answered. A flagged call with no callback number is not useful.' },
+          { title: 'Say what happens next, accurately', body: 'A promise of a call within the hour is worth making only if somebody will make it.' },
+          { title: 'Flag it so it stands out', body: 'An urgent call buried among twelve routine summaries has not been escalated, it has been filed.' },
+        ],
+      },
+      {
+        heading: 'Writing escalation rules that survive 2am',
+        paras: ['Write down the handful of things that genuinely mean stop-and-tell-someone, in the words your callers use rather than your own. "No heat" beats "heating system failure". Keep the list short — five or six items — because a long list means everything is urgent and therefore nothing is. Then decide, in advance, who is actually reached and by what: a summary in an inbox nobody opens at 2am is not an escalation path.'],
+      },
+      {
+        heading: 'Be honest with the caller',
+        paras: ['If nobody will ring back until morning, the assistant should say so. A caller told the truth can make another plan. A caller promised a call within the hour who gets one at nine the next morning has been let down by you, not by the software.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can an AI receptionist handle emergencies?', a: 'No, and it must never be used as one. It is not a route to 999, 911 or 112 and cannot dispatch help. What it can do is recognise urgency, take the details and make sure the right person is told quickly.' },
+      { q: 'How does it know a call is urgent?', a: 'From what the caller says, against rules you write in advance — not from a menu, because people in trouble do not press buttons.' },
+      { q: 'What should my escalation list contain?', a: 'Five or six things, written in the words your callers actually use. A long list makes everything urgent, which is the same as nothing being urgent.' },
+      { q: 'Can it promise someone will ring back?', a: 'Only if someone will. Tell it the truth about your out-of-hours cover so it tells the caller the truth.' },
+      { q: 'Can it transfer an urgent call to a person?', a: 'Live transfer depends on your plan and setup. What it can always do is capture the call, flag it, and make sure it is seen ahead of the routine ones.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-after-hours', label: 'After-hours answering', sub: 'Where urgent calls arrive.' },
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Using call summaries', sub: 'Spotting what matters.' },
+      { href: '/compare', label: 'When to choose a human service', sub: 'Honestly assessed.' },
+    ],
+    ctaHeading: 'Decide the rules before the call comes.',
+    ctaSub: 'Set what counts as urgent and who hears about it. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'qualifying-leads-on-the-phone',
+    category: 'Guide',
+    shortTitle: 'Qualifying leads',
+    metaTitle: 'What Should an AI Receptionist Ask a New Enquiry? — Open Lines',
+    metaDescription: 'The four things worth capturing on a first call, why asking more makes conversion worse, and how to tell a real enquiry from a price-check without interrogating anyone.',
+    h1: 'What should it ask a new enquiry?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'A booking is easy — you need a time. An enquiry is harder, because whoever rings back needs enough to be useful and the caller will not sit through a questionnaire. Most businesses ask too much and lose people, or too little and ring back blind.',
+    sections: [
+      {
+        heading: 'The four that nearly always matter',
+        bullets: [
+          { title: 'What they want', body: 'In their own words, not a category. "The tap in the downstairs loo keeps dripping" tells you more than "plumbing".' },
+          { title: 'When', body: 'Today, this week, or some time. This single answer sorts your callbacks better than anything else on the list.' },
+          { title: 'Where', body: 'For anything involving travel, before you quote. A job forty minutes away is a different job.' },
+          { title: 'A number that will be answered', body: 'And the best time to use it. A callback to a phone in a bag is a callback wasted.' },
+        ],
+      },
+      {
+        heading: 'Why asking more costs you',
+        paras: ['Every extra question is a chance to hang up. A caller who came to find out if you do something does not expect an intake form, and the fifth question is where they decide to try somebody else. Capture what the callback genuinely needs and leave the rest to the human conversation — that is what the callback is for.'],
+      },
+      {
+        heading: 'Spotting a price-check without being rude',
+        paras: ['Some callers are gathering quotes and will not book whatever you say. You can usually tell from how the call opens: a specific problem with a timeframe is a customer, "how much do you charge for X" with no context is often a survey. An assistant should answer the price question honestly, note which kind of call it was, and not spend four questions establishing something you can read in the summary.'],
+      },
+      {
+        heading: 'Where qualification should stop',
+        paras: ['Budget, in most trades. Asking what somebody is willing to spend on a first call reads as a filter, and it is — but it is a filter people resent on the phone in a way they do not on a form. Leave it to the conversation with a person, who can raise it once there is a relationship to raise it in.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should an AI receptionist ask a new caller?', a: 'What they want in their own words, when they need it, where they are if travel is involved, and a number that will actually be answered. Four things is usually enough for a useful callback.' },
+      { q: 'How much qualifying should happen on the call?', a: 'Enough for a useful callback and no more. It can capture what you need and note how serious the enquiry sounded. It should not run an interrogation — every extra question is a chance for the caller to give up.' },
+      { q: 'Should it ask about budget?', a: 'Usually not on a first call. It reads as a filter and people resent it on the phone in a way they do not on a form.' },
+      { q: 'How do I know which callbacks to do first?', a: 'Timeframe sorts them better than anything else. Someone who needs it today goes ahead of someone thinking about spring.' },
+      { q: 'What if the caller will not give details?', a: 'Take what they will give and let them go. A half-captured enquiry is still better than a missed call, and pushing is how you turn a maybe into a no.' },
+    ],
+    related: [
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Using call summaries', sub: 'Turning calls into decisions.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Handling urgent calls', sub: 'Sorting what needs you now.' },
+      { href: '/learn/customising-your-ai-receptionist', label: 'Setting the boundaries', sub: 'What it asks and what it does not.' },
+    ],
+    ctaHeading: 'Get enough to ring back usefully.',
+    ctaSub: 'Four questions, captured on every enquiry, summarised for you. Seven days free.',
+  },
+  {
+    slug: 'where-should-call-alerts-go',
+    category: 'Feature guide',
+    shortTitle: 'Choosing an alert channel',
+    metaTitle: 'Email, SMS or WhatsApp: Where Should Call Alerts Go? — Open Lines',
+    metaDescription: 'Which channel suits which kind of call, why routing everything to your phone stops working within a week, and the mistake that makes people switch alerts off entirely.',
+    h1: 'Where should call alerts go?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Every call can reach you by email, text or WhatsApp. The temptation is to send everything everywhere, which works for about four days and then gets muted — at which point you are missing calls again, only now you are paying for it.',
+    sections: [
+      {
+        heading: 'What each channel is actually for',
+        bullets: [
+          { title: 'Email', body: 'The default, and right for almost everything. It holds detail, it is searchable months later, and nobody feels obliged to react to it at nine at night.' },
+          { title: 'Text', body: 'For the small number of calls you would want to be interrupted for. Its value is entirely that it interrupts, which it stops doing the moment it arrives forty times a day.' },
+          { title: 'WhatsApp', body: 'Useful where your team already lives in it, and where you want alerts on a phone without them mixing into personal texts.' },
+        ],
+      },
+      {
+        heading: 'The mistake almost everyone makes first',
+        paras: ['Sending every call by text. Day one it feels responsive. By the end of the week the tone is the same for a booking confirmation and a burst pipe, so you stop looking — and an alert you no longer read is worse than one you never set up, because you believe you are covered.'],
+      },
+      {
+        heading: 'A split that holds up',
+        paras: ['Everything by email, and only the urgent by text. That way the record is complete and searchable, while your phone buzzes for the things that genuinely cannot wait. If your phone has not buzzed in a fortnight, your urgency rules are probably too tight — and if it buzzes constantly, they are too loose. Both are worth checking after the first month.'],
+      },
+      {
+        heading: 'One destination is a single point of failure',
+        paras: ['If every alert goes to one person’s phone, that person’s holiday is a gap in your cover. Where more than one of you could act on a call, send summaries somewhere shared — a team inbox or a channel — so a call is not waiting on one individual noticing it.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I get a text after every call?', a: 'You can, and most people who do switch it off within a fortnight. Email for everything and text for the urgent ones tends to survive.' },
+      { q: 'Which channel should I choose?', a: 'Email for the record, text for interruption, WhatsApp if your team already works there. The right answer is usually more than one channel doing different jobs.' },
+      { q: 'Can different calls go to different places?', a: 'That is the setup worth aiming for — everything by email, only what is urgent by text, so interruption still means something.' },
+      { q: 'Can alerts go to more than one person?', a: 'Sending summaries somewhere shared is worth doing if more than one of you could act on a call. One person’s phone is one person’s holiday away from a gap.' },
+      { q: 'Do callers get anything?', a: 'Yes — a confirmation of what was booked, separately from the summary that comes to you.' },
+    ],
+    related: [
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Using call summaries', sub: 'What to read and what to skip.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Handling urgent calls', sub: 'What should interrupt you.' },
+      { href: '/integrations/slack', label: 'Summaries in Slack', sub: 'For teams already there.' },
+    ],
+    ctaHeading: 'Set it up so you still read the alerts.',
+    ctaSub: 'Email for the record, text for the urgent. Seven days free, cancel anytime.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
