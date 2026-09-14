@@ -65,6 +65,8 @@ Current prices: ${SITE}/pricing
 ## Key pages
 - Home: ${SITE}/
 - How it works: ${SITE}/how-it-works
+- How it compares to the alternatives, and when to choose one of them
+  instead: ${SITE}/compare
 - Pricing: ${SITE}/pricing
 - Integrations: ${SITE}/integrations
 - Industries: ${SITE}/salons, ${SITE}/barbers, ${SITE}/realtors, ${SITE}/restaurants

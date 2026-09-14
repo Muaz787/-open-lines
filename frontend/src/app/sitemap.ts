@@ -14,6 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/',             changeFrequency: 'weekly',  priority: 1.0 },
     { path: '/pricing',      changeFrequency: 'monthly', priority: 0.9 },
     { path: '/how-it-works', changeFrequency: 'monthly', priority: 0.8 },
+    // High intent: someone reading a comparison is choosing, not browsing.
+    { path: '/compare',      changeFrequency: 'monthly', priority: 0.9 },
     { path: '/industries',   changeFrequency: 'monthly', priority: 0.8 },
     // Vertical landing pages
     { path: '/salons',       changeFrequency: 'monthly', priority: 0.8 },
