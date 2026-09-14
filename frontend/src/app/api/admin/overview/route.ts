@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import { billingStatus, isPaying, isTrial } from '@/lib/billing'
 import { requireAdmin } from '@/lib/admin-auth'
 
 function dayBuckets(days: number): string[] {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
     callsRes,
     appointmentsRes,
   ] = await Promise.all([
-    supabase.from('tenants').select('id, created_at, subscription_status, subscription_plan, is_active'),
+    supabase.from('tenants').select('id, created_at, subscription_status, subscription_plan, is_active, billing_exempt'),
     supabase.from('calls').select('id, created_at, duration_secs, tenant_id'),
     supabase.from('appointments').select('id, created_at'),
   ])
@@ -53,11 +54,18 @@ export async function GET(req: NextRequest) {
   const signupsToday = tenants.filter(t => t.created_at >= todayStart).length
   const signupsWeek = tenants.filter(t => t.created_at >= weekStart).length
   const activeTenants = tenants.filter(t => t.is_active).length
-  const paidTenants = tenants.filter(t => t.subscription_status === 'active').length
-  const trialTenants = tenants.filter(t => t.subscription_status === 'trialing').length
-  const failedPayments = tenants.filter(t => t.subscription_status === 'past_due').length
+  // The SAME derivation the Revenue page uses. Reading subscription_status
+  // directly made this page disagree with that one about the same tenants:
+  // a comped account carries status 'active', so it was counted as a paying
+  // customer AND its plan price was booked as revenue — the admin reported
+  // money from a free account. And a card-free trial carries status 'none',
+  // so four of the five trials were invisible here.
+  const billing = new Map(tenants.map(t => [t, billingStatus(t)]))
+  const paidTenants = tenants.filter(t => isPaying(billing.get(t)!)).length
+  const trialTenants = tenants.filter(t => isTrial(billing.get(t)!)).length
+  const failedPayments = tenants.filter(t => billing.get(t) === 'past_due').length
   const mrr = tenants
-    .filter(t => t.subscription_status === 'active' && t.subscription_plan)
+    .filter(t => isPaying(billing.get(t)!) && t.subscription_plan)
     .reduce((sum, t) => sum + (PLAN_PRICE[t.subscription_plan ?? ''] ?? 0), 0)
 
   const callsToday = calls.filter(c => c.created_at >= todayStart).length

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import PasswordField from '@/components/PasswordField'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -86,12 +87,11 @@ export default function LoginPage() {
 
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input
-              className="form-input"
-              type="password"
+            <PasswordField
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={setPassword}
               placeholder="••••••••"
+              autoComplete="current-password"
               required
             />
             <div style={{ marginTop: 8, textAlign: 'right' }}>

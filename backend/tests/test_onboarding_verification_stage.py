@@ -177,26 +177,39 @@ def test_the_business_email_helper_is_just_a_login_hint():
     assert "also email your call summaries here" not in ONB
 
 
+#: The toggle moved out of this page into one component every password input
+#: shares — login, reset-password and settings each had a bare field, so the
+#: eye existed on exactly one of the seven places a password is typed.
+PWFIELD = (FE / "components" / "PasswordField.tsx").read_text()
+
+
 def test_the_password_field_is_hidden_by_default_and_toggleable():
-    assert "showPassword ? 'text' : 'password'" in ONB
-    assert "useState(false)" in ONB.split("showPassword")[0][-400:] or \
-           "const [showPassword, setShowPassword] = useState(false)" in ONB
+    assert "useState(false)" in PWFIELD, "revealed must default to hidden"
+    assert "shown ? 'text' : 'password'" in PWFIELD
+
+
+def test_the_wizard_uses_the_shared_password_field():
+    """Rather than keeping a second copy that can drift from the other six."""
+    assert "PasswordField" in ONB
+    assert "pw-toggle" not in ONB, "the wizard grew its own toggle again"
 
 
 def test_the_password_toggle_is_accessible_and_never_submits():
-    i = ONB.index("pw-toggle")
-    window = ONB[i - 300:i + 700]
-    assert 'type="button"' in window
-    assert "'Hide password' : 'Show password'" in window or \
-           "showPassword ? 'Hide password' : 'Show password'" in window
+    i = PWFIELD.index("pw-toggle")
+    window = PWFIELD[i - 300:i + 800]
+    assert 'type="button"' in window, "it would submit the form it sits in"
+    assert "'Hide password' : 'Show password'" in window
     assert "aria-pressed" in window
 
 
 def test_the_toggle_changes_only_the_input_type_not_the_value():
-    i = ONB.index("pw-toggle")
-    window = ONB[i - 400:i + 700]
-    assert "setShowPassword(v => !v)" in window
-    assert "setForm" not in window, "the toggle must not touch the password value"
+    """Scoped to the button element alone: the input sits directly above it and
+    legitimately carries the onChange this asserts the BUTTON never has."""
+    i = PWFIELD.index('<button type="button" className="pw-toggle"')
+    button = PWFIELD[i:PWFIELD.index("</button>", i)]
+    assert "setShown(v => !v)" in button
+    assert "onChange" not in button, "the toggle must not touch the password value"
+    assert "value" not in button, "the toggle must not read or write the value"
 
 
 def test_the_preferences_primary_action_renders_as_a_button():

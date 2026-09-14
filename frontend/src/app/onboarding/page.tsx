@@ -13,6 +13,7 @@ import BusinessVerification from '@/components/BusinessVerification'
 import { authedFetch } from '@/lib/api'
 import FinalSetup, { type SetupState } from '@/components/FinalSetup'
 import CalendarConnect from '@/components/CalendarConnect'
+import PasswordField from '@/components/PasswordField'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -200,7 +201,6 @@ const Check = () => (
 
 export default function OnboardingPage() {
   const [stage, setStage] = useState<Stage>('url')
-  const [showPassword, setShowPassword] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   /** The stage the RESUME effect dropped us on, or null if we arrived normally.
    *  Only used to offer a way out of it — never to decide where to go. */
@@ -1036,34 +1036,11 @@ export default function OnboardingPage() {
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="ol-password">Create a Password *</label>
-                  <div className="pw-wrap">
-                    <input className="form-input" id="ol-password" name="password"
-                      type={showPassword ? 'text' : 'password'} value={form.password}
-                      onChange={handleChange} placeholder="Min. 8 characters"
-                      required minLength={8} autoComplete="new-password" />
-                    {/* type="button" so it never submits the form. The VALUE is
-                        untouched -- only the input's type changes. */}
-                    <button type="button" className="pw-toggle"
-                      onClick={() => setShowPassword(v => !v)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      aria-pressed={showPassword}>
-                      {showPassword ? (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                          <path d="M3 3l18 18" />
-                          <path d="M10.6 10.6a2 2 0 002.8 2.8" />
-                          <path d="M9.4 5.2A9.7 9.7 0 0112 5c5 0 9 4.5 9 7a11 11 0 01-2.6 3.5" />
-                          <path d="M6.2 6.7C3.9 8.2 3 10.4 3 12c0 2.5 4 7 9 7a9.6 9.6 0 003.7-.7" />
-                        </svg>
-                      ) : (
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                          stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                          <path d="M3 12s3.6-7 9-7 9 7 9 7-3.6 7-9 7-9-7-9-7z" />
-                          <circle cx="12" cy="12" r="2.6" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
+                  <PasswordField
+                    id="ol-password" name="password" value={form.password}
+                    onChange={v => handleChange({ target: { name: 'password', value: v } } as React.ChangeEvent<HTMLInputElement>)}
+                    placeholder="Min. 8 characters" autoComplete="new-password"
+                    required minLength={8} />
                 </div>
 
                 {/* Trust row. No longer claims "no credit card" — a card IS collected
