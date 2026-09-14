@@ -3186,6 +3186,389 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Outgrowing your calendar is not starting over.',
     ctaSub: 'Reconnect, keep everything else. Seven days free.',
   },
+  {
+    slug: 'what-counts-as-a-minute',
+    category: 'Cost guide',
+    shortTitle: 'What counts as a minute',
+    metaTitle: 'What Counts as a Minute? — Open Lines',
+    metaDescription: 'How call minutes are counted, why a forty-second call is one minute, what happens when you go over your plan, and why overrunning is never cheaper than moving up.',
+    h1: 'What counts as a minute?',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Anything sold by the minute deserves a plain explanation of how minutes are counted, because this is where per-minute pricing usually gets quietly unpleasant. Ours works the way telephony has always worked, and the parts that could surprise you are below.',
+    sections: [
+      {
+        heading: 'Rounded up, with a one-minute floor',
+        paras: ['Call time is rounded up to whole minutes, and every answered call counts as at least one. A forty-second call is one minute; a call of two minutes and ten seconds is three. This is standard telecom billing rather than something clever, but it has a real consequence worth knowing: if most of your calls are short, your minute count will run ahead of your actual talk time, and you should plan on call volume rather than on a stopwatch.'],
+      },
+      {
+        heading: 'What happens when you go over',
+        paras: ['Nothing switches off. Minutes beyond your plan are simply charged at the overage rate and appear on your next invoice. You are told at eighty per cent of your allowance and again when you reach it, so going over is a decision rather than a discovery at the end of the month.'],
+      },
+      {
+        heading: 'Overage is never the cheap option, on purpose',
+        paras: ['The per-minute overage rate is set deliberately above the per-minute rate of every plan, including the most expensive one. That means there is no arrangement where consistently overrunning a smaller plan costs less than moving up to the right one — which is the opposite of how metered pricing is usually designed, and it is intentional. If you are over every month, the alert is telling you to change plan, and changing plan will genuinely cost you less.'],
+      },
+      {
+        heading: 'What is not billed',
+        bullets: [
+          { title: 'Calls that never connect', body: 'Time counts from an answered call.' },
+          { title: 'Your own test calls to the temporary line', body: 'While an Irish number is going through verification, calls on the temporary test number are accounted separately and never reach billing. You were promised free testing while waiting on a regulator, and that promise is enforced in code rather than in a policy page.' },
+        ],
+      },
+      {
+        heading: 'How to estimate before you commit',
+        paras: ['Count the calls you receive in a normal week, not the ones you remember. Multiply by your honest average length — most small-business calls run two to four minutes, and people consistently guess low. Compare that against the plan allowances on the pricing page, and pick the one above your estimate rather than the one that just fits, because the first month is always the noisiest.'],
+      },
+    ],
+    faqs: [
+      { q: 'How are call minutes counted?', a: 'Rounded up to whole minutes, with every answered call counting as at least one. A forty-second call is one minute.' },
+      { q: 'What happens if I go over my plan?', a: 'Nothing switches off. Extra minutes are charged at the overage rate on your next invoice, and you are alerted at eighty per cent of your allowance and again when you reach it.' },
+      { q: 'Is it cheaper to go over than to upgrade?', a: 'No, and deliberately so. The overage rate is set above the per-minute rate of every plan, so consistently overrunning a smaller plan always costs more than moving up.' },
+      { q: 'Do I pay for calls that do not connect?', a: 'No. Time counts from an answered call.' },
+      { q: 'How do I estimate what plan I need?', a: 'Count a normal week of calls and multiply by an honest average length — most small-business calls run two to four minutes and people guess low. Pick the plan above your estimate.' },
+    ],
+    related: [
+      { href: '/pricing', label: 'Plans and allowances', sub: 'The actual figures.' },
+      { href: '/learn/cost-per-booked-appointment', label: 'Cost per booking', sub: 'The measure that matters.' },
+      { href: '/learn/what-happens-to-your-number-if-you-leave', label: 'If you leave', sub: 'What happens then.' },
+    ],
+    ctaHeading: 'Count a normal week first.',
+    ctaSub: 'Then pick the plan above your estimate. Seven days free.',
+  },
+  {
+    slug: 'card-details-and-phone-payments',
+    category: 'Compliance',
+    shortTitle: 'Card details by phone',
+    metaTitle: 'Card Details Over the Phone: Why They Should Never Be Spoken — Open Lines',
+    metaDescription: 'Reading a card number aloud puts it in a recording, a transcript and whatever your staff wrote down. How phone payments should work instead, and what that avoids.',
+    h1: 'Card details should never be read aloud',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Plenty of small businesses still take card numbers over the phone, written on a pad and typed into a terminal afterwards. It is an ordinary practice with an unpleasant amount of risk attached, and the risk grows the moment calls start being recorded — which is to say, the moment most businesses modernise anything.',
+    sections: [
+      {
+        heading: 'What happens to a spoken card number',
+        paras: ['It exists in more places than the person reading it out realises: the recording, the transcript, the note somebody made, and the memory of anyone in the room. Each of those is a copy you are now responsible for, and a recording containing card numbers is a materially more serious thing to hold than a recording of a conversation about haircuts. Deleting it later does not undo the period in which it existed.'],
+      },
+      {
+        heading: 'The better arrangement',
+        bullets: [
+          { title: 'The caller enters their own details', body: 'On a payment page, on their own phone, while still on the call. Nothing sensitive is spoken.' },
+          { title: 'Nothing sensitive is in the recording', body: 'Because it was never said. This is the whole point, and it also makes the recording safe to keep.' },
+          { title: 'The payment processor holds the details', body: 'Which is their job and their regulatory burden rather than yours.' },
+          { title: 'You get told it was paid', body: 'Which is all you actually needed.' },
+        ],
+      },
+      {
+        heading: 'Why "we delete the recording afterwards" is not an answer',
+        paras: ['It relies on somebody remembering, on the deletion being complete, and on nothing having been copied in the meantime. Any control that depends on a busy person doing something reliably is not a control. Not capturing the data in the first place is the only version of this that holds up, and it is also much less work.'],
+      },
+      {
+        heading: 'If you still take card numbers by phone',
+        paras: ['Two things are worth doing this week. Stop writing them on paper that sits at a desk — that pad is the part most likely to cause you an actual problem. And if you record calls at all, understand that you are currently storing card numbers in your recordings, which is very likely more than you intended and more than your customers assume.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can the AI take card details over the phone?', a: 'It does not need to, and should not. The caller enters their details on a payment page while still on the call, so nothing sensitive is spoken, recorded or transcribed.' },
+      { q: 'What is wrong with reading a card number aloud?', a: 'It ends up in the recording, the transcript and whatever was written down — several copies you then have to protect, and deleting them later does not undo the period they existed.' },
+      { q: 'Can I just delete the recording afterwards?', a: 'That depends on somebody remembering, the deletion being complete, and nothing having been copied. A control that relies on a busy person is not a control.' },
+      { q: 'Who holds the card details instead?', a: 'The payment processor, which is their regulatory burden rather than yours.' },
+    ],
+    related: [
+      { href: '/learn/reduce-no-shows-with-deposits', label: 'Taking deposits', sub: 'How payment works.' },
+      { href: '/learn/call-recording-consent', label: 'Recording consent', sub: 'What you are holding.' },
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'Call data', sub: 'Storage and deletion.' },
+    ],
+    ctaHeading: 'Take the payment without hearing the card.',
+    ctaSub: 'Entered by the caller, held by the processor. Seven days free.',
+  },
+  {
+    slug: 'when-you-are-fully-booked',
+    category: 'Guide',
+    shortTitle: 'When you are full',
+    metaTitle: 'What Should Happen When You Are Fully Booked — Open Lines',
+    metaDescription: 'A caller who cannot have what they wanted is your most fragile customer. Why "sorry, we are full" wastes them, and the four things worth offering instead.',
+    h1: 'What should happen when you are fully booked',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Being full is a good problem that is handled badly almost everywhere. The caller wanted Saturday, Saturday has gone, and the usual response — "sorry, we are fully booked" — ends the call with somebody who was ready to buy walking away with nothing.',
+    sections: [
+      {
+        heading: 'What you actually have in front of you',
+        paras: ['A person who has already chosen you and already decided to spend money. That is the most valuable state a caller can be in, and it is worth far more than an enquiry from somebody still deciding. Losing them over a date is losing a sale you had already made for reasons that are entirely about scheduling.'],
+      },
+      {
+        heading: 'Four things worth offering, in order',
+        bullets: [
+          { title: 'The nearest actual alternative', body: 'Not "we have nothing this week" but "there is Thursday at four, or Saturday week". A specific time is a decision they can make; an absence is not.' },
+          { title: 'A different person or branch', body: 'If they asked for Saturday rather than for Sarah, someone else on Saturday may be exactly as good.' },
+          { title: 'The cancellation list', body: 'Cheap, effective, and it turns your no-shows into somebody else’s appointment.' },
+          { title: 'A different service that does fit', body: 'Where a shorter treatment genuinely solves their problem this week.' },
+        ],
+      },
+      {
+        heading: 'Do not promise a callback you will not make',
+        paras: ['"We will ring you if something opens up" is the most broken promise in small business. It is made with real sincerity at the desk and forgotten by Wednesday, and the customer waits, then books elsewhere, and now thinks less of you than if you had simply said no. Either operate a list you genuinely work through, or do not offer one.'],
+      },
+      {
+        heading: 'Being full is also information',
+        paras: ['If callers are regularly turned away for the same day or the same service, that is your business telling you something about pricing or capacity before any spreadsheet does. Steady refusal at peak times is usually the clearest signal you will ever get that your peak is underpriced.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should be said when there is no availability?', a: 'Offer the nearest specific alternative, another person or branch, a cancellation list you genuinely work, or a different service that fits. A specific time is a decision they can make; "we are full" is not.' },
+      { q: 'Why does it matter so much?', a: 'Because a caller who is ready to book is the most valuable state a customer can be in. Losing them over a date loses a sale you had already made.' },
+      { q: 'Should I offer to ring them if something opens up?', a: 'Only if you genuinely work a list. It is the most commonly broken promise in small business, and a forgotten callback costs you more than a straight no.' },
+      { q: 'Is there anything useful in being full?', a: 'Yes. Regularly turning people away at the same times usually means your peak is underpriced — and that is the clearest signal you will get.' },
+    ],
+    related: [
+      { href: '/learn/booking-with-a-specific-team-member', label: 'A named person', sub: 'When they asked for Sarah.' },
+      { href: '/learn/cancellations-and-rescheduling-by-phone', label: 'Cancellations', sub: 'Where the slots come from.' },
+      { href: '/learn/what-your-calls-are-telling-you', label: 'Reading the pattern', sub: 'What refusals reveal.' },
+    ],
+    ctaHeading: 'Never lose a ready buyer to a full Saturday.',
+    ctaSub: 'A real alternative beats an apology. Seven days free.',
+  },
+  {
+    slug: 'callers-outside-your-service-area',
+    category: 'Guide',
+    shortTitle: 'Out-of-area callers',
+    metaTitle: 'Callers Outside Your Service Area — Open Lines',
+    metaDescription: 'The question that should be asked first and usually is not. How to handle out-of-area enquiries quickly, kindly, and without quoting for a job you will not take.',
+    h1: 'Callers outside your area',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'For any business that travels to its customers, the most expensive call is the one that runs its full course before anyone establishes where the work is. Both sides spend five minutes getting to an answer that the first question would have given.',
+    sections: [
+      {
+        heading: 'Ask early, not at the end',
+        paras: ['Where the job is should come before prices, availability and the details of the work, because it is the only answer that can make the rest of the conversation pointless. Asking it first feels abrupt and is actually the kinder order: nobody wants to describe their problem in detail and then be told you do not go there.'],
+      },
+      {
+        heading: 'Coverage is rarely a clean line',
+        bullets: [
+          { title: 'A radius that is really a drive time', body: 'Fifteen miles across a city and fifteen miles up a motorway are not the same job.' },
+          { title: 'Places you go for the right work', body: 'Plenty of trades travel further for a full day than for an hour, and that should be expressible rather than a flat no.' },
+          { title: 'Somewhere you used to cover', body: 'If you pulled out of an area, callers from it will keep ringing for years.' },
+          { title: 'An extra charge rather than a refusal', body: 'A call-out supplement outside your normal patch turns a no into a decision for the customer to make.' },
+        ],
+      },
+      {
+        heading: 'Say no properly',
+        paras: ['A clear "we do not cover that, but try someone in Cork" takes twenty seconds and earns you more goodwill than a vague answer that leaves them ringing back. People remember being redirected helpfully, and in trades that referral frequently comes back the other way — the business you sent work to is the one that sends it to you when the job is on your side of the line.'],
+      },
+      {
+        heading: 'Write your boundary down once',
+        paras: ['Most businesses have never actually defined their area; they have a feeling about it that varies with how busy they are and who is asking. Write down the postcodes or towns you cover, the ones you will travel to for larger jobs, and the supplement if there is one. That single document makes every future answer consistent — from you, your team, your weekend cover, and anything automated.'],
+      },
+    ],
+    faqs: [
+      { q: 'How should out-of-area callers be handled?', a: 'Establish where the job is before prices and availability — it is the one answer that can make the rest of the call pointless, and asking first is kinder than asking last.' },
+      { q: 'What if my coverage is not a simple radius?', a: 'It rarely is. Drive time, the size of the job, and a call-out supplement outside your normal patch can all be expressed rather than reduced to a flat no.' },
+      { q: 'What should be said to someone outside the area?', a: 'A clear no plus a direction to try somebody else. It takes twenty seconds, earns goodwill, and in the trades that referral often comes back.' },
+      { q: 'How do I make answers consistent?', a: 'Write the boundary down once — the towns you cover, the ones you travel to for bigger jobs, and any supplement. Most businesses have a feeling about their area rather than a definition.' },
+    ],
+    related: [
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Qualifying enquiries', sub: 'What else to ask early.' },
+      { href: '/learn/answering-calls-while-driving-between-jobs', label: 'Mobile businesses', sub: 'Calls on the road.' },
+      { href: '/learn/uploading-documents-your-ai-can-answer-from', label: 'Writing it down', sub: 'One document, consistent answers.' },
+    ],
+    ctaHeading: 'Ask the question that ends the call early.',
+    ctaSub: 'Coverage established first, five minutes saved each time. Seven days free.',
+  },
+  {
+    slug: 'no-shows-without-taking-deposits',
+    category: 'Guide',
+    shortTitle: 'No-shows without deposits',
+    metaTitle: 'Reducing No-Shows Without Taking Deposits — Open Lines',
+    metaDescription: 'Not every business can ask for money up front. Five things that reduce no-shows without a deposit, and the one that works better than all the reminders.',
+    h1: 'Reducing no-shows without taking deposits',
+    published: '2026-09-18',
+    updated: '2026-09-18',
+    intro: 'Deposits work, and plenty of businesses cannot use them — because their customers would walk, because the sums are small, or because in their trade nobody else asks and being the one who does looks like distrust. Those businesses still lose money to empty slots, and there is more available than sending another reminder.',
+    sections: [
+      {
+        heading: 'Why people miss appointments',
+        paras: ['Very rarely contempt. They forgot, the time stopped suiting them, or they were too embarrassed to cancel something booked three weeks ago and decided quietly not to go. That last one is the largest category and the most fixable, because it is entirely about how easy you make it to move an appointment.'],
+      },
+      {
+        heading: 'Make cancelling genuinely easy',
+        paras: ['This feels backwards and is the highest-return change available. A customer who can cancel at eight in the evening without speaking to anybody will do it, and you get the slot back with a day to fill it. A customer who has to ring during working hours and explain themselves to a person will simply not turn up — you lose the slot entirely, with no notice, and you also lose them as a customer because now they are embarrassed to come back. An easy cancellation converts a no-show into a free slot and keeps the relationship.'],
+      },
+      {
+        heading: 'What else moves the number',
+        bullets: [
+          { title: 'Shorter lead times', body: 'Something booked eleven days out is forgotten far more often than something booked three days out. Where you can offer sooner, offer sooner.' },
+          { title: 'Confirmation in their words', body: 'A confirmation naming the service and the person reads as real. A reference number does not.' },
+          { title: 'A reminder timed to be useful', body: 'The day before, when they can still act on it — not two hours ahead, when they are already committed to something else.' },
+          { title: 'Noticing repeat offenders', body: 'A small number of people account for a large share of no-shows. Knowing who they are lets you handle them specifically rather than imposing a policy on everybody.' },
+        ],
+      },
+      {
+        heading: 'The deposit alternative for the awkward cases',
+        paras: ['If one customer repeatedly misses appointments, asking that person for a deposit is very different from introducing a blanket policy. It is a conversation nobody enjoys, but it is targeted, it is fair, and it does not cost you the goodwill of the ninety per cent who always turn up.'],
+      },
+    ],
+    faqs: [
+      { q: 'How can I reduce no-shows without a deposit?', a: 'Make cancelling genuinely easy, shorten lead times where you can, confirm in plain words rather than reference numbers, and time reminders for when someone can still act.' },
+      { q: 'Why does making cancelling easier help?', a: 'Because the largest group of no-shows are people too embarrassed to cancel. Make it easy and you get the slot back with a day to fill it — and you keep the customer.' },
+      { q: 'When should a reminder be sent?', a: 'The day before, while they can still act on it. Two hours ahead is too late to change anything.' },
+      { q: 'What about someone who misses repeatedly?', a: 'Ask that person for a deposit. Targeting one repeat offender is fairer and cheaper than imposing a policy on everybody who always turns up.' },
+    ],
+    related: [
+      { href: '/learn/reduce-no-shows-with-deposits', label: 'Deposits', sub: 'When you can use them.' },
+      { href: '/learn/cancellations-and-rescheduling-by-phone', label: 'Easy cancelling', sub: 'The biggest lever.' },
+      { href: '/learn/recognising-returning-callers', label: 'Knowing who is calling', sub: 'Spotting repeat offenders.' },
+    ],
+    ctaHeading: 'Make it easy to cancel and fewer people vanish.',
+    ctaSub: 'Cancellations and rebookings handled on the call. Seven days free.',
+  },
+  {
+    slug: 'handling-a-complaint-on-the-phone',
+    category: 'Guide',
+    shortTitle: 'Complaints',
+    metaTitle: 'Handling a Complaint on the Phone — Open Lines',
+    metaDescription: 'An angry caller is the one call that should never be handled by software. How to recognise one immediately, what should happen next, and why speed matters more than the answer.',
+    h1: 'Handling a complaint on the phone',
+    published: '2026-09-18',
+    updated: '2026-09-18',
+    intro: 'This is the clearest boundary in the whole category. Somebody ringing upset needs a person, quickly, and any system that tries to process them is making a bad situation considerably worse. What matters is how fast the handover happens and what state the person is in when they take over.',
+    sections: [
+      {
+        heading: 'What an upset caller is actually after',
+        paras: ['Almost never the refund, at first. They want to be heard by somebody with the authority to care, and they want to know it will not happen again. A response that jumps straight to remedies before acknowledging the problem reads as trying to get rid of them, which is what turns a complaint into a review.'],
+      },
+      {
+        heading: 'Why this call must reach a person fast',
+        bullets: [
+          { title: 'Being processed is the insult', body: 'Someone already annoyed being asked structured questions will escalate, and reasonably so.' },
+          { title: 'Repeating themselves compounds it', body: 'Every retelling of the grievance makes it larger and the caller angrier.' },
+          { title: 'Only a person can make it right', body: 'Discounts, exceptions and apologies that mean something require authority.' },
+          { title: 'Speed is most of the remedy', body: 'A complaint answered within the hour is usually a retained customer. The same complaint on Thursday is a review.' },
+        ],
+      },
+      {
+        heading: 'What the handover should carry',
+        paras: ['Whoever picks this up should arrive knowing who is calling, what they are upset about and what was booked — so the first thing out of their mouth is not "can you explain the problem again". Arriving informed is the difference between a call that de-escalates in the first sentence and one that starts from the beginning for the third time.'],
+      },
+      {
+        heading: 'When you genuinely cannot get to the phone',
+        paras: ['Be honest and specific: that you are with a customer, and that you will ring back within the hour. Then do it. A precise promise kept is nearly as good as answering; a vague one broken is worse than never having offered. And an upset caller should never be left sitting in a routine callback queue behind three enquiries about opening hours.'],
+      },
+      {
+        heading: 'The record matters afterwards',
+        paras: ['Complaints are where a written account of what was said stops being paperwork and starts being useful — for you, if the story changes later, and for spotting the same problem recurring. Two complaints about the same thing in a month is a process fault, not bad luck, and most businesses only notice because somebody happened to remember.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should an AI receptionist handle complaints?', a: 'No. An upset caller needs a person quickly — being processed is itself the insult, and every retelling makes the grievance larger.' },
+      { q: 'What should happen instead?', a: 'A fast handover, with whoever picks up already knowing who is calling, what they are upset about and what was booked, so they never ask the caller to explain it again.' },
+      { q: 'What if I genuinely cannot take the call?', a: 'Say precisely that you are with a customer and will ring back within the hour — then do. A precise promise kept is nearly as good as answering.' },
+      { q: 'What do complainants actually want?', a: 'To be heard by somebody with the authority to care, before any remedy is offered. Jumping to a refund reads as trying to get rid of them.' },
+    ],
+    related: [
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Urgent calls', sub: 'The other handover.' },
+      { href: '/learn/call-transcripts-and-what-they-show', label: 'Reading the call', sub: 'Before you respond.' },
+      { href: '/learn/where-should-call-alerts-go', label: 'Being told fast', sub: 'Alerts that reach you.' },
+    ],
+    ctaHeading: 'Some calls should reach you immediately.',
+    ctaSub: 'Recognised, handed over, and with the context attached. Seven days free.',
+  },
+  {
+    slug: 'booking-on-behalf-of-someone-else',
+    category: 'Guide',
+    shortTitle: 'Booking for someone else',
+    metaTitle: 'When Someone Books on Behalf of Another Person — Open Lines',
+    metaDescription: 'A daughter booking for her father, a partner booking for both. Whose number goes on the appointment, what should not be discussed, and the reminder that reaches nobody.',
+    h1: 'When the caller is not the customer',
+    published: '2026-09-18',
+    updated: '2026-09-18',
+    intro: 'A surprising share of appointments are made by somebody other than the person attending — a daughter ringing for her father, one partner booking for both, an office manager booking for a colleague. It is completely ordinary and it quietly breaks assumptions that most booking systems are built on.',
+    sections: [
+      {
+        heading: 'The detail that causes the trouble',
+        paras: ['Whose phone number goes on the appointment. Put the caller’s down and the reminder reaches somebody who is not going; put the attendee’s down and you have a number the caller may have misremembered, for a person who does not know they are expected. The fix is unglamorous — capture both, and be explicit about which one you will contact — but it prevents the single most common version of this going wrong.'],
+      },
+      {
+        heading: 'Say who you will ring',
+        paras: ['"I will send the confirmation to you and the reminder to him" takes three seconds and removes every later argument. The person booking is usually happy to be the contact; what they cannot do is guess your convention, and they will assume whichever one causes the problem.'],
+      },
+      {
+        heading: 'What should not be discussed',
+        bullets: [
+          { title: 'Someone else’s history', body: 'What a person had done last time is theirs. That it is their spouse asking does not change it.' },
+          { title: 'Anything sensitive about the attendee', body: 'Particularly where the service itself is personal. When in doubt, say the attendee can ring to discuss it.' },
+          { title: 'Confirming details you were given', body: 'Reading back an address to check it is fine. Volunteering one you were not given is not.' },
+          { title: 'Cancelling somebody else’s appointment', body: 'Reasonable for a partner and not for a stranger who knows a name. Have a position on this before it happens.' },
+        ],
+      },
+      {
+        heading: 'The cases worth planning for',
+        paras: ['Family members booking for elderly relatives is the common one in most trades and clinics, and it deserves to be easy rather than treated as an exception. Group bookings where one person books for six is another — there the caller genuinely is your customer and the others are attendees, which is a different shape again. Knowing which of those you are in changes what you should ask for.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can someone book an appointment for another person?', a: 'Yes, and it is common. The thing to get right is capturing both numbers and being explicit about which one you will contact.' },
+      { q: 'Whose number should be on the appointment?', a: 'Both, ideally — the caller’s and the attendee’s — with a clear statement of who gets the confirmation and who gets the reminder.' },
+      { q: 'What should not be told to whoever is calling?', a: 'Anything about the attendee they did not supply — past appointments, personal details, or anything sensitive. Confirming details you were given is fine.' },
+      { q: 'Can somebody cancel another person’s appointment?', a: 'Reasonable for a partner, not for a stranger who happens to know a name. Decide your position before it comes up.' },
+    ],
+    related: [
+      { href: '/learn/deposits-for-group-bookings', label: 'Group bookings', sub: 'One caller, several attendees.' },
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'Caller data', sub: 'What is held, and whose.' },
+      { href: '/learn/recognising-returning-callers', label: 'Returning callers', sub: 'Who is on the line.' },
+    ],
+    ctaHeading: 'Get the right reminder to the right person.',
+    ctaSub: 'Both numbers captured, and it says which it will use. Seven days free.',
+  },
+  {
+    slug: 'your-google-listing-and-your-phone',
+    category: 'Guide',
+    shortTitle: 'Your Google listing',
+    metaTitle: 'Your Google Business Profile and the Calls It Sends You — Open Lines',
+    metaDescription: 'The call button on your listing is one tap on a phone already in someone’s hand. Why those calls are the highest-intent you get, and why missing them costs twice.',
+    h1: 'Your Google listing and the calls it sends you',
+    published: '2026-09-18',
+    updated: '2026-09-18',
+    intro: 'For most local businesses the largest single source of phone calls is not the website — it is the listing that appears when somebody searches on a phone. The call button sits directly under your name, it takes one tap, and it produces a caller in a very particular state of mind.',
+    sections: [
+      {
+        heading: 'Why these callers are different',
+        paras: ['They searched for a service, not for you. They are looking at two or three results, the phone is already in their hand, and tapping is easier than reading. That means high intent and almost no loyalty at the same time: they will call the next listing without a second thought, because they had no attachment to the first one. These are simultaneously your best calls and your most fragile.'],
+      },
+      {
+        heading: 'Missing one costs you twice',
+        paras: ['You lose the job, and there is reason to think you lose a little of the listing too. Search platforms watch what people do after they tap — whether they come back and tap the next result — and a business whose calls consistently go unanswered is providing exactly that signal. Nobody outside publishes the mechanics, so treat this as directionally true rather than precise, but the direction is not in much doubt: being reliably unreachable is not a neutral act.'],
+      },
+      {
+        heading: 'Basics worth fixing this week',
+        bullets: [
+          { title: 'Hours that are actually correct', body: 'Including bank holidays. Somebody who rings during hours you advertised and gets nothing is your worst outcome.' },
+          { title: 'The number you actually answer', body: 'Listings often carry an old landline nobody sits near any more.' },
+          { title: 'Questions answered on the listing', body: 'Parking, accessibility, whether you take walk-ins. Each one is a call you no longer receive.' },
+          { title: 'Recent reviews', body: 'They decide whether you are tapped at all. Answering the phone decides whether that tap becomes a booking.' },
+        ],
+      },
+      {
+        heading: 'Where your calls actually come from',
+        paras: ['Most owners assume their website. Look at when calls arrive and what they ask for, and it is usually clear that a large share are people who found a listing on a phone and tapped, because they ask the things a listing does not answer. That changes where your effort belongs — a listing with correct hours and a phone that gets answered will out-earn a website redesign in most local trades.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do calls from a Google listing matter more?', a: 'They tend to be your highest-intent calls and your least loyal — the caller searched for a service rather than for you, and the next listing is one tap away.' },
+      { q: 'Does missing calls affect my listing?', a: 'Search platforms watch whether people come back and tap the next result, so being reliably unreachable is not a neutral signal. The mechanics are not published, so treat that as directional rather than precise.' },
+      { q: 'What should I fix on my listing first?', a: 'Correct hours including bank holidays, a number somebody actually answers, and answers to the questions that generate calls — parking, accessibility, walk-ins.' },
+      { q: 'Should I invest in my website or my listing?', a: 'In most local trades, a listing with correct hours and a phone that gets answered will out-earn a website redesign.' },
+    ],
+    related: [
+      { href: '/learn/stop-losing-callers-to-the-next-business', label: 'The next listing', sub: 'What they are deciding.' },
+      { href: '/learn/keeping-your-ai-answers-current', label: 'Correct hours', sub: 'Keeping them true.' },
+      { href: '/learn/is-an-ai-receptionist-worth-it', label: 'What it is worth', sub: 'Per recovered call.' },
+    ],
+    ctaHeading: 'One tap, and somebody answers.',
+    ctaSub: 'Your highest-intent callers, actually reaching you. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
