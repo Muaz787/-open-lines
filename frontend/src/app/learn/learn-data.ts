@@ -2789,6 +2789,403 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Count your last twenty bookings first.',
     ctaSub: 'If most began with a call, seven days free will tell you the rest.',
   },
+  {
+    slug: 'what-happens-to-your-number-if-you-leave',
+    category: 'Guide',
+    shortTitle: 'If you leave',
+    metaTitle: 'What Happens to Your Number If You Cancel — Open Lines',
+    metaDescription: 'Cancelling runs to the end of the period you paid for, a number you were given is held for 30 or 60 days with two warnings first, and a number you forwarded was never ours to lose.',
+    h1: 'What happens to your number if you leave',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'Most providers are vague about this, which is itself informative — losing a business phone number is not an inconvenience, it is the permanent loss of every listing, invoice and van that carries it. Here is exactly what happens, including the parts that are your responsibility rather than ours.',
+    sections: [
+      {
+        heading: 'If you forwarded your own number',
+        paras: ['Nothing happens to it, because it was never ours. You hold it with your own carrier, you keep paying them for it, and leaving means turning forwarding off. This is the single strongest reason to forward your existing number rather than replace it: it makes leaving a setting rather than a migration, and it means no decision of ours can ever cost you your number.'],
+      },
+      {
+        heading: 'If we gave you a number',
+        paras: ['Cancelling does not switch it off. The subscription runs to the end of the period you have already paid for, and after that the number is held rather than released — for 30 days if you never completed a paid month, and for 60 days if you paid at least once. You get two warnings before anything happens, a fortnight out and again three days out.'],
+      },
+      {
+        heading: 'Why it is held at all rather than kept forever',
+        paras: ['A number costs money every month whether or not anyone rings it, so nobody holds them indefinitely. But releasing one is irreversible — the carrier can reassign it, and a business that loses its number has customers reaching a stranger for years. The grace period exists because people cancel in a bad month and come back in a better one, and the cost of holding a number for sixty days is trivial next to the cost of being wrong about somebody.'],
+      },
+      {
+        heading: 'What is deliberately cautious',
+        bullets: [
+          { title: 'A live account is never touched', body: 'Active, in trial, in arrears or cancelling-at-period-end all count as live business.' },
+          { title: 'Unknown means leave it alone', body: 'If any piece of information needed to make the decision is missing, nothing is released. Every uncertainty resolves in favour of your keeping the number.' },
+          { title: 'Two warnings, not one', body: 'Sent to you before the date, so it is never a surprise.' },
+          { title: 'A cap on how many can go at once', body: 'So a mistake is a small mistake rather than a cascading one.' },
+        ],
+      },
+      {
+        heading: 'What to do if you are leaving',
+        paras: ['If the number matters to you, say so before the grace period ends rather than after. If it is on a van and a thousand invoices, the safest thing you can do — today, while nothing is wrong — is make sure the number your customers dial is one you hold yourself. That is good advice regardless of who you use, and it is the question worth putting to any provider before you sign up with them.'],
+      },
+    ],
+    faqs: [
+      { q: 'What happens to my phone number if I cancel?', a: 'A number you forwarded was never ours and is unaffected. A number we provided is held for 30 days if you never completed a paid month, or 60 days if you paid at least once, with two warnings first.' },
+      { q: 'Does cancelling cut me off immediately?', a: 'No. The subscription runs to the end of the period you have already paid for.' },
+      { q: 'Why is the number not kept forever?', a: 'Numbers cost money every month whether or not they ring. The grace period exists because people cancel in a bad month and come back in a better one.' },
+      { q: 'What if my account status is unclear?', a: 'Nothing is released. Any missing information resolves in favour of your keeping the number — releasing one is irreversible, so uncertainty always means leave it alone.' },
+      { q: 'How do I make sure I never lose my number?', a: 'Forward a number you hold with your own carrier rather than using one you were given. Then leaving is a setting, not a migration — and that is worth asking any provider before signing up.' },
+    ],
+    related: [
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'Why forwarding wins.' },
+      { href: '/learn/what-to-ask-any-provider', label: 'Questions to ask', sub: 'Before you sign up.' },
+      { href: '/learn/moving-off-your-personal-mobile', label: 'Off your mobile', sub: 'Separating the two.' },
+    ],
+    ctaHeading: 'Ask us this before you sign up, not after.',
+    ctaSub: 'Forward a number you own and leaving is one setting. Seven days free.',
+  },
+  {
+    slug: 'what-to-ask-any-provider',
+    category: 'Guide',
+    shortTitle: 'Questions to ask',
+    metaTitle: 'Questions to Ask Any AI Receptionist Provider — Open Lines',
+    metaDescription: 'Twelve questions that separate products that book appointments from products that take messages — including the ones we would rather you did not ask us.',
+    h1: 'What to ask any AI receptionist provider',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'Every product in this category demonstrates well, because a scripted demo call is the easiest thing in the world to make sound impressive. These questions are the ones whose answers differ between products, which is what makes them worth asking — including of us.',
+    sections: [
+      {
+        heading: 'About bookings',
+        bullets: [
+          { title: 'Does it write into my calendar, or send me a message?', body: 'This is the largest dividing line in the category and it is often blurred. A message means you still do the work.' },
+          { title: 'Does it read live availability?', body: 'If it cannot see whether a slot is free, it is collecting a request, not making a booking.' },
+          { title: 'Can a caller ask for a named person?', body: 'Per-person availability is meaningfully harder than business availability, and not everyone has it.' },
+          { title: 'What happens when the caller wants to cancel?', body: 'Plenty of products can book and cannot unbook, which leaves you doing the unpleasant half.' },
+        ],
+      },
+      {
+        heading: 'About the number',
+        bullets: [
+          { title: 'Can I keep my existing number?', body: 'If the answer involves changing the number on your van, that is a much bigger project than it sounds.' },
+          { title: 'What happens to the number if I leave?', body: 'Ask for the actual period and whether you are warned. Vagueness here is the answer.' },
+          { title: 'Is there a minimum term?', body: 'A product confident in itself does not need to lock you in for a year.' },
+        ],
+      },
+      {
+        heading: 'About honesty',
+        bullets: [
+          { title: 'What does it do when it does not know something?', body: 'The right answer is that it says so. Any product whose answer is "it always finds something to say" is describing a liability.' },
+          { title: 'Are callers told it is an AI?', body: 'Some products treat this as optional or, worse, as a feature to disable. Disclosure obligations vary by jurisdiction, and a provider who is casual about it is telling you something.' },
+          { title: 'Where is call data stored and for how long?', body: 'You are responsible for your customers’ data regardless of who processes it for you.' },
+        ],
+      },
+      {
+        heading: 'The two that get evasive answers',
+        paras: ['Ask what proportion of calls end with no further work for you — not what proportion are "handled", which can mean a message was taken. And ask them to name a business they are wrong for. A provider who claims to suit everybody has either not thought about it or is willing to sell you something that will not work, and both should cost them the sale.'],
+      },
+      {
+        heading: 'Test it yourself before you commit',
+        paras: ['Ring the number with a question your actual customers ask — not a scripted one. Then ring back with something genuinely awkward: an edge case, a mumbled sentence, a question your own website does not answer. The first call tells you whether it works; the second tells you what it does when things are not perfect, which is the part you will live with.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should I ask an AI receptionist provider?', a: 'Whether it writes into your calendar or only sends messages, whether it reads live availability, whether you can keep your number, what happens to that number if you leave, and what it does when it does not know an answer.' },
+      { q: 'What is the biggest dividing line between products?', a: 'Booking versus messaging. A product that sends you a message has moved the work rather than removed it.' },
+      { q: 'What question gets the most evasive answers?', a: 'Asking them to name a business they are wrong for. A provider who suits everybody has either not thought about it or will sell you something that does not work.' },
+      { q: 'How should I test one?', a: 'Ring with a real customer question, then ring back with something awkward — an edge case or a question your website does not answer. The second call is the one that tells you what you will live with.' },
+    ],
+    related: [
+      { href: '/learn/what-happens-to-your-number-if-you-leave', label: 'If you leave', sub: 'The number question.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'When it does not know', sub: 'Our answer.' },
+      { href: '/learn/should-you-still-answer-the-phone', label: 'Do you need this?', sub: 'Who should not buy.' },
+    ],
+    ctaHeading: 'Ask us all twelve.',
+    ctaSub: 'Then ring the number and ask it something awkward. Seven days free.',
+  },
+  {
+    slug: 'double-bookings-and-how-they-happen',
+    category: 'Common problem',
+    shortTitle: 'Double bookings',
+    metaTitle: 'Why Double Bookings Happen and How to Stop Them — Open Lines',
+    metaDescription: 'Double bookings are almost never carelessness — they are a gap between when a slot is promised and when it is written down. Close the gap and they stop.',
+    h1: 'Why double bookings happen',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'Nobody double-books on purpose, and it is almost never the fault of whoever did it. It happens in the gap between promising a slot and recording it — and every system that has such a gap will eventually produce one, usually on your busiest day.',
+    sections: [
+      {
+        heading: 'The gap, in its usual forms',
+        bullets: [
+          { title: 'The paper note', body: 'Taken at the desk during a rush, entered later, or entered by somebody who could not read it.' },
+          { title: 'Two people booking at once', body: 'One on the phone, one at the counter, both looking at a calendar that was accurate thirty seconds ago.' },
+          { title: 'The callback', body: 'You offered Thursday at two, they rang back an hour later to accept, and Thursday at two went in the meantime.' },
+          { title: 'The message taken by somebody else', body: 'An answering service promises nothing, but the caller heard "we will get you in Thursday" and now believes they have an appointment.' },
+        ],
+      },
+      {
+        heading: 'Why it costs more than the slot',
+        paras: ['You lose the appointment, and you also make somebody drive to you for nothing. That customer does not conclude you were unlucky — they conclude you are disorganised, and they tell people in the specific, memorable way that bad admin gets talked about. A double booking is a reputational event disguised as a scheduling error.'],
+      },
+      {
+        heading: 'Closing the gap',
+        paras: ['The fix is structural rather than behavioural: the moment a slot is promised is the moment it is written into the calendar, with no interval in between and no second place it could have been recorded. That is what makes the slot genuinely unavailable to the next caller, including one who rings ten seconds later. Any arrangement where a booking exists somewhere other than the calendar for even a few minutes has kept the gap and will eventually produce the error again.'],
+      },
+      {
+        heading: 'The one that still catches people',
+        paras: ['Blocking out personal time. If you keep your own commitments in a separate calendar, nothing booking against your work calendar can know about them, and you will be booked during your daughter’s assembly. Whatever else you do, keep everything that occupies your time in the calendar the bookings go into.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why do double bookings keep happening?', a: 'Because of the gap between promising a slot and recording it. Paper notes, two people booking at once, and callbacks all create one, and any system with that gap will eventually produce a double booking.' },
+      { q: 'How do I actually stop them?', a: 'Structurally: the moment a slot is promised is the moment it is written into the calendar, with no interval and no second place it could be recorded.' },
+      { q: 'Can an AI receptionist double-book me?', a: 'Not through the gap, because it reads live availability and writes into the same calendar immediately. It can if you keep commitments in a different calendar it cannot see.' },
+      { q: 'Why does a double booking matter so much?', a: 'Someone drives to you for nothing. They do not conclude you were unlucky — they conclude you are disorganised, and that gets talked about.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How booking works', sub: 'Live availability.' },
+      { href: '/learn/what-happens-after-the-booking-is-made', label: 'After the booking', sub: 'Where it lands.' },
+      { href: '/learn/taking-pressure-off-a-busy-front-desk', label: 'Busy desks', sub: 'Where notes get lost.' },
+    ],
+    ctaHeading: 'Promised and recorded in the same moment.',
+    ctaSub: 'No paper, no interval, no gap. Seven days free.',
+  },
+  {
+    slug: 'when-the-line-is-bad',
+    category: 'Guide',
+    shortTitle: 'Bad lines and accents',
+    metaTitle: 'Accents, Noise and Bad Lines: What Actually Happens — Open Lines',
+    metaDescription: 'An honest account of where speech recognition struggles, what it should do when it is unsure, and why confidently mishearing a name is worse than asking again.',
+    h1: 'Accents, background noise and bad lines',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'This is the question people are too polite to ask in a sales conversation and the one they should ask first. Speech recognition is very good and it is not perfect, and what a system does at the edge of its ability matters more than how it performs in the middle.',
+    sections: [
+      {
+        heading: 'What causes most trouble',
+        bullets: [
+          { title: 'Genuine noise', body: 'A building site, a busy road, a pub. This affects people too — you would ask them to repeat it.' },
+          { title: 'Speakerphone in a car', body: 'The most common real-world condition and one of the least forgiving.' },
+          { title: 'Names and postcodes', body: 'Not accents so much as the fact that these are unpredictable strings where context cannot help. This is where errors concentrate.' },
+          { title: 'Very fast or very quiet speech', body: 'Both reduce accuracy, and both are common when somebody is stressed.' },
+        ],
+      },
+      {
+        heading: 'Accents, honestly',
+        paras: ['Strong regional accents are handled far better than they were a few years ago, and for ordinary conversation this is mostly a solved problem across the accents our customers actually have. It is less solved for unusual proper nouns spoken quickly in an unfamiliar accent over a poor line — which is exactly the situation where a human receptionist also says "sorry, can you spell that for me?"'],
+      },
+      {
+        heading: 'The behaviour that matters',
+        paras: ['Asking again. A system that confidently writes down the wrong name and the wrong number has produced something worse than no booking, because you will not know it is wrong until you ring an unobtainable number. Checking back — repeating a number, asking for a spelling — looks like a limitation and is in fact the feature. The failure mode you want is "sorry, could you say that again", not silent confidence.'],
+      },
+      {
+        heading: 'What you can do about it',
+        paras: ['Two things help more than anything else. Have the caller’s number captured automatically rather than dictated, so the most error-prone item is not spoken at all. And where a call is genuinely unintelligible, it should reach a person rather than persist — no system should spend two minutes failing politely at somebody standing next to a cement mixer.'],
+      },
+    ],
+    faqs: [
+      { q: 'Does it understand strong accents?', a: 'Generally yes for ordinary conversation — this is much better than it was a few years ago. It is harder for unusual names spoken quickly over a poor line, which is where a human receptionist also asks you to spell it.' },
+      { q: 'What about background noise?', a: 'Building sites, busy roads and car speakerphone are the hardest conditions. They affect people on the phone too.' },
+      { q: 'What happens if it mishears something?', a: 'It should ask again. Confidently writing down a wrong name and number is worse than no booking, because you find out when you ring an unobtainable number.' },
+      { q: 'What reduces mistakes most?', a: 'Capturing the caller’s number automatically rather than having it dictated, so the most error-prone item is never spoken.' },
+      { q: 'What if a call is simply unintelligible?', a: 'It should reach a person. No system should spend two minutes failing politely at someone standing next to a cement mixer.' },
+    ],
+    related: [
+      { href: '/learn/do-ai-receptionists-sound-human', label: 'How it sounds', sub: 'The other half.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'When it does not know', sub: 'Saying so plainly.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Reaching a person', sub: 'When to hand over.' },
+    ],
+    ctaHeading: 'Ring it from your van and find out.',
+    ctaSub: 'Test it in the conditions your customers actually call from. Seven days free.',
+  },
+  {
+    slug: 'testing-it-before-you-rely-on-it',
+    category: 'Guide',
+    shortTitle: 'Testing it properly',
+    metaTitle: 'How to Test an AI Receptionist Properly — Open Lines',
+    metaDescription: 'Most people test with the easy questions and are reassured by the wrong evidence. Six calls that tell you what it will actually do with your customers.',
+    h1: 'How to test it properly',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Almost everyone tests the same way: they ring their own number, ask their opening hours, hear the right answer and feel reassured. That call proved very little, because opening hours are the one thing every system gets right. Useful testing means deliberately looking for the failures.',
+    sections: [
+      {
+        heading: 'Six calls worth making',
+        bullets: [
+          { title: 'The awkward price question', body: 'The one your staff hedge on. If the answer is confident and wrong, you have found your most important gap in ninety seconds.' },
+          { title: 'Something you do not do', body: 'Ask for a service you have never offered. It should say no clearly, not improvise.' },
+          { title: 'A booking, start to finish', body: 'Then open your calendar and check it is there, on the right person, with the details attached.' },
+          { title: 'A cancellation of that booking', body: 'Plenty of systems can book and cannot unbook. Find out now.' },
+          { title: 'A deliberately vague call', body: '"I just wanted to ask about, um, the thing on your website." Real callers are like this far more often than demo scripts admit.' },
+          { title: 'One from a bad line', body: 'Your van, a speakerphone, somewhere noisy. This is where a real proportion of your calls come from.' },
+        ],
+      },
+      {
+        heading: 'What you are actually looking for',
+        paras: ['Not whether it answered, but what it did at the edges. Did it invent a price? Did it agree to something you do not offer? Did it keep going when it should have handed over? The middle of the range is uninteresting because everything works there. Your customers will find the edges within a fortnight, and it is much better that you find them first.'],
+      },
+      {
+        heading: 'Test in the order your customers arrive',
+        paras: ['Make one of those calls at half seven in the evening and one on a Sunday. Out-of-hours behaviour is where most of the value is and the least of the attention — and it is the easiest thing to have configured wrongly without noticing, because you are never listening at the times it matters.'],
+      },
+      {
+        heading: 'Then stop testing',
+        paras: ['Once the six calls are clean, go and run your business. Continuing to ring your own number weekly is a way of not trusting something while paying for it, and it produces anxiety rather than information. The summaries will show you a genuine problem faster than a test call will, because they are made of real customers.'],
+      },
+    ],
+    faqs: [
+      { q: 'How should I test an AI receptionist?', a: 'With the calls designed to fail: your most awkward price question, a service you do not offer, a full booking and then a cancellation, a deliberately vague enquiry, and one from a bad line.' },
+      { q: 'Why is asking my opening hours not enough?', a: 'Because every system gets that right. You learn nothing about what happens at the edges, which is where your customers will be within a fortnight.' },
+      { q: 'When should I test?', a: 'At least one call at half seven in the evening and one on a Sunday. Out-of-hours behaviour carries most of the value and gets the least attention.' },
+      { q: 'How often should I keep testing?', a: 'Stop once the six calls are clean. Weekly test calls produce anxiety rather than information — your call summaries will surface a real problem sooner.' },
+    ],
+    related: [
+      { href: '/learn/your-first-week-with-an-ai-receptionist', label: 'Your first week', sub: 'What to watch.' },
+      { href: '/learn/when-the-line-is-bad', label: 'Bad lines', sub: 'Testing the hard case.' },
+      { href: '/learn/what-to-ask-any-provider', label: 'Questions to ask', sub: 'Before you get this far.' },
+    ],
+    ctaHeading: 'Try to break it in six calls.',
+    ctaSub: 'Then trust it, or do not. Seven days free.',
+  },
+  {
+    slug: 'telling-your-customers-about-it',
+    category: 'Guide',
+    shortTitle: 'Telling your customers',
+    metaTitle: 'Should You Tell Customers You Use an AI Receptionist? — Open Lines',
+    metaDescription: 'The call itself discloses it. Whether to announce it more widely is a different question — and the framing you choose says more to regulars than the fact does.',
+    h1: 'Telling your customers about it',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Disclosure on the call is settled: callers are told at the start, and in a number of places that is a legal requirement rather than a courtesy. What owners actually worry about is different — whether to mention it to the regulars who have rung the same number for eleven years.',
+    sections: [
+      {
+        heading: 'What the regulars are actually asking',
+        paras: ['Not "is this a robot". They are asking whether you are still there — whether the business they chose has quietly become a call centre, and whether the person who knows about their dog is going anywhere. Answer that question and the technology stops being the subject, because it was never really the subject.'],
+      },
+      {
+        heading: 'The framing that works',
+        bullets: [
+          { title: 'Say what problem it solves for them', body: '"You were getting voicemail at seven in the evening; now you get an answer." That is a benefit to the caller, not an efficiency for you.' },
+          { title: 'Be clear about what has not changed', body: 'Same people doing the work, same number, same everything they care about.' },
+          { title: 'Say how to reach a person', body: 'The reassurance is not that it is clever; it is that they are never stuck with it.' },
+          { title: 'Do not oversell it', body: 'Calling it revolutionary invites them to find fault. Calling it "so the phone gets answered" invites nothing.' },
+        ],
+      },
+      {
+        heading: 'Where to say it, if anywhere',
+        paras: ['Most businesses do not need an announcement. A line on your contact page is proportionate, and it gets read by exactly the people who wonder. A mass email is usually a mistake: it tells hundreds of customers who had not noticed that something has changed, and invites opinions on a decision that is yours to make. The exception is a business whose customers are elderly or vulnerable, where a heads-up is a kindness rather than a marketing decision.'],
+      },
+      {
+        heading: 'What people actually complain about',
+        paras: ['Not the existence of an assistant. They complain about being stuck in something that will not let them reach a person, about having to repeat themselves, and about being handled by something that did not know the answer and would not admit it. Those are three product problems wearing a technology-shaped costume — get them right and this conversation rarely happens.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do I have to tell customers I use an AI receptionist?', a: 'On the call, yes — callers are told at the start, and in several jurisdictions that is a requirement. Announcing it more widely is a separate, optional decision.' },
+      { q: 'Should I email my customers about it?', a: 'Usually not. It tells hundreds of people who had not noticed that something changed, and invites opinions on your decision. A line on your contact page is proportionate.' },
+      { q: 'What do I say to long-standing regulars?', a: 'Answer the question they are really asking — whether you are still there. Same people, same number, and here is how to reach a person.' },
+      { q: 'What do customers actually complain about?', a: 'Being stuck with something that will not let them reach a person, having to repeat themselves, and being given a confident wrong answer. Not the existence of an assistant.' },
+    ],
+    related: [
+      { href: '/learn/disclosing-ai-to-callers', label: 'Disclosure on the call', sub: 'What is required.' },
+      { href: '/learn/will-customers-mind-an-ai-receptionist', label: 'Will they mind?', sub: 'What the objection really is.' },
+      { href: '/learn/writing-your-greeting', label: 'Your greeting', sub: 'Where it gets said.' },
+    ],
+    ctaHeading: 'Answer the question they are really asking.',
+    ctaSub: 'Same people, same number, phone actually answered. Seven days free.',
+  },
+  {
+    slug: 'getting-your-team-comfortable-with-it',
+    category: 'Guide',
+    shortTitle: 'Bringing your team along',
+    metaTitle: 'Getting Your Team Comfortable With an AI Receptionist — Open Lines',
+    metaDescription: 'Your receptionist has heard what this technology is for. What to say on day one, what to actually change, and why the person on the desk is your best source of fixes.',
+    h1: 'Getting your team comfortable with it',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'If somebody on your team answers the phone for a living, they will have one question when you announce this, and they will probably not ask it out loud. Everything about how this goes depends on whether you answer it in the first sentence or leave it hanging for a fortnight.',
+    sections: [
+      {
+        heading: 'Say the thing they are worried about',
+        paras: ['If their job is not at risk, say so plainly, first, before explaining anything else. Leading with features and getting to job security in week three is how you lose someone competent to a business down the road. And if the honest answer is that roles will change, say that instead — people handle a straight answer far better than they handle a fortnight of inference from your tone.'],
+      },
+      {
+        heading: 'What actually changes for them',
+        bullets: [
+          { title: 'Fewer interruptions', body: 'The calls that stop arriving are the ones that broke their concentration mid-task: hours, prices, parking.' },
+          { title: 'The customer in front of them stops being interrupted', body: 'Which is the part good front-desk staff are most frustrated by.' },
+          { title: 'More of the calls worth having', body: 'The ones needing judgment, which are the interesting ones.' },
+          { title: 'Some new admin', body: 'Reviewing summaries, spotting what it got wrong. Small, but real — do not pretend it is nothing.' },
+        ],
+      },
+      {
+        heading: 'Make them the expert, not the subject',
+        paras: ['The person on your desk knows exactly which questions come up and precisely where callers get confused, and no amount of configuration substitutes for that. Ask them what it should say about your most awkward price, and give them the job of flagging bad answers. Someone who is asked to fix a thing behaves very differently from someone it is being done to — and in this case the request is genuine, because they really are the best source you have.'],
+      },
+      {
+        heading: 'The first fortnight',
+        paras: ['Expect some wariness and a certain amount of "it did not say that right". Take each one seriously and fix what is fixable, because those reports are free quality control from your most informed critic. The tone usually turns the first time it handles a Saturday morning nobody could have covered — at which point the argument is over without anybody having to concede anything.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I tell my receptionist about this?', a: 'Answer the job-security question first and plainly, before anything else. Leading with features and reaching it in week three is how you lose a good person.' },
+      { q: 'What if roles genuinely will change?', a: 'Say so. People handle a straight answer far better than a fortnight of inferring it from your tone.' },
+      { q: 'What changes day to day for the team?', a: 'Fewer interruptions from routine calls, customers at the desk no longer being interrupted, more of the calls that need judgment — and a little new admin reviewing summaries.' },
+      { q: 'How do I get them on side?', a: 'Give them the job of finding bad answers and deciding what it should say. They know where callers get confused better than any configuration screen does.' },
+    ],
+    related: [
+      { href: '/learn/taking-pressure-off-a-busy-front-desk', label: 'Busy front desks', sub: 'What it takes off them.' },
+      { href: '/learn/testing-it-before-you-rely-on-it', label: 'Testing it', sub: 'A job to hand over.' },
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Call summaries', sub: 'The new small admin.' },
+    ],
+    ctaHeading: 'Your desk staff will find the flaws fastest.',
+    ctaSub: 'Give them the job of fixing them. Seven days free.',
+  },
+  {
+    slug: 'changing-your-calendar-later',
+    category: 'Guide',
+    shortTitle: 'Changing calendars',
+    metaTitle: 'Switching Booking Systems Without Breaking Your Phone — Open Lines',
+    metaDescription: 'What happens to your phone setup when you move from Google Calendar to a booking system, what carries over, and the order that avoids a week of double entry.',
+    h1: 'Changing your booking system later',
+    published: '2026-09-17',
+    updated: '2026-09-17',
+    intro: 'Businesses outgrow a shared calendar. It works fine at two staff and one service, and stops working the day somebody asks for a named person or you open a second site. Changing later is normal and it does not mean starting over — but the order you do it in decides whether it costs you an afternoon or a fortnight.',
+    sections: [
+      {
+        heading: 'What carries over and what does not',
+        bullets: [
+          { title: 'Everything it knows about your business stays', body: 'Your prices, services, policies and uploaded documents are unaffected by a calendar change. That is the slow part, and it does not need doing twice.' },
+          { title: 'Your number stays', body: 'Nothing about the line changes. Customers notice nothing.' },
+          { title: 'Availability comes from the new system', body: 'Once connected, times offered are read from the new calendar rather than the old one.' },
+          { title: 'Existing appointments do not migrate themselves', body: 'Moving bookings already in the old calendar is a matter for the two systems, not for your phone.' },
+        ],
+      },
+      {
+        heading: 'What you gain by moving to a booking system',
+        paras: ['The capabilities a shared calendar cannot express. A calendar can say the business is busy from two to three; it cannot say that this is a colour appointment with Sarah at the Douglas branch, which is what a caller asking for Sarah actually needs. Services, staff and locations are the things you gain, and they are the reason people move.'],
+      },
+      {
+        heading: 'The order that avoids double entry',
+        paras: ['Set the new system up and get your services and staff right in it before connecting anything. Pick a switch-over date, ideally a quiet day. Connect on that date and make a test booking, then check it lands where you expect. Do not run both connected at once hoping for a soft transition — that is precisely the arrangement that produces a slot promised in one calendar and already taken in the other.'],
+      },
+      {
+        heading: 'Tell your team the date',
+        paras: ['The single most common failure here is not technical. Someone keeps taking bookings in the old calendar for a fortnight because nobody told them the date, and you spend a month reconciling two diaries. A sentence on the day is worth more than any amount of configuration.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I change booking systems later?', a: 'Yes, and it is normal. Everything the assistant knows about your business — prices, services, policies, documents — is unaffected, and your number does not change.' },
+      { q: 'Do I have to set everything up again?', a: 'No. The slow part is the knowledge about your business, and that carries over. You are reconnecting where availability is read from.' },
+      { q: 'Will existing appointments move across?', a: 'Not by themselves. Migrating bookings already in the old calendar is a matter between the two systems.' },
+      { q: 'Why move off a shared calendar at all?', a: 'A calendar can say the business is busy; it cannot say this is a colour appointment with Sarah at a particular branch. Services, staff and locations are what you gain.' },
+      { q: 'What is the safest order?', a: 'Set the new system up fully, pick a quiet switch-over date, connect on that date and make a test booking. Never run both connected at once.' },
+    ],
+    related: [
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Booking a named person', sub: 'Why people move.' },
+      { href: '/learn/what-happens-after-the-booking-is-made', label: 'After the booking', sub: 'Where it lands.' },
+      { href: '/multi-location', label: 'Several branches', sub: 'The other reason.' },
+    ],
+    ctaHeading: 'Outgrowing your calendar is not starting over.',
+    ctaSub: 'Reconnect, keep everything else. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
