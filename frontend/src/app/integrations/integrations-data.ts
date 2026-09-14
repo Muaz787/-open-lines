@@ -190,6 +190,7 @@ export const INTEGRATIONS: IntegrationContent[] = [
       industries: [
         { href: '/salons', label: 'AI receptionist for salons', sub: 'Books the right stylist into Square.' },
         { href: '/barbers', label: 'AI receptionist for barbershops', sub: 'Books the right barber into Square.' },
+        { href: '/multi-location', label: 'Running several branches?', sub: 'One line, booked into the right location.' },
       ],
       integrations: [
         { href: '/integrations/stripe', label: 'Take deposits with Stripe', sub: 'Cut no-shows at booking.' },

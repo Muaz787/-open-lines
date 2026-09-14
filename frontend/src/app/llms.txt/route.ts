@@ -35,6 +35,10 @@ const BODY = `# Open Lines
   the appointment — no double bookings.
 - Sends a summary of every call by email, SMS or WhatsApp.
 - Optionally takes a deposit at the time of booking.
+- For businesses with several branches: asks the caller which location they
+  want and books into that branch's own Square calendar, with the staff and
+  services that belong to it. Per-branch booking requires Square
+  Appointments; on Google or Outlook it books into a single calendar.
 
 ## Who it is for
 Appointment-driven small businesses: salons, barbers, dental and medical
@@ -67,6 +71,7 @@ Current prices: ${SITE}/pricing
 - How it works: ${SITE}/how-it-works
 - How it compares to the alternatives, and when to choose one of them
   instead: ${SITE}/compare
+- Multiple locations: ${SITE}/multi-location
 - Pricing: ${SITE}/pricing
 - Integrations: ${SITE}/integrations
 - Industries: ${SITE}/salons, ${SITE}/barbers, ${SITE}/realtors, ${SITE}/restaurants
