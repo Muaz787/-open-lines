@@ -156,7 +156,7 @@ function Bubble({ who, ai, children }: { who: string; ai?: boolean; children: Re
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: ai ? 'var(--accent-text)' : 'var(--text-3)', marginBottom: 3 }}>{who}</div>
-      <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--text)', fontWeight: 300, background: ai ? 'var(--accent-dim)' : 'var(--bg-3)', padding: '9px 13px', borderRadius: 12, display: 'inline-block', maxWidth: '92%' }}>{children}</div>
+      <div style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--text)', fontWeight: 400, background: ai ? 'var(--accent-dim)' : 'var(--bg-3)', padding: '9px 13px', borderRadius: 12, display: 'inline-block', maxWidth: '92%' }}>{children}</div>
     </div>
   )
 }
@@ -166,7 +166,7 @@ const mockCard: React.CSSProperties = {
   background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 18,
   padding: '22px 22px', boxShadow: 'var(--shadow-lg)', maxWidth: 440, width: '100%',
 }
-const smsBase: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.5, padding: '10px 14px', borderRadius: 14, maxWidth: '85%', fontWeight: 300 }
+const smsBase: React.CSSProperties = { fontSize: 13.5, lineHeight: 1.5, padding: '10px 14px', borderRadius: 14, maxWidth: '85%', fontWeight: 400 }
 const smsMissed: React.CSSProperties = { ...smsBase, alignSelf: 'center', maxWidth: '100%', textAlign: 'center', fontSize: 11.5, color: 'var(--text-3)', background: 'transparent', fontWeight: 500 }
 const mockLabel: React.CSSProperties = { fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-3)' }
 const smsOut: React.CSSProperties = { ...smsBase, alignSelf: 'flex-start', background: 'var(--bg-3)', color: 'var(--text)' }
@@ -196,11 +196,11 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
               <h1 style={{ fontFamily: 'var(--font-syne), sans-serif', fontSize: 'clamp(30px, 4.6vw, 50px)', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.08, marginBottom: 18 }}>
                 {c.h1}
               </h1>
-              <p style={{ fontSize: 17, color: 'var(--text-2)', lineHeight: 1.7, fontWeight: 300, marginBottom: 30, maxWidth: 520 }}>
+              <p style={{ fontSize: 17, color: 'var(--text-2)', lineHeight: 1.7, fontWeight: 400, marginBottom: 30, maxWidth: 520 }}>
                 {c.subhead}
               </p>
               <TrialCta slug={c.slug} location={`${c.slug}_hero`} />
-              <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 22, fontWeight: 300 }}>{c.trustline}</p>
+              <p style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 22, fontWeight: 400 }}>{c.trustline}</p>
             </div>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               {c.heroArt === 'textback'
@@ -223,7 +223,7 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
               <div key={p.title} style={cardBox}>
                 <div style={{ fontFamily: 'var(--font-syne), sans-serif', fontSize: 26, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>{p.stat}</div>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>{p.title}</div>
-                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{p.body}</p>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{p.body}</p>
               </div>
             ))}
           </div>
@@ -243,7 +243,7 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
               <div key={f.title} style={cardBox}>
                 <div style={{ fontSize: 24, marginBottom: 10 }}>{f.icon}</div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>{f.title}</div>
-                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{f.body}</p>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{f.body}</p>
               </div>
             ))}
           </div>
@@ -276,17 +276,17 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
                 {c.setup.points.map(p => (
                   <div key={p.title} style={{ ...cardBox, padding: '16px 18px' }}>
                     <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 4 }}>{p.title}</div>
-                    <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{p.body}</p>
+                    <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{p.body}</p>
                   </div>
                 ))}
               </div>
             </div>
             <div style={{ background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 16, padding: '24px 24px' }}>
               <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--accent-text)', marginBottom: 6 }}>{c.intake.heading}</div>
-              <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 14px', fontWeight: 300 }}>Example details it captures on a call — illustrative, not a real caller.</p>
+              <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 14px', fontWeight: 400 }}>Example details it captures on a call — illustrative, not a real caller.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {c.intake.fields.map(f => (
-                  <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: 'var(--text)', fontWeight: 300, lineHeight: 1.5 }}>
+                  <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 14, color: 'var(--text)', fontWeight: 400, lineHeight: 1.5 }}>
                     <span style={{ color: 'var(--accent-text)', fontWeight: 700 }}>✓</span>
                     <span>{f}</span>
                   </div>
@@ -326,7 +326,7 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
             {c.faqs.map(f => (
               <div key={f.q} style={cardBox}>
                 <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 6 }}>{f.q}</div>
-                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 300 }}>{f.a}</p>
+                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 400 }}>{f.a}</p>
               </div>
             ))}
           </div>
@@ -342,7 +342,7 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
       <div style={{ background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>
         <div className="pricing-cta-inner" style={{ textAlign: 'center' }}>
           <h2 style={{ marginBottom: 16 }}>{c.ctaHeading}</h2>
-          <p style={{ fontSize: 16, color: 'var(--text-2)', marginBottom: 32, lineHeight: 1.7, fontWeight: 300, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+          <p style={{ fontSize: 16, color: 'var(--text-2)', marginBottom: 32, lineHeight: 1.7, fontWeight: 400, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
             {c.ctaSub}
           </p>
           <div style={{ display: 'flex', justifyContent: 'center' }}>

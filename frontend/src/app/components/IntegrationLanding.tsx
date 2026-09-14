@@ -8,6 +8,10 @@ import RelatedLinks from './RelatedLinks'
 import { FaqJsonLd, BreadcrumbJsonLd, ServiceJsonLd } from './JsonLd'
 import type { IntegrationContent } from '../integrations/integrations-data'
 
+/* Running text is 400, not 300. At 14-17px on a light ground the thin weight
+   renders faint enough to be hard work on a normal laptop screen — it reads as
+   a styling choice until you try to read a paragraph of it. Headings keep their
+   weight; this is only about the prose. */
 const cardBox: React.CSSProperties = {
   background: 'var(--bg-2)', border: '1px solid var(--border-2)', borderRadius: 16, padding: '22px 22px',
 }
@@ -39,7 +43,7 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
                 decoration. */}
             {!c.hero && <span style={{ fontSize: '0.9em', marginRight: 10 }}>{c.emoji}</span>}{c.h1}
           </h1>
-          <p style={{ fontSize: 17, color: 'var(--text-2)', lineHeight: 1.7, fontWeight: 300, marginBottom: 30, maxWidth: 640 }}>
+          <p style={{ fontSize: 17, color: 'var(--text-2)', lineHeight: 1.7, fontWeight: 400, marginBottom: 30, maxWidth: 640 }}>
             {c.subhead}
           </p>
 
@@ -73,14 +77,14 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
         <div className="wrap" style={{ maxWidth: 760 }}>
           <div className="sec-label">How it works</div>
           <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 14 }}>{c.whatHeading}</h2>
-          <p style={{ fontSize: 16, color: 'var(--text-2)', lineHeight: 1.75, fontWeight: 300, marginBottom: 32 }}>{c.what}</p>
+          <p style={{ fontSize: 16, color: 'var(--text-2)', lineHeight: 1.75, fontWeight: 400, marginBottom: 32 }}>{c.what}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {c.steps.map((s, i) => (
               <div key={s.title} style={{ ...cardBox, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                 <div style={{ flexShrink: 0, width: 32, height: 32, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14 }}>{i + 1}</div>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>{s.title}</div>
-                  <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{s.body}</p>
+                  <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{s.body}</p>
                 </div>
               </div>
             ))}
@@ -100,7 +104,7 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
               <div key={b.title} style={cardBox}>
                 <div style={{ fontSize: 24, marginBottom: 10 }}>{b.icon}</div>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>{b.title}</div>
-                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 300 }}>{b.body}</p>
+                <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{b.body}</p>
               </div>
             ))}
           </div>
@@ -118,7 +122,7 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
             {c.unique.points.map(p => (
               <div key={p.title} style={cardBox}>
                 <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 5 }}>{p.title}</div>
-                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 300 }}>{p.body}</p>
+                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 400 }}>{p.body}</p>
               </div>
             ))}
           </div>
@@ -136,7 +140,7 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
             {c.faqs.map(f => (
               <div key={f.q} style={cardBox}>
                 <div style={{ fontSize: 15.5, fontWeight: 600, marginBottom: 6 }}>{f.q}</div>
-                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 300 }}>{f.a}</p>
+                <p style={{ fontSize: 14.5, color: 'var(--text-2)', lineHeight: 1.65, margin: 0, fontWeight: 400 }}>{f.a}</p>
               </div>
             ))}
           </div>
