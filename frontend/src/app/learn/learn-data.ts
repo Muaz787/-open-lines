@@ -626,6 +626,257 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Test it on your hardest question.',
     ctaSub: 'Seven days free. Ask it something obscure and see what it does — cancel anytime before you are charged.',
   },
+  {
+    slug: 'ai-receptionist-book-appointments',
+    category: 'Feature guide',
+    shortTitle: 'How AI booking works',
+    metaTitle: 'Can an AI Receptionist Actually Book Appointments? — Open Lines',
+    metaDescription: 'How an AI receptionist reads live calendar availability, avoids double-bookings, books a named staff member, and handles cancellations — plus where it should stop.',
+    h1: 'Can an AI receptionist actually book appointments?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Yes — but "books appointments" covers two very different things, and the difference decides whether it saves you work or makes more. One reads your real calendar and writes a confirmed booking into it. The other takes a preferred time and leaves someone to sort it out later. Only the first is worth having.',
+    sections: [
+      {
+        heading: 'The distinction that matters',
+        bullets: [
+          { title: 'Real booking', body: 'The assistant reads your live availability before it offers a time, so the slots it names are genuinely free. When the caller says yes, the appointment is written into the same calendar your walk-ins and online bookings live in.' },
+          { title: 'A request, dressed up as a booking', body: 'The assistant takes a preferred time and emails it to you. The caller believes they are booked. You still have to check and confirm — and if the slot has gone, you have to ring them back and take it away.' },
+        ],
+      },
+      {
+        heading: 'Why double-booking is the real test',
+        paras: ['Any assistant can read out times. The question is what it does with a slot that was taken two minutes ago by someone walking in. If it is reading your live calendar, that slot is simply not offered — bookings made anywhere else are already reflected, because it is looking at the same calendar. If it is working from a copy, or from opening hours, it will eventually book two people into one chair.'],
+      },
+      {
+        heading: 'What a good one gets right beyond the slot',
+        bullets: [
+          { title: 'The right service', body: 'A cut and a colour are not the same length. Booking the wrong service produces a clash later even when the slot was free.' },
+          { title: 'The right person', body: 'If the caller asks for someone by name, it should check that person’s availability — not the business’s.' },
+          { title: 'The right place', body: 'For a business with several branches, availability has to be scoped to the branch the caller wants, or you will book someone into the wrong town.' },
+          { title: 'Cancelling and moving', body: 'Half of appointment calls are not new bookings. An assistant that cannot cancel or reschedule sends those to voicemail.' },
+        ],
+      },
+      {
+        heading: 'Where it should stop',
+        paras: ['Some bookings need judgement — a first consultation that might not be appropriate, a job that needs quoting before it is scheduled, a customer with an outstanding balance. A good assistant recognises those, takes the details and hands them over, rather than booking something you then have to unpick.'],
+      },
+    ],
+    faqs: [
+      { q: 'Which calendars can it book into?', a: 'Open Lines books into Google Calendar, Microsoft Outlook and Square Appointments, reading live availability from each before it offers a caller a time.' },
+      { q: 'Can it double-book?', a: 'Not if it is reading your live calendar, which it is. Bookings made online, in person or by a colleague are already visible to it, because it is the same calendar.' },
+      { q: 'Can a caller ask for a specific person?', a: 'Yes, where your calendar has per-staff availability. On Square Appointments your team members come across when you connect, so it checks that person’s real availability.' },
+      { q: 'Can it cancel or move an appointment?', a: 'Yes, on Square Appointments. It can cancel, and it can move an appointment to a new time for the same service at the same location.' },
+      { q: 'Does the customer get a confirmation?', a: 'Yes, and so do you — a summary of the call with the booking details, by email and optionally by text or WhatsApp.' },
+    ],
+    related: [
+      { href: '/integrations/square-appointments', label: 'Booking into Square Appointments', sub: 'Services, staff and branches.' },
+      { href: '/multi-location', label: 'Several branches?', sub: 'One line, the right location.' },
+      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'The basics.' },
+    ],
+    ctaHeading: 'Let it book into the calendar you already use.',
+    ctaSub: 'Google, Outlook or Square — connected in a couple of clicks. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'will-customers-mind-an-ai-receptionist',
+    category: 'Basics',
+    shortTitle: 'Will customers mind',
+    metaTitle: 'Will My Customers Mind Talking to an AI Receptionist? — Open Lines',
+    metaDescription: 'The objection every owner has. Who actually minds, what makes it worse, what makes it fine, and the comparison that matters — an AI against your voicemail, not against your best receptionist.',
+    h1: 'Will my customers mind talking to an AI?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Some will. Fewer than you fear, more than any vendor will admit, and almost entirely depending on what the alternative was. This is the objection that stops most owners, and it deserves a straighter answer than it usually gets.',
+    sections: [
+      {
+        heading: 'Who actually minds',
+        bullets: [
+          { title: 'People who wanted a specific person', body: 'Regulars ringing to speak to someone they know. They are not objecting to AI, they are objecting to not getting who they asked for — which is a routing problem, not a technology one.' },
+          { title: 'People with a complicated problem', body: 'Anyone with a complaint or an unusual situation wants a human with discretion. They are right to.' },
+          { title: 'People who have had a bad one', body: 'Anybody burned by a phone menu that would not let them out. That is a reasonable prior and you inherit it.' },
+        ],
+      },
+      {
+        heading: 'What makes it worse',
+        paras: ['Pretending. An assistant that dodges the question of whether it is a person turns a neutral call into an adversarial one the moment the caller works it out — and they usually do. Trapping people is the other one: if there is no way to reach a human and no promise of a callback, a caller who needs one is stuck, and that is the experience they will describe to other people.'],
+      },
+      {
+        heading: 'What makes it fine',
+        paras: ['Being useful quickly. A caller who wanted a Tuesday appointment and got a Tuesday appointment in ninety seconds does not spend the afternoon thinking about what answered. The complaint is almost never "that was AI" — it is "that wasted my time", and the same complaint applies to a person who put them on hold for six minutes.'],
+      },
+      {
+        heading: 'The comparison that actually matters',
+        paras: ['Not AI versus your best receptionist. AI versus what happens today at 7pm on a Saturday, which is voicemail — and most callers do not leave one. The question is not whether some callers would prefer a person. It is whether more of them get what they rang for than currently do.'],
+      },
+      {
+        heading: 'How to find out for your own callers',
+        paras: ['Do not take anybody’s word for it, including ours. Run it on after-hours calls first, where the alternative is provably nothing, and read the summaries. You will see within a week how many people engaged, how many hung up, and how many booked. That is your answer, and it is specific to your business in a way no industry statistic is.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do callers hang up on AI receptionists?', a: 'Some do. Far fewer than hang up on voicemail without leaving a message. Measure it on your own line during a trial rather than relying on anyone’s averages.' },
+      { q: 'Should I tell callers it is an AI?', a: 'Yes, and in most places you must. It also works better: a caller told at the start asks "can this book me in", instead of feeling misled halfway through.' },
+      { q: 'What about my regular customers?', a: 'Start with after-hours and overflow, where the alternative is voicemail. Your regulars ringing during opening hours still reach your team.' },
+      { q: 'Can a caller always reach a person?', a: 'They should always be able to get a callback promise and leave their number. An assistant with no escape route is the thing people actually object to.' },
+    ],
+    related: [
+      { href: '/learn/do-ai-receptionists-sound-human', label: 'Do AI receptionists sound human?', sub: 'An honest answer.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'What if it does not know?', sub: 'Why guessing is worse.' },
+      { href: '/compare', label: 'Compare the alternatives', sub: 'Including doing nothing.' },
+    ],
+    ctaHeading: 'Try it where the alternative is voicemail.',
+    ctaSub: 'Run it on after-hours calls for a week and read the summaries. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'ai-receptionist-after-hours',
+    category: 'Guide',
+    shortTitle: 'After-hours answering',
+    metaTitle: 'After-Hours Call Answering for Small Business — Open Lines',
+    metaDescription: 'Why evenings and weekends are where an AI receptionist earns its keep, what callers do when nobody answers, and how to start with after-hours only.',
+    h1: 'Does an AI receptionist work after hours?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'It does, and that is where most of the value is. Not because evenings are busy, but because the alternative at 8pm is nothing at all — and a call that reaches nothing is the only kind you are guaranteed to lose.',
+    sections: [
+      {
+        heading: 'What happens now, at 8pm',
+        paras: ['The call rings out or reaches voicemail. Most people do not leave one — they ring the next business on the list, and whoever answers gets the job. You never learn the call happened, which is what makes after-hours losses so easy to underestimate: there is no record of them anywhere.'],
+      },
+      {
+        heading: 'Why after-hours is the right place to start',
+        bullets: [
+          { title: 'The comparison is honest', body: 'You are not weighing AI against your receptionist. You are weighing it against silence, which makes the result easy to read.' },
+          { title: 'The stakes are low', body: 'Nothing that currently works can break, because nothing currently happens.' },
+          { title: 'Your regulars are unaffected', body: 'Daytime calls still reach your team. Only the calls nobody was going to answer change.' },
+          { title: 'The numbers show up quickly', body: 'A week of summaries tells you how many evening calls you have been missing — usually more than expected.' },
+        ],
+      },
+      {
+        heading: 'How to set it up this way',
+        paras: ['Use "forward on no answer" rather than forwarding everything. Your team picks up first during the day; anything nobody reaches goes to the assistant, whatever the hour. That covers evenings and weekends and also lunchtime, sickness and the days you are simply too busy — without you having to manage a schedule.'],
+      },
+      {
+        heading: 'What it can do at 2am',
+        paras: ['Everything it does at 2pm: answer questions from your own website and documents, book a genuinely free slot in your calendar, take a deposit where you have that switched on, and send you a summary before you wake up. The appointment is in your calendar when you open it, and you did nothing.'],
+      },
+    ],
+    faqs: [
+      { q: 'Does it work at weekends and on holidays?', a: 'Yes. There is no schedule to manage — it answers whenever a call reaches it, including nights, weekends and holidays.' },
+      { q: 'Can I use it only after hours?', a: 'Yes, and it is the best way to start. Set your line to forward on no answer, so your team takes daytime calls and the assistant takes what nobody reaches.' },
+      { q: 'Will it book appointments overnight?', a: 'Yes, into real availability. The booking is in your calendar when you open it, and the caller already has their confirmation.' },
+      { q: 'What about genuine emergencies at night?', a: 'It is not an emergency service and must never be used as one. What it can do is recognise urgency, take the details and flag the call so you see it first.' },
+    ],
+    related: [
+      { href: '/learn/missed-call-text-back', label: 'Missed-call text-back', sub: 'Turn missed calls into jobs.' },
+      { href: '/learn/keep-your-business-phone-number', label: 'Do I need a new number?', sub: 'No — forward your line.' },
+      { href: '/compare', label: 'Compare the alternatives', sub: 'Including voicemail.' },
+    ],
+    ctaHeading: 'Start with the calls you are already losing.',
+    ctaSub: 'Forward on no answer and let it take the evenings. Seven days free, cancel anytime.',
+  },
+  {
+    slug: 'is-an-ai-receptionist-worth-it',
+    category: 'Cost guide',
+    shortTitle: 'Is it worth it',
+    metaTitle: 'Is an AI Receptionist Worth It for a Small Business? — Open Lines',
+    metaDescription: 'The arithmetic that decides it, the businesses it does not suit, and how to test the answer for yourself in a week rather than arguing about averages.',
+    h1: 'Is an AI receptionist worth it for a small business?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'It depends on one number: what a booked customer is worth to you. For a salon at £45 a head the maths is different from a roofer at £4,500 a job, and it is different again for a business whose callers reliably leave voicemails. Here is how to work out your own answer instead of accepting an average.',
+    methodology: 'The worked examples below use round numbers and state every assumption, because an ROI figure whose assumptions are hidden is not a calculation — it is a claim. Substitute your own figures; the method is the point, not the numbers.',
+    sections: [
+      {
+        heading: 'The arithmetic',
+        paras: ['Take the number of calls you miss in a month — your phone records have this, and it is usually higher than the guess. Assume some fraction of those would have become customers had anyone answered; a quarter is a conservative starting point for appointment businesses. Multiply by what a customer is worth on their first visit. Compare that with the monthly cost. Most of the time the answer is obvious in one direction or the other, which is why the calculation is worth five minutes.'],
+      },
+      {
+        heading: 'Two worked examples',
+        bullets: [
+          { title: 'A salon missing 40 calls a month', body: 'At a 25% conversion and £45 a visit, that is ten customers and £450 of first visits — before anyone rebooks. Against a subscription in the low hundreds, it pays back on the recovered bookings alone.' },
+          { title: 'A roofer missing 15 calls a month', body: 'At a 10% conversion and £4,500 a job, that is one and a half jobs. The subscription is a rounding error against a single recovered job, and the real question is whether the calls are being missed at all.' },
+        ],
+      },
+      {
+        heading: 'When it is not worth it',
+        bullets: [
+          { title: 'Your callers leave voicemails and you ring them back', body: 'If that genuinely happens same-day, you are not losing the calls and the main benefit does not apply.' },
+          { title: 'Your calls need judgement from the first sentence', body: 'If almost every call needs a person to decide something, an assistant handles the minority and you are paying for the wrong tool.' },
+          { title: 'You do not take appointments', body: 'Most of the value is in booking. Without that, you are buying a message-taker, and cheaper ones exist.' },
+          { title: 'Your volume is genuinely tiny', body: 'Two or three calls a week, all answered, is not a problem worth a subscription.' },
+        ],
+      },
+      {
+        heading: 'Test it rather than argue about it',
+        paras: ['Every number above is someone else’s. Run it for a week on the calls you currently miss, read the summaries, and count what it booked. That converts the question from a debate about AI into a figure from your own business — and if the figure is small, you have learned something useful for the price of a week.'],
+      },
+    ],
+    faqs: [
+      { q: 'How much does an AI receptionist cost?', a: 'Open Lines starts at $99/month with no setup fee and no contract. The variable that decides whether it pays is not the price, it is what a booked customer is worth to you.' },
+      { q: 'How many missed calls do I need for it to pay for itself?', a: 'Divide the monthly cost by the value of one first visit, then by your conversion rate. For most appointment businesses the answer is a handful of recovered bookings a month.' },
+      { q: 'How do I know how many calls I am missing?', a: 'Your phone provider’s call records show unanswered calls. It is almost always higher than the estimate, because missed evening calls leave no trace anywhere else.' },
+      { q: 'Is it cheaper than hiring someone?', a: 'Considerably, but they are not the same thing. A person handles judgement and complaints; an assistant handles volume and hours. Businesses that need both usually keep both.' },
+      { q: 'What if it does not work for me?', a: 'You will know in a week, from your own summaries rather than a projection. That is the point of running the trial on real calls.' },
+    ],
+    related: [
+      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: 'Pricing models compared.' },
+      { href: '/compare', label: 'Compare the alternatives', sub: 'And when to pick one.' },
+      { href: '/pricing', label: 'See pricing', sub: 'From $99/month.' },
+    ],
+    ctaHeading: 'Get your own number, not ours.',
+    ctaSub: 'Run it for a week on the calls you are missing and count what it books. Cancel anytime before you are charged.',
+  },
+  {
+    slug: 'reduce-no-shows-with-deposits',
+    category: 'Feature guide',
+    shortTitle: 'Deposits and no-shows',
+    metaTitle: 'How to Reduce No-Shows With a Deposit at Booking — Open Lines',
+    metaDescription: 'Why a deposit taken during the call works when reminders do not, what it costs you in refused bookings, and how to pick an amount that does not scare people off.',
+    h1: 'How to reduce no-shows with a deposit',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'A no-show is worse than a cancellation: the slot is gone and nobody paid for it. Reminders help at the margins, but the thing that changes behaviour is having something at stake — which is why a deposit taken during the booking call works where a text the night before does not.',
+    sections: [
+      {
+        heading: 'Why deposits work when reminders do not',
+        paras: ['A reminder assumes the customer forgot. Most no-shows have not forgotten — something else came up and the appointment had no cost attached, so it lost. A deposit changes that calculation before they ever need to weigh it up, which is why the moment it is taken matters more than the amount.'],
+      },
+      {
+        heading: 'Why during the call is the moment',
+        bullets: [
+          { title: 'They have already decided', body: 'Someone who has just agreed a time is at their most committed. A payment link the next day arrives after that moment has passed.' },
+          { title: 'Nobody has to chase', body: 'A deposit requested later is a task for somebody. A deposit requested on the call is part of the booking.' },
+          { title: 'It filters gently', body: 'A caller unwilling to put down a small amount was, quite often, the no-show. Finding out during the call is cheaper than finding out on the day.' },
+        ],
+      },
+      {
+        heading: 'Picking an amount',
+        paras: ['Large enough to matter, small enough not to end the call. For most appointment businesses that is a fraction of the service price rather than the whole thing — enough that skipping it feels like a loss, not so much that it reads as distrust. Whether it is refundable, and by when, matters as much as the number: a clear cancellation window makes a deposit feel fair rather than punitive.'],
+      },
+      {
+        heading: 'What it costs you',
+        paras: ['Some bookings, honestly. A proportion of callers will decline and hang up, and a few of those would have turned up. The trade is a smaller number of more reliable bookings against a larger number of less reliable ones — which is worth it when your constraint is chair time rather than demand, and is not when you are trying to fill an empty diary.'],
+      },
+      {
+        heading: 'Where it fits with everything else',
+        paras: ['A deposit is not a substitute for a reminder, it is the layer underneath. Take the deposit at booking, send the reminder anyway, and make cancelling easy — a customer who cancels on Tuesday gives you a slot you can resell, which is the outcome you actually want from someone who is not coming.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can an AI receptionist take a deposit on the call?', a: 'Yes. On Pro and Business plans Open Lines can text a secure payment link during the call, so the deposit is taken at the moment the caller commits.' },
+      { q: 'Does it take the card details over the phone?', a: 'No. A payment link is sent by text and the customer pays through Stripe or Square. Card details are never spoken aloud or recorded.' },
+      { q: 'How much should the deposit be?', a: 'Enough to matter and not enough to end the call — usually a fraction of the service price. Pair it with a clear cancellation window so it reads as fair.' },
+      { q: 'Will I lose bookings because of it?', a: 'Some, yes. The trade is fewer, more reliable bookings. That is a good trade when your constraint is available time, and a bad one when you are trying to fill an empty diary.' },
+      { q: 'Can I take deposits for some services and not others?', a: 'Yes. It is common to require one for long or high-value appointments and skip it for short ones.' },
+    ],
+    related: [
+      { href: '/integrations/stripe', label: 'Deposits with Stripe', sub: 'Collected at booking.' },
+      { href: '/integrations/square-appointments', label: 'Booking into Square', sub: 'With a deposit alongside.' },
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How AI booking works', sub: 'Live availability, real bookings.' },
+    ],
+    ctaHeading: 'Take the deposit while they are still on the phone.',
+    ctaSub: 'Available on Pro and Business. Seven days free, cancel anytime before you are charged.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
