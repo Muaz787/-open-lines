@@ -3956,6 +3956,383 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Two sites, one phone number, no wrong doors.',
     ctaSub: 'Location asked first, availability read per site. Seven days free.',
   },
+  {
+    slug: 'what-you-cannot-tell-it-to-do',
+    category: 'Compliance',
+    shortTitle: 'Limits you cannot remove',
+    metaTitle: 'What You Cannot Configure an AI Receptionist to Do — Open Lines',
+    metaDescription: 'Some instructions are refused even when the business owner gives them. What is blocked, why the list is short, and why publishing it is the point.',
+    h1: 'What you cannot tell it to do',
+    published: '2026-09-19',
+    updated: '2026-09-19',
+    intro: 'You configure how your assistant behaves — its tone, its answers, what it offers, when it hands over. A small number of instructions are refused regardless of who gives them, including you. The list is short and worth publishing, because a product that will do anything its owner asks is a liability being sold as flexibility.',
+    sections: [
+      {
+        heading: 'What is refused',
+        bullets: [
+          { title: 'Impersonating an authority', body: 'Claiming to be police, a government body, a tax authority, a bank, or a regulated professional such as a doctor or a solicitor. The harm here is to the person on the other end, who cannot verify any of it.' },
+          { title: 'Hiding that it is an AI', body: 'An instruction to deny being automated is refused. In several places disclosure is a legal requirement, and everywhere else it is the thing that makes callers feel misled.' },
+          { title: 'Collecting card numbers or government IDs by voice', body: 'Full card numbers, security codes, social security or insurance numbers. There is a payment link for the legitimate version of this, and it does not require anything sensitive to be spoken.' },
+          { title: 'Encouraging illegal behaviour', body: 'Instructing it to help callers do something unlawful.' },
+          { title: 'Sending customer data onward', body: 'Configuring it to forward callers’ details somewhere as a matter of course.' },
+        ],
+      },
+      {
+        heading: 'Why the list is deliberately short',
+        paras: ['Because a business has every right to unusual instructions. Plenty of legitimate businesses need to say surprising things on the phone, and a filter tuned to catch anything that sounds odd would block real work while looking responsible. The checks are kept narrow on purpose: they target a handful of specific harms rather than policing tone, and the cost of that choice is accepted knowingly.'],
+      },
+      {
+        heading: 'The separate problem of instructions arriving from outside',
+        paras: ['There is a second category: text that reaches the assistant through your website or an uploaded document and tries to give it instructions. That is not you configuring your business — it is somebody else configuring it through you, and it is rejected on the way in rather than obeyed. It matters most for businesses whose sites accept public contributions, where the content being read is not entirely yours.'],
+      },
+      {
+        heading: 'Why this is a buying question',
+        paras: ['Ask any provider what their assistant will refuse to do for a paying customer. A vague answer means either that nothing is refused, or that nobody has thought about it — and you will discover which the first time somebody configures something they should not have. It is a short conversation and it tells you a great deal.'],
+      },
+    ],
+    faqs: [
+      { q: 'Are there things I cannot configure it to say?', a: 'Yes. Impersonating police, a government body, a bank or a regulated professional; denying that it is an AI; collecting full card numbers or government ID numbers by voice; encouraging illegal behaviour; or forwarding customer data onward.' },
+      { q: 'Why can I not tell it to say it is human?', a: 'Disclosure is a legal requirement in several jurisdictions and is what prevents callers feeling misled everywhere else. It is refused even when the business owner asks.' },
+      { q: 'How do I take a payment then?', a: 'Through a payment link the caller completes themselves. Nothing sensitive is spoken, recorded or transcribed.' },
+      { q: 'Will it block unusual but legitimate instructions?', a: 'The checks are deliberately narrow — they target a handful of specific harms rather than anything that sounds odd, because plenty of real businesses need to say surprising things.' },
+      { q: 'What about instructions hidden in my website?', a: 'Text arriving through a site or document that tries to instruct the assistant is rejected on the way in. That matters most for sites accepting public contributions.' },
+    ],
+    related: [
+      { href: '/learn/disclosing-ai-to-callers', label: 'Disclosing the AI', sub: 'The one you cannot switch off.' },
+      { href: '/learn/card-details-and-phone-payments', label: 'Card details', sub: 'The safe alternative.' },
+      { href: '/learn/what-to-ask-any-provider', label: 'Questions to ask', sub: 'Including this one.' },
+    ],
+    ctaHeading: 'Ask us what we refuse to do.',
+    ctaSub: 'The answer is published rather than promised. Seven days free.',
+  },
+  {
+    slug: 'how-a-call-should-end',
+    category: 'Guide',
+    shortTitle: 'Ending a call',
+    metaTitle: 'How a Phone Call Should End — Open Lines',
+    metaDescription: 'The last ten seconds decide whether a caller believes anything happened. Four things worth confirming, and the ending that causes most of your callbacks.',
+    h1: 'How a call should end',
+    published: '2026-09-19',
+    updated: '2026-09-19',
+    intro: 'Businesses spend considerable effort on how calls begin and almost none on how they finish, which is the wrong way round. The opening earns you thirty seconds of attention; the ending determines whether the customer believes the thing they rang for has actually happened.',
+    sections: [
+      {
+        heading: 'Confirm four things, briefly',
+        bullets: [
+          { title: 'What was agreed', body: 'The day, the time, the service, and the person if one was requested. Said back in a sentence, not a list.' },
+          { title: 'What happens next, and who does it', body: '"You will get a text confirmation" or "Mark will ring you before five". Name the actor.' },
+          { title: 'Anything they need to bring or do', body: 'Access, parking, paperwork, arriving ten minutes early. Now, not in a message they will not open.' },
+          { title: 'How to change it', body: 'Knowing they can move it easily is what stops a quiet no-show three weeks later.' },
+        ],
+      },
+      {
+        heading: 'The ending that generates callbacks',
+        paras: ['"That is all booked in then" — with nothing confirmed back. The caller hangs up holding a rough impression of a time, and a proportion of them ring again the next day to check, which costs you a second call to answer the first one properly. Ten seconds of confirmation removes a category of call entirely, and most businesses never notice they were generating it.'],
+      },
+      {
+        heading: 'Ending without a booking still matters',
+        paras: ['Plenty of calls end with no appointment: you do not cover their area, they wanted something you do not do, they need to check with somebody. Those endings deserve the same care, because that person is a recommendation to someone else or a customer next year. A clear, unembarrassed "we do not do that, but try X" is remembered well; a vague fade-out is remembered as being brushed off.'],
+      },
+      {
+        heading: 'Let them go',
+        paras: ['Once everything is confirmed, stop. An ending that adds a promotion, an opening-hours recap or a request for a review after the business is done undoes the efficiency of the whole call. The caller got what they wanted and is now waiting politely for permission to hang up.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should be confirmed at the end of a call?', a: 'What was agreed, what happens next and who does it, anything they need to bring or do, and how to change the appointment — in about ten seconds.' },
+      { q: 'Why do I get people ringing back to check bookings?', a: 'Usually because the first call ended with "that is all booked in" and nothing said back. The caller left holding a rough impression, so a proportion ring again.' },
+      { q: 'Does it matter how a call ends without a booking?', a: 'Yes. That person is a recommendation to somebody else or a customer next year — a clear "we do not do that, but try X" is remembered well.' },
+      { q: 'Should I mention offers at the end?', a: 'No. Once it is confirmed, stop. The caller has what they wanted and is waiting politely for permission to hang up.' },
+    ],
+    related: [
+      { href: '/learn/writing-your-greeting', label: 'How it starts', sub: 'The other ten seconds.' },
+      { href: '/learn/what-happens-after-the-booking-is-made', label: 'After the call', sub: 'What actually follows.' },
+      { href: '/learn/no-shows-without-taking-deposits', label: 'Preventing no-shows', sub: 'Why easy changes matter.' },
+    ],
+    ctaHeading: 'Ten seconds that stop a second phone call.',
+    ctaSub: 'Every booking confirmed back, every time. Seven days free.',
+  },
+  {
+    slug: 'abusive-and-difficult-callers',
+    category: 'Guide',
+    shortTitle: 'Abusive callers',
+    metaTitle: 'Abusive Callers: Protecting Whoever Answers Your Phone — Open Lines',
+    metaDescription: 'Every business gets them. What should happen on the call, why nobody on your team should absorb it as part of the job, and what to do afterwards.',
+    h1: 'Abusive and difficult callers',
+    published: '2026-09-19',
+    updated: '2026-09-19',
+    intro: 'Most businesses have a handful of these a year and some have them weekly. They are treated as an unfortunate part of front-line work, which quietly means somebody on your team is absorbing them as a condition of employment. That is worth examining rather than accepting.',
+    sections: [
+      {
+        heading: 'Tell the two apart first',
+        paras: ['A caller who is upset because something went wrong is not the same as a caller who is abusive. The first deserves patience, a person, and a remedy — they have a grievance and are expressing it badly. The second is directing hostility at whoever answered, which is not about the appointment at all. Conflating them produces both bad outcomes: real complaints get treated as aggression, and aggression gets rewarded with an apology.'],
+      },
+      {
+        heading: 'What should happen on the call',
+        bullets: [
+          { title: 'Nobody has to stay on the line', body: 'Whoever answers should know, explicitly, that ending an abusive call is permitted and supported. Most people will not do it unless told.' },
+          { title: 'It should not escalate back', body: 'Matching tone produces something that gets recorded and shared, and you will be the one explaining it.' },
+          { title: 'The genuine grievance still gets heard', body: 'If there is a real complaint buried in it, that part deserves a proper route — later, and calmly.' },
+          { title: 'You should know it happened', body: 'Not to intervene necessarily, but because a pattern from one number is something you can act on.' },
+        ],
+      },
+      {
+        heading: 'Where software genuinely helps',
+        paras: ['Not by handling abuse well — it is not pleasant for anybody to be shouted at and there is no clever answer. It helps because nothing is being absorbed by a person who then carries it into their next three customers. An assistant answering the first thirty seconds of a hostile call means the human who eventually takes over does so knowing what is coming, or does not have to take it over at all.'],
+      },
+      {
+        heading: 'Afterwards',
+        paras: ['A record matters here more than almost anywhere. Repeat behaviour from one number is a thing you can take to your provider or, past a point, to the police — and both will ask when it happened and what was said. Relying on your staff to remember is both unfair and useless. And say something to whoever took the call, the same day; being asked about it is most of what makes it bearable.'],
+      },
+    ],
+    faqs: [
+      { q: 'How should abusive calls be handled?', a: 'Distinguish upset from abusive first. Whoever answers should know explicitly that ending an abusive call is permitted, should not match the tone, and you should know it happened.' },
+      { q: 'Is an upset caller the same thing?', a: 'No, and conflating them causes both failures — real complaints get treated as aggression, and aggression gets rewarded with an apology.' },
+      { q: 'Does an AI receptionist handle abuse better?', a: 'Not better, but nobody on your team absorbs it and carries it into their next three customers. Whoever eventually takes over does so knowing what is coming.' },
+      { q: 'What should I do afterwards?', a: 'Keep the record — repeat behaviour from one number is something your provider or the police will ask dates and details about. And check on whoever took the call the same day.' },
+    ],
+    related: [
+      { href: '/learn/handling-a-complaint-on-the-phone', label: 'Genuine complaints', sub: 'The other category.' },
+      { href: '/learn/spam-and-nuisance-calls', label: 'Nuisance calls', sub: 'A different problem.' },
+      { href: '/learn/getting-your-team-comfortable-with-it', label: 'Your team', sub: 'What they absorb.' },
+    ],
+    ctaHeading: 'Nobody on your team should absorb that.',
+    ctaSub: 'Answered first, recorded properly, handed over knowingly. Seven days free.',
+  },
+  {
+    slug: 'when-a-quote-is-not-a-booking',
+    category: 'Guide',
+    shortTitle: 'Quotes vs bookings',
+    metaTitle: 'When the Call Needs a Quote, Not an Appointment — Open Lines',
+    metaDescription: 'Half of trade calls cannot end in a slot because nobody has seen the job yet. What should be captured instead, and why most quote enquiries die in the gap.',
+    h1: 'When the call needs a quote, not a slot',
+    published: '2026-09-19',
+    updated: '2026-09-19',
+    intro: 'Appointment businesses have it easy: the caller wants Tuesday at two and Tuesday at two either exists or does not. For anyone quoting work — builders, electricians, removals, anything priced per job — the call cannot end in a booking, and that gap is where most enquiries quietly die.',
+    sections: [
+      {
+        heading: 'Why quote enquiries leak',
+        paras: ['The call ends with "somebody will get back to you", which is a promise with no time attached and no slot in anybody’s day. It competes with actual paid work for attention and loses, usually for two days. Meanwhile the customer has rung two other numbers, and one of them turned up on Thursday. The enquiry was not lost to price — it was lost to a gap in the process nobody owned.'],
+      },
+      {
+        heading: 'Capture what a quote actually needs',
+        bullets: [
+          { title: 'What the job is, in their words', body: 'Plus photographs where they can send them, which frequently answers more than ten minutes of questions.' },
+          { title: 'Where it is', body: 'Before anything else, because it can make the rest irrelevant.' },
+          { title: 'Access and constraints', body: 'Flat or house, parking, stairs, whether anybody is in during the day. These are the details that change a price and get discovered on arrival.' },
+          { title: 'When they need it done', body: 'Next week and next spring are entirely different enquiries and deserve different urgency.' },
+          { title: 'A realistic budget signal', body: 'Not an interrogation. Just enough to know whether you are in the same conversation.' },
+        ],
+      },
+      {
+        heading: 'Book the next step, not the job',
+        paras: ['The call cannot produce an appointment for the work, but it can produce one for the visit — a survey, a look at the job, a callback at a named time. Converting "somebody will be in touch" into "Mark will ring you tomorrow between four and six" is the single highest-return change available to quoting businesses, and it costs nothing but the decision to be specific.'],
+      },
+      {
+        heading: 'Protect your own time as well',
+        paras: ['Quoting is unpaid work, so the calls worth attending are the ones with a real job behind them. Establishing location, timescale and rough budget on the first call is not gatekeeping — it is what stops you driving forty minutes to price something that was never going to happen, which is the tax quoting businesses pay most often and count least.'],
+      },
+    ],
+    faqs: [
+      { q: 'What if I cannot book a slot on the call?', a: 'Book the next step instead — a survey, a site visit, or a callback at a named time. "Mark will ring you tomorrow between four and six" converts far better than "somebody will be in touch".' },
+      { q: 'What should be captured for a quote?', a: 'The job in their words plus photographs if they can send them, the location first, access and constraints, when they need it done, and a rough budget signal.' },
+      { q: 'Why do quote enquiries go cold?', a: 'Because "somebody will get back to you" has no time attached and competes with paid work for attention. By day two the customer has rung two other numbers.' },
+      { q: 'Is asking about budget off-putting?', a: 'Not if it is a signal rather than an interrogation. It stops you driving forty minutes to price something that was never going to happen.' },
+    ],
+    related: [
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Qualifying enquiries', sub: 'What else to establish.' },
+      { href: '/learn/handling-price-questions-on-the-phone', label: 'Price questions', sub: 'What you can answer.' },
+      { href: '/learn/callers-outside-your-service-area', label: 'Location first', sub: 'The question that ends calls.' },
+    ],
+    ctaHeading: 'Turn "we will be in touch" into a time.',
+    ctaSub: 'Details captured, next step booked, nothing left in a gap. Seven days free.',
+  },
+  {
+    slug: 'working-with-an-existing-phone-system',
+    category: 'Guide',
+    shortTitle: 'Existing phone systems',
+    metaTitle: 'Using an AI Receptionist With Your Existing Phone System — Open Lines',
+    metaDescription: 'You do not have to replace your VoIP provider, handsets or numbers. How forwarding sits alongside what you already have, and the three setups worth knowing.',
+    h1: 'Working with the phone system you already have',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'Businesses with an installed phone system assume this means ripping it out, and reasonably so — anything touching telephony has a history of being a project. It is not one, because the arrangement sits alongside what you have rather than replacing it.',
+    sections: [
+      {
+        heading: 'The mechanism is forwarding, not replacement',
+        paras: ['Every business phone system can send a call somewhere else — it is the feature your provider already uses for out-of-hours numbers and mobiles. That is the whole integration. Your handsets stay, your provider stays, your numbers stay, and a rule you control decides which calls go where. Nothing is installed and there is no migration to schedule.'],
+      },
+      {
+        heading: 'Three setups worth knowing',
+        bullets: [
+          { title: 'Forward everything', body: 'Every call is answered by the assistant. Suits solo traders and anyone who is rarely at a desk.' },
+          { title: 'Forward on no answer', body: 'It rings your phones first for a set number of seconds and only then goes across. The most common choice, and the one that changes least about your day.' },
+          { title: 'Forward on busy, or out of hours', body: 'It covers the specific gaps you actually lose calls in and nothing else. Suits a staffed desk with genuine coverage during the day.' },
+        ],
+      },
+      {
+        heading: 'Where it gets slightly more involved',
+        paras: ['Larger systems with department routing, hunt groups or a switchboard need a decision about where in the chain the forward sits — before the menu, after it, or on one department only. That is a conversation with whoever administers your system rather than a technical obstacle, and it is worth having before you set anything up. The common mistake is forwarding from a point in the chain the caller rarely reaches.'],
+      },
+      {
+        heading: 'Questions for your current provider',
+        paras: ['Two are worth asking before you start: whether forwarded minutes are billed separately on your plan, and how many seconds your no-answer rule waits before diverting. The second matters more than it sounds — a rule set to thirty seconds means every caller hears six rings before anything happens, which is long enough to lose the impatient ones you were trying to catch.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do I have to replace my phone system?', a: 'No. Your handsets, provider and numbers all stay. A forwarding rule you control decides which calls go across — it is the same feature your provider already uses for out-of-hours numbers.' },
+      { q: 'Can it answer only the calls we miss?', a: 'Yes. Forward-on-no-answer rings your phones first and diverts after a set number of seconds. It is the most common choice and changes least about your day.' },
+      { q: 'What about a system with departments or a switchboard?', a: 'You need to decide where in the chain the forward sits — before the menu, after it, or on one department. That is a conversation with whoever administers your system, not a technical obstacle.' },
+      { q: 'What should I check with my provider?', a: 'Whether forwarded minutes are billed separately, and how long your no-answer rule waits. Thirty seconds means six rings before anything happens, which loses the impatient callers you wanted to catch.' },
+    ],
+    related: [
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'How forwarding works.' },
+      { href: '/learn/phone-menus-and-press-one', label: 'If you have a menu', sub: 'Where the forward sits.' },
+      { href: '/learn/how-long-does-setup-actually-take', label: 'Setup time', sub: 'Shorter than you think.' },
+    ],
+    ctaHeading: 'Keep your handsets, your numbers, your provider.',
+    ctaSub: 'One forwarding rule and nothing else changes. Seven days free.',
+  },
+  {
+    slug: 'who-on-your-team-should-see-call-data',
+    category: 'Compliance',
+    shortTitle: 'Who sees call data',
+    metaTitle: 'Who on Your Team Should See Call Records? — Open Lines',
+    metaDescription: 'Call records contain whatever callers volunteered. Why "everyone can see everything" is the default worth revisiting, and a proportionate way to decide.',
+    h1: 'Who should see your call records?',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'Most small businesses answer this by never asking it: whoever has the login sees everything, and the login is shared. That works until it does not, and the moment it stops working is usually a staff departure or a customer asking what you hold about them.',
+    sections: [
+      {
+        heading: 'What is actually in there',
+        paras: ['More than people expect. Callers volunteer things while explaining themselves — why they need an appointment urgently, what is going on at home, who is unwell. None of it was asked for and all of it is now in a record with their name and number attached. That is ordinary and unavoidable, and it is the reason this deserves a moment’s thought rather than a default.'],
+      },
+      {
+        heading: 'A proportionate way to decide',
+        bullets: [
+          { title: 'Everyone sees today’s bookings', body: 'Names, times, services. This is the operational minimum and nobody needs less.' },
+          { title: 'Whoever is handling a caller sees that caller', body: 'Context is what makes the follow-up good. This is the point of having it.' },
+          { title: 'Not everyone needs the full history of everyone', body: 'A Saturday assistant does not need six months of conversations about other customers’ circumstances.' },
+          { title: 'One person owns deletion requests', body: 'If somebody asks what you hold or asks you to remove it, that should be a known job rather than a scramble.' },
+        ],
+      },
+      {
+        heading: 'The shared login problem',
+        paras: ['A single account everybody uses means you cannot tell who looked at what, cannot remove access when somebody leaves without changing the password for everyone, and cannot honestly answer a question about who has seen a customer’s details. Separate logins are unglamorous and they are the thing that turns all three of those from a problem into a non-event.'],
+      },
+      {
+        heading: 'Keep it proportionate',
+        paras: ['This is a small business answering its phone, not a hospital. The aim is not a permissions matrix — it is having thought about it once, so that when somebody leaves or a customer asks, the answer exists. Ten minutes and a decision beats a policy document nobody reads, and it is genuinely all that is required at this scale.'],
+      },
+    ],
+    faqs: [
+      { q: 'Who should have access to call records?', a: 'Everyone needs today’s bookings; whoever is handling a caller needs that caller’s context. Not everyone needs the full history of every customer.' },
+      { q: 'What is wrong with a shared login?', a: 'You cannot tell who looked at what, cannot remove one person’s access when they leave, and cannot answer honestly if a customer asks who has seen their details.' },
+      { q: 'Why does this matter for a small business?', a: 'Because callers volunteer more than you asked for while explaining themselves, and that ends up in a record with their name and number attached.' },
+      { q: 'How much process do I actually need?', a: 'Very little. One decision, one person who owns deletion requests, and separate logins. A policy document nobody reads is worse than ten minutes of thought.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'What is held', sub: 'Retention and deletion.' },
+      { href: '/learn/call-transcripts-and-what-they-show', label: 'Sharing transcripts', sub: 'Why sparingly.' },
+      { href: '/learn/staff-turnover-and-what-leaves-with-them', label: 'When staff leave', sub: 'Access, and knowledge.' },
+    ],
+    ctaHeading: 'Decide it once, before you need the answer.',
+    ctaSub: 'Separate logins and a clear owner for deletions. Seven days free.',
+  },
+  {
+    slug: 'temporary-closures-and-unexpected-days-off',
+    category: 'Common problem',
+    shortTitle: 'Closed unexpectedly',
+    metaTitle: 'When You Close Unexpectedly: What Your Phone Should Say — Open Lines',
+    metaDescription: 'A burst pipe, a funeral, a day of snow. The phone keeps ringing and the calendar keeps accepting bookings for a day you will not be open.',
+    h1: 'When you close unexpectedly',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'Planned closures get handled: the Christmas week goes on the website and everybody knows. It is the unplanned ones that cause damage — a burst pipe, a bereavement, a day nobody can get in — because the phone carries on ringing and the calendar carries on offering times for a day you will not be there.',
+    sections: [
+      {
+        heading: 'Two separate failures',
+        paras: ['The first is people arriving at a locked door, which is bad and finite. The second is worse and invisible: new bookings being taken for the affected days while you are dealing with whatever closed you. You do not find out until the following week, and by then you have a list of people to ring and disappoint who had no idea anything was wrong.'],
+      },
+      {
+        heading: 'Do these three things first',
+        bullets: [
+          { title: 'Block the days in the calendar', body: 'Before anything else. It stops new bookings immediately and takes thirty seconds, and it is the step people do last.' },
+          { title: 'Say what is happening on the phone', body: 'A plain sentence. "We are closed today because of a burst pipe and reopening Thursday" is far better received than a normal greeting on a day you cannot deliver anything.' },
+          { title: 'Let people rebook rather than just be told no', body: 'Somebody whose Tuesday is cancelled should leave with a Thursday, not with an apology and a task.' },
+        ],
+      },
+      {
+        heading: 'Contacting the people already booked',
+        paras: ['Work down the day you are closed and ring those people directly — it is the only part that genuinely needs you, and the earlier the better. Somebody told at eight in the morning rearranges their day; somebody told at four has already taken time off work. The order to work in is by appointment time, and the message worth giving is a specific alternative rather than a promise to be in touch.'],
+      },
+      {
+        heading: 'Afterwards, put the hours back',
+        paras: ['The overlooked step. A business that blocks a week and forgets to unblock it spends the following month turning callers away from an empty diary, and nobody notices because there is nothing to notice — the calls simply stop converting. Whatever you changed, change it back on the day you reopen.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should I do first when closing unexpectedly?', a: 'Block the days in the calendar. It stops new bookings being taken for a day you will not be open, takes thirty seconds, and is the step most people do last.' },
+      { q: 'What should the phone say?', a: 'Plainly what is happening and when you reopen. A normal greeting on a day you cannot deliver anything is worse than an honest sentence.' },
+      { q: 'When should I contact people already booked?', a: 'As early as you can, working in appointment order, with a specific alternative rather than a promise to be in touch. Somebody told at eight rearranges their day; at four they have already taken time off.' },
+      { q: 'What gets forgotten afterwards?', a: 'Putting the hours back. A business that blocks a week and forgets spends the next month turning callers away from an empty diary without noticing.' },
+    ],
+    related: [
+      { href: '/learn/keeping-your-ai-answers-current', label: 'Keeping hours right', sub: 'The everyday version.' },
+      { href: '/learn/cancellations-and-rescheduling-by-phone', label: 'Rebooking people', sub: 'Rather than just cancelling.' },
+      { href: '/learn/seasonal-businesses-and-quiet-months', label: 'Planned closures', sub: 'The easier case.' },
+    ],
+    ctaHeading: 'The phone should know before you have time to tell it.',
+    ctaSub: 'Block the day, and callers hear the truth. Seven days free.',
+  },
+  {
+    slug: 'judging-it-after-a-month',
+    category: 'Guide',
+    shortTitle: 'Judging it fairly',
+    metaTitle: 'Judging an AI Receptionist After a Month — Open Lines',
+    metaDescription: 'Four questions that tell you whether to keep it, the two measures people use that prove nothing, and the fair way to reach the answer no.',
+    h1: 'How to judge it after a month',
+    published: '2026-09-20',
+    updated: '2026-09-20',
+    intro: 'A month is long enough to know and short enough that changing your mind is cheap. The difficulty is that most people assess this on the wrong evidence — a couple of memorable calls and a general feeling — and reach a confident answer that has nothing to do with whether it worked.',
+    sections: [
+      {
+        heading: 'Two measures that prove nothing',
+        paras: ['The first is the one call that went badly. Every month contains one, including months where somebody human answered, and it is memorable precisely because it was unusual. The second is whether it sounds good — pleasant to listen to and useless at booking is a worse outcome than slightly stilted and reliable. Both measures feel like evidence and neither is.'],
+      },
+      {
+        heading: 'Four questions worth answering',
+        bullets: [
+          { title: 'Did calls get answered that previously were not?', body: 'Look at evenings, weekends, and the hours you were busy. This is the thing you bought.' },
+          { title: 'Did any of them turn into work?', body: 'Bookings, quotes, visits. Even a handful usually settles the arithmetic.' },
+          { title: 'Did anything go wrong that a person would have prevented?', body: 'Not "went imperfectly" — actually cost you something. Be strict, and be honest.' },
+          { title: 'Are you doing less of the work you disliked?', body: 'Fewer evening callbacks, fewer interruptions mid-job. This is a real benefit that never appears in a figure.' },
+        ],
+      },
+      {
+        heading: 'Separate the setup from the product',
+        paras: ['Most disappointing first months are knowledge problems rather than capability problems: it did not know a price because nobody gave it one, or it could not book because a calendar was never connected properly. That is worth ten minutes of checking before you conclude anything, because the fix is small and the alternative is discarding something that was never configured. Ask what it got wrong and whether you had ever told it the answer.'],
+      },
+      {
+        heading: 'Reaching the answer no',
+        paras: ['If calls were answered, nothing was lost, and it still did not produce work, then your phone was probably not where your problem was — and that is a legitimate conclusion rather than a failure. Businesses that are already booked solid, or whose callers are mostly suppliers, find this out in a month for the cost of a month. Stopping then is the system working, not the system failing.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I judge whether it worked?', a: 'Four questions: were calls answered that previously were not, did any turn into work, did anything go wrong that a person would have prevented, and are you doing less of the work you disliked?' },
+      { q: 'What measures are misleading?', a: 'The one call that went badly — every month has one — and whether it sounds impressive. Pleasant and useless at booking is worse than slightly stilted and reliable.' },
+      { q: 'My first month was disappointing. Now what?', a: 'Check whether it is a knowledge problem before concluding anything. Most disappointing months are a price nobody supplied or a calendar never properly connected.' },
+      { q: 'When is stopping the right answer?', a: 'If calls were answered, nothing was lost, and no work came of it, your phone was not where your problem was. That is a legitimate conclusion reached for the cost of a month.' },
+    ],
+    related: [
+      { href: '/learn/testing-it-before-you-rely-on-it', label: 'Testing it', sub: 'Before the month starts.' },
+      { href: '/learn/cost-per-booked-appointment', label: 'The arithmetic', sub: 'Turning it into a figure.' },
+      { href: '/learn/should-you-still-answer-the-phone', label: 'If the answer is no', sub: 'Where your problem actually is.' },
+    ],
+    ctaHeading: 'Four questions, one month, a real answer.',
+    ctaSub: 'And stopping is a legitimate one. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
