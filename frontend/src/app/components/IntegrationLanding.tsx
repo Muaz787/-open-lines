@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import SiteNav from './SiteNav'
 import SiteFooter from './SiteFooter'
 import PageCta from './PageCta'
@@ -33,11 +34,30 @@ export default function IntegrationLanding({ content: c }: { content: Integratio
           <Breadcrumbs trail={[{ name: 'Home', path: '/' }, { name: 'Integrations', path: '/integrations' }, { name: c.name, path: `/integrations/${c.slug}` }]} />
           <div className="sec-label">{c.eyebrow}</div>
           <h1 style={{ fontFamily: 'var(--font-syne), sans-serif', fontSize: 'clamp(30px, 4.6vw, 48px)', fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.1, marginBottom: 18 }}>
-            <span style={{ fontSize: '0.9em', marginRight: 10 }}>{c.emoji}</span>{c.h1}
+            {/* The emoji is a stand-in for artwork. Where real artwork exists
+                it says the same thing better, and both together reads as
+                decoration. */}
+            {!c.hero && <span style={{ fontSize: '0.9em', marginRight: 10 }}>{c.emoji}</span>}{c.h1}
           </h1>
           <p style={{ fontSize: 17, color: 'var(--text-2)', lineHeight: 1.7, fontWeight: 300, marginBottom: 30, maxWidth: 640 }}>
             {c.subhead}
           </p>
+
+          {/* The mark sits on a light plate in both themes: the artwork has a
+              white field, and letting the dark theme show through it would put
+              a bright rectangle in the middle of the page. priority because it
+              is above the fold — it is the largest paint on this route. */}
+          {c.hero && (
+            <div style={{
+              background: '#fff', border: '1px solid var(--border-2)', borderRadius: 16,
+              padding: '18px 22px', marginBottom: 30, maxWidth: 640,
+            }}>
+              <Image src={c.hero.src} alt={c.hero.alt}
+                width={c.hero.width} height={c.hero.height} priority
+                sizes="(max-width: 700px) 100vw, 640px"
+                style={{ width: '100%', height: 'auto', display: 'block' }} />
+            </div>
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
             <Link href="/onboarding"><button className="btn-trial">Start 7-Day Free Trial →</button></Link>
             <Link href="/integrations" style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-2)' }}>← All integrations</Link>
