@@ -223,6 +223,71 @@ def _no(reason: str, detail=None) -> dict:
 
 # ── Stage E: the one acquisition entry point ───────────────────────────────
 
+async def preflight(tenant_id: str, *,
+                    verified_provider_status: str) -> dict:
+    """Everything that can be decided WITHOUT contacting a provider.
+
+    WHY THIS IS ITS OWN FUNCTION
+    The Ireland lifecycle records a provider attempt immediately before calling
+    ensure_temporary_number, on the principle that anything after that write is
+    recoverable because the write committed first. That is exactly right for a
+    provider failure -- Twilio may hold a number we never saw, and only a
+    positive reconciliation may attach it.
+
+    But it was also consuming the attempt for failures that reach no provider at
+    all. An unset TEMP_NUMBER_SOURCE_COUNTRY returned UNAVAILABLE from inside
+    this call, after the attempt had been marked -- and ireland_temp_access
+    offers no route back from "attempted" to "may buy" (retake_unattempted is
+    gated on provider_attempt_at being null, deliberately, because elapsed time
+    is not evidence). So a configuration gap on ONE service permanently cost a
+    customer their test line, on every service, with no error raised anywhere.
+
+    A configuration gap is not a provider failure. This is the boundary: every
+    check here is pure, or reads our own database, and none of them spends
+    anything or tells a provider we exist.
+
+    Returns {"ok": True, "tenant", "policy"} or {"ok": False, "refusal": ...},
+    where the refusal is exactly what ensure_temporary_number used to return, so
+    moving the checks changed no caller's contract.
+    """
+    if str(verified_provider_status or "").strip().lower() not in PROVIDER_REVIEW_STATES:
+        # Includes "" -- a caller with nothing to show gets nothing.
+        logger.error("temporary number refused for tenant %s: provider status %r "
+                     "is not a verified review state", tenant_id,
+                     verified_provider_status)
+        return {"ok": False, "refusal": {
+            "status": NOT_ELIGIBLE, "reason": "provider_review_not_verified",
+            "detail": str(verified_provider_status or "")}}
+
+    rows = (get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1).execute().data or [])
+    if not rows:
+        return {"ok": False, "refusal": {"status": NOT_FOUND}}
+    tenant = rows[0]
+
+    elig = await eligibility(tenant)
+    if not elig["eligible"]:
+        if elig["reason"] == ALREADY_ACTIVE:
+            row = elig["existing"]
+            return {"ok": False, "refusal": {
+                "status": ALREADY_ACTIVE, "row": row,
+                "e164": row.get("e164"), "active": elig["active"]}}
+        return {"ok": False, "refusal": {
+            "status": NOT_ELIGIBLE, "reason": elig["reason"],
+            "detail": elig["detail"]}}
+
+    policy = source_policy()
+    problem = source_problem(policy)
+    if problem:
+        # A configuration gap is OUR problem, and it is reported as one. It is
+        # emphatically not a reason to pick a country.
+        logger.error("temporary number requested for tenant %s but the source "
+                     "policy is unusable: %s", tenant_id, problem)
+        return {"ok": False, "refusal": {"status": UNAVAILABLE, "reason": problem}}
+
+    return {"ok": True, "tenant": tenant, "policy": policy}
+
+
 async def ensure_temporary_number(tenant_id: str, *,
                                   verified_provider_status: str) -> dict:
     """Give this tenant a working test line, if they are genuinely entitled to one.
@@ -241,37 +306,10 @@ async def ensure_temporary_number(tenant_id: str, *,
     tenant_regulatory_profiles.state, a local memory of a delivery, where a
     stale or forged `pending_review` would have bought someone a free line.
     """
-    if str(verified_provider_status or "").strip().lower() not in PROVIDER_REVIEW_STATES:
-        # Includes "" -- a caller with nothing to show gets nothing.
-        logger.error("temporary number refused for tenant %s: provider status %r "
-                     "is not a verified review state", tenant_id,
-                     verified_provider_status)
-        return {"status": NOT_ELIGIBLE, "reason": "provider_review_not_verified",
-                "detail": str(verified_provider_status or "")}
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
-    if not rows:
-        return {"status": NOT_FOUND}
-    tenant = rows[0]
-
-    # ── 1. PREFLIGHT, BEFORE ANY SPEND ────────────────────────────────────
-    elig = await eligibility(tenant)
-    if not elig["eligible"]:
-        if elig["reason"] == ALREADY_ACTIVE:
-            row = elig["existing"]
-            return {"status": ALREADY_ACTIVE, "row": row,
-                    "e164": row.get("e164"), "active": elig["active"]}
-        return {"status": NOT_ELIGIBLE, "reason": elig["reason"],
-                "detail": elig["detail"]}
-
-    policy = source_policy()
-    problem = source_problem(policy)
-    if problem:
-        # A configuration gap is OUR problem, and it is reported as one. It is
-        # emphatically not a reason to pick a country.
-        logger.error("temporary number requested for tenant %s but the source "
-                     "policy is unusable: %s", tenant_id, problem)
-        return {"status": UNAVAILABLE, "reason": problem}
+    verdict = await preflight(tenant_id, verified_provider_status=verified_provider_status)
+    if not verdict["ok"]:
+        return verdict["refusal"]
+    tenant, policy = verdict["tenant"], verdict["policy"]
 
     # ── 2. THE TENANT'S ONE SUB-ACCOUNT ───────────────────────────────────
     sub = await tenant_subaccount.ensure(tenant)
