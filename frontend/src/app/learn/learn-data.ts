@@ -2399,6 +2399,396 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Twenty minutes, one sitting.',
     ctaSub: 'Website read, calendar connected, number live. Seven days free.',
   },
+  {
+    slug: 'what-happens-after-the-booking-is-made',
+    category: 'Guide',
+    shortTitle: 'After the booking',
+    metaTitle: 'What Happens After a Booking Is Made — Open Lines',
+    metaDescription: 'Where the appointment lands, who tells the customer, who tells you, and the one thing worth checking on the first booking so you are not double-entering anything.',
+    h1: 'What happens after the booking is made',
+    published: '2026-09-15',
+    updated: '2026-09-15',
+    intro: 'The call ends. Somewhere between that moment and the customer arriving, four things have to happen, and knowing which piece does which is the difference between trusting the system and quietly keeping a paper diary alongside it.',
+    sections: [
+      {
+        heading: 'The appointment goes straight into your calendar',
+        paras: ['Not into a separate list to be copied over. It is written into the booking system you already use, against the right service and the right staff member, which is what makes the slot genuinely unavailable to the next caller. A booking that lives anywhere else is a double-booking waiting for a busy Saturday.'],
+      },
+      {
+        heading: 'Your customer is confirmed by your booking system',
+        paras: ['This surprises people, so it is worth stating clearly: the confirmation your customer receives comes from your booking system, not from us. Because the appointment is created in your system properly, its own confirmations and reminders fire exactly as they do for a booking your staff made — same sender, same wording, same branding your customers already recognise. It also means you are not sending two confirmations for one appointment, which is the usual result of bolting a booking tool onto a calendar.'],
+      },
+      {
+        heading: 'You get told separately',
+        paras: ['Your own notification is a different thing with a different job: it tells you what happened on the call, not just that a slot was filled. Where it goes is your choice — email, or a text to the mobile you actually look at — and it is worth pointing it somewhere that will be seen rather than somewhere that will be tidied.'],
+      },
+      {
+        heading: 'The call itself is written down',
+        paras: ['A summary is kept whether or not a booking came out of it, which matters because the calls that did not convert are the ones with something to learn from. The booking tells you the outcome; the summary tells you what was actually asked.'],
+      },
+      {
+        heading: 'Check this on your first booking',
+        paras: ['Make one yourself, then open your calendar rather than the dashboard. If it is there, on the right person, with the customer’s details attached, everything downstream is working — and you can stop keeping a parallel diary, which is the actual point.'],
+      },
+    ],
+    faqs: [
+      { q: 'Where does the appointment end up?', a: 'Directly in the booking system you already use, against the right service and staff member — not in a separate list for someone to copy over.' },
+      { q: 'Who sends the customer their confirmation?', a: 'Your booking system does, exactly as it would for a booking your staff made. Because the appointment is created properly, its own confirmations and reminders fire with your usual wording and branding.' },
+      { q: 'Will my customer get two confirmations?', a: 'No, and that is the reason it works this way. Two confirmations for one appointment is the usual result of bolting a booking tool onto a calendar.' },
+      { q: 'How am I told?', a: 'Separately, by email or by text to the mobile you actually check. Your notification says what happened on the call, not just that a slot was filled.' },
+      { q: 'How do I confirm it is all wired up?', a: 'Make a booking yourself and open your calendar rather than the dashboard. If it is there with the right person and details, everything downstream is working.' },
+    ],
+    related: [
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How booking works', sub: 'Live availability.' },
+      { href: '/learn/where-should-call-alerts-go', label: 'Where alerts go', sub: 'Email, text, or both.' },
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Booking a named person', sub: 'Per-person availability.' },
+    ],
+    ctaHeading: 'One booking, one calendar, one confirmation.',
+    ctaSub: 'Written into the system you already use. Seven days free.',
+  },
+  {
+    slug: 'phone-menus-and-press-one',
+    category: 'Common problem',
+    shortTitle: 'Press one for…',
+    metaTitle: 'Phone Menus: Why "Press 1" Costs Small Businesses Calls — Open Lines',
+    metaDescription: 'Menus were built to route calls in organisations with departments. Most small businesses do not have departments, and the menu is costing them callers before anyone speaks.',
+    h1: 'Why "press 1 for bookings" costs you calls',
+    published: '2026-09-15',
+    updated: '2026-09-15',
+    intro: 'Automated menus solved a real problem for organisations with twelve departments and a switchboard. They were then sold to businesses with four staff and one room, where they solve nothing and cost something — and once installed, nobody ever removes one.',
+    sections: [
+      {
+        heading: 'A menu asks the caller to do your filing',
+        paras: ['Every option asks somebody to work out which internal category their problem belongs to, using your vocabulary rather than theirs. A customer whose boiler is making a noise does not know whether that is "service", "repairs" or "general enquiries", so they guess, get the wrong person, and start again — having already spent forty seconds listening to options that did not include their situation.'],
+      },
+      {
+        heading: 'What it costs before anyone speaks',
+        bullets: [
+          { title: 'The impatient hang up', body: 'People ringing a small business expect a person. A recorded list reads as a bigger, slower organisation than the one they chose.' },
+          { title: 'Mobile callers fare worst', body: 'Pressing a number means taking the phone off your ear, and a caller who is driving simply will not.' },
+          { title: 'The options are never right', body: 'Real enquiries do not divide into four categories, and the fifth option is always "hold for an operator" — which is what they wanted first.' },
+          { title: 'It routes to nobody at six o’clock', body: 'Most menus deliver you politely to a voicemail box, having taken a minute to do it.' },
+        ],
+      },
+      {
+        heading: 'The question underneath',
+        paras: ['A menu is a way of deciding who should deal with this call. That is a real question — it is just one the caller is badly placed to answer. Working it out from what they say, in their own words, gets the same routing without asking anyone to translate their problem into your org chart first.'],
+      },
+      {
+        heading: 'When a menu genuinely earns its place',
+        paras: ['If you have departments that really are separate — a service desk and a parts counter with different people and different systems — a short menu is honest about how your business works. The test is whether the categories describe your business or describe your phone system. Two options for genuinely different teams is reasonable; six options because someone configured it in 2014 is not.'],
+      },
+    ],
+    faqs: [
+      { q: 'Are phone menus bad for small businesses?', a: 'Usually. They were built for organisations with separate departments. In a business with a handful of staff they ask the caller to categorise their own problem in your vocabulary, and cost you the impatient ones before anyone speaks.' },
+      { q: 'Why do callers hang up on menus?', a: 'They rang a small business expecting a person, the options rarely match their situation, and on a mobile pressing a number means taking the phone away from your ear.' },
+      { q: 'What is the alternative?', a: 'Work out who should handle the call from what the caller says, in their own words, rather than asking them to translate it into your internal categories first.' },
+      { q: 'When is a menu the right choice?', a: 'When your departments really are separate — different people, different systems. The test is whether the options describe your business or describe your phone system.' },
+    ],
+    related: [
+      { href: '/learn/stop-losing-callers-to-the-next-business', label: 'Losing callers', sub: 'What they are deciding.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Urgent calls', sub: 'Getting to a person fast.' },
+      { href: '/learn/ai-call-routing', label: 'Routing calls', sub: 'Without a menu.' },
+    ],
+    ctaHeading: 'Let them just say what they want.',
+    ctaSub: 'No options, no holding, no translating. Seven days free.',
+  },
+  {
+    slug: 'handling-price-questions-on-the-phone',
+    category: 'Guide',
+    shortTitle: 'Price questions',
+    metaTitle: 'Handling "How Much Is It?" on the Phone — Open Lines',
+    metaDescription: 'The most common call you get and the one most businesses handle worst. Why dodging the question loses the booking, and how to answer when the real answer is "it depends".',
+    h1: 'Handling "how much is it?" on the phone',
+    published: '2026-09-15',
+    updated: '2026-09-15',
+    intro: 'It is the first question on a large share of calls and the one most businesses are least prepared for, because the honest answer is usually "it depends" and nobody wants to say that to somebody who is comparing you against two other numbers.',
+    sections: [
+      {
+        heading: 'Why dodging it loses the call',
+        paras: ['"I would need to check" or "somebody will call you back" is heard as evasion, and evasion on price is heard as expensive. The caller does not wait to be proved wrong — they ring the next number, where somebody says "from ninety pounds", and that business now has the booking regardless of who was actually cheaper.'],
+      },
+      {
+        heading: 'A range beats a refusal, every time',
+        paras: ['"Between one-twenty and one-eighty depending on length" is a genuinely useful answer. It lets people who cannot afford it leave politely, which saves you both an appointment, and it lets everyone else stop shopping. Businesses fear that quoting a range loses work; in practice it mostly loses the enquiries that were never going to book, which is not the same thing.'],
+      },
+      {
+        heading: 'Say what moves the number',
+        bullets: [
+          { title: 'Name the variable', body: '"More for longer hair", "depends what is behind the wall". People accept variability when they understand what causes it.' },
+          { title: 'Give the common case', body: 'Most callers want what most callers want. Lead with that price, not the edge case.' },
+          { title: 'Be explicit about what is included', body: 'Most price disputes are scope disputes wearing a disguise.' },
+          { title: 'Say when you genuinely cannot', body: '"I cannot price that without seeing it, but I can get someone out on Thursday" is a real answer. It is not the same as being vague.' },
+        ],
+      },
+      {
+        heading: 'Write it down once',
+        paras: ['The reason price questions are handled badly is almost never policy — it is that the real prices, with their caveats, live in somebody’s head and on a laminated sheet. Writing them out once, in the form you would actually say them on the phone, fixes the problem for everyone answering: your new starter, your Saturday cover, and anything automated.'],
+      },
+      {
+        heading: 'What should never be quoted',
+        paras: ['Anything that depends on seeing the job. A price given blind on a call is one you will either honour at a loss or withdraw in front of a customer, and both are worse than the awkwardness of saying you need to look first.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should I give prices over the phone?', a: 'A range, yes. "I would need to check" is heard as evasion, and evasion on price is heard as expensive — the caller rings the next number instead of waiting to be proved wrong.' },
+      { q: 'What if my prices genuinely vary?', a: 'Name the variable. "Between one-twenty and one-eighty depending on length" is useful; people accept variability when they understand what causes it.' },
+      { q: 'Won’t quoting a range lose me work?', a: 'Mostly it loses enquiries that were never going to book, which is not the same thing — and it saves you both the appointment.' },
+      { q: 'What should never be quoted on a call?', a: 'Anything that depends on seeing the job. A blind price is one you either honour at a loss or withdraw in front of the customer.' },
+      { q: 'How do I make sure everyone answers the same way?', a: 'Write the real prices down once, with their caveats, in the form you would say them aloud. That fixes it for new starters, weekend cover and anything automated alike.' },
+    ],
+    related: [
+      { href: '/learn/uploading-documents-your-ai-can-answer-from', label: 'Uploading your prices', sub: 'Including the caveats.' },
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Qualifying enquiries', sub: 'Beyond price.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'When it does not know', sub: 'Why guessing is worse.' },
+    ],
+    ctaHeading: 'Answer the question they actually rang to ask.',
+    ctaSub: 'Your real prices, with your real caveats. Seven days free.',
+  },
+  {
+    slug: 'ai-receptionist-for-a-one-person-business',
+    category: 'Guide',
+    shortTitle: 'One-person businesses',
+    metaTitle: 'AI Receptionist for a One-Person Business — Open Lines',
+    metaDescription: 'When you are the owner, the service and the switchboard, every call interrupts the work you are paid for. What to hand over, what to keep, and when not to bother.',
+    h1: 'When you are the whole business',
+    published: '2026-09-15',
+    updated: '2026-09-15',
+    intro: 'A sole trader has the worst version of the phone problem. Every call arrives while you are doing the thing you are paid for, there is nobody to hand it to, and the two states available are "interrupted" and "unavailable" — both of which cost you something.',
+    sections: [
+      {
+        heading: 'The trap of being the only number',
+        paras: ['You cannot be with a client and on the phone, so you pick one and lose the other. Taking the call interrupts work somebody is paying you to concentrate on; not taking it means an evening of callbacks, half of which go unanswered because your customers are also at dinner. Neither is a failure of organisation — it is arithmetic, and no amount of discipline fixes it.'],
+      },
+      {
+        heading: 'What a sole trader can hand over safely',
+        bullets: [
+          { title: 'Whether you do this, and whether you cover there', body: 'A large share of calls stop at these two questions, and both have fixed answers.' },
+          { title: 'What it roughly costs', body: 'A range, so the people who cannot afford you can leave politely instead of booking an appointment to find out.' },
+          { title: 'Your actual availability', body: 'You are the only resource, so your calendar is the business. Getting that right is most of the job.' },
+          { title: 'Taking the details properly', body: 'Name, number, what they need, when they are free — so a callback is one call rather than three.' },
+        ],
+      },
+      {
+        heading: 'What you should keep',
+        paras: ['Anything that is really a sales conversation. When you are a one-person business, people are partly buying you, and the call where somebody is deciding whether they trust you is the one call worth interrupting anything for. The goal is to arrive at that conversation having missed nothing, not to be spared it.'],
+      },
+      {
+        heading: 'It also ends the answering-while-working problem',
+        paras: ['Sole traders answer the phone in places they should not: mid-treatment, under a sink, in a client’s living room. It is awkward for everybody, and the customer in front of you notices. Having somewhere for the call to go is what makes it possible to simply not pick up without losing the work.'],
+      },
+      {
+        heading: 'The case for not bothering',
+        paras: ['If you are booked solid for months and turning work away, this solves a problem you do not have — your constraint is capacity, not enquiries. Answer honestly before spending anything: are you losing work you could have done, or protecting yourself from work you could not?'],
+      },
+    ],
+    faqs: [
+      { q: 'Is this worth it for a one-person business?', a: 'Often, because a sole trader has the worst version of the problem: every call interrupts paid work, and there is nobody to hand it to. But not if you are already booked solid — then your constraint is capacity, not enquiries.' },
+      { q: 'What should I still take myself?', a: 'Anything that is really a sales conversation. When you are the business, people are partly buying you, and that call is worth interrupting things for.' },
+      { q: 'What can it handle without me?', a: 'Whether you do this kind of work, whether you cover an area, roughly what it costs, your availability, and taking details properly so a callback is one call rather than three.' },
+      { q: 'Will customers realise I am a one-person business?', a: 'They already do, and most of them chose you for it. Answering properly reads as organised, not as pretending to be bigger.' },
+    ],
+    related: [
+      { href: '/learn/answering-calls-while-driving-between-jobs', label: 'Calls on the road', sub: 'The mobile version.' },
+      { href: '/learn/stop-missing-calls-while-with-a-customer', label: 'Mid-appointment calls', sub: 'The interruption problem.' },
+      { href: '/learn/cost-per-booked-appointment', label: 'Is it worth it?', sub: 'Run your own numbers.' },
+    ],
+    ctaHeading: 'Stop choosing between the work and the phone.',
+    ctaSub: 'Somewhere for the call to go while you concentrate. Seven days free.',
+  },
+  {
+    slug: 'writing-your-greeting',
+    category: 'Guide',
+    shortTitle: 'Your greeting',
+    metaTitle: 'Writing the First Ten Seconds of Every Call — Open Lines',
+    metaDescription: 'Your greeting is said more often than any sentence your business owns. What belongs in it, what does not, and where the two required disclosures fit without sounding legal.',
+    h1: 'Writing the first ten seconds',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'Your greeting is the single most-repeated sentence your business has — said more times in a month than anything on your website is read. Most are written once, in a hurry, and never looked at again, which is a strange thing to do with your most-used piece of copy.',
+    sections: [
+      {
+        heading: 'What has to be in it',
+        bullets: [
+          { title: 'Your business name', body: 'Said clearly, first. Callers with three tabs open genuinely need to be told who picked up.' },
+          { title: 'That this is an automated assistant', body: 'Plainly, in the opening seconds. Discovering it three sentences in is what makes people feel tricked.' },
+          { title: 'That the call is recorded', body: 'Before they have said anything they would not have said knowingly.' },
+          { title: 'An invitation to speak', body: 'People hesitate when they are not sure whether it is their turn. "How can I help?" ends that instantly.' },
+        ],
+      },
+      {
+        heading: 'Getting the disclosures in without sounding legal',
+        paras: ['The instinct is to bolt on a paragraph of terms, which makes a thirty-second call feel like a bank. Both disclosures fit comfortably in one natural sentence, and the point is to be understood rather than to be thorough — a greeting nobody listens to has technically disclosed nothing at all.'],
+      },
+      {
+        heading: 'What to leave out',
+        paras: ['Your opening hours, which they can ask for. Your website address, which they are not writing down. A promotion, which is advertising at somebody who already chose to ring you. Anything that delays the moment they get to say what they want is working against you, and every word before that moment is charged to your patience budget.'],
+      },
+      {
+        heading: 'Match how you actually answer',
+        paras: ['If your shop answers with "morning, Clarke’s", do not write "thank you for calling Clarke and Sons Limited". The greeting sets the register for everything that follows, and the mismatch between a formal opening and a normal conversation is more noticeable than either would be alone. Write it the way you would say it, then read it aloud once — you will cut something.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should a phone greeting include?', a: 'Your business name first, that this is an automated assistant, that the call is recorded, and an invitation to speak — in about ten seconds.' },
+      { q: 'Do I have to say it is an AI?', a: 'Yes, and early. Discovering it three sentences in is what makes callers feel tricked; said plainly at the start it is a non-event.' },
+      { q: 'How do I fit the disclosures in without it sounding like a bank?', a: 'Both fit in one natural sentence. The aim is to be understood, not thorough — a greeting nobody listens to has disclosed nothing.' },
+      { q: 'What should I leave out?', a: 'Opening hours, your website address and promotions. Anything delaying the moment they say what they want is charged to your caller’s patience.' },
+      { q: 'How formal should it be?', a: 'As formal as you actually are. Write it the way you would say it, then read it aloud once — you will cut something.' },
+    ],
+    related: [
+      { href: '/learn/disclosing-ai-to-callers', label: 'Disclosing the AI', sub: 'Why early is easier.' },
+      { href: '/learn/call-recording-consent', label: 'Recording consent', sub: 'What has to be said.' },
+      { href: '/learn/customising-your-ai-receptionist', label: 'Tone and wording', sub: 'Beyond the greeting.' },
+    ],
+    ctaHeading: 'Your most-used sentence deserves ten minutes.',
+    ctaSub: 'Write it the way you would say it. Seven days free.',
+  },
+  {
+    slug: 'moving-off-your-personal-mobile',
+    category: 'Guide',
+    shortTitle: 'Off your personal mobile',
+    metaTitle: 'Moving Your Business Off Your Personal Mobile — Open Lines',
+    metaDescription: 'The number on your van is your own mobile, and it rings at nine on a Sunday. How to separate the two without losing the customers who only have the old number.',
+    h1: 'Moving your business off your personal mobile',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'It made complete sense at the start: one phone, one number, no cost. Three years later that number is on a van, a hundred invoices, a Google listing and every customer’s contacts — and it rings at nine on a Sunday while you are with your family, because nobody outside knows it is also your personal phone.',
+    sections: [
+      {
+        heading: 'What it actually costs you',
+        bullets: [
+          { title: 'You are never off', body: 'There is no version of not answering that does not feel like losing work, so you answer, and the boundary never exists.' },
+          { title: 'You cannot delegate it', body: 'Handing the phone to somebody else means handing them your messages, your photos and your mother.' },
+          { title: 'It complicates selling or stopping', body: 'A business whose only contact route is the owner’s personal mobile is harder to hand over, and the number follows you afterwards for years.' },
+          { title: 'Everything is in one thread', body: 'Customer messages sit between family photos and there is no record of anything, which becomes a real problem the first time something is disputed.' },
+        ],
+      },
+      {
+        heading: 'Why people do not switch',
+        paras: ['Because the old number is everywhere and cannot be recalled. Changing it means updating a van, a website, listings you have forgotten the logins for, and accepting that customers from four years ago will ring a dead line. That risk is real, and it is why most people put up with the Sunday calls indefinitely.'],
+      },
+      {
+        heading: 'Forwarding solves the actual problem',
+        paras: ['You do not have to choose. Your existing number keeps working and keeps being the number on everything; calls to it are simply sent somewhere that answers on your behalf. Nothing on the van changes, no customer learns a new number, and the calls stop landing on your personal handset. The separation you wanted was never about the number — it was about what happens when it rings.'],
+      },
+      {
+        heading: 'Doing it in the right order',
+        paras: ['Set the new arrangement up and check it before forwarding anything. Ring your own number, confirm it answers the way you want and that a booking lands where it should, and only then turn forwarding on. Doing it the other way round means discovering a problem using real customers, which is an expensive way to test.'],
+      },
+    ],
+    faqs: [
+      { q: 'Do I have to change my business number?', a: 'No. Keep it and forward it — the number on your van, your invoices and your listings stays exactly as it is.' },
+      { q: 'Will customers have to learn a new number?', a: 'No, which is the point. Forwarding changes what happens when your number rings, not the number itself.' },
+      { q: 'Why not just stop answering after hours?', a: 'Because with one number there is no version of not answering that does not feel like losing work — so you answer, and the boundary never exists.' },
+      { q: 'What order should I do this in?', a: 'Set it up, ring your own number to check it answers properly and that a booking lands where it should, and only then turn forwarding on.' },
+    ],
+    related: [
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'How forwarding works.' },
+      { href: '/learn/ai-receptionist-after-hours', label: 'After-hours calls', sub: 'Getting your evenings back.' },
+      { href: '/learn/ai-receptionist-for-a-one-person-business', label: 'One-person businesses', sub: 'The same trap.' },
+    ],
+    ctaHeading: 'Keep the number. Lose the Sunday calls.',
+    ctaSub: 'Forward your existing line and nothing on your van changes. Seven days free.',
+  },
+  {
+    slug: 'seasonal-businesses-and-quiet-months',
+    category: 'Guide',
+    shortTitle: 'Seasonal businesses',
+    metaTitle: 'Seasonal Businesses: the Phone in Peak and Quiet Months — Open Lines',
+    metaDescription: 'A business with a six-week peak has two different phone problems, and the quiet-month one is the expensive one. How to handle both without staffing for the peak all year.',
+    h1: 'The phone in a seasonal business',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'If most of your year happens in a few weeks — a wedding season, a Christmas run, a summer of garden work — you have two separate phone problems that pull in opposite directions, and staffing is only capable of solving one of them at a time.',
+    sections: [
+      {
+        heading: 'The peak problem',
+        paras: ['For six weeks the phone rings constantly, everybody is flat out, and calls go unanswered at precisely the moment each one is worth the most. You cannot hire for it — nobody competent wants six weeks, and by the time they are useful the season is over. So the peak is absorbed, and the cost is invisible because you were busy the whole time and it felt like things went well.'],
+      },
+      {
+        heading: 'The quiet problem, which is worse',
+        paras: ['In the off-season the phone barely rings, so nobody is watching it — and every call that does arrive is disproportionately valuable, because it is somebody booking ahead or asking about next season. Those are the highest-intent calls of your year, and they land in the months when your attention is somewhere else entirely. The peak costs you volume; the quiet months cost you the bookings you most wanted.'],
+      },
+      {
+        heading: 'What handles both',
+        bullets: [
+          { title: 'Capacity that does not need planning', body: 'Twenty calls in an hour is the same as two. Nothing needs arranging before a busy week because nothing is being scheduled.' },
+          { title: 'Attention in months when yours is elsewhere', body: 'The January enquiry gets the same treatment as the June one, which is not true of any human arrangement including your own.' },
+          { title: 'Taking next-season bookings early', body: 'People who ring months ahead are your best customers. They should be able to book, not be told to try again nearer the time.' },
+          { title: 'A record of what the off-season asked for', body: 'Quiet-month enquiries tell you what next season looks like while there is still time to prepare for it.' },
+        ],
+      },
+      {
+        heading: 'Setting expectations honestly in the off-season',
+        paras: ['If you genuinely do not work in February, say so on the call and offer the first date you do. Callers are fine with a business having a season; they are not fine with being told someone will ring back and then not being rung back, which is what usually happens when a quiet-month call reaches a phone nobody is watching.'],
+      },
+    ],
+    faqs: [
+      { q: 'How should a seasonal business handle its phone?', a: 'Two problems, not one: the peak, where calls go unanswered when they are worth the most, and the quiet months, where the few calls that arrive are the highest-intent of your year.' },
+      { q: 'Why can I not just hire for the peak?', a: 'Nobody competent wants six weeks, and by the time they are useful the season is over. The peak gets absorbed, and the cost is invisible because you were busy throughout.' },
+      { q: 'Why do the quiet months matter more?', a: 'Because off-season callers are usually booking ahead for next season — your best enquiries, arriving in the months your attention is elsewhere.' },
+      { q: 'What should I say if I am not working that month?', a: 'Say so plainly and offer your first available date. Callers accept a season; they do not accept being promised a callback that never comes.' },
+    ],
+    related: [
+      { href: '/learn/handling-busy-periods-and-call-spikes', label: 'Call spikes', sub: 'The peak, in detail.' },
+      { href: '/learn/covering-the-phone-during-staff-holidays', label: 'Cover gaps', sub: 'Weeks nobody is watching.' },
+      { href: '/learn/ai-receptionist-after-hours', label: 'After hours', sub: 'The other quiet time.' },
+    ],
+    ctaHeading: 'Peak weeks and quiet months, same arrangement.',
+    ctaSub: 'Nothing to staff up for, nothing to watch in January. Seven days free.',
+  },
+  {
+    slug: 'should-you-still-answer-the-phone',
+    category: 'Guide',
+    shortTitle: 'Do you need a phone?',
+    metaTitle: 'Does Your Business Still Need to Answer the Phone? — Open Lines',
+    metaDescription: 'Some businesses genuinely should move to online booking and stop taking calls. An honest look at which ones, and who is still losing real money to an unanswered phone.',
+    h1: 'Does your business still need to answer the phone?',
+    published: '2026-09-16',
+    updated: '2026-09-16',
+    intro: 'This is a fair question and the answer is not automatically yes. Plenty of businesses have moved almost entirely to online booking and are better for it. It is worth working out honestly which kind you are before spending anything on your phone, including with us.',
+    sections: [
+      {
+        heading: 'Where the phone is genuinely fading',
+        bullets: [
+          { title: 'Simple, standardised services', body: 'One service, one price, one duration. There is nothing to discuss, and a booking page does it better than a conversation.' },
+          { title: 'Younger customer bases', body: 'If your customers are overwhelmingly under thirty, many actively prefer not to ring and will book at eleven at night instead.' },
+          { title: 'Businesses with genuine spare capacity', body: 'If people can always get a slot, there is no negotiation to have.' },
+        ],
+      },
+      {
+        heading: 'Where it stubbornly is not',
+        bullets: [
+          { title: 'Anything urgent', body: 'A leak, a breakdown, a pet that is unwell. Nobody fills in a form; they ring, and they ring until somebody answers.' },
+          { title: 'Anything expensive or uncertain', body: 'People do not commit hundreds of pounds through a booking widget. They want to speak to somebody first, and that call is the sale.' },
+          { title: 'Anything that needs describing', body: 'If the customer cannot categorise their own problem, they cannot fill in your form either.' },
+          { title: 'Older customers, and most of the trades', body: 'Large parts of the economy still ring first, and they are frequently the parts with the money.' },
+        ],
+      },
+      {
+        heading: 'The test',
+        paras: ['Look at your last twenty bookings and ask how many began with a call. If it is two, your phone is a legacy channel and you should invest in your booking page instead. If it is fifteen, your phone is your main sales channel and it is worth knowing what happens on it when you are busy, closed, or away.'],
+      },
+      {
+        heading: 'The uncomfortable middle',
+        paras: ['Most businesses are somewhere around half, and the mistake is treating that as evidence the phone is dying. It is usually evidence that the easy bookings have moved online and the difficult, valuable, high-intent ones have stayed on the phone — which makes each remaining call worth more than it used to be, not less. Falling call volume and falling call value are not the same trend, and they are routinely confused.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is the phone still important for small businesses?', a: 'It depends on what you sell. Simple, standardised, cheap services move online well. Urgent, expensive or hard-to-describe work stays on the phone.' },
+      { q: 'How do I tell which I am?', a: 'Look at your last twenty bookings and count how many started with a call. Two means your phone is legacy; fifteen means it is your main sales channel.' },
+      { q: 'My call volume is falling — does that settle it?', a: 'No, and this is the common mistake. Usually the easy bookings have moved online and the valuable, high-intent ones have stayed on the phone, so each remaining call is worth more, not less.' },
+      { q: 'When should I not buy something like this?', a: 'If almost nobody rings you, or you are booked solid and turning work away. Your constraint is not the phone.' },
+    ],
+    related: [
+      { href: '/learn/is-an-ai-receptionist-worth-it', label: 'Is it worth it?', sub: 'The arithmetic.' },
+      { href: '/learn/cost-per-booked-appointment', label: 'Cost per booking', sub: 'Including when it says no.' },
+      { href: '/learn/stop-losing-callers-to-the-next-business', label: 'If they do ring', sub: 'What they are deciding.' },
+    ],
+    ctaHeading: 'Count your last twenty bookings first.',
+    ctaSub: 'If most began with a call, seven days free will tell you the rest.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
