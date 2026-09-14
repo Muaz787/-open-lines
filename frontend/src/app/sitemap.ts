@@ -16,6 +16,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/how-it-works', changeFrequency: 'monthly', priority: 0.8 },
     // High intent: someone reading a comparison is choosing, not browsing.
     { path: '/compare',      changeFrequency: 'monthly', priority: 0.9 },
+    // A capability almost nobody in this market can answer for.
+    { path: '/multi-location', changeFrequency: 'monthly', priority: 0.9 },
     { path: '/industries',   changeFrequency: 'monthly', priority: 0.8 },
     // Vertical landing pages
     { path: '/salons',       changeFrequency: 'monthly', priority: 0.8 },
