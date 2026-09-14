@@ -1397,11 +1397,11 @@ export const ARTICLES: LearnArticle[] = [
     h1: 'AI receptionist for UK businesses',
     published: '2026-09-14',
     updated: '2026-09-14',
-    intro: 'A UK number is straightforward to obtain, which is not true everywhere — Ireland, next door, requires a verified business identity before one is issued at all. What UK businesses do need to think about is which kind of number they want and what happens to the recordings afterwards.',
+    intro: 'A UK number is reasonably straightforward to obtain — an address on file rather than the verified business identity Ireland next door requires before a line exists at all. What UK businesses do need to think about is which kind of number they want and what happens to the recordings afterwards.',
     sections: [
       {
-        heading: 'No verification step, unlike Ireland',
-        paras: ['UK numbering is not gated behind a business-identity filing. You can have a number and be answering calls the same day, where an Irish business waits on a regulator before their line exists. If you operate on both sides of the Irish Sea, plan for that difference — the Irish line takes longer to stand up and the UK one does not.'],
+        heading: 'An address requirement, not an identity review',
+        paras: ['UK numbers carry a lighter requirement than Irish ones, but not a non-existent one: the carrier asks for a registered business address on file before a local number is issued. That is an address record rather than the identity review an Irish line waits on, and in practice it is a form rather than a queue. If you operate on both sides of the Irish Sea, still plan for the Irish line to take meaningfully longer to stand up than the UK one, and start it first.'],
       },
       {
         heading: 'Which kind of number to ask for',
@@ -1425,7 +1425,7 @@ export const ARTICLES: LearnArticle[] = [
       },
     ],
     faqs: [
-      { q: 'Do UK numbers need business verification?', a: 'No. Unlike Ireland, a UK number does not require a business-identity filing before it is issued, so you can be answering calls the same day.' },
+      { q: 'Do UK numbers need business verification?', a: 'Not the identity review Ireland requires, but a registered business address is asked for before a local number is issued. Treat it as a form to complete rather than a wait, and assume it is not quite as instant as a Canadian or US number.' },
       { q: 'Can I keep my existing UK number?', a: 'Yes. Forward it to the number you are issued and callers carry on dialling what they already know.' },
       { q: 'Is call recording legal in the UK?', a: 'Generally yes with appropriate notice, but the recording is personal data under UK GDPR, so you also need a lawful basis, a retention period and a way to handle access and deletion requests.' },
       { q: 'Should I get an 01, 02 or 03 number?', a: 'Geographic 01 and 02 numbers still read as local and trusted. An 03 costs callers the same as a landline and suits a national business. A mobile is fine for a sole trader.' },
