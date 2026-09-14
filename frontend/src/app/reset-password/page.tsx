@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import PasswordField from '@/components/PasswordField'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -137,26 +138,21 @@ export default function ResetPasswordPage() {
             <form onSubmit={handleSubmit}>
               <div className="form-group">
                 <label className="form-label">New password</label>
-                <input
-                  className="form-input"
-                  type="password"
+                <PasswordField
                   value={newPw}
-                  onChange={e => setNewPw(e.target.value)}
+                  onChange={setNewPw}
                   placeholder="Min. 8 characters"
-                  required
-                  autoFocus
+                  autoComplete="new-password"
                 />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Confirm new password</label>
-                <input
-                  className="form-input"
-                  type="password"
+                <PasswordField
                   value={confirmPw}
-                  onChange={e => setConfirmPw(e.target.value)}
+                  onChange={setConfirmPw}
                   placeholder="Repeat new password"
-                  required
+                  autoComplete="new-password"
                 />
               </div>
 

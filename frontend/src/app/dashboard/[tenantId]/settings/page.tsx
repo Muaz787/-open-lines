@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import PasswordField from '@/components/PasswordField'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -311,8 +312,8 @@ function SettingsPage() {
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com" className="db-input" autoComplete="email" />
                 <label className="db-field-label" style={{ fontSize: 12, marginTop: 12 }}>Current password</label>
-                <input type="password" value={emailPw} onChange={e => setEmailPw(e.target.value)}
-                  placeholder="Confirm it's you" className="db-input" autoComplete="current-password" />
+                <PasswordField value={emailPw} onChange={setEmailPw} className="db-input"
+                  placeholder="Confirm it's you" autoComplete="current-password" />
               </div>
               <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button className="db-btn db-btn--accent-ghost" onClick={saveEmail}
@@ -363,19 +364,19 @@ function SettingsPage() {
               <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--db-border-lt)', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
                   <label className="db-field-label" style={{ marginBottom: 6 }}>Current password</label>
-                  <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)}
-                    placeholder="Your current password" className="db-input" />
+                  <PasswordField value={currentPw} onChange={setCurrentPw} className="db-input"
+                    placeholder="Your current password" autoComplete="current-password" />
                 </div>
                 <div style={{ height: 1, background: 'var(--db-border-lt)' }} />
                 <div>
                   <label className="db-field-label" style={{ marginBottom: 6 }}>New password</label>
-                  <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
-                    placeholder="Min. 8 characters" className="db-input" />
+                  <PasswordField value={newPw} onChange={setNewPw} className="db-input"
+                    placeholder="Min. 8 characters" autoComplete="new-password" minLength={8} />
                 </div>
                 <div>
                   <label className="db-field-label" style={{ marginBottom: 6 }}>Confirm new password</label>
-                  <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
-                    placeholder="Repeat new password" className="db-input" />
+                  <PasswordField value={confirmPw} onChange={setConfirmPw} className="db-input"
+                    placeholder="Repeat new password" autoComplete="new-password" />
                 </div>
               </div>
               <div style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>

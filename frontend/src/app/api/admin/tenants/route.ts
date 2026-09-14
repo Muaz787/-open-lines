@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     .select(`
       id, business_name, email, owner_name, industry,
       subscription_plan, subscription_status, billing_exempt, twilio_phone_number,
-      google_refresh_token, kb_files, is_active, created_at,
+      google_refresh_token, microsoft_refresh_token, square_access_token,
+      kb_files, is_active, created_at,
       calls(count),
       kb_entries(count)
     `, { count: 'exact' })
@@ -51,7 +52,13 @@ export async function GET(req: NextRequest) {
       subscription_status: t.subscription_status,
       billing_exempt: Boolean(t.billing_exempt),
       twilio_phone_number: t.twilio_phone_number,
-      has_calendar: Boolean(t.google_refresh_token),
+      // Any provider the receptionist can actually book through — the same
+      // three the backend's setup-state reads. Google alone reported DANI as
+      // having no calendar while Square was connected and booking, and the
+      // Calendar: yes/no filter inherited the same blind spot.
+      has_calendar: Boolean(t.google_refresh_token)
+        || Boolean(t.microsoft_refresh_token)
+        || Boolean(t.square_access_token),
       has_kb: kbCount > 0 || kbFiles.length > 0,
       is_active: t.is_active,
       created_at: t.created_at,

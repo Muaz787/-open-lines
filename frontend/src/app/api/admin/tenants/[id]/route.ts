@@ -82,6 +82,13 @@ export async function POST(
   return Response.json(data)
 }
 
+/** A tenant can book if ANY provider is connected. One definition, used by
+ *  the health issues list and the detail field alike. */
+function hasCalendar(t: Record<string, unknown>): boolean {
+  return Boolean(t.google_refresh_token) || Boolean(t.microsoft_refresh_token)
+    || Boolean(t.square_access_token)
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -98,7 +105,8 @@ export async function GET(
       subscription_plan, subscription_status, stripe_customer_id, stripe_subscription_id,
       billing_exempt,
       twilio_phone_number, vapi_assistant_id, is_active, created_at,
-      google_refresh_token, appointment_duration_minutes, calendar_timezone,
+      google_refresh_token, microsoft_refresh_token, square_access_token,
+      appointment_duration_minutes, calendar_timezone,
       kb_files, website_url, extra_instructions,
       minutes_used_this_period, overage_minutes_reported, billing_period_anchor,
       business_hours_start, business_hours_end, business_days, break_start, break_end,
@@ -128,7 +136,10 @@ export async function GET(
   const issues: string[] = []
   if (!t.twilio_phone_number) issues.push('No dedicated phone number assigned')
   if (!t.vapi_assistant_id) issues.push('No Vapi assistant configured')
-  if (!t.google_refresh_token) issues.push('Google Calendar not connected')
+  // Any bookable provider, not just Google — the receptionist books through
+  // Outlook and Square too, and flagging those tenants as broken sent an
+  // operator looking for a fault that was not there.
+  if (!hasCalendar(t)) issues.push('No booking calendar connected')
   const kbCount = (kbRes.data ?? []).length
   const kbFiles = (t.kb_files as unknown[]) ?? []
   if (kbCount === 0 && kbFiles.length === 0) issues.push('No knowledge base content uploaded')
@@ -160,7 +171,7 @@ export async function GET(
       vapi_assistant_id: t.vapi_assistant_id,
       is_active: t.is_active,
       created_at: t.created_at,
-      has_calendar: Boolean(t.google_refresh_token),
+      has_calendar: hasCalendar(t),
       calendar_timezone: t.calendar_timezone,
       appointment_duration_minutes: t.appointment_duration_minutes,
       website_url: t.website_url,

@@ -2378,7 +2378,10 @@ footer {
 
 /* ── Password visibility toggle ────────────────────────────────────────── */
 .pw-wrap { position: relative; display: block; }
-.pw-wrap .form-input { padding-right: 44px; width: 100%; }
+.pw-wrap .form-input,
+.pw-wrap .db-input { padding-right: 44px; width: 100%; }
+/* Both input skins: the same field appears on the auth pages (form-input)
+   and inside the dashboard (db-input), and the toggle sits over each. */
 .pw-toggle {
   position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
   display: grid; place-items: center; width: 34px; height: 34px;
