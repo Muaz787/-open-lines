@@ -1633,6 +1633,389 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Set it up so you still read the alerts.',
     ctaSub: 'Email for the record, text for the urgent. Seven days free, cancel anytime.',
   },
+  {
+    slug: 'booking-with-a-specific-team-member',
+    category: 'Feature guide',
+    shortTitle: 'Booking a named person',
+    metaTitle: 'Can a Caller Book With a Specific Person? — Open Lines',
+    metaDescription: 'Why "I want Sarah" is the request that breaks most booking systems, how per-staff availability works, and what should happen when the person they asked for is fully booked.',
+    h1: 'Can a caller book with a specific person?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'In any business where customers have a favourite — a stylist, a barber, a therapist, a mechanic they trust — "can I have Sarah?" is one of the most common things said on the phone. It is also the request that quietly breaks booking systems, because a slot being free is not the same as Sarah being free.',
+    sections: [
+      {
+        heading: 'Why business availability is the wrong answer',
+        paras: ['A calendar with three staff and one open chair at two o’clock is available — but not if the caller wants the person who is already busy. Offering that slot produces a booking somebody has to ring back and undo, which costs more goodwill than saying no would have. The availability that matters is the named person’s, not the business’s.'],
+      },
+      {
+        heading: 'How a named booking should work',
+        bullets: [
+          { title: 'Your team list comes across', body: 'When you connect Square Appointments, the team members come with it, so the assistant knows Sarah is a real person rather than a word in the sentence.' },
+          { title: 'It checks that person', body: 'Availability is read for the individual, so the times offered are ones they can actually take.' },
+          { title: 'It handles the service too', body: 'Not everyone does everything. If a treatment is only offered by two of your four staff, asking for a third should not produce a booking.' },
+          { title: 'And the right branch', body: 'A named person works somewhere. Across several sites, availability has to mean that person at that location.' },
+        ],
+      },
+      {
+        heading: 'What to do when they are fully booked',
+        paras: ['This is the interesting part, and it is a business decision rather than a technical one. Some businesses want the caller offered the next availability with that person even if it is a fortnight away, because the relationship is the product. Others would rather offer somebody else this week. Both are defensible and the assistant should do whichever you chose — the failure is doing neither and simply saying no.'],
+      },
+      {
+        heading: 'The request behind the request',
+        paras: ['A caller asking for a name is usually asking for continuity — somebody who knows their hair, their car, their history. Where that person has genuinely gone, being told plainly beats being quietly booked with a stranger and finding out on arrival.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can a caller ask for a specific stylist or therapist by name?', a: 'Yes, where your booking system holds per-person availability. On Square Appointments your team members come across when you connect, so the assistant checks that individual rather than the business.' },
+      { q: 'What if that person is fully booked?', a: 'That is your call to make in advance: offer their next availability, or offer a colleague sooner. The assistant should do what you decided rather than simply refusing.' },
+      { q: 'Does it know who does which service?', a: 'Where your system records it, yes. A treatment only two of your staff offer should not be bookable with the other two.' },
+      { q: 'Can I do this on a shared Google Calendar?', a: 'Not by name. A single shared calendar tells the assistant the business is free, not which of your staff is — per-person availability comes from Square Appointments.' },
+    ],
+    related: [
+      { href: '/integrations/square-appointments', label: 'The Square integration', sub: 'Services, staff and branches.' },
+      { href: '/learn/ai-receptionist-book-appointments', label: 'How AI booking works', sub: 'Live availability, real bookings.' },
+      { href: '/multi-location', label: 'Several branches?', sub: 'The right person at the right site.' },
+    ],
+    ctaHeading: 'Let callers ask for who they always ask for.',
+    ctaSub: 'Per-person availability, booked into your Square calendar. Seven days free.',
+  },
+  {
+    slug: 'uploading-documents-your-ai-can-answer-from',
+    category: 'Feature guide',
+    shortTitle: 'Uploading documents',
+    metaTitle: 'Teaching an AI Receptionist From Your Own Documents — Open Lines',
+    metaDescription: 'What to upload, what not to, why a photographed price list works, and the one-page document that fixes most unanswered questions in twenty minutes.',
+    h1: 'Uploading documents your AI can answer from',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Your website is marketing. Your answers are somewhere else — in a price list, a policy, an email you have sent forty times. Getting those in front of the assistant is the cheapest improvement available, and it takes about twenty minutes.',
+    sections: [
+      {
+        heading: 'What is worth uploading',
+        bullets: [
+          { title: 'Your real price list', body: 'Including the caveats. "From £120, more for long hair" is the answer people actually want and the one websites rarely give.' },
+          { title: 'Policies you repeat', body: 'Cancellations, deposits, lateness, what to bring. These generate more calls than anything else and have fixed answers.' },
+          { title: 'Aftercare and preparation notes', body: 'What to do before an appointment and after one. Callers ask, and the answer never changes.' },
+          { title: 'The email you always send', body: 'If your team has a stock reply to a common question, that is already the document. Upload it as it is.' },
+        ],
+      },
+      {
+        heading: 'A photograph is fine',
+        paras: ['A scanned or photographed price list is read the same way a typed one is, which matters because the businesses with the best answers on paper are usually the ones least likely to have them in a document. A clear photo of the board on the wall beats retyping it, and beats not doing it at all.'],
+      },
+      {
+        heading: 'What not to upload',
+        bullets: [
+          { title: 'Anything with customer details in it', body: 'A spreadsheet of past bookings is not reference material, and putting it where an assistant can read from it is asking for an answer nobody should hear.' },
+          { title: 'Contracts and staff documents', body: 'Nothing a caller could ever need is in there.' },
+          { title: 'Anything out of date', body: 'An old price list will be quoted confidently. Delete it rather than leaving it alongside the new one.' },
+        ],
+      },
+      {
+        heading: 'The twenty-minute version',
+        paras: ['If you do nothing else: open a blank document, write the ten questions your team answers most, answer them the way you would on the phone, and upload it. It will outperform a rewritten website, because it is written in the register callers ask in rather than the register websites are written in.'],
+      },
+    ],
+    faqs: [
+      { q: 'Does a photo of my price list work?', a: 'Yes. Scanned and photographed pages are read the same way typed files are, which matters because the best answers are usually the ones that only exist on paper.' },
+      { q: 'What should I upload first?', a: 'Your real price list with its caveats, and your cancellation and deposit policies. Those account for most repeated questions.' },
+      { q: 'Should I upload customer records?', a: 'No. Reference material only. Anything containing customer details does not belong somewhere an assistant can read from it aloud.' },
+      { q: 'What if a document goes out of date?', a: 'Remove it rather than leaving it next to the new one. An old price list will be quoted with complete confidence.' },
+      { q: 'Is a document better than updating my website?', a: 'Usually, and faster. Write the answers the way you would say them on the phone — websites are written in a different register from the one callers ask in.' },
+    ],
+    related: [
+      { href: '/learn/how-an-ai-receptionist-learns-your-business', label: 'How it learns your business', sub: 'Website, documents and gaps.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'What if it does not know?', sub: 'Why guessing is worse.' },
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Finding the gaps', sub: 'From your own calls.' },
+    ],
+    ctaHeading: 'Twenty minutes, ten answers.',
+    ctaSub: 'Upload what your website does not say and hear the difference the same week. Seven days free.',
+  },
+  {
+    slug: 'call-transcripts-and-what-they-show',
+    category: 'Feature guide',
+    shortTitle: 'Reading transcripts',
+    metaTitle: 'Call Transcripts: When to Read One and What to Look For — Open Lines',
+    metaDescription: 'Summaries are for most days. A transcript is for the handful of calls that went wrong — what to look for in one, and the three you should read in your first fortnight.',
+    h1: 'When should you read a call transcript?',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Almost never, and that is the point. A summary answers what happened. A transcript answers why it happened that way, which you only need when the summary has surprised you — but on those calls it is the difference between a theory and an explanation.',
+    sections: [
+      {
+        heading: 'The three worth reading in your first fortnight',
+        bullets: [
+          { title: 'The first booking it made alone', body: 'Not to check it worked — to hear how the assistant talks about your business when nobody is watching. This is the call that tells you whether the greeting and the tone are right.' },
+          { title: 'A call that ended without a booking', body: 'Where the caller wanted something and left without it. The moment it went wrong is usually visible and usually fixable.' },
+          { title: 'Any call somebody complained about', body: 'Before responding. A transcript turns "your robot was useless" into a specific sentence you can do something about.' },
+        ],
+      },
+      {
+        heading: 'The three patterns behind most bad calls',
+        paras: ['Where the caller repeated themselves, which means they were not understood the first time. Where the assistant gave a long answer to a short question. Where it hesitated on something your website should have said. Those three patterns account for most disappointing calls, and all three are fixed by adding knowledge rather than by changing settings.'],
+      },
+      {
+        heading: 'What a transcript is not for',
+        paras: ['Reading everything. A business doing thirty calls a week that reads thirty transcripts has replaced answering the phone with reading about answering the phone, which is worse. The summaries exist so you do not have to, and the transcript is there for the exception.'],
+      },
+      {
+        heading: 'Treat them as sensitive',
+        paras: ['A transcript contains whatever the caller volunteered, which is often more than they meant to. It is personal data, it has a retention period, and it should not be forwarded around casually — a summary usually conveys everything a colleague actually needs.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I read the full transcript of a call?', a: 'Yes, in the dashboard. Most weeks you will not need to — the summary carries what you need and the transcript is for the exceptions.' },
+      { q: 'Which calls are worth reading in full?', a: 'The first booking it made unaided, one that ended without a booking, and any call somebody complained about.' },
+      { q: 'What should I look for in a transcript?', a: 'Repetition, over-long answers, and hesitation on things your website should say. All three are fixed by adding knowledge rather than changing settings.' },
+      { q: 'Should transcripts be shared with the team?', a: 'Sparingly. They contain whatever the caller volunteered, and the summary usually tells a colleague everything they need.' },
+    ],
+    related: [
+      { href: '/learn/what-to-do-with-call-summaries', label: 'Using call summaries', sub: 'What to read most days.' },
+      { href: '/learn/ai-receptionist-call-data-privacy', label: 'What happens to call data', sub: 'Retention and deletion.' },
+      { href: '/learn/your-first-week-with-an-ai-receptionist', label: 'Your first week', sub: 'What to check, day by day.' },
+    ],
+    ctaHeading: 'See exactly what was said, when it matters.',
+    ctaSub: 'Summaries for every call, transcripts for the ones that need them. Seven days free.',
+  },
+  {
+    slug: 'keeping-your-ai-answers-current',
+    category: 'Feature guide',
+    shortTitle: 'Keeping answers current',
+    metaTitle: 'Keeping an AI Receptionist Up to Date — Open Lines',
+    metaDescription: 'Prices change and nobody tells the phone. What goes stale, why holiday hours are the classic failure, and how re-crawling keeps answers aligned without anyone remembering.',
+    h1: 'Keeping your AI receptionist up to date',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'The assistant knows what you told it in week one. Your business has moved on since — a price rose, a service stopped, you closed for two weeks in August. Nothing announces these changes to your phone, which is how a confident wrong answer ends up being given for months.',
+    sections: [
+      {
+        heading: 'What actually goes stale',
+        bullets: [
+          { title: 'Prices', body: 'The most quoted and the most changed. A rise announced on your website in March is still being undercut on the phone in June if nothing re-read it.' },
+          { title: 'Holiday and seasonal hours', body: 'The classic failure. Nobody updates the assistant for a bank holiday, and it books people in for a day you are shut.' },
+          { title: 'Services you stopped', body: 'Worse than a wrong price, because the customer arrives expecting something you no longer do.' },
+          { title: 'People who left', body: 'A caller asking for someone by name should not be offered their availability.' },
+        ],
+      },
+      {
+        heading: 'Why automatic beats remembering',
+        paras: ['Every business intends to keep this current and none reliably does, because the moment you change a price is the moment you are busy changing a price. Re-reading your website on a schedule removes the step that gets skipped: you edit the page you were already editing, and the phone catches up without a second task existing.'],
+      },
+      {
+        heading: 'What a schedule cannot catch',
+        paras: ['Anything that was never on your website. If your August closure lives only in a group chat, no amount of re-crawling will find it. Things that exist only in someone’s head need to be written down once — which is a good argument for keeping a short uploaded document alongside the site, and updating that when reality changes.'],
+      },
+      {
+        heading: 'A five-minute quarterly check',
+        paras: ['Ring your own number and ask three things: your most expensive service and its price, whether you do something you stopped doing, and your opening hours for next Monday. If all three are right, your knowledge is current. If any is wrong, you have found it before a customer did.'],
+      },
+    ],
+    faqs: [
+      { q: 'Does it update itself when I change my website?', a: 'Scheduled re-crawling keeps it aligned with your site without anyone remembering to trigger it, so editing the page is the only step.' },
+      { q: 'What about things not on my website?', a: 'Those need writing down once — a short uploaded document alongside the site, updated when reality changes. A crawl cannot find what was never published.' },
+      { q: 'What goes out of date fastest?', a: 'Prices and holiday hours. Both get changed quietly, and both produce a confident wrong answer for months if nothing re-reads them.' },
+      { q: 'How do I check it is current?', a: 'Ring your own number quarterly and ask three things: a price, something you stopped doing, and next Monday’s hours. Five minutes, and you find errors before a customer does.' },
+    ],
+    related: [
+      { href: '/learn/uploading-documents-your-ai-can-answer-from', label: 'Uploading documents', sub: 'For what your site does not say.' },
+      { href: '/learn/how-an-ai-receptionist-learns-your-business', label: 'How it learns', sub: 'Where the answers come from.' },
+      { href: '/learn/when-ai-does-not-know-the-answer', label: 'What if it does not know?', sub: 'Why guessing is worse.' },
+    ],
+    ctaHeading: 'Change the page, not the phone.',
+    ctaSub: 'Scheduled re-crawling keeps answers aligned with your site. Seven days free.',
+  },
+  {
+    slug: 'answering-calls-while-driving-between-jobs',
+    category: 'Common problem',
+    shortTitle: 'Calls while on the road',
+    metaTitle: 'Missing Calls While Driving Between Jobs — Open Lines',
+    metaDescription: 'Trades and mobile businesses lose work to the van, the ladder and the customer’s kitchen. Why voicemail does not fix it and what answering every call actually changes.',
+    h1: 'Missing calls while driving between jobs',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'If your work happens in other people’s homes, your phone rings at the worst possible moments: mid-job, up a ladder, hands in a boiler, or doing seventy on a motorway. The call you cannot take is rarely a small one — it is usually somebody who found three numbers and is working down the list.',
+    sections: [
+      {
+        heading: 'Why this is worse than it looks',
+        paras: ['A missed call in a shop is a customer who might come back. A missed call in the trades is a customer who has already rung the next name on the search results before you have parked. The work does not wait for you to be free, and the people who ring at nine in the morning have usually decided by half past.'],
+      },
+      {
+        heading: 'Why voicemail does not rescue it',
+        paras: ['Most people will not leave one. Those who do leave a name and half a number, and you ring back at seven in the evening when they are making dinner and have already booked someone. Voicemail records that you lost the job; it does not stop you losing it.'],
+      },
+      {
+        heading: 'What answering actually changes',
+        bullets: [
+          { title: 'You stop losing the easy ones', body: 'A good share of calls are simple — do you cover this area, do you do this kind of work, roughly what does it cost. Those are answerable without you.' },
+          { title: 'Details arrive intact', body: 'Address, the nature of the problem, when they are in. Written down, in a summary, instead of half-remembered from a hands-free call in traffic.' },
+          { title: 'Your evenings stop being admin', body: 'Returning six calls after dinner is unpaid work you do while tired. Most of them did not need you.' },
+          { title: 'Urgency gets separated from noise', body: 'A leak and a quote request should not reach you the same way. Knowing which is which as it happens is the difference between reacting and catching up.' },
+        ],
+      },
+      {
+        heading: 'The calls that still need you',
+        paras: ['Quoting a job you have not seen, judging whether something is an emergency, agreeing a price that depends on what is behind the wall. Nobody should be doing those for you. The point is arriving at them with the address, the problem and the availability already captured, instead of starting from a missed-call notification.'],
+      },
+    ],
+    faqs: [
+      { q: 'I am on the road all day — can this actually help?', a: 'That is the case it fits best. Calls that arrive while you are driving or mid-job get answered, the details are captured, and you see them when you stop rather than chasing missed numbers at seven in the evening.' },
+      { q: 'Can it tell an emergency from a quote request?', a: 'It can capture what the caller describes and flag it, so the two do not reach you the same way. Judging whether something is a genuine emergency stays yours.' },
+      { q: 'Will it quote for a job?', a: 'It can give the prices you have set. Anything that depends on seeing the work should come to you — quoting blind is how trades lose money.' },
+      { q: 'Do I need a new number?', a: 'No. You can forward your existing number so customers keep ringing the one they already have.' },
+    ],
+    related: [
+      { href: '/learn/is-an-ai-receptionist-worth-it', label: 'What a missed call costs', sub: 'The arithmetic nobody does.' },
+      { href: '/learn/missed-call-text-back', label: 'Missed calls and text-backs', sub: 'Why voicemail rarely saves one.' },
+      { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'Forwarding, not porting.' },
+    ],
+    ctaHeading: 'The van is not a reception desk.',
+    ctaSub: 'Every call answered, every detail written down, waiting for you when you stop. Seven days free.',
+  },
+  {
+    slug: 'covering-the-phone-during-staff-holidays',
+    category: 'Common problem',
+    shortTitle: 'Holiday and sickness cover',
+    metaTitle: 'Covering the Phone During Staff Holidays and Sickness — Open Lines',
+    metaDescription: 'August, half-term and the winter flu week. Why temporary cover is the hardest kind to arrange, and what standing cover changes about how those weeks run.',
+    h1: 'Covering the phone when staff are away',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Every small business has weeks where the phone is nobody’s job. Somebody is on holiday, somebody else is off sick, and the person who normally answers is doing two roles. The phone is the first thing to slip, because it is the only task that interrupts every other one.',
+    sections: [
+      {
+        heading: 'Why cover is hard to arrange',
+        paras: ['Temporary help costs the most per hour and delivers the least, because whoever you bring in does not know your prices, your regulars or the answer to the question you get twenty times a week. Agencies want a minimum. Training somebody for two weeks costs more than the two weeks are worth. So in practice most businesses do not arrange cover at all — they absorb it, and the absorbing shows.'],
+      },
+      {
+        heading: 'What the absorbed version looks like',
+        bullets: [
+          { title: 'Calls ring out at the busy hours', body: 'Precisely when the remaining staff are dealing with people in front of them.' },
+          { title: 'Bookings get taken on paper', body: 'And entered later, or not, which produces the double-booking you discover on the day.' },
+          { title: 'The backlog outlives the absence', body: 'The week after a holiday is spent catching up on the week of it.' },
+        ],
+      },
+      {
+        heading: 'Standing cover instead of temporary cover',
+        paras: ['The alternative is not hiring for the gap but having something that is always there and simply matters more in those weeks. It knows your prices in August because it knew them in July. Bookings go into the same calendar whether your receptionist is at their desk or in Spain, so there is no re-entry and no backlog on their return.'],
+      },
+      {
+        heading: 'It also covers the smaller gaps',
+        paras: ['Holidays are the obvious case, but the everyday ones add up faster: lunch, the school run, a staff meeting, the twenty minutes where everyone is with a customer. Those are the same problem in smaller units, and they happen every week rather than twice a year.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I use this only for holiday weeks?', a: 'You can, but it works better as standing cover — it knows your prices in August because it knew them in July, and there is no setting-up scramble the week before someone leaves.' },
+      { q: 'Is it cheaper than temporary cover?', a: 'Almost always. Temporary help costs the most per hour and knows the least about your business, which is why most places absorb the gap instead of covering it.' },
+      { q: 'What happens to bookings taken while my receptionist is away?', a: 'They go into the same calendar they always do, so there is no paper pile to re-enter and no backlog waiting on their return.' },
+      { q: 'Does it help with lunch breaks and the school run?', a: 'Those are the same gap in smaller units, and they happen every week rather than twice a year.' },
+    ],
+    related: [
+      { href: '/learn/answering-service-cost', label: 'Versus an answering service', sub: 'Messages or bookings.' },
+      { href: '/learn/receptionist-salary-vs-ai-receptionist', label: 'Salary versus software', sub: 'What cover really costs.' },
+      { href: '/learn/ai-receptionist-after-hours', label: 'After-hours calls', sub: 'The other gap.' },
+    ],
+    ctaHeading: 'August should not cost you bookings.',
+    ctaSub: 'Cover that is already trained, because it was there in July. Seven days free.',
+  },
+  {
+    slug: 'receptionist-salary-vs-ai-receptionist',
+    category: 'Cost',
+    shortTitle: 'Salary comparison',
+    metaTitle: 'Receptionist Salary vs an AI Receptionist: an Honest Comparison — Open Lines',
+    metaDescription: 'The real cost of a front-desk hire including employer costs and cover, what an AI receptionist costs instead, and the things a person does that no software replaces.',
+    h1: 'Receptionist salary vs an AI receptionist',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'This comparison is usually done dishonestly, in both directions. Software companies compare a salary to a subscription and declare victory; the people who have actually employed a receptionist know the roles are not the same. Here is the version worth reading before you decide.',
+    sections: [
+      {
+        heading: 'What a front-desk hire really costs',
+        paras: ['Not the salary. Employer contributions, holiday pay, sick pay, pension, recruitment, and the training weeks before they are useful. A part-time front desk lands well above the headline figure, and that is before the structural problem: you are buying a fixed number of hours, and your calls do not arrive in a flat line across them.'],
+      },
+      {
+        heading: 'What you are buying with each',
+        bullets: [
+          { title: 'A person covers about forty hours', body: 'And never the evening, the weekend or the fortnight they are away. Calls outside those hours are not covered at any price.' },
+          { title: 'Software covers all of them', body: 'Including the three-o’clock Sunday call, which is exactly where the missed bookings concentrate.' },
+          { title: 'A person handles ambiguity', body: 'The upset customer, the complicated exception, the thing that needs judgment. This is not a small category and it does not go away.' },
+          { title: 'Software handles repetition', body: 'Opening hours, prices, parking, availability, booking. Which is most of the volume and none of the interest.' },
+        ],
+      },
+      {
+        heading: 'The honest conclusion',
+        paras: ['If your phone is genuinely busy and your customers need real conversations, a receptionist is a good hire and software is a supplement. If your volume is thirty or fifty calls a week, mostly repetitive, spread across hours a person would not be there for, then a hire is an expensive way to answer questions a document could answer — and the comparison tilts hard the other way.'],
+      },
+      {
+        heading: 'The combination most places land on',
+        paras: ['Not replacement. The assistant takes the overflow, the after-hours and the repetition; the person does the front desk, the difficult calls and the customers standing in front of them. That arrangement is usually cheaper than a second hire and better than either alone.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is an AI receptionist cheaper than hiring someone?', a: 'Substantially, on cost per hour covered — but they are not the same product. A person handles judgment and upset customers; software handles repetition and the hours nobody is there.' },
+      { q: 'Should I replace my receptionist?', a: 'Usually not. Most businesses end up with both: the assistant takes overflow, after-hours and repeat questions, and the person does the front desk and the difficult calls.' },
+      { q: 'What does a receptionist actually cost?', a: 'Well above the salary once employer contributions, holiday and sick pay, pension, recruitment and the training weeks are counted — and you are buying fixed hours your calls do not arrive in.' },
+      { q: 'When is hiring clearly the right answer?', a: 'When the phone is genuinely busy with conversations that need judgment. Repetitive volume spread across evenings and weekends is the case where a hire is an expensive fit.' },
+    ],
+    related: [
+      { href: '/pricing', label: 'What it costs', sub: 'Plans and minutes.' },
+      { href: '/learn/covering-the-phone-during-staff-holidays', label: 'Holiday cover', sub: 'The hardest weeks.' },
+      { href: '/learn/answering-service-cost', label: 'Versus an answering service', sub: 'The third option.' },
+    ],
+    ctaHeading: 'Run the comparison on your own numbers.',
+    ctaSub: 'Seven days free, no commitment, and you will know within a week.',
+  },
+  {
+    slug: 'cost-per-booked-appointment',
+    category: 'Cost',
+    shortTitle: 'Cost per booking',
+    metaTitle: 'Cost Per Booked Appointment: the Number That Settles It — Open Lines',
+    metaDescription: 'Monthly cost is the wrong measure. How to work out what each recovered booking costs you, why the first one usually pays for the month, and when the answer is no.',
+    h1: 'The only number that settles it: cost per booking',
+    published: '2026-09-14',
+    updated: '2026-09-14',
+    intro: 'Arguments about whether software is worth it usually stall on the monthly price, which is the least informative number available. The figure that decides it is what each booking you would otherwise have lost ends up costing — and unlike most marketing arithmetic, you can work it out from things you already know.',
+    sections: [
+      {
+        heading: 'The calculation',
+        paras: ['Take your monthly cost. Divide it by the number of bookings that came in through calls you would not have answered — evenings, weekends, the hours you were with customers. That is your cost per recovered booking. Compare it against what a booking is worth to you, and the decision makes itself in one line.'],
+      },
+      {
+        heading: 'Why it usually looks decisive',
+        paras: ['For most appointment businesses, one recovered booking a month covers the subscription outright, because the average job is worth more than the plan. A salon at seventy pounds a head, a clinic at ninety, a trade at a couple of hundred — in each case the first recovered booking clears the cost and everything after it is margin. The arithmetic is unusual in being this blunt.'],
+      },
+      {
+        heading: 'Count the repeat value too, carefully',
+        paras: ['A new customer in most of these businesses is not worth one appointment; they are worth however many times they come back. That materially changes the figure — but it is also where cost-per-booking arguments become dishonest, so use your real repeat rate rather than the optimistic one, and be willing to reach the answer that says no.'],
+      },
+      {
+        heading: 'When the number says no',
+        bullets: [
+          { title: 'Very low call volume', body: 'A handful of calls a month means very little to recover, whatever the value of each one.' },
+          { title: 'Low-value, one-off jobs', body: 'If a booking is worth fifteen pounds and never repeats, the arithmetic is much tighter and may not clear.' },
+          { title: 'Calls that are never bookings', body: 'Businesses whose phone is mostly support or suppliers are solving a different problem than this one.' },
+        ],
+      },
+      {
+        heading: 'How to get the real figure',
+        paras: ['Run it for a week and look at what actually came in outside your open hours, then annualise. A week of your own calls beats any industry benchmark, and it is the difference between a decision and a guess.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I work out cost per booked appointment?', a: 'Divide your monthly cost by the bookings that came from calls you would otherwise have missed — evenings, weekends, and the hours you were busy. Compare that against what a booking is worth to you.' },
+      { q: 'How many recovered bookings does it take to break even?', a: 'For most appointment businesses, one a month. The average job is worth more than the plan, so the first recovered booking clears the cost.' },
+      { q: 'Should I count repeat custom?', a: 'Yes, but with your real repeat rate rather than an optimistic one. It changes the figure a lot, which is exactly why it is the number people inflate.' },
+      { q: 'When does the arithmetic not work?', a: 'Very low call volume, low-value jobs that never repeat, or a phone that is mostly suppliers and support rather than potential bookings.' },
+      { q: 'What is the fastest way to know?', a: 'Run it for a week and count what came in outside your open hours. Your own week beats any benchmark.' },
+    ],
+    related: [
+      { href: '/learn/stop-missing-calls-while-with-a-customer', label: 'Calls missed while busy', sub: 'Where the recovery comes from.' },
+      { href: '/pricing', label: 'What it costs', sub: 'Plans and minutes.' },
+      { href: '/learn/receptionist-salary-vs-ai-receptionist', label: 'Versus hiring', sub: 'The other comparison.' },
+    ],
+    ctaHeading: 'Work it out on a real week.',
+    ctaSub: 'Seven days free. Count what comes in after hours and decide from your own numbers.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
