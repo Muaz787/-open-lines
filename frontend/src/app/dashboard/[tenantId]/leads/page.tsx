@@ -8,7 +8,7 @@ import { urgBadgeClass, statusBadgeClass } from '../lib/badges'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
-import { authedFetch } from '@/lib/api'
+import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -31,17 +31,19 @@ type StatusFilter = 'all' | 'new' | 'contacted' | 'converted'
 function LeadsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
-  const [leads, setLeads]                 = useState<Lead[]>([])
-  const [loading, setLoading]             = useState(true)
+  const leadsUrl = `${API}/leads/${tenantId}?limit=200`
+  // A tab shown before paints its last data at once; loadLeads then refreshes it.
+  const [leads, setLeads]                 = useState<Lead[]>(() => peekJson<Lead[]>(leadsUrl) ?? [])
+  const [loading, setLoading]             = useState(() => peekJson(leadsUrl) === undefined)
   const [toast, setToast]                 = useState<string | null>(null)
   const [filter, setFilter]               = useState<StatusFilter>('all')
   const [expanded, setExpanded]           = useState<string | null>(null)
   const [updating, setUpdating]           = useState<string | null>(null)
 
   const loadLeads = useCallback(async () => {
-    const res = await authedFetch(`${API}/leads/${tenantId}?limit=200`)
+    const res = await authedFetch(leadsUrl)
     if (res.ok) setLeads(await res.json())
-  }, [tenantId])
+  }, [leadsUrl])
 
   useEffect(() => {
     const init = async () => {

@@ -8,7 +8,7 @@ import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
 import { TrialBanner, type TrialInfo } from './TrialBanner'
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
 
-import { authedFetch } from '@/lib/api'
+import { authedFetch, clearResponseCache } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 function mobileTitle(pathname: string, base: string): string {
@@ -46,15 +46,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [signedIn, setSignedIn] = useState<boolean | null>(null)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { setSignedIn(false); router.replace('/login'); return }
+    // getSession reads the stored session: no network round-trip, so the page
+    // under this layout starts fetching at once. It is enough for this gate,
+    // which only decides what to paint — the backend verifies the token on
+    // every request, and a rejected one sends the browser to /login.
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user
+      if (!user) { setSignedIn(false); router.replace('/login'); return }
       setSignedIn(true)
-      setUserEmail(data.user.email ?? '')
-      setUserName(data.user.user_metadata?.full_name ?? '')
+      setUserEmail(user.email ?? '')
+      setUserName(user.user_metadata?.full_name ?? '')
       // Idempotent re-identify keeps returning sessions tied to the person
-      identifyUser(data.user.id, {
-        email: data.user.email,
-        tenant_id: data.user.app_metadata?.tenant_id ?? data.user.user_metadata?.tenant_id,
+      identifyUser(user.id, {
+        email: user.email,
+        tenant_id: user.app_metadata?.tenant_id ?? user.user_metadata?.tenant_id,
       })
     })
   }, [router])
@@ -80,6 +85,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    // Cached tab data belongs to this user; the next one on this device starts empty
+    clearResponseCache()
     // Reset so the next user on this device gets a fresh analytics identity
     resetAnalytics()
     router.replace('/login')

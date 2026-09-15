@@ -8,7 +8,7 @@ import { urgBadgeClass, dispositionBadgeClass, dispositionLabel } from '../lib/b
 import { TranscriptLines } from '../components/TranscriptLines'
 import { LoadingState, EmptyState } from '../components/PageStates'
 
-import { authedFetch } from '@/lib/api'
+import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CallLead {
@@ -47,27 +47,34 @@ type Period = '7' | '30' | '0'
 export default function CallsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
-  const [calls, setCalls]             = useState<CallRow[]>([])
-  const [analytics, setAnalytics]     = useState<Analytics | null>(null)
-  const [loading, setLoading]         = useState(true)
   const [period, setPeriod]           = useState<Period>('30')
+  const callsUrl     = `${API}/calls/${tenantId}?days=${period}`
+  const analyticsUrl = `${API}/calls/${tenantId}/analytics?days=${period}`
+  // A tab shown before paints its last data at once; fetchData then refreshes it.
+  const [calls, setCalls]             = useState<CallRow[]>(() => peekJson<CallRow[]>(callsUrl) ?? [])
+  const [analytics, setAnalytics]     = useState<Analytics | null>(() => peekJson<Analytics>(analyticsUrl) ?? null)
+  const [loading, setLoading]         = useState(() => peekJson(callsUrl) === undefined)
   const [urgFilter, setUrgFilter]     = useState<UrgencyFilter>('all')
   const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [detailMap, setDetailMap]     = useState<Record<string, CallDetail>>({})
   const [detailLoading, setDetailLoading] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    setLoading(true)
+    // Switching to a period already seen shows its last data, not a spinner.
+    const cachedCalls = peekJson<CallRow[]>(callsUrl)
+    const cachedAnalytics = peekJson<Analytics>(analyticsUrl)
+    if (cachedCalls && cachedAnalytics) { setCalls(cachedCalls); setAnalytics(cachedAnalytics) }
+    else setLoading(true)
     try {
       const [callsRes, analyticsRes] = await Promise.all([
-        authedFetch(`${API}/calls/${tenantId}?days=${period}`),
-        authedFetch(`${API}/calls/${tenantId}/analytics?days=${period}`),
+        authedFetch(callsUrl),
+        authedFetch(analyticsUrl),
       ])
       if (callsRes.ok) setCalls(await callsRes.json())
       if (analyticsRes.ok) setAnalytics(await analyticsRes.json())
     } catch {}
     finally { setLoading(false) }
-  }, [tenantId, period])
+  }, [callsUrl, analyticsUrl])
 
   useEffect(() => { fetchData() }, [fetchData])
 

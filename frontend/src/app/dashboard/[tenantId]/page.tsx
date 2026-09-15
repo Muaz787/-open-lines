@@ -13,7 +13,7 @@ import { TranscriptLines } from './components/TranscriptLines'
 import { Toast } from './components/Toast'
 import { LoadingState, EmptyState } from './components/PageStates'
 
-import { authedFetch } from '@/lib/api'
+import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -126,9 +126,13 @@ function DashboardPage() {
   const searchParams  = useSearchParams()
   const router        = useRouter()
 
-  const [tenant, setTenant]           = useState<Tenant | null>(null)
-  const [leads, setLeads]             = useState<Lead[]>([])
-  const [loading, setLoading]         = useState(true)
+  // A tab shown before paints its last data at once; the fetches below refresh it.
+  // Tenant, leads and appointments are usually already cached by the layout.
+  const statusUrl = `${API}/onboarding/status/${tenantId}`
+  const leadsUrl  = `${API}/leads/${tenantId}`
+  const [tenant, setTenant]           = useState<Tenant | null>(() => peekJson<Tenant>(statusUrl) ?? null)
+  const [leads, setLeads]             = useState<Lead[]>(() => peekJson<Lead[]>(leadsUrl) ?? [])
+  const [loading, setLoading]         = useState(() => peekJson(statusUrl) === undefined || peekJson(leadsUrl) === undefined)
   const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [detailMap, setDetailMap]     = useState<Record<string, LeadDetail>>({})
   const [statusMap, setStatusMap]     = useState<Record<string, string>>({})
@@ -136,12 +140,13 @@ function DashboardPage() {
   const [copied, setCopied]           = useState(false)
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
 
-  const [stats, setStats] = useState<Stats | null>(null)
+  // '7d' is the initial period below.
+  const [stats, setStats] = useState<Stats | null>(() => peekJson<Stats>(`${API}/leads/${tenantId}/stats?period=7d`) ?? null)
 
   const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
-  const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(null)
-  const [appointments, setAppointments]     = useState<Appointment[]>([])
+  const [calStatus, setCalStatus]           = useState<CalendarStatus | null>(() => peekJson<CalendarStatus>(`${API}/calendar/status/${tenantId}`) ?? null)
+  const [appointments, setAppointments]     = useState<Appointment[]>(() => peekJson<Appointment[]>(`${API}/calendar/appointments/${tenantId}`) ?? [])
   const [calToast, setCalToast]             = useState<string | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
