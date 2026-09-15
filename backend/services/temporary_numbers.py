@@ -36,6 +36,7 @@ from services import phone_registry
 from services import regulatory_state as st
 from services import telephony
 from services import tenant_subaccount
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -259,8 +260,8 @@ async def preflight(tenant_id: str, *,
             "status": NOT_ELIGIBLE, "reason": "provider_review_not_verified",
             "detail": str(verified_provider_status or "")}}
 
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     if not rows:
         return {"ok": False, "refusal": {"status": NOT_FOUND}}
     tenant = rows[0]

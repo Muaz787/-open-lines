@@ -14,6 +14,7 @@ from services import ireland_pilot
 from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -991,9 +992,9 @@ async def decline_setup_step(
     try:
         # Compare-and-set on NULL: the first answer is the one kept, and a double
         # click is inert rather than a second write.
-        (db.get_client().table("tenants")
+        (await run_query(db.get_client().table("tenants")
          .update({column: _dt.now(_tz.utc).isoformat()})
-         .eq("id", tenant_id).is_(column, "null").execute())
+         .eq("id", tenant_id).is_(column, "null")))
     except Exception as e:
         logger.error("decline-step: could not record %s for tenant %s: %s",
                      step, tenant_id, type(e).__name__)

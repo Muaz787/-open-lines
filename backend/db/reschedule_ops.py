@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def is_unique_violation(e: Exception) -> bool:
 async def insert_operation(row: dict) -> dict | None:
     """Persist the frozen operation. None on a live-operation unique conflict."""
     try:
-        res = get_client().table("appointment_reschedule_operations").insert(row).execute()
+        res = await run_query(get_client().table("appointment_reschedule_operations").insert(row))
         return (res.data or [None])[0]
     except Exception as e:
         if is_unique_violation(e):
@@ -41,8 +41,8 @@ async def insert_operation(row: dict) -> dict | None:
 
 
 async def get_operation(operation_id: str) -> dict | None:
-    res = (get_client().table("appointment_reschedule_operations").select("*")
-           .eq("id", operation_id).limit(1).execute())
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("*")
+           .eq("id", operation_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -52,15 +52,15 @@ async def get_live_operation_for_source(source_appointment_id: str) -> dict | No
     create_failed and completed rows are deliberately excluded: they are history,
     and a later attempt is allowed to start a genuinely new operation.
     """
-    res = (get_client().table("appointment_reschedule_operations").select("*")
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("*")
            .eq("source_appointment_id", source_appointment_id)
-           .in_("state", list(LIVE_STATES)).limit(1).execute())
+           .in_("state", list(LIVE_STATES)).limit(1)))
     return (res.data or [None])[0]
 
 
 async def delete_operation(operation_id: str) -> None:
     """Test/rollback use only. No production path deletes an operation."""
-    get_client().table("appointment_reschedule_operations").delete().eq("id", operation_id).execute()
+    await run_query(get_client().table("appointment_reschedule_operations").delete().eq("id", operation_id))
 
 
 # ---------------------------------------------------------------------------
@@ -80,11 +80,11 @@ async def _transition(operation_id: str, claim_token: str, from_states: tuple,
                       patch: dict) -> bool:
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    res = (get_client().table("appointment_reschedule_operations")
+    res = (await run_query(get_client().table("appointment_reschedule_operations")
            .update({**patch, "claimed_at": now, "updated_at": now})
            .eq("id", operation_id)
            .eq("claim_token", claim_token)
-           .in_("state", list(from_states)).execute())
+           .in_("state", list(from_states))))
     return len(res.data or []) == 1
 
 
@@ -139,9 +139,9 @@ async def adopt_claim_token(operation_id: str, prev_token: str, new_token: str) 
     """
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    res = (get_client().table("appointment_reschedule_operations")
+    res = (await run_query(get_client().table("appointment_reschedule_operations")
            .update({"claim_token": new_token, "claimed_at": now, "updated_at": now})
-           .eq("id", operation_id).eq("claim_token", prev_token).execute())
+           .eq("id", operation_id).eq("claim_token", prev_token)))
     return len(res.data or []) == 1
 
 
@@ -152,10 +152,10 @@ async def list_recoverable_operations(stale_before_iso: str, limit: int = 20) ->
     exactly LIVE_STATES. claimed_at is the liveness signal: it moves on every
     transition, so an operation being actively advanced is never picked up here.
     """
-    res = (get_client().table("appointment_reschedule_operations").select("*")
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("*")
            .in_("state", list(LIVE_STATES))
            .lt("claimed_at", stale_before_iso)
-           .order("claimed_at", desc=False).limit(limit).execute())
+           .order("claimed_at", desc=False).limit(limit)))
     return res.data or []
 
 
@@ -175,11 +175,11 @@ async def list_live_operations_for_target(tenant_id: str, provider_location_id: 
     """
     if not (tenant_id and provider_location_id and target_start_at):
         return []
-    res = (get_client().table("appointment_reschedule_operations").select("*")
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("*")
            .eq("tenant_id", tenant_id)
            .eq("target_provider_location_id", provider_location_id)
            .eq("target_start_at_utc", target_start_at)
-           .in_("state", list(LIVE_STATES)).execute())
+           .in_("state", list(LIVE_STATES))))
     return res.data or []
 
 
@@ -191,8 +191,8 @@ async def get_operation_by_replacement_booking(booking_id: str) -> dict | None:
     """
     if not booking_id:
         return None
-    res = (get_client().table("appointment_reschedule_operations").select("*")
-           .eq("replacement_provider_booking_id", booking_id).limit(1).execute())
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("*")
+           .eq("replacement_provider_booking_id", booking_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -211,10 +211,10 @@ async def set_replacement_booking_id(operation_id: str, claim_token: str,
         return False
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    res = (get_client().table("appointment_reschedule_operations")
+    res = (await run_query(get_client().table("appointment_reschedule_operations")
            .update({"replacement_provider_booking_id": booking_id, "updated_at": now})
            .eq("id", operation_id).eq("claim_token", claim_token)
-           .is_("replacement_provider_booking_id", "null").execute())
+           .is_("replacement_provider_booking_id", "null")))
     return len(res.data or []) == 1
 
 
@@ -231,7 +231,7 @@ async def list_unidentified_in_progress(tenant_id: str) -> list:
     """
     if not tenant_id:
         return []
-    res = (get_client().table("appointment_reschedule_operations").select("id, state")
+    res = (await run_query(get_client().table("appointment_reschedule_operations").select("id, state")
            .eq("tenant_id", tenant_id).eq("state", STATE_IN_PROGRESS)
-           .is_("replacement_provider_booking_id", "null").execute())
+           .is_("replacement_provider_booking_id", "null")))
     return res.data or []

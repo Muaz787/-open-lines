@@ -47,7 +47,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +80,9 @@ async def decide(*, onboarding_key: str, iso_country: str) -> dict:
         return {"outcome": DENY, "reason": "no_key"}
 
     try:
-        rows = (get_client().table(TABLE).select("*")
+        rows = ((await run_query(get_client().table(TABLE).select("*")
                 .eq("onboarding_key", key).eq("iso_country", country)
-                .limit(1).execute().data) or []
+                .limit(1))).data) or []
     except Exception as e:
         # Not knowing is not permission.
         logger.error("pilot grant lookup failed: %s", type(e).__name__)
@@ -103,8 +103,8 @@ async def decide(*, onboarding_key: str, iso_country: str) -> dict:
     # than trusting consumed_tenant_id -- there is no foreign key, and the row
     # it names may have been purged.
     try:
-        tenants = (get_client().table("tenants").select("id")
-                   .eq("onboarding_key", key).limit(2).execute().data) or []
+        tenants = ((await run_query(get_client().table("tenants").select("id")
+                   .eq("onboarding_key", key).limit(2))).data) or []
     except Exception as e:
         logger.error("pilot tenant lookup failed: %s", type(e).__name__)
         return {"outcome": DENY, "reason": "tenant_lookup_failed", "grant": grant}
@@ -149,12 +149,11 @@ async def consume(*, onboarding_key: str, tenant_id: str) -> dict:
 
     now = _now()
     try:
-        changed = (get_client().table(TABLE)
+        changed = ((await run_query(get_client().table(TABLE)
                    .update({"consumed_at": now, "consumed_tenant_id": tid})
                    .eq("onboarding_key", key)
                    .is_("consumed_at", "null")
-                   .gt("expires_at", now)
-                   .execute().data) or []
+                   .gt("expires_at", now))).data) or []
     except Exception as e:
         logger.error("pilot grant consumption failed: %s", type(e).__name__)
         return {"ok": False, "reason": "consume_failed"}

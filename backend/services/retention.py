@@ -20,6 +20,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from db import supabase as db
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
     errors: dict[str, str] = {}
     for table in _TENANT_PII_TABLES:
         try:
-            res = client.table(table).delete().eq("tenant_id", tenant_id).execute()
+            res = await run_query(client.table(table).delete().eq("tenant_id", tenant_id))
             deleted[table] = len(res.data or [])
         except Exception as e:
             errors[table] = str(e)[:200]
@@ -109,7 +110,7 @@ async def delete_tenant_data(tenant_id: str, drop_tenant: bool = True) -> dict:
                 logger.error("retention: number release raised for tenant %s: %s", tenant_id, e)
 
         try:
-            client.table("tenants").delete().eq("id", tenant_id).execute()
+            await run_query(client.table("tenants").delete().eq("id", tenant_id))
             deleted["tenant"] = 1
         except Exception as e:
             errors["tenant"] = str(e)[:200]
@@ -131,7 +132,7 @@ async def delete_caller_data(tenant_id: str, phone: str) -> dict:
 
     for table, col in (("appointments", "caller_phone"), ("payments", "caller_phone"), ("leads", "phone")):
         try:
-            res = client.table(table).delete().eq("tenant_id", tenant_id).eq(col, phone).execute()
+            res = await run_query(client.table(table).delete().eq("tenant_id", tenant_id).eq(col, phone))
             counts[table] = len(res.data or [])
         except Exception as e:
             errors[table] = str(e)[:200]
@@ -144,7 +145,7 @@ async def delete_caller_data(tenant_id: str, phone: str) -> dict:
 async def purge_old_webhook_events() -> int:
     cutoff = (_now() - timedelta(days=WEBHOOK_EVENT_RETENTION_DAYS)).isoformat()
     try:
-        res = db.get_client().table("webhook_events").delete().lt("created_at", cutoff).execute()
+        res = await run_query(db.get_client().table("webhook_events").delete().lt("created_at", cutoff))
         n = len(res.data or [])
         logger.info("retention: purged %d webhook_events older than %dd", n, WEBHOOK_EVENT_RETENTION_DAYS)
         return n
@@ -159,11 +160,10 @@ async def purge_closed_accounts() -> list[str]:
     cutoff = (_now() - timedelta(days=CLOSED_ACCOUNT_RETENTION_DAYS)).isoformat()
     try:
         res = (
-            db.get_client().table("tenants")
+            await run_query(db.get_client().table("tenants")
             .select("id, business_name, closed_at")
             .eq("is_active", False)
-            .lt("closed_at", cutoff)
-            .execute()
+            .lt("closed_at", cutoff))
         )
         due = res.data or []
     except Exception as e:

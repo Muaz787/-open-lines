@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,8 @@ def is_unique_violation(e: Exception) -> bool:
 
 
 async def get_claim(appointment_id: str) -> dict | None:
-    res = (get_client().table("appointment_mutation_claims").select("*")
-           .eq("appointment_id", appointment_id).limit(1).execute())
+    res = (await run_query(get_client().table("appointment_mutation_claims").select("*")
+           .eq("appointment_id", appointment_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -65,13 +65,13 @@ async def acquire_cancel_claim(appointment_id: str, tenant_id: str,
     ref, or which caller phone it came from.
     """
     try:
-        res = get_client().table("appointment_mutation_claims").insert({
+        res = await run_query(get_client().table("appointment_mutation_claims").insert({
             "appointment_id": appointment_id,
             "tenant_id": tenant_id,
             "operation_type": OP_CANCEL,
             "claim_token": claim_token,
             "claimed_at": _now_iso(),
-        }).execute()
+        }))
         return (res.data or [None])[0]
     except Exception as e:
         if is_unique_violation(e):
@@ -91,14 +91,14 @@ async def acquire_reschedule_claim(appointment_id: str, tenant_id: str,
     that row is persisted.
     """
     try:
-        res = get_client().table("appointment_mutation_claims").insert({
+        res = await run_query(get_client().table("appointment_mutation_claims").insert({
             "appointment_id": appointment_id,
             "tenant_id": tenant_id,
             "operation_type": OP_RESCHEDULE,
             "operation_id": operation_id,
             "claim_token": claim_token,
             "claimed_at": _now_iso(),
-        }).execute()
+        }))
         return (res.data or [None])[0]
     except Exception as e:
         if is_unique_violation(e):
@@ -108,10 +108,10 @@ async def acquire_reschedule_claim(appointment_id: str, tenant_id: str,
 
 async def list_stale_reschedule_claims(limit: int = 20) -> list:
     """Reschedule claims old enough to be inspected for orphanhood."""
-    res = (get_client().table("appointment_mutation_claims").select("*")
+    res = (await run_query(get_client().table("appointment_mutation_claims").select("*")
            .eq("operation_type", OP_RESCHEDULE)
            .lt("claimed_at", stale_cutoff_iso())
-           .order("claimed_at", desc=False).limit(limit).execute())
+           .order("claimed_at", desc=False).limit(limit)))
     return res.data or []
 
 
@@ -124,12 +124,12 @@ async def release_orphan_reschedule_claim(
     since been re-acquired for a DIFFERENT operation cannot be removed by a
     worker still holding the old one's identifiers.
     """
-    res = (get_client().table("appointment_mutation_claims").delete()
+    res = (await run_query(get_client().table("appointment_mutation_claims").delete()
            .eq("appointment_id", appointment_id)
            .eq("operation_type", OP_RESCHEDULE)
            .eq("operation_id", operation_id)
            .eq("claim_token", claim_token).eq("claimed_at", claimed_at)
-           .lt("claimed_at", stale_cutoff_iso()).execute())
+           .lt("claimed_at", stale_cutoff_iso())))
     return len(res.data or []) == 1
 
 
@@ -142,13 +142,13 @@ async def transition_cancel_to_reconcile(
     unresolved, and releasing here would let another workflow mutate an
     appointment whose real state nobody knows.
     """
-    res = (get_client().table("appointment_mutation_claims")
+    res = (await run_query(get_client().table("appointment_mutation_claims")
            .update({"operation_type": OP_CANCEL_RECONCILE,
                     "reconcile_reason": reason,
                     "updated_at": _now_iso()})
            .eq("appointment_id", appointment_id)
            .eq("operation_type", OP_CANCEL)
-           .eq("claim_token", claim_token).eq("claimed_at", claimed_at).execute())
+           .eq("claim_token", claim_token).eq("claimed_at", claimed_at)))
     return len(res.data or []) == 1
 
 
@@ -161,13 +161,13 @@ async def transition_reconcile_to_cancel(
     Same row, same appointment, same operation family — this is a type-matched
     transition by the current owner, not a cross-type steal.
     """
-    res = (get_client().table("appointment_mutation_claims")
+    res = (await run_query(get_client().table("appointment_mutation_claims")
            .update({"operation_type": OP_CANCEL, "reconcile_reason": None,
                     "claim_token": new_token, "claimed_at": _now_iso(),
                     "updated_at": _now_iso()})
            .eq("appointment_id", appointment_id)
            .eq("operation_type", OP_CANCEL_RECONCILE)
-           .eq("claim_token", claim_token).eq("claimed_at", claimed_at).execute())
+           .eq("claim_token", claim_token).eq("claimed_at", claimed_at)))
     return len(res.data or []) == 1
 
 
@@ -181,30 +181,30 @@ async def takeover_stale_reconcile(
     previous token and timestamp are required, so a row that moved since we read
     it is not ours to take.
     """
-    res = (get_client().table("appointment_mutation_claims")
+    res = (await run_query(get_client().table("appointment_mutation_claims")
            .update({"claim_token": new_token, "claimed_at": _now_iso(),
                     "updated_at": _now_iso()})
            .eq("appointment_id", appointment_id)
            .eq("operation_type", OP_CANCEL_RECONCILE)
            .eq("claim_token", prev_token).eq("claimed_at", prev_claimed_at)
-           .lt("claimed_at", stale_cutoff_iso()).execute())
+           .lt("claimed_at", stale_cutoff_iso())))
     return len(res.data or []) == 1
 
 
 async def release_claim(appointment_id: str, claim_token: str, claimed_at: str) -> bool:
     """Give up ownership. Never by appointment_id alone."""
-    res = (get_client().table("appointment_mutation_claims").delete()
+    res = (await run_query(get_client().table("appointment_mutation_claims").delete()
            .eq("appointment_id", appointment_id)
-           .eq("claim_token", claim_token).eq("claimed_at", claimed_at).execute())
+           .eq("claim_token", claim_token).eq("claimed_at", claimed_at)))
     return len(res.data or []) == 1
 
 
 async def list_stale_reconcile_claims(limit: int = 20) -> list:
     """cancel_reconcile claims old enough to be recovered."""
-    res = (get_client().table("appointment_mutation_claims").select("*")
+    res = (await run_query(get_client().table("appointment_mutation_claims").select("*")
            .eq("operation_type", OP_CANCEL_RECONCILE)
            .lt("claimed_at", stale_cutoff_iso())
-           .order("claimed_at", desc=False).limit(limit).execute())
+           .order("claimed_at", desc=False).limit(limit)))
     return res.data or []
 
 
@@ -225,12 +225,12 @@ async def takeover_stale_reschedule(
     Both the previous token and its timestamp are required, so exactly one worker
     can win, and a row that moved since we read it is not ours to take.
     """
-    res = (get_client().table("appointment_mutation_claims")
+    res = (await run_query(get_client().table("appointment_mutation_claims")
            .update({"claim_token": new_token, "claimed_at": _now_iso(),
                     "updated_at": _now_iso()})
            .eq("appointment_id", appointment_id)
            .eq("operation_type", OP_RESCHEDULE)
            .eq("operation_id", operation_id)
            .eq("claim_token", prev_token).eq("claimed_at", prev_claimed_at)
-           .lt("claimed_at", stale_cutoff_iso()).execute())
+           .lt("claimed_at", stale_cutoff_iso())))
     return len(res.data or []) == 1

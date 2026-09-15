@@ -36,6 +36,7 @@ import logging
 
 from db.supabase import get_client
 from services import telephony, vapi
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -102,18 +103,18 @@ async def evaluate_tenant(tenant: dict) -> dict:
         return verdict(NUMBER_FOUND_IN_ORG)
 
     client = get_client()
-    own_rows = (client.table("tenant_phone_numbers").select("id")
-                .eq("tenant_id", tid).execute().data or [])
+    own_rows = ((await run_query(client.table("tenant_phone_numbers").select("id")
+                .eq("tenant_id", tid))).data or [])
     checks["canonical_rows_for_tenant"] = len(own_rows)
     if own_rows:
         return verdict(CANONICAL_ROW_EXISTS)
-    by_num = (client.table("tenant_phone_numbers").select("id, tenant_id")
-              .eq("e164", e164).execute().data or [])
+    by_num = ((await run_query(client.table("tenant_phone_numbers").select("id, tenant_id")
+              .eq("e164", e164))).data or [])
     checks["canonical_rows_for_e164"] = len(by_num)
     if by_num:
         return verdict(CANONICAL_CLAIMS_E164)
-    others = [r for r in (client.table("tenants").select("id, twilio_phone_number")
-                          .eq("twilio_phone_number", e164).execute().data or [])
+    others = [r for r in ((await run_query(client.table("tenants").select("id, twilio_phone_number")
+                          .eq("twilio_phone_number", e164))).data or [])
               if str(r.get("id")) != tid]
     checks["other_tenants_claiming_e164"] = len(others)
     if others:
@@ -164,7 +165,7 @@ async def clear_stale_pointers(tenant: dict, *, dry_run: bool = True) -> dict:
     # so a tenant with no pointer is fenced on the scalar alone.
     if vid:
         q = q.eq("vapi_phone_number_id", vid)
-    changed = q.execute().data or []
+    changed = (await run_query(q)).data or []
     result["rows_changed"] = len(changed)
     result["action"] = "cleared" if len(changed) == 1 else "unexpected_row_count"
     if len(changed) != 1:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def record_delivery(
     """
     if not (provider and provider_event_id and event_type):
         return None
-    res = get_client().rpc("record_provider_webhook_event", {
+    res = await run_query(get_client().rpc("record_provider_webhook_event", {
         "p_provider": provider,
         "p_provider_event_id": provider_event_id,
         "p_event_type": event_type,
@@ -52,7 +52,7 @@ async def record_delivery(
         "p_provider_status": provider_status or None,
         "p_provider_updated_at": provider_updated_at or None,
         "p_raw_envelope": raw_envelope,
-    }).execute()
+    }))
     data = res.data
     if isinstance(data, list):
         return data[0] if data else None
@@ -80,31 +80,31 @@ async def set_shadow_resolution(
         "resolved_tenant_location_id": resolved_tenant_location_id or None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    (get_client().table("provider_webhook_events").update(patch)
-     .eq("id", row_id).execute())
+    (await run_query(get_client().table("provider_webhook_events").update(patch)
+     .eq("id", row_id)))
 
 
 async def set_legacy_result(row_id: str, result: str, error: str = "") -> None:
     """What the EXISTING handler did. Recorded after dispatch, never before."""
     from datetime import datetime, timezone
 
-    (get_client().table("provider_webhook_events").update({
+    (await run_query(get_client().table("provider_webhook_events").update({
         "legacy_result": result,
         "last_error": (error or "")[:500] or None,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", row_id).execute())
+    }).eq("id", row_id)))
 
 
 async def get_by_event_id(provider: str, provider_event_id: str) -> dict | None:
-    res = (get_client().table("provider_webhook_events").select("*")
+    res = (await run_query(get_client().table("provider_webhook_events").select("*")
            .eq("provider", provider).eq("provider_event_id", provider_event_id)
-           .limit(1).execute())
+           .limit(1)))
     return (res.data or [None])[0]
 
 
 async def clear_raw_envelopes() -> int:
     """Operator helper for after the envelope shape is confirmed. Not scheduled."""
-    res = (get_client().table("provider_webhook_events")
+    res = (await run_query(get_client().table("provider_webhook_events")
            .update({"raw_envelope": None})
-           .not_.is_("raw_envelope", "null").execute())
+           .not_.is_("raw_envelope", "null")))
     return len(res.data or [])

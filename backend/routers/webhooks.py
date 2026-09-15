@@ -16,6 +16,7 @@ from services import entitlements, transfer as transfer_svc, routing_destination
 from services.vapi import (_CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools,
                            caller_lookup_note, ensure_safety_preamble, supports_safe_reschedule)
 from routers.calendar import _CALENDAR_NOTE
+from db.supabase import run_query
 
 # Injected when NO calendar is connected. The industry/custom templates tell the
 # AI to book directly and confirm to the caller; without a booking tool that
@@ -544,12 +545,11 @@ async def queue_status(x_admin_key: Annotated[str | None, Header()] = None):
     _require_admin(x_admin_key)
     try:
         res = (
-            db.get_client()
+            await run_query(db.get_client()
             .table("webhook_events")
             .select("id, event_type, call_id, status, attempts, last_error, created_at, next_retry_at")
             .order("created_at", desc=True)
-            .limit(20)
-            .execute()
+            .limit(20))
         )
         return {
             "queue": res.data or [],

@@ -47,6 +47,7 @@ from services import regulatory_state as st
 from services import telephony
 from services import temporary_numbers
 from services import tenant_subaccount
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,8 @@ def _elapsed_past(started, delta: timedelta) -> bool:
 
 
 async def _tenant(tenant_id: str) -> dict | None:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data) or []
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data) or []
     return rows[0] if rows else None
 
 
@@ -668,11 +669,11 @@ async def run_scheduled() -> dict:
     Bounded, and deliberately not clever about ordering: advance() is
     idempotent, so a tenant swept twice in a row costs one provider read.
     """
-    rows = (get_client().table("tenants")
+    rows = ((await run_query(get_client().table("tenants")
             .select("id, onboarding_state, business_country_code")
             .eq("business_country_code", "IE")
             .neq("onboarding_state", lifecycle_ob.ACTIVE)
-            .limit(SCHEDULED_BATCH).execute().data) or []
+            .limit(SCHEDULED_BATCH))).data) or []
     counts: dict[str, int] = {}
     for row in rows:
         out = await wake(str(row["id"]), source="scheduled")
@@ -681,11 +682,11 @@ async def run_scheduled() -> dict:
 
     # Tenants whose permanent line is already live still need the cutover and
     # retirement steps, and they are ACTIVE, so the filter above skips them.
-    live = (get_client().table("tenants")
+    live = ((await run_query(get_client().table("tenants")
             .select("id")
             .eq("business_country_code", "IE")
             .eq("onboarding_state", lifecycle_ob.ACTIVE)
-            .limit(SCHEDULED_BATCH).execute().data) or []
+            .limit(SCHEDULED_BATCH))).data) or []
     for row in live:
         out = await wake(str(row["id"]), source="scheduled_cutover")
         key = str(out.get("outcome") or "unknown")

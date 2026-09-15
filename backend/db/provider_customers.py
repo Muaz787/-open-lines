@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +47,15 @@ def is_unique_violation(e: Exception) -> bool:
 
 
 async def get_mapping(tenant_id: str, provider: str, normalized_phone: str) -> dict | None:
-    res = (get_client().table("provider_customers").select("*")
+    res = (await run_query(get_client().table("provider_customers").select("*")
            .eq("tenant_id", tenant_id).eq("provider", provider)
-           .eq("normalized_phone", normalized_phone).limit(1).execute())
+           .eq("normalized_phone", normalized_phone).limit(1)))
     return (res.data or [None])[0]
 
 
 async def get_by_id(row_id: str) -> dict | None:
-    res = (get_client().table("provider_customers").select("*")
-           .eq("id", row_id).limit(1).execute())
+    res = (await run_query(get_client().table("provider_customers").select("*")
+           .eq("id", row_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -68,13 +68,13 @@ async def try_create_claim(
     single winner. Losing here is normal and not an error.
     """
     try:
-        res = get_client().table("provider_customers").insert({
+        res = await run_query(get_client().table("provider_customers").insert({
             "tenant_id": tenant_id,
             "provider": provider,
             "normalized_phone": normalized_phone,
             "claim_token": claim_token,
             "claimed_at": _now_iso(),
-        }).execute()
+        }))
         return (res.data or [None])[0]
     except Exception as e:
         if is_unique_violation(e):
@@ -89,11 +89,11 @@ async def acquire_unowned_claim_cas(row_id: str, claim_token: str) -> bool:
     provider ambiguity and released it. Such a row is available immediately; there
     is no reason to make the next worker wait out a staleness timeout.
     """
-    res = (get_client().table("provider_customers")
+    res = (await run_query(get_client().table("provider_customers")
            .update({"claim_token": claim_token, "claimed_at": _now_iso(),
                     "updated_at": _now_iso()})
            .eq("id", row_id).is_("provider_customer_id", "null")
-           .is_("claim_token", "null").execute())
+           .is_("claim_token", "null")))
     return len(res.data or []) == 1
 
 
@@ -106,12 +106,12 @@ async def takeover_stale_claim_cas(
     takeover cannot succeed against a row that moved after we read it. Without the
     timestamp, two workers reading the same stale row could both match on token.
     """
-    res = (get_client().table("provider_customers")
+    res = (await run_query(get_client().table("provider_customers")
            .update({"claim_token": claim_token, "claimed_at": _now_iso(),
                     "updated_at": _now_iso()})
            .eq("id", row_id).is_("provider_customer_id", "null")
            .eq("claim_token", prev_claim_token).eq("claimed_at", prev_claimed_at)
-           .lt("claimed_at", stale_cutoff_iso()).execute())
+           .lt("claimed_at", stale_cutoff_iso())))
     return len(res.data or []) == 1
 
 
@@ -129,9 +129,9 @@ async def finalize_mapping_cas(
              "updated_at": _now_iso()}
     if provider_merchant_id:
         patch["provider_merchant_id"] = provider_merchant_id
-    res = (get_client().table("provider_customers").update(patch)
+    res = (await run_query(get_client().table("provider_customers").update(patch)
            .eq("id", row_id).eq("claim_token", claim_token)
-           .is_("provider_customer_id", "null").execute())
+           .is_("provider_customer_id", "null")))
     return len(res.data or []) == 1
 
 
@@ -142,13 +142,13 @@ async def release_claim_cas(row_id: str, claim_token: str) -> bool:
     and parking the row behind a staleness timeout would punish the next worker
     for our caution.
     """
-    res = (get_client().table("provider_customers")
+    res = (await run_query(get_client().table("provider_customers")
            .update({"claim_token": None, "updated_at": _now_iso()})
            .eq("id", row_id).eq("claim_token", claim_token)
-           .is_("provider_customer_id", "null").execute())
+           .is_("provider_customer_id", "null")))
     return len(res.data or []) == 1
 
 
 async def delete_mapping(row_id: str) -> None:
     """Test/fixture cleanup only. No production path deletes a mapping."""
-    get_client().table("provider_customers").delete().eq("id", row_id).execute()
+    await run_query(get_client().table("provider_customers").delete().eq("id", row_id))

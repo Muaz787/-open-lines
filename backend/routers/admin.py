@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Header
 from db import supabase as db
 from services import vapi
 from services.provisioning import rebuild_and_push_system_prompt
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +35,10 @@ async def list_tenants(x_admin_key: str | None = Header(None)):
     _check_admin_key(x_admin_key)
     try:
         res = (
-            db.get_client()
+            await run_query(db.get_client()
             .table("tenants")
             .select(_TENANT_SUMMARY_FIELDS)
-            .order("created_at", desc=True)
-            .execute()
+            .order("created_at", desc=True))
         )
         return res.data
     except Exception as e:
@@ -266,10 +266,9 @@ async def repatch_vapi_secret(x_admin_key: str | None = Header(None)):
 
     try:
         res = (
-            db.get_client()
+            await run_query(db.get_client()
             .table("tenants")
-            .select("id, vapi_phone_number_id, vapi_suborg_api_key")
-            .execute()
+            .select("id, vapi_phone_number_id, vapi_suborg_api_key"))
         )
         tenants = [t for t in (res.data or []) if t.get("vapi_phone_number_id")]
     except Exception as e:
@@ -653,7 +652,7 @@ async def system_health(x_admin_key: str | None = Header(None)):
 
     async def _chk_supabase() -> tuple:
         try:
-            db.get_client().table("tenants").select("id").limit(1).execute()
+            await run_query(db.get_client().table("tenants").select("id").limit(1))
             return ("Supabase", "ok", "Connected")
         except Exception as e:
             return ("Supabase", "error", str(e)[:80])
@@ -685,9 +684,9 @@ async def system_health(x_admin_key: str | None = Header(None)):
 
     async def _chk_crawl() -> tuple:
         try:
-            res = (db.get_client().table("tenants")
+            res = (await run_query(db.get_client().table("tenants")
                    .select("last_crawl_at").not_.is_("last_crawl_at", "null")
-                   .order("last_crawl_at", desc=True).limit(1).execute())
+                   .order("last_crawl_at", desc=True).limit(1)))
             rows = res.data or []
             if not rows:
                 return ("Website crawl", "warning", "No crawls recorded yet")

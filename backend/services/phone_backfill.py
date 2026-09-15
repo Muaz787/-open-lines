@@ -31,6 +31,7 @@ from db import phone_numbers as db_phone
 from db.supabase import get_client
 from services import phone_lifecycle as lifecycle
 from services import telephony
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,9 @@ def _mask(number: str) -> str:
 
 
 async def list_tenants_for_backfill() -> list[dict]:
-    res = (get_client().table("tenants")
+    res = (await run_query(get_client().table("tenants")
            .select("id, business_name, twilio_phone_number, twilio_subaccount_sid, "
-                   "twilio_auth_token, vapi_phone_number_id")
-           .execute())
+                   "twilio_auth_token, vapi_phone_number_id")))
     return res.data or []
 
 

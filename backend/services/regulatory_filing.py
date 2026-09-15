@@ -33,6 +33,7 @@ from db import regulatory as db_reg
 from db.supabase import get_client
 from services import regulatory_engine as engine
 from services import regulatory_state as st
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,8 @@ SUBMITTED = "submitted"
 
 
 async def _tenant(tenant_id: str) -> dict | None:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     return rows[0] if rows else None
 
 
@@ -64,9 +65,9 @@ async def _resolve_address(tenant_id: str, country: str,
         # get_address is tenant-scoped at the query, so another tenant's id is
         # simply absent rather than accessible.
         return await db_reg.get_address(tenant_id, regulatory_address_id)
-    rows = (get_client().table("tenant_regulatory_addresses").select("*")
+    rows = ((await run_query(get_client().table("tenant_regulatory_addresses").select("*")
             .eq("tenant_id", tenant_id).eq("iso_country", country)
-            .order("created_at").execute().data or [])
+            .order("created_at"))).data or [])
     validated = [r for r in rows if r.get("validated")]
     return validated[0] if len(validated) == 1 else None
 

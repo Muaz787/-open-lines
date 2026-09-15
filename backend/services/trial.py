@@ -32,6 +32,7 @@ Stripe API call, a DB query, or anything else that can block or fail here.
 import os
 import logging
 from datetime import datetime, timezone, timedelta
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -447,15 +448,14 @@ async def process_card_trial_reminders(limit: int = 200) -> dict:
 
     try:
         res = (
-            db.get_client().table("tenants")
+            await run_query(db.get_client().table("tenants")
             .select(
                 "id, business_name, email, subscription_status, subscription_plan, "
                 "stripe_customer_id, stripe_subscription_id, stripe_trial_ends_at, "
                 "minutes_used_this_period, billing_exempt, "
                 "card_trial_day3_sent, card_trial_day6_sent"
             )
-            .eq("subscription_status", "trialing")
-            .execute()
+            .eq("subscription_status", "trialing"))
         )
         rows = res.data or []
     except Exception as e:
@@ -524,15 +524,14 @@ async def retry_stalled_conversions(limit: int = 50) -> dict:
 
     try:
         res = (
-            db.get_client().table("tenants")
+            await run_query(db.get_client().table("tenants")
             .select("id, business_name, subscription_status, subscription_plan, "
                     "stripe_subscription_id, minutes_used_this_period, "
                     "trial_converted_reason, billing_exempt")
             .eq("subscription_status", "trialing")
             .is_("trial_converted_reason", "null")
             .gte("minutes_used_this_period", CARD_TRIAL_MINUTES)
-            .limit(limit)
-            .execute()
+            .limit(limit))
         )
         rows = res.data or []
     except Exception as e:
@@ -563,7 +562,7 @@ async def process_trial_reminders(limit: int = 200) -> dict:
 
     try:
         res = (
-            db.get_client().table("tenants")
+            await run_query(db.get_client().table("tenants")
             .select(
                 # EVERY COLUMN A GUARD BELOW READS MUST BE LISTED HERE.
                 # billing_exempt and marketing_unsubscribed_at were once missing
@@ -583,8 +582,7 @@ async def process_trial_reminders(limit: int = 200) -> dict:
                 "trial_email_day3_sent, trial_email_day6_sent, trial_email_ended_sent, "
                 "business_country_code, twilio_phone_number, "
                 "stripe_trial_ends_at, stripe_subscription_id"
-            )
-            .execute()
+            ))
         )
         rows = res.data or []
     except Exception as e:

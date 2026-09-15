@@ -38,6 +38,7 @@ from services import activation_notification as notify
 from services import onboarding_lifecycle as lifecycle_ob
 from services import phone_lifecycle as lifecycle
 from services import telephony
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,8 @@ BROKEN = "broken"
 
 
 async def _tenant(tenant_id: str) -> dict | None:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     return rows[0] if rows else None
 
 

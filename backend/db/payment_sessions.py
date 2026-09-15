@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ def _now() -> str:
 
 
 async def get(onboarding_key: str) -> dict | None:
-    rows = (get_client().table(TABLE).select("*")
-            .eq("onboarding_key", onboarding_key).limit(1).execute().data) or []
+    rows = ((await run_query(get_client().table(TABLE).select("*")
+            .eq("onboarding_key", onboarding_key).limit(1))).data) or []
     return rows[0] if rows else None
 
 
@@ -43,10 +43,10 @@ async def claim(*, onboarding_key: str, iso_country: str) -> bool:
     False and reads the row instead. Nothing here touches the provider.
     """
     try:
-        rows = (get_client().table(TABLE).insert({
+        rows = ((await run_query(get_client().table(TABLE).insert({
             "onboarding_key": onboarding_key,
             "iso_country": iso_country,
-        }).execute().data) or []
+        }))).data) or []
         return bool(rows)
     except Exception as e:
         # A duplicate key is the normal, expected loss. Anything else is not,
@@ -68,11 +68,10 @@ async def mark_attempt(onboarding_key: str) -> bool:
     True only for the caller that set it, so exactly one worker proceeds to the
     provider.
     """
-    rows = (get_client().table(TABLE)
+    rows = ((await run_query(get_client().table(TABLE)
             .update({"provider_attempt_at": _now(), "updated_at": _now()})
             .eq("onboarding_key", onboarding_key)
-            .is_("provider_attempt_at", "null")
-            .execute().data) or []
+            .is_("provider_attempt_at", "null"))).data) or []
     return bool(rows)
 
 
@@ -83,12 +82,11 @@ async def attach_customer(*, onboarding_key: str, customer_id: str) -> bool:
     migration 035's CHECK: the constraint makes the bad state unreachable, and
     the predicate makes the intent legible at the call site.
     """
-    rows = (get_client().table(TABLE)
+    rows = ((await run_query(get_client().table(TABLE)
             .update({"stripe_customer_id": customer_id, "updated_at": _now()})
             .eq("onboarding_key", onboarding_key)
             .is_("stripe_customer_id", "null")
-            .not_.is_("provider_attempt_at", "null")
-            .execute().data) or []
+            .not_.is_("provider_attempt_at", "null"))).data) or []
     return bool(rows)
 
 
@@ -103,10 +101,9 @@ async def retake_unattempted(*, onboarding_key: str) -> bool:
     Deliberately NOT time-based. There is no lease here, because elapsed time
     cannot distinguish the two cases and this column can.
     """
-    rows = (get_client().table(TABLE)
+    rows = ((await run_query(get_client().table(TABLE)
             .update({"updated_at": _now()})
             .eq("onboarding_key", onboarding_key)
             .is_("provider_attempt_at", "null")
-            .is_("stripe_customer_id", "null")
-            .execute().data) or []
+            .is_("stripe_customer_id", "null"))).data) or []
     return bool(rows)

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ async def list_tenants_by_square_merchant_id(merchant_id: str) -> list[dict]:
     """
     if not merchant_id:
         return []
-    res = (get_client().table("tenants").select("*")
-           .eq("square_merchant_id", merchant_id).execute())
+    res = (await run_query(get_client().table("tenants").select("*")
+           .eq("square_merchant_id", merchant_id)))
     return res.data or []
 
 
@@ -58,9 +58,9 @@ async def list_square_bindings_for_location(provider_location_id: str) -> list[d
     """
     if not provider_location_id:
         return []
-    res = (get_client().table("location_provider_bindings").select("*")
+    res = (await run_query(get_client().table("location_provider_bindings").select("*")
            .eq("provider", PROVIDER_SQUARE)
-           .eq("provider_location_id", provider_location_id).execute())
+           .eq("provider_location_id", provider_location_id)))
     return res.data or []
 
 
@@ -84,14 +84,14 @@ async def load_location_candidates(provider_location_id: str) -> list[dict]:
 
     locations: dict[str, dict] = {}
     if loc_ids:
-        res = (get_client().table("tenant_locations").select("*")
-               .in_("id", loc_ids).execute())
+        res = (await run_query(get_client().table("tenant_locations").select("*")
+               .in_("id", loc_ids)))
         locations = {str(r["id"]): r for r in (res.data or [])}
         tenant_ids = sorted(set(tenant_ids) | {str(r["tenant_id"]) for r in (res.data or [])})
 
     tenants: dict[str, dict] = {}
     if tenant_ids:
-        res = (get_client().table("tenants").select("*").in_("id", tenant_ids).execute())
+        res = (await run_query(get_client().table("tenants").select("*").in_("id", tenant_ids)))
         tenants = {str(r["id"]): r for r in (res.data or [])}
 
     out = []

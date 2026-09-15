@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from db import supabase as db
 from services.security import require_tenant_owner
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,13 @@ async def get_stats(
     start_iso = start.isoformat()
     try:
         client = db.get_client()
-        calls = (client.table("calls").select("created_at,duration_secs")
-                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000).execute().data or [])
-        leads = (client.table("leads").select("created_at")
-                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000).execute().data or [])
-        appts = (client.table("appointments").select("created_at")
+        calls = ((await run_query(client.table("calls").select("created_at,duration_secs")
+                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
+        leads = ((await run_query(client.table("leads").select("created_at")
+                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
+        appts = ((await run_query(client.table("appointments").select("created_at")
                  .eq("tenant_id", tenant_id).neq("status", "cancelled")
-                 .gte("created_at", start_iso).limit(100_000).execute().data or [])
+                 .gte("created_at", start_iso).limit(100_000))).data or [])
     except Exception as e:
         logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
@@ -152,13 +153,12 @@ async def get_insights(tenant_id: str, refresh: bool = Query(default=False)):
 async def get_lead(tenant_id: str, lead_id: str):
     try:
         leads_res = (
-            db.get_client()
+            await run_query(db.get_client()
             .table("leads")
             .select("*")
             .eq("id", lead_id)
             .eq("tenant_id", tenant_id)
-            .single()
-            .execute()
+            .single())
         )
         lead = leads_res.data
     except Exception as e:
