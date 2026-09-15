@@ -233,9 +233,10 @@ export const ARTICLES: LearnArticle[] = [
       { q: 'How quickly can I get set up?', a: 'With Open Lines, most businesses are live in under 10 minutes because it learns from your existing website.' },
     ],
     related: [
-      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing, compared.' },
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
-      { href: '/pricing', label: 'See Open Lines pricing', sub: 'Monthly plans with included minutes.' },
+      { href: '/learn/virtual-receptionist-vs-ai-receptionist', label: 'Virtual versus AI', sub: 'A person or software.' },
+      { href: '/learn/how-virtual-receptionist-plans-are-priced', label: 'How plans are priced', sub: 'Per call, per minute, flat.' },
+      { href: '/learn/trying-a-virtual-receptionist-before-you-commit', label: 'Trialling one properly', sub: 'Skip the demo.' },
+      { href: '/learn/when-a-human-answering-service-is-better', label: 'When a person wins', sub: 'Five honest cases.' },
     ],
     ctaHeading: 'Give your small business a receptionist that never clocks out.',
     ctaSub: 'Start a 7-day free trial and let it answer every call. Cancel anytime before you’re charged.',
@@ -5243,6 +5244,198 @@ export const ARTICLES: LearnArticle[] = [
     ],
     ctaHeading: 'Book the conversation, not a guess.',
     ctaSub: 'Consultations offered and booked on the call. Seven days free.',
+  },
+  {
+    slug: 'virtual-receptionist-vs-ai-receptionist',
+    category: 'Guide',
+    shortTitle: 'Virtual vs AI',
+    metaTitle: 'Virtual Receptionist vs AI Receptionist: the Real Difference — Open Lines',
+    metaDescription: 'One is a person in a call centre, the other is software. Where each genuinely wins, and the question that separates them in thirty seconds.',
+    h1: 'Virtual receptionist or AI receptionist?',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'The terms are used interchangeably in marketing and they describe different things. A virtual receptionist is traditionally a person — somebody in a call centre answering for several businesses at once. An AI receptionist is software. Knowing which you are buying matters more than any feature comparison, because they fail in opposite ways.',
+    sections: [
+      {
+        heading: 'What each actually is',
+        bullets: [
+          { title: 'Virtual receptionist: a shared person', body: 'A trained human, usually handling calls for a number of businesses in the same shift, working from a script you supplied.' },
+          { title: 'AI receptionist: software on your line', body: 'Answers every call itself, reads your availability, and books into your calendar directly.' },
+          { title: 'The shared bit is the catch', body: 'A person covering six businesses cannot know any of them deeply, which is why the script matters so much and why answers stop at its edges.' },
+          { title: 'The software bit is also the catch', body: 'It will never read a room, sense that somebody is upset, or make a judgment call you did not anticipate.' },
+        ],
+      },
+      {
+        heading: 'Where a person genuinely wins',
+        paras: ['Anything emotional or ambiguous. A distressed caller, a complaint, a situation nobody wrote a rule for — a competent human handles these far better than any software, and businesses whose calls are frequently like this should weigh that heavily. If a meaningful share of your calls need judgment rather than information, you are buying the wrong thing by buying software.'],
+      },
+      {
+        heading: 'Where software genuinely wins',
+        paras: ['Everything repetitive, and everything outside office hours. It answers the ninth identical question about parking with the same patience as the first, it is there at half seven on a Sunday, and — the decisive difference — it can read live availability and make a real booking rather than taking a message for somebody to action later. Most virtual receptionist services hand you a message; that is the single largest practical gap between the two.'],
+      },
+      {
+        heading: 'The question that separates them',
+        paras: ['Ask either one: "does it write into my calendar, or send me a message?" A service that takes messages has moved the work rather than removed it — you still ring back, still find the slot, still enter the details, and in the gap some of those callers have booked elsewhere. That question tells you more than any feature list, and it is worth asking before price comes up at all.'],
+      },
+    ],
+    faqs: [
+      { q: 'What is the difference between a virtual receptionist and an AI receptionist?', a: 'A virtual receptionist is traditionally a person answering for several businesses at once from a script. An AI receptionist is software that answers your line, reads live availability and books directly into your calendar.' },
+      { q: 'Which is better?', a: 'They fail in opposite ways. A person handles emotion and ambiguity far better; software handles repetition, out-of-hours calls and actual booking.' },
+      { q: 'What is the single question to ask?', a: '"Does it write into my calendar, or send me a message?" A message service has moved the work rather than removed it.' },
+      { q: 'Can I use both?', a: 'Many businesses do — software for overflow, after-hours and repeat questions, a person for the calls that need judgment.' },
+    ],
+    related: [
+      { href: '/learn/virtual-receptionist-small-business', label: 'The small business guide', sub: 'Choosing between them.' },
+      { href: '/learn/when-a-human-answering-service-is-better', label: 'When a person wins', sub: 'Honestly.' },
+      { href: '/learn/what-to-ask-any-provider', label: 'Questions to ask', sub: 'Before you sign up.' },
+    ],
+    ctaHeading: 'Bookings, not messages.',
+    ctaSub: 'Written into the calendar you already use. Seven days free.',
+  },
+  {
+    slug: 'when-a-human-answering-service-is-better',
+    category: 'Guide',
+    shortTitle: 'When a person wins',
+    metaTitle: 'When a Human Answering Service Is the Better Choice — Open Lines',
+    metaDescription: 'Five situations where you should hire people rather than buy software, written by a company that sells the software.',
+    h1: 'When you should hire people instead',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'We sell software, so treat this with appropriate suspicion — then read it anyway, because selling it to the wrong business helps nobody. There are situations where a human answering service is clearly the better purchase, and they are not edge cases.',
+    sections: [
+      {
+        heading: 'Your callers are frequently distressed',
+        paras: ['Veterinary emergencies, bereavement services, anything medical or legal where people ring in a bad moment. These calls are mostly not information problems — somebody needs to feel heard by a person who understands what has happened. Software handles the booking around them competently and cannot do the part that actually matters.'],
+      },
+      {
+        heading: 'Every call is different',
+        paras: ['Some businesses genuinely have no repeatable calls: bespoke work, complex commercial arrangements, situations where the caller cannot describe what they need without a conversation. The value of software rises with repetition, so where there is none, it has very little to offer.'],
+      },
+      {
+        heading: 'The other three',
+        bullets: [
+          { title: 'You need outbound as well', body: 'Chasing, following up, ringing a list. That is a different job from answering, and people do it far better.' },
+          { title: 'Your callers are largely elderly or vulnerable', body: 'Not that they cannot use it — many do, comfortably — but where a personal relationship with a voice is part of what you are providing, do not replace it.' },
+          { title: 'Your volume is genuinely tiny', body: 'Three calls a week does not justify setting anything up. A diverted mobile and a bit of discipline is the right answer, and it is free.' },
+        ],
+      },
+      {
+        heading: 'What we would say for ourselves',
+        paras: ['The honest case is repetition, hours and booking. If a large share of your calls are the same handful of questions, if they arrive when nobody is there, and if the outcome you want is an appointment in a calendar rather than a message in an inbox, then software does that better and considerably cheaper. Outside those conditions the argument weakens fast, and any provider who will not tell you where is not worth listening to on anything else.'],
+      },
+    ],
+    faqs: [
+      { q: 'When should I use a human answering service instead?', a: 'When callers are frequently distressed, when every call is genuinely different, when you need outbound calling too, when a personal voice is part of what you sell, or when your volume is tiny.' },
+      { q: 'Why would you publish this?', a: 'Because selling software to a business it does not suit helps nobody, and a provider who claims to suit everyone has either not thought about it or is willing to sell you the wrong thing.' },
+      { q: 'What is the honest case for software?', a: 'Repetition, hours, and booking. Many similar calls, arriving when nobody is there, where the outcome you want is an appointment rather than a message.' },
+      { q: 'My volume is very low — what should I do?', a: 'Three calls a week does not justify setting anything up. Divert your mobile and be disciplined about answering it.' },
+    ],
+    related: [
+      { href: '/learn/virtual-receptionist-vs-ai-receptionist', label: 'The two categories', sub: 'How they differ.' },
+      { href: '/learn/should-you-still-answer-the-phone', label: 'Do you need this at all?', sub: 'The prior question.' },
+      { href: '/learn/handling-a-complaint-on-the-phone', label: 'Calls needing a person', sub: 'Where software should hand over.' },
+    ],
+    ctaHeading: 'If it fits, seven days will show you.',
+    ctaSub: 'And if it does not, you will know that too. Free trial, no commitment.',
+  },
+  {
+    slug: 'trying-a-virtual-receptionist-before-you-commit',
+    category: 'Guide',
+    shortTitle: 'Trying one out',
+    metaTitle: 'How to Trial a Virtual Receptionist Properly — Open Lines',
+    metaDescription: 'A demo is a performance. What to do instead, what a trial should let you do without asking, and the terms that quietly make leaving hard.',
+    h1: 'Trying one out before you commit',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Most of this category is sold by demo — a scheduled call where somebody shows you their product working perfectly on a script they wrote. That tells you almost nothing about how it behaves on your calls, and there is a much better way to spend the same half hour.',
+    sections: [
+      {
+        heading: 'Why the demo misleads',
+        paras: ['Not through dishonesty, usually. It is that a demo is run by somebody who knows exactly which questions work, on a configuration built for showing, with no real customer on the line. Every product in this category demos well, which means the demo cannot distinguish between them — it is the one part of the evaluation that carries no information.'],
+      },
+      {
+        heading: 'What to do instead',
+        bullets: [
+          { title: 'Ring the number yourself', body: 'With a question a real customer asks, not one from their script.' },
+          { title: 'Then ring back with something awkward', body: 'An edge case, a mumbled sentence, a service you do not offer. What happens at the edges is what you will live with.' },
+          { title: 'Try to make a real booking', body: 'Then open your own calendar and confirm it landed, on the right person, with the details attached.' },
+          { title: 'Then try to cancel it', body: 'Plenty of products book and cannot unbook. Finding out now costs you nothing.' },
+        ],
+      },
+      {
+        heading: 'What a fair trial lets you do',
+        paras: ['Use it on real calls, for long enough to see a full week including a weekend, without a salesperson mediating. If a provider will only let you evaluate under supervision, that is itself the answer. And a trial that requires a conversation to cancel is not a trial — it is a contract with a grace period, and the difference shows up when you try to leave.'],
+      },
+      {
+        heading: 'The terms worth reading before you start',
+        paras: ['How much notice cancelling needs, whether there is a minimum term, what happens to a number they provided, and whether your data leaves with you. None of these matter while things are going well, and all of them matter in the month you decide to stop. A provider confident in the product does not need to lock you in for a year.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is a demo worth taking?', a: 'It carries almost no information. Every product in this category demos well, on a script the seller wrote, with no real customer on the line.' },
+      { q: 'What should I do instead?', a: 'Ring the number with a real customer question, then ring back with something awkward, make a genuine booking and check your calendar, then try to cancel it.' },
+      { q: 'What does a fair trial look like?', a: 'Real calls, long enough to cover a full week including a weekend, with no salesperson mediating. Evaluation only under supervision is itself an answer.' },
+      { q: 'What terms should I check first?', a: 'Notice to cancel, minimum term, what happens to a number they provided, and whether your data leaves with you.' },
+    ],
+    related: [
+      { href: '/learn/testing-it-before-you-rely-on-it', label: 'Six calls to try', sub: 'The test script.' },
+      { href: '/learn/what-to-ask-any-provider', label: 'Questions to ask', sub: 'Twelve of them.' },
+      { href: '/learn/what-happens-to-your-number-if-you-leave', label: 'If you leave', sub: 'What happens then.' },
+    ],
+    ctaHeading: 'Skip the demo. Ring the number.',
+    ctaSub: 'Seven days free, on your own calls, with nobody watching.',
+  },
+  {
+    slug: 'how-virtual-receptionist-plans-are-priced',
+    category: 'Cost guide',
+    shortTitle: 'How plans are priced',
+    metaTitle: 'How Virtual Receptionist Plans Are Structured — Open Lines',
+    metaDescription: 'Per-call, per-minute and flat plans behave very differently as you grow. How to read a plan, and the three structures that punish success.',
+    h1: 'How the plans are actually structured',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Comparing monthly prices across this category is close to meaningless, because the plans are not the same shape. The number that matters is what happens when your volume changes — and three common structures quietly punish you for growing.',
+    sections: [
+      {
+        heading: 'The three shapes',
+        bullets: [
+          { title: 'Per call', body: 'You pay for each one, including the ones you never wanted. Predictable per unit, unpredictable per month, and worst for businesses that get a lot of junk.' },
+          { title: 'Per minute', body: 'Usually with an allowance and an overage rate. Fair in principle; the detail that matters is rounding and what the overage costs.' },
+          { title: 'Flat with a cap', body: 'Simple until you hit the cap, at which point you discover what the plan really costs.' },
+        ],
+      },
+      {
+        heading: 'The details that change the number most',
+        bullets: [
+          { title: 'Rounding', body: 'Billing a forty-second call as a minute is a fifty per cent premium on your most common call, and it is almost never mentioned in the headline.' },
+          { title: 'What counts as a call', body: 'Wrong numbers, hang-ups and telemarketers may all be billable. Ask explicitly.' },
+          { title: 'The overage rate', body: 'If it is cheaper than your plan rate, the plan is a decoy. If it is more expensive, at least the incentive is honest.' },
+          { title: 'Out-of-hours loading', body: 'Evenings and weekends sometimes cost more — which is exactly when you most wanted cover.' },
+        ],
+      },
+      {
+        heading: 'The structures that punish growth',
+        paras: ['Per-call pricing with no cap, where a good month costs you more than it earns in call handling. Steep tier jumps, where forty extra calls move you up a band and double the bill. And minimum commitments that stop you moving down when a quiet season arrives. None of these are hidden exactly — they are simply not visible until your volume moves, which is after you have committed.'],
+      },
+      {
+        heading: 'How to compare two plans honestly',
+        paras: ['Take a real month of your own call volume, with its actual mix of long and short calls and its share of junk, and price it under both. That takes twenty minutes and is the only comparison that means anything. Every headline figure is built on somebody else’s usage pattern, which is unlikely to resemble yours.'],
+      },
+    ],
+    faqs: [
+      { q: 'How are virtual receptionist plans usually priced?', a: 'Per call, per minute with an allowance and overage, or flat with a cap. They behave very differently as your volume changes, which is why monthly headline prices are hard to compare.' },
+      { q: 'What detail changes the cost most?', a: 'Rounding. Billing a forty-second call as a full minute is a fifty per cent premium on your most common call, and it is rarely in the headline.' },
+      { q: 'Do I pay for junk calls?', a: 'On per-call pricing, often yes. Ask explicitly whether wrong numbers, hang-ups and telemarketers are billable.' },
+      { q: 'Which structures punish growth?', a: 'Per-call with no cap, steep tier jumps where a few extra calls double the bill, and minimum commitments that stop you moving down in a quiet season.' },
+      { q: 'How do I compare two plans properly?', a: 'Price a real month of your own calls — with your actual mix of lengths and your share of junk — under both. Twenty minutes, and the only comparison that means anything.' },
+    ],
+    related: [
+      { href: '/learn/what-counts-as-a-minute', label: 'How our minutes work', sub: 'Rounding, alerts, overage.' },
+      { href: '/learn/answering-service-cost', label: 'Answering service costs', sub: 'The category.' },
+      { href: '/learn/cost-per-booked-appointment', label: 'Cost per booking', sub: 'The measure that settles it.' },
+    ],
+    ctaHeading: 'Price your own month, not a headline.',
+    ctaSub: 'Our plans, our rounding, our overage — all published. Seven days free.',
   },
 ]
 
