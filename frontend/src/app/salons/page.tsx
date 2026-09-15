@@ -88,7 +88,10 @@ const SALONS: VerticalContent = {
       { href: '/integrations/stripe', label: 'Take deposits with Stripe', sub: 'Cut no-shows at the point of booking.' },
     ],
     guides: [
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
+      { href: '/learn/can-you-fit-me-in-today', label: '"Can you fit me in today?"', sub: 'Your highest-intent caller.' },
+      { href: '/learn/patch-tests-and-colour-appointments', label: 'Colour and patch tests', sub: 'Why the timing decides it.' },
+      { href: '/learn/booking-a-consultation-first', label: 'When a consultation comes first', sub: 'Extensions and corrections.' },
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Asking for a stylist by name', sub: 'Per-person availability.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into bookings', sub: 'Why answering live wins the client.' },
     ],
   },

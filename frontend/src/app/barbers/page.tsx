@@ -87,7 +87,9 @@ const BARBERS: VerticalContent = {
       { href: '/integrations/google-calendar', label: 'Book into Google Calendar', sub: 'Real-time, no double-booking.' },
     ],
     guides: [
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
+      { href: '/learn/walk-ins-versus-appointments', label: 'Walk-ins versus appointments', sub: 'What the phone should say.' },
+      { href: '/learn/can-you-fit-me-in-today', label: '"Can you fit me in today?"', sub: 'The caller who never rings twice.' },
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Asking for a barber by name', sub: 'Per-person availability.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into booked chairs', sub: 'Why answering live wins the booking.' },
     ],
   },
