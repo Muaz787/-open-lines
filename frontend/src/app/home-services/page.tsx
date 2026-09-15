@@ -88,8 +88,11 @@ const HOME_SERVICES: VerticalContent = {
       { href: '/integrations/outlook', label: 'Book into Outlook & Microsoft 365', sub: 'For teams on Microsoft.' },
     ],
     guides: [
+      { href: '/learn/emergency-call-outs-and-out-of-hours-rates', label: 'Emergency call-outs', sub: 'Triage, rates and when not to go.' },
+      { href: '/learn/access-and-keys-for-property-work', label: 'Access and keys', sub: 'The most avoidable cost.' },
+      { href: '/learn/landlords-letting-agents-and-tenants', label: 'Rental work', sub: 'Who actually authorises it.' },
+      { href: '/learn/answering-calls-while-driving-between-jobs', label: 'Calls on the road', sub: 'Between jobs, in the van.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into booked jobs', sub: 'Why answering live wins the job.' },
-      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing compared.' },
     ],
   },
 

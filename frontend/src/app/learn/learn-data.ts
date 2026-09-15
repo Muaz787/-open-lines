@@ -6011,6 +6011,196 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Two kinds of caller, one number, neither queued.',
     ctaSub: 'Sorted in the first few seconds. Seven days free.',
   },
+  {
+    slug: 'emergency-call-outs-and-out-of-hours-rates',
+    category: 'Guide',
+    shortTitle: 'Emergency call-outs',
+    metaTitle: 'Emergency Call-Outs and Out-of-Hours Rates — Open Lines',
+    metaDescription: 'A burst pipe at two in the morning is a decision, not a booking. How to triage it on the phone, what to say about the rate, and when not to go.',
+    h1: 'Emergency call-outs at two in the morning',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'Somebody rings in the middle of the night about water coming through a ceiling. Before anything else happens you have two judgments to make — whether this genuinely cannot wait, and whether you are going to get out of bed for it — and both are easier when the call is handled to a pattern rather than while half awake.',
+    sections: [
+      {
+        heading: 'Triage before pricing',
+        bullets: [
+          { title: 'Is anybody in danger', body: 'Gas, electrics in water, a ceiling coming down. This is not a pricing conversation; it is who to ring and whether to leave the property.' },
+          { title: 'Can it be stopped rather than fixed', body: 'A stopcock, an isolator, a bowl under a leak. Talking somebody through that at two is often worth more to them than an attendance, and they remember it.' },
+          { title: 'Will it get worse before morning', body: 'The actual test. Water usually will, a broken boiler in July usually will not.' },
+          { title: 'Are they even your customer', body: 'Tenants frequently ring the last trade who attended rather than their own agent, and that changes who is paying.' },
+        ],
+      },
+      {
+        heading: 'Say the rate on the call, before you go',
+        paras: ['Out-of-hours pricing causes more disputes than any other part of trade work, and almost all of them come from a number that appeared on an invoice rather than in a conversation. Say the call-out charge and how the hours are counted while they are still on the phone and still deciding. People accept a night rate; what they do not accept is discovering one. A caller who agreed a figure at two in the morning does not argue about it at nine.'],
+      },
+      {
+        heading: 'It is fine not to go',
+        paras: ['Being unavailable at three in the morning is a legitimate business decision, and saying so plainly beats not answering. "We do not cover overnight, but I can have someone with you first thing — and in the meantime here is how to stop the water" is a better outcome for a homeowner than a phone that rings out. They still get help, you keep your night, and the job is very often still yours in the morning.'],
+      },
+      {
+        heading: 'What must be captured either way',
+        paras: ['Address including access, a working mobile, what is actually happening, whether the water or power is off, and whether anyone will be there. That is the difference between a first-time fix and arriving without the part or standing outside a locked door at four in the morning, which is an expensive way to be helpful.'],
+      },
+    ],
+    faqs: [
+      { q: 'How should an emergency call be triaged?', a: 'Danger first, then whether it can be stopped rather than fixed, then whether it worsens before morning. Pricing comes after all three.' },
+      { q: 'Should I give the out-of-hours rate on the phone?', a: 'Always, before you go. Nearly every dispute about night rates comes from a number that appeared on an invoice rather than in a conversation.' },
+      { q: 'Is it acceptable not to attend overnight?', a: 'Entirely, and saying so plainly beats not answering. Offer first thing plus advice on stopping the damage — the job is often still yours in the morning.' },
+      { q: 'What has to be captured?', a: 'Address with access details, a working mobile, what is actually happening, whether water or power is off, and whether anyone will be there.' },
+    ],
+    related: [
+      { href: '/home-services', label: 'For home services', sub: 'Emergencies and routine work.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Urgency generally', sub: 'Reaching a person fast.' },
+      { href: '/learn/answering-calls-while-driving-between-jobs', label: 'Calls on the road', sub: 'The daytime version.' },
+    ],
+    ctaHeading: 'Triaged, priced and captured before you get up.',
+    ctaSub: 'Or politely declined, without the phone ringing out. Seven days free.',
+  },
+  {
+    slug: 'landlords-letting-agents-and-tenants',
+    category: 'Common problem',
+    shortTitle: 'Three-party jobs',
+    metaTitle: 'When the Caller Is Not the Payer: Landlords, Agents and Tenants — Open Lines',
+    metaDescription: 'The tenant reports it, the agent authorises it, the landlord pays. Three people, one job, and the questions that stop you working for free.',
+    h1: 'When the caller is not the one paying',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'A tenant rings about a boiler. They did not choose you, they cannot authorise the work, and they will not be paying for it — but they are the only person in the property and the only one who knows what is happening. Rental work runs on this three-way split, and getting it wrong is how trades end up doing jobs nobody agreed to fund.',
+    sections: [
+      {
+        heading: 'Establish the three roles early',
+        bullets: [
+          { title: 'Who is reporting it', body: 'Usually the tenant, and the only one who can describe the fault or let you in.' },
+          { title: 'Who authorises the spend', body: 'An agent, a property manager, sometimes the landlord directly. No work should start without this named.' },
+          { title: 'Who is invoiced', body: 'Not always the same as the authoriser. Ask explicitly rather than assuming.' },
+          { title: 'What the limit is', body: 'Most agents work to a threshold above which they must ask the landlord. Knowing it before you attend avoids a wasted visit.' },
+        ],
+      },
+      {
+        heading: 'The expensive version of getting it wrong',
+        paras: ['You attend on a tenant’s call, fix the problem competently, and then discover the agent never raised an order. Now you are chasing an invoice nobody accepted, with a tenant who is delighted and a managing agent who is not obliged to pay you. It is one of the most common ways small trades lose money, and it almost always starts with a call where nobody asked who authorised it.'],
+      },
+      {
+        heading: 'Tenants deserve a straight answer anyway',
+        paras: ['Being told "we need your agent to confirm before we can attend" is not a brush-off if it comes with what happens next — who you will contact, when, and what to do in the meantime. Tenants are frequently stuck between a problem they cannot solve and people who are not answering, and a trade that explains the process clearly is remembered warmly by somebody who will eventually be a homeowner.'],
+      },
+      {
+        heading: 'Access is its own question',
+        paras: ['Whether the tenant will be in, whether the agent holds keys, whether there is a code, and whether anyone needs notice before entry. Rental work generates more no-access visits than any other kind, and almost all of them are preventable by asking on the first call rather than assuming somebody will be home.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should I establish on a rental repair call?', a: 'Who is reporting it, who authorises the spend, who receives the invoice, and what the agent’s approval threshold is. They are frequently four different answers.' },
+      { q: 'What goes wrong most often?', a: 'Attending on a tenant’s call and discovering afterwards that no order was ever raised — leaving you chasing an invoice nobody accepted.' },
+      { q: 'How should I handle the tenant?', a: 'Straight, with the process attached: who you will contact, when, and what to do meanwhile. They are stuck between a problem and people not answering.' },
+      { q: 'Why do rental jobs produce so many wasted visits?', a: 'Access. Whether the tenant is in, whether the agent holds keys, whether there is a code, and whether notice is required — almost all preventable on the first call.' },
+    ],
+    related: [
+      { href: '/contractors', label: 'For contractors', sub: 'Qualifying before you attend.' },
+      { href: '/learn/access-and-keys-for-property-work', label: 'Access and keys', sub: 'Avoiding a wasted visit.' },
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Qualifying enquiries', sub: 'The general case.' },
+    ],
+    ctaHeading: 'Know who is paying before you get in the van.',
+    ctaSub: 'Reporter, authoriser and payer captured on the call. Seven days free.',
+  },
+  {
+    slug: 'access-and-keys-for-property-work',
+    category: 'Common problem',
+    shortTitle: 'Access and keys',
+    metaTitle: 'Access, Keys and the Wasted Visit — Open Lines',
+    metaDescription: 'The most avoidable cost in trade work is arriving and not getting in. The six things to ask, and why "someone will be there" is not one of them.',
+    h1: 'The wasted visit nobody planned for',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'You loaded the van, drove forty minutes, and nobody is in. It is the most avoidable cost in trade work — no materials used, no hours billed, and a slot gone that somebody else wanted. Almost every one of these traces back to a question nobody asked when the job was booked.',
+    sections: [
+      {
+        heading: 'Six things worth establishing',
+        bullets: [
+          { title: 'Who will physically be there', body: 'A name, not "someone". "My mum will be in" is a plan; "someone will be there" is a hope.' },
+          { title: 'A mobile that will be answered', body: 'The single most useful field. A driver ringing on approach prevents more failures than anything else.' },
+          { title: 'How to get to the door', body: 'Gate codes, buzzer numbers, which entrance, a shared hallway, the flat number that is not on the street.' },
+          { title: 'Parking', body: 'Permit zones and loading restrictions turn a ten-minute job into a forty-minute one, or into a fine.' },
+          { title: 'Anything in the way', body: 'A dog, scaffolding, a car on the drive, a room that needs clearing before you can work.' },
+          { title: 'Whether they know the window', body: 'People forget. A confirmation the day before costs nothing.' },
+        ],
+      },
+      {
+        heading: 'Why "just leave it with the neighbour" goes wrong',
+        paras: ['Key arrangements sound simple on the phone and fail in specific, predictable ways: the neighbour is out, the key is for the wrong lock, the keysafe code has been changed, or nobody mentioned the second lock that needs a different key. If a job depends on a key arrangement, it is worth confirming the day before rather than discovering it on the doorstep, because there is no recovering from it once you are standing there.'],
+      },
+      {
+        heading: 'Charge for it, or decide not to',
+        paras: ['Either a failed-access visit is chargeable and that is stated when the job is booked, or it is absorbed and treated as a cost of doing business. Both are workable. What does not work is deciding afterwards, case by case, because that turns every instance into an argument with somebody who was never told. Saying it at the time makes the charge fair and, more usefully, makes people turn up.'],
+      },
+      {
+        heading: 'The call that saves the visit',
+        paras: ['A short confirmation the day before — right day, right window, will you be in, is the code still the same — prevents most of these. It is unglamorous, it takes ninety seconds, and for a trade running six jobs a day it pays for itself the first time it catches one. Most businesses do not do it because it is nobody’s job; making it somebody’s, or something’s, is the whole fix.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I stop wasted visits?', a: 'Establish who will physically be there by name, a mobile that will be answered, how to reach the door, parking, anything in the way, and whether they know the window.' },
+      { q: 'Why do key arrangements fail?', a: 'Predictably: the neighbour is out, the key is for the wrong lock, the keysafe code changed, or nobody mentioned a second lock. Confirm the day before rather than on the doorstep.' },
+      { q: 'Should I charge for failed access?', a: 'Either charge and say so when the job is booked, or absorb it. What does not work is deciding afterwards, which turns every instance into an argument.' },
+      { q: 'What is the single best prevention?', a: 'A ninety-second confirmation call the day before. It pays for itself the first time it catches one.' },
+    ],
+    related: [
+      { href: '/home-services', label: 'For home services', sub: 'Getting the details first time.' },
+      { href: '/learn/landlords-letting-agents-and-tenants', label: 'Rental work', sub: 'Where access fails most.' },
+      { href: '/learn/failed-delivery-and-redelivery-calls', label: 'The same problem in delivery', sub: 'Access details missing.' },
+    ],
+    ctaHeading: 'Every access detail, on the booking call.',
+    ctaSub: 'Because the forty-minute drive is the expensive part. Seven days free.',
+  },
+  {
+    slug: 'deposits-for-materials-on-trade-jobs',
+    category: 'Guide',
+    shortTitle: 'Money for materials',
+    metaTitle: 'Asking for Money Up Front on Trade Jobs — Open Lines',
+    metaDescription: 'Buying materials for a job you have not been paid for is lending, not trading. How to ask without losing the work, and the amount that reads as reasonable.',
+    h1: 'Asking for money before you start',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'A bathroom suite, a boiler, a run of kitchen units — somebody has to fund those before anyone turns a screw, and for most small trades that somebody is you. Asking for materials up front is entirely normal and it is the conversation trades find hardest, usually because it is had badly and late.',
+    sections: [
+      {
+        heading: 'Why it feels awkward and should not',
+        paras: ['Buying several thousand pounds of materials for somebody you met once is not a deposit in any meaningful sense — it is an unsecured loan to a stranger, made by a business that usually cannot afford to make it. Customers understand this immediately when it is put in those terms, and almost nobody objects to paying for their own bath. The awkwardness comes from asking apologetically, as though it were a favour.'],
+      },
+      {
+        heading: 'Ask at the right moment',
+        bullets: [
+          { title: 'When you quote, not when you start', body: 'A materials payment mentioned in the quote is a term. Mentioned on the morning of day one, it is a demand.' },
+          { title: 'As a figure, not a percentage', body: '"The units and the boiler come to eighteen hundred" is concrete. "Fifty per cent up front" invites a negotiation about the number.' },
+          { title: 'Tied to something real', body: 'Naming what the money buys makes it obviously fair and makes it obviously not profit taken early.' },
+          { title: 'With a receipt to follow', body: 'Offering to show what was bought removes the last objection before it is raised.' },
+        ],
+      },
+      {
+        heading: 'What refusing tells you',
+        paras: ['Most customers agree without much thought. A customer who will not fund their own materials — for a job they are asking you to start next week — is telling you something worth hearing about how the final invoice will go. It is not proof of anything, but it is the cheapest signal you will ever get, and it arrives before you have committed anything but a conversation.'],
+      },
+      {
+        heading: 'Keep it separate from your labour',
+        paras: ['Materials money is not payment for work and should not be treated as income until the job runs. Trades that spend it before the work happens end up funding the next job with the one after that, which works until a customer cancels. Keeping it distinct is an accounting habit rather than a phone one, but the phone call is where the expectation gets set — "this covers the materials, labour is invoiced on completion" is one sentence and it prevents a whole category of dispute.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is it normal to ask for money up front on trade work?', a: 'Entirely. Buying several thousand pounds of materials for somebody you met once is an unsecured loan to a stranger, and customers understand that immediately when it is put plainly.' },
+      { q: 'When should I raise it?', a: 'In the quote, not on the morning of day one. Mentioned at quoting it is a term; mentioned at the start it is a demand.' },
+      { q: 'A figure or a percentage?', a: 'A figure, tied to named items. "The units and the boiler come to eighteen hundred" is concrete; "fifty per cent" invites a negotiation.' },
+      { q: 'What if they refuse?', a: 'It is the cheapest signal you will get about how the final invoice will go, and it arrives before you have committed anything but a conversation.' },
+    ],
+    related: [
+      { href: '/contractors', label: 'For contractors', sub: 'Quoting and qualifying.' },
+      { href: '/learn/when-a-quote-is-not-a-booking', label: 'Quotes and next steps', sub: 'Where terms get set.' },
+      { href: '/learn/reduce-no-shows-with-deposits', label: 'Deposits generally', sub: 'A different purpose.' },
+    ],
+    ctaHeading: 'Set the terms on the call that wins the job.',
+    ctaSub: 'Enquiry captured, quote booked, expectations clear. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
