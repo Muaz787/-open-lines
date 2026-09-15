@@ -737,15 +737,86 @@ async def system_health(x_admin_key: str | None = Header(None)):
         return await _ping("Mistral OCR", "https://api.mistral.ai/v1/models",
                            headers={"Authorization": f"Bearer {key}"})
 
+    # ── REAL PROBES, NOT ENV PRESENCE ────────────────────────────────────
+    # These three reported "Configured" from os.getenv alone, so a revoked or
+    # expired key showed green on a page headed "All checks passing" — for the
+    # three services a live call depends on most. A key that exists and a key
+    # that works are different facts, and only one of them is worth a tick.
+
+    async def _chk_openai() -> tuple:
+        key = os.getenv("OPENAI_API_KEY", "")
+        if not key:
+            return ("OpenAI", "error", "Not configured: OPENAI_API_KEY")
+        # Listing models is the cheapest authenticated read there is: no tokens
+        # are consumed and nothing is generated, so this costs nothing to run.
+        return await _ping("OpenAI", "https://api.openai.com/v1/models",
+                           headers={"Authorization": f"Bearer {key}"})
+
+    async def _chk_vapi() -> tuple:
+        key = os.getenv("VAPI_API_KEY", "")
+        if not key:
+            return ("Vapi", "error", "Not configured: VAPI_API_KEY")
+        # The PARENT org key, which is the one this service falls back to when a
+        # tenant has no sub-org key of its own. A tenant key failing is a tenant
+        # problem; this one failing stops every assistant we manage.
+        return await _ping("Vapi", "https://api.vapi.ai/assistant?limit=1",
+                           headers={"Authorization": f"Bearer {key}"})
+
+    async def _chk_square() -> tuple:
+        """Square publishes no read endpoint an OAuth APP can call.
+
+        It issues client credentials, not a platform token, so the only way to
+        learn whether ours still work is to present them at the token endpoint.
+        We do that with a deliberately invalid authorization code, which cannot
+        mint a token, cannot revoke one, and changes nothing:
+
+            401 / service.not_authorized -> the app id or secret is wrong
+            400 (bad code)               -> the credentials were ACCEPTED, and
+                                            the only thing Square rejected was
+                                            the code we knew to be junk
+
+        Verified against the live API: junk credentials return 401, so Square
+        checks them BEFORE it looks at the code. Good credentials therefore
+        cannot produce a 401 here.
+
+        Only 400 is treated as a pass. Anything else — including a status this
+        comment did not anticipate — is a warning, never a tick, so a surprise
+        from Square degrades to "look at this" rather than to the false green
+        this check was written to remove.
+        """
+        from services import square_service as sq
+        app_id, secret = sq._app_id(), sq._app_secret()
+        if not (app_id and secret):
+            return ("Square", "error", "Not configured: SQUARE_APP_ID, SQUARE_APP_SECRET")
+        env = sq.SQUARE_ENVIRONMENT or "production"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.post(f"{sq._oauth_base()}/oauth2/token", json={
+                    "client_id": app_id, "client_secret": secret,
+                    "grant_type": "authorization_code",
+                    # Never a real code. Its only job is to be rejected AFTER the
+                    # credentials have been checked.
+                    "code": "openlines-health-probe-not-a-real-code",
+                })
+        except Exception as e:
+            return ("Square", "error", f"Unreachable: {str(e)[:60]}")
+        if r.status_code in (401, 403):
+            return ("Square", "error",
+                    f"App credentials rejected (HTTP {r.status_code}) — check "
+                    f"SQUARE_APP_ID/SECRET match the {env} environment")
+        if r.status_code == 400:
+            return ("Square", "ok", f"Credentials accepted ({env})")
+        return ("Square", "warning", f"HTTP {r.status_code}")
+
     pinged = await asyncio.gather(
         _chk_supabase(), _chk_twilio(), _chk_stripe(), _chk_resend(),
         _chk_pinecone(), _chk_crawl(), _chk_cron(), _chk_mistral(),
+        _chk_openai(), _chk_vapi(), _chk_square(),
     )
     checks = [{"name": n, "status": s, "message": m} for (n, s, m) in pinged]
     for n, s, m in [
-        _env("OpenAI", ["OPENAI_API_KEY"]),
-        _env("Vapi", ["VAPI_API_KEY"]),
-        _env("Square", ["SQUARE_APP_ID", "SQUARE_APP_SECRET"]),
+        # Firecrawl keeps an env check: its only endpoints cost credits to call,
+        # and the crawl check above already proves it works end to end.
         _env("Firecrawl", ["FIRECRAWL_API_KEY"]),
         _chk_whatsapp(),
     ]:
