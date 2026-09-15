@@ -5818,6 +5818,199 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Refuse the advice, keep the client.',
     ctaSub: 'Process, cost and a first appointment — offered on the call. Seven days free.',
   },
+  {
+    slug: 'allergies-and-dietary-requirements-on-the-phone',
+    category: 'Compliance',
+    shortTitle: 'Allergies by phone',
+    metaTitle: 'Allergy and Dietary Questions Over the Phone — Open Lines',
+    metaDescription: 'The one call where a confident answer is dangerous. What should be captured, what must never be confirmed by phone, and why kitchens are the only source of truth.',
+    h1: 'Allergy and dietary questions on the phone',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'Somebody rings to ask whether a dish contains nuts, or whether you can do a coeliac menu on Saturday. It sounds like a simple question and it is the single call where being confidently helpful can cause genuine harm — which makes it the call where the answer needs to be designed rather than improvised.',
+    sections: [
+      {
+        heading: 'Why a phone answer is the wrong instrument',
+        paras: ['Recipes change, suppliers change, and the person who knows what is in tonight’s special is standing in a kitchen, not next to the phone. An answer given on Tuesday can be wrong by Friday without anybody doing anything careless. And the caller is not asking out of preference — for a serious allergy they are asking whether it is safe to eat in your restaurant, and they will act on what they are told.'],
+      },
+      {
+        heading: 'What the call should actually do',
+        bullets: [
+          { title: 'Record it against the booking, in their words', body: '"Severe nut allergy" is not "no nuts please", and the kitchen needs the difference.' },
+          { title: 'Say it will be flagged to the kitchen', body: 'Which is true, useful and commits nobody to a claim about a dish.' },
+          { title: 'Ask them to raise it again on arrival', body: 'Not a brush-off — it is how the kitchen confirms against what is actually being cooked that night.' },
+          { title: 'Never confirm a dish is free of something', body: 'However confident anyone feels. That assurance belongs to whoever is cooking.' },
+        ],
+      },
+      {
+        heading: 'What a good record looks like',
+        paras: ['Attached to the booking rather than written on a pad, phrased as the caller phrased it, and visible to whoever is running the pass on the night. A note that reaches the kitchen at six is worth a great deal; the same note remembered by whoever took the call and then not working that shift is worth nothing, and that is the common failure — not a wrong answer, but a right answer nobody passed on.'],
+      },
+      {
+        heading: 'It is also a booking worth having',
+        paras: ['Groups containing someone with a serious dietary requirement choose the restaurant that handled the phone call well, and they return, because finding somewhere that takes it seriously is genuinely difficult. Handling this call properly is not only a safety matter — it is one of the more reliable sources of loyal custom a restaurant has.'],
+      },
+      {
+        heading: 'This is not guidance on allergen law',
+        paras: ['Allergen information requirements are a legal matter that differs by country and changes, and your local rules govern. What is above is about how a phone call should behave; it is not a substitute for knowing your obligations.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should allergy questions be answered over the phone?', a: 'The requirement should be recorded and flagged, but no dish should be confirmed free of an allergen by phone. Recipes and suppliers change, and the person who knows what is in tonight’s special is in the kitchen.' },
+      { q: 'What should happen on the call?', a: 'Record it in the caller’s own words against the booking, say it will be flagged to the kitchen, and ask them to raise it again on arrival so it can be confirmed against what is actually being cooked.' },
+      { q: 'Is asking them to mention it again a brush-off?', a: 'No — it is how the kitchen confirms against the night’s actual dishes. Said that way, callers understand it immediately.' },
+      { q: 'What usually goes wrong?', a: 'Not a wrong answer but a right one nobody passed on — a note remembered by whoever took the call, who is not working that shift.' },
+      { q: 'Does this cover allergen law?', a: 'No. Requirements differ by country and change; this is about how the call should behave, not what your obligations are.' },
+    ],
+    related: [
+      { href: '/restaurants', label: 'For restaurants', sub: 'Reservations during service.' },
+      { href: '/learn/taking-bookings-during-service', label: 'The seven o’clock problem', sub: 'When nobody can answer.' },
+      { href: '/learn/special-occasions-and-quiet-requests', label: 'What callers do not say', sub: 'The details worth asking for.' },
+    ],
+    ctaHeading: 'Captured in their words, flagged to the kitchen.',
+    ctaSub: 'Every requirement attached to the booking. Seven days free.',
+  },
+  {
+    slug: 'taking-bookings-during-service',
+    category: 'Common problem',
+    shortTitle: 'The 7pm problem',
+    metaTitle: 'Taking Bookings While You Are in Service — Open Lines',
+    metaDescription: 'The phone rings hardest in the hour nobody can answer it. Why the busiest service is also your busiest phone hour, and what that costs across a week.',
+    h1: 'The seven o’clock problem',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'Restaurants have a scheduling problem no other business has quite so sharply: the hour when the phone rings most is the exact hour when every single person is needed somewhere else. It is not a staffing failure, it is arithmetic, and it repeats every evening.',
+    sections: [
+      {
+        heading: 'Why the two peaks coincide',
+        paras: ['People book when they are thinking about eating, which is when they are hungry, which is around the time you are serving. Add the ones ringing to say they are running late, the ones asking if you have a table tonight, and the ones who wanted the number for something else entirely, and the busiest forty minutes of your service carries the heaviest phone load of your day. Nobody designed that; it just is.'],
+      },
+      {
+        heading: 'What each unanswered call costs',
+        bullets: [
+          { title: 'A table tonight', body: 'Somebody asking about availability at seven wants to eat at eight. They will ring the next place, and they will get one.' },
+          { title: 'A table next week', body: 'Worse, because it is usually a larger booking and they were choosing deliberately.' },
+          { title: 'A no-show you could have refilled', body: 'The party running twenty minutes late tried to tell you and could not, so the table sits empty and then they arrive.' },
+          { title: 'The regular who stopped bothering', body: 'The quiet one. People do not complain about an unanswered phone, they just book elsewhere next time.' },
+        ],
+      },
+      {
+        heading: 'Why the usual fixes do not hold',
+        paras: ['Online booking captures the planners and misses everybody deciding tonight. A phone on the pass gets answered badly, in a shout, by somebody who cannot look at the book. Voicemail during service is a list of people who have already eaten somewhere else by the time anybody listens. Each of these helps a little and none addresses the actual constraint, which is that a human answering properly must stop doing something else.'],
+      },
+      {
+        heading: 'Late-running parties deserve their own thought',
+        paras: ['The "we are twenty minutes away" call is worth answering even though it books nothing. Handled, you hold the table and turn it later; missed, you either give it away and have an argument at the door, or hold it empty and lose the cover. That single call type is worth more to most restaurants than they realise, and it arrives at exactly the worst moment.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why does the phone ring most during service?', a: 'People book when they are thinking about eating, which is when you are serving — plus late-running parties and availability enquiries. The two peaks coincide by nature.' },
+      { q: 'Does online booking solve it?', a: 'It captures the planners and misses everybody deciding tonight, which is the caller ringing at seven.' },
+      { q: 'What about voicemail during service?', a: 'It produces a list of people who have eaten somewhere else by the time anybody listens.' },
+      { q: 'Which call is most underrated?', a: 'The party running late. Handled, you hold the table and turn it later; missed, you either give it away and argue at the door or hold it empty.' },
+    ],
+    related: [
+      { href: '/restaurants', label: 'For restaurants', sub: 'Answering through the rush.' },
+      { href: '/learn/handling-busy-periods-and-call-spikes', label: 'Call spikes', sub: 'The general case.' },
+      { href: '/learn/allergies-and-dietary-requirements-on-the-phone', label: 'Dietary requirements', sub: 'Captured properly.' },
+    ],
+    ctaHeading: 'The phone answered while you serve.',
+    ctaSub: 'Tables booked, late parties held, nobody leaving the pass. Seven days free.',
+  },
+  {
+    slug: 'special-occasions-and-quiet-requests',
+    category: 'Guide',
+    shortTitle: 'Special occasions',
+    metaTitle: 'The Special Occasion Nobody Mentioned — Open Lines',
+    metaDescription: 'Birthdays, anniversaries and proposals are your highest-value covers and your most easily disappointed. The one question that surfaces them, asked on every booking.',
+    h1: 'The occasion nobody mentioned',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'A table for two on a Thursday might be a quiet dinner or a tenth anniversary, and you will not be told unless you ask. That difference determines how much they spend, how they remember the evening, and whether they come back — and most restaurants find out when the bill arrives, if at all.',
+    sections: [
+      {
+        heading: 'Ask on every booking, in one sentence',
+        paras: ['"Is it a special occasion?" takes two seconds and surfaces something on a surprising share of bookings. People do not volunteer it — they assume you do not care, or they feel awkward announcing their own birthday. Asked casually as part of taking the booking, almost everybody answers, and you have just turned an ordinary cover into one you can do something with.'],
+      },
+      {
+        heading: 'What it changes',
+        bullets: [
+          { title: 'Where they sit', body: 'A proposal next to the service station is a story they will tell, and not the one you want.' },
+          { title: 'What they spend', body: 'Celebration tables order differently. Knowing in advance means the right suggestions at the right moment.' },
+          { title: 'Whether anything is prepared', body: 'A candle, a written plate, a chilled bottle. Small, cheap, and remembered for years.' },
+          { title: 'How the service is paced', body: 'Nobody wants an anniversary rushed for a turn.' },
+        ],
+      },
+      {
+        heading: 'The quiet requests that matter more',
+        paras: ['The same question surfaces things people find genuinely difficult to raise: a wheelchair, a hearing difficulty and a wish not to be seated near the music, a child who needs to be somewhere specific, a first date and a preference not to be in the window. None of these will be volunteered on a booking form, several of them determine whether the evening works at all, and every one is easy to accommodate given notice and impossible to fix at the door.'],
+      },
+      {
+        heading: 'Capturing it is only half',
+        paras: ['A note about an anniversary that nobody reads before service is worse than not asking, because the couple mentioned it and were met with nothing. If you are going to ask, the answer has to reach whoever is running the room that night, attached to the booking rather than remembered. That is a small operational habit and it is the entire difference between the question being charming and being a broken promise.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should I ask whether a booking is a special occasion?', a: 'On every booking. People do not volunteer it — they assume you do not care or feel awkward announcing their own birthday — but asked casually, almost everybody answers.' },
+      { q: 'What does knowing actually change?', a: 'Where they sit, what they spend, whether anything small is prepared, and how the service is paced. A proposal next to the service station is the wrong story.' },
+      { q: 'What else does the question surface?', a: 'Accessibility needs, hearing difficulties, seating preferences — things people find hard to raise and which are easy to accommodate with notice and impossible to fix at the door.' },
+      { q: 'What is the risk of asking?', a: 'Asking and then not acting. A couple who mentioned their anniversary and were met with nothing are worse off than if you had never asked.' },
+    ],
+    related: [
+      { href: '/restaurants', label: 'For restaurants', sub: 'Every booking captured.' },
+      { href: '/learn/taking-bookings-during-service', label: 'Booking through service', sub: 'When nobody can ask.' },
+      { href: '/learn/deposits-for-group-bookings', label: 'Larger parties', sub: 'Protecting the big tables.' },
+    ],
+    ctaHeading: 'Ask the question on every booking.',
+    ctaSub: 'Captured against the table, ready for the night. Seven days free.',
+  },
+  {
+    slug: 'takeaway-orders-versus-table-bookings',
+    category: 'Common problem',
+    shortTitle: 'Takeaway vs tables',
+    metaTitle: 'When One Phone Line Takes Both Orders and Bookings — Open Lines',
+    metaDescription: 'Takeaway callers and table bookers want opposite things from the same number. Why mixing them costs you both, and how to separate without a second line.',
+    h1: 'Takeaway orders and table bookings on one line',
+    published: '2026-09-25',
+    updated: '2026-09-25',
+    intro: 'A restaurant doing both has two entirely different customers ringing the same number with incompatible expectations — and during service they arrive simultaneously. It is one of the more avoidable ways to lose covers, and most places have never separated them deliberately.',
+    sections: [
+      {
+        heading: 'They want opposite things',
+        bullets: [
+          { title: 'Takeaway wants speed', body: 'An order, a time, a total. Thirty seconds. Any conversation beyond that is friction.' },
+          { title: 'Bookings want a moment', body: 'Date, party size, occasion, dietary requirements. Rushing it loses the detail that makes the evening work.' },
+          { title: 'Takeaway rings in bursts', body: 'Clustered tightly around the same forty minutes, which is also your service peak.' },
+          { title: 'Bookings ring all day', body: 'Including hours when nobody is in the building at all.' },
+        ],
+      },
+      {
+        heading: 'What mixing them costs',
+        paras: ['The booking gets rushed because there is a queue of takeaway behind it, so the occasion goes unasked and the allergy gets a hurried note. And the takeaway customer waits through a five-minute conversation about a table for eight in March, which is exactly the experience that sends them to an app instead. Both customers get the worse version of your service, and neither problem is visible in any figure you look at.'],
+      },
+      {
+        heading: 'Separating without a second number',
+        paras: ['You do not need another line, you need the call to sort itself early. Establishing which kind of call it is in the first few seconds means the takeaway path can be quick and the booking path can be careful, and neither is queued behind the other. That is worth more than most people expect, because the two are only in conflict while they are sharing a queue.'],
+      },
+      {
+        heading: 'Be honest about which you would rather lose',
+        paras: ['If your margin is in covers and takeaway is a sideline, decide that explicitly and make sure a table booking is never lost to a queue of orders. If takeaway volume is what pays the rent, the reverse. What does not work is treating them as equal in the moment, because in practice that means whoever rang first wins — and that is not a policy, it is an accident repeated nightly.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why is mixing takeaway and bookings a problem?', a: 'They want opposite things. Takeaway wants thirty seconds; a booking needs a moment for date, party size, occasion and dietary requirements. Sharing a queue means both get the worse version.' },
+      { q: 'Do I need a second phone line?', a: 'No — you need the call to sort itself early. Establishing which kind it is in the first few seconds lets the takeaway path be quick and the booking path careful.' },
+      { q: 'When do the two collide most?', a: 'Takeaway rings in a tight burst around your service peak, which is also when table enquiries arrive and nobody is free.' },
+      { q: 'Which should take priority?', a: 'Decide explicitly, based on where your margin is. Treating them as equal means whoever rang first wins, which is an accident repeated nightly rather than a policy.' },
+    ],
+    related: [
+      { href: '/restaurants', label: 'For restaurants', sub: 'Both call types handled.' },
+      { href: '/learn/taking-bookings-during-service', label: 'The seven o’clock problem', sub: 'When they collide.' },
+      { href: '/learn/phone-menus-and-press-one', label: 'Why not a menu', sub: 'Sorting without "press 1".' },
+    ],
+    ctaHeading: 'Two kinds of caller, one number, neither queued.',
+    ctaSub: 'Sorted in the first few seconds. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)

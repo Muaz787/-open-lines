@@ -88,8 +88,11 @@ const RESTAURANTS: VerticalContent = {
       { href: '/integrations/stripe', label: 'Take deposits on large parties', sub: 'Cut no-shows with a secure Stripe link.' },
     ],
     guides: [
+      { href: '/learn/taking-bookings-during-service', label: 'The seven o’clock problem', sub: 'When nobody can answer.' },
+      { href: '/learn/allergies-and-dietary-requirements-on-the-phone', label: 'Allergies and dietary needs', sub: 'Captured, never confirmed.' },
+      { href: '/learn/special-occasions-and-quiet-requests', label: 'The occasion nobody mentioned', sub: 'One question, every booking.' },
+      { href: '/learn/takeaway-orders-versus-table-bookings', label: 'Takeaway and tables on one line', sub: 'Separating them.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into filled tables', sub: 'Why answering live wins the booking.' },
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers and books.' },
     ],
   },
 
