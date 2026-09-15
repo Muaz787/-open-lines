@@ -139,24 +139,27 @@ async def create_auth_user(email: str, password: str, tenant_id: str) -> str:
 
 def _create_auth_user_sync(email: str, password: str, tenant_id: str) -> str:
     client = get_client()
+    # tenant_id lives in app_metadata, which only the service-role key can write.
+    # It is what services.security trusts for tenant ownership; user_metadata is
+    # user-editable and must never carry it. See security._verified_user.
     try:
         res = client.auth.admin.create_user({
             "email": email,
             "password": password,
             "email_confirm": True,
-            "user_metadata": {"tenant_id": tenant_id},
+            "app_metadata": {"tenant_id": tenant_id},
         })
         return res.user.id
     except Exception as create_err:
         existing = _find_auth_user_by_email(client, email)
         if not existing:
             raise
-        meta = dict(getattr(existing, "user_metadata", None) or {})
-        if meta.get("tenant_id"):
+        app_meta = dict(getattr(existing, "app_metadata", None) or {})
+        if app_meta.get("tenant_id"):
             # Already owns a tenant — refuse to hijack it.
             raise RuntimeError(f"Email already registered to another account: {email}") from create_err
-        meta["tenant_id"] = tenant_id
-        client.auth.admin.update_user_by_id(existing.id, {"user_metadata": meta})
+        app_meta["tenant_id"] = tenant_id
+        client.auth.admin.update_user_by_id(existing.id, {"app_metadata": app_meta})
         logger.info("Linked existing orphan auth user to tenant %s", tenant_id)
         return existing.id
 

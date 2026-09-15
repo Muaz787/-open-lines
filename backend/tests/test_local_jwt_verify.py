@@ -30,11 +30,14 @@ def _jwks(private=_PRIVATE, kid=KID) -> dict:
     return {"keys": [{**jwk, "kid": kid, "alg": "ES256", "use": "sig"}]}
 
 
-def _token(*, tenant_id="t1", private=_PRIVATE, kid=KID, alg="ES256", exp_in=3600,
-           aud="authenticated", iss=ISS, secret=None) -> str:
+def _token(*, tenant_id="t1", user_meta_tenant_id=None, private=_PRIVATE, kid=KID,
+           alg="ES256", exp_in=3600, aud="authenticated", iss=ISS, secret=None) -> str:
+    # tenant_id -> app_metadata (server-only, what authz trusts).
+    # user_meta_tenant_id -> user_metadata (user-editable, must be ignored).
     claims = {"sub": "user-1", "email": "owner@example.com", "aud": aud, "iss": iss,
               "exp": int(time.time()) + exp_in, "role": "authenticated",
-              "user_metadata": {"tenant_id": tenant_id}}
+              "app_metadata": {"tenant_id": tenant_id} if tenant_id is not None else {},
+              "user_metadata": {"tenant_id": user_meta_tenant_id} if user_meta_tenant_id else {}}
     key = secret if secret is not None else private
     return jwt.encode(claims, key, algorithm=alg, headers={"kid": kid})
 
@@ -57,7 +60,8 @@ def jwks(monkeypatch):
 def auth_server():
     """The network fallback. Local verification should leave it untouched."""
     client = MagicMock()
-    user = MagicMock(id="user-1", email="owner@example.com", user_metadata={"tenant_id": "t1"})
+    user = MagicMock(id="user-1", email="owner@example.com",
+                     app_metadata={"tenant_id": "t1"}, user_metadata={})
     client.auth.get_user.return_value = MagicMock(user=user)
     with patch("db.supabase.get_client", return_value=client):
         yield client.auth.get_user
@@ -91,6 +95,27 @@ async def test_identity_comes_from_the_verified_claims(jwks, auth_server):
 async def test_a_valid_token_for_another_tenant_is_403(jwks, auth_server):
     with pytest.raises(HTTPException) as exc:
         await security.verify_tenant_owner("t1", f"Bearer {_token(tenant_id='t-other')}")
+    assert exc.value.status_code == 403
+    auth_server.assert_not_called()
+
+
+async def test_a_user_metadata_tenant_id_is_ignored(jwks, auth_server):
+    """The vulnerability: user_metadata is user-editable. A token that names the
+    target tenant ONLY in user_metadata (app_metadata absent) must be denied."""
+    token = _token(tenant_id=None, user_meta_tenant_id="t1")
+    with pytest.raises(HTTPException) as exc:
+        await security.verify_tenant_owner("t1", f"Bearer {token}")
+    assert exc.value.status_code == 403
+    auth_server.assert_not_called()
+
+
+async def test_app_metadata_wins_over_a_conflicting_user_metadata(jwks, auth_server):
+    """app_metadata says t1 (correct); user_metadata forges t-other. Access to t1
+    is allowed on app_metadata, and the forged user_metadata changes nothing."""
+    token = _token(tenant_id="t1", user_meta_tenant_id="t-other")
+    await security.verify_tenant_owner("t1", f"Bearer {token}")
+    with pytest.raises(HTTPException) as exc:
+        await security.verify_tenant_owner("t-other", f"Bearer {token}")
     assert exc.value.status_code == 403
     auth_server.assert_not_called()
 

@@ -70,18 +70,26 @@ def _bearer_token(authorization: str | None) -> str:
 
 
 async def _verified_user(token: str) -> dict:
-    """{id, email, user_metadata} for a valid access token, else HTTP 401.
+    """{id, email, tenant_id} for a valid access token, else HTTP 401.
 
     Verified locally against the project's published signing key when
     possible (see services/jwt_verify.py); otherwise by asking Supabase Auth,
     which is what every request used to do.
+
+    tenant_id is read from app_metadata, NEVER from user_metadata. app_metadata
+    is writable only with the service-role key (the admin API); user_metadata is
+    writable by the signed-in user themselves via supabase.auth.updateUser. When
+    ownership was read from user_metadata, any account could grant itself another
+    tenant's data by editing its own token payload -- confirmed exploitable. The
+    tenant_id is written to app_metadata at signup (db.create_auth_user) and, for
+    accounts created before this change, by scripts/backfill_app_metadata_tenant.py.
     """
     try:
         claims = await jwt_verify.verify(token)
         return {
             "id": str(claims.get("sub") or ""),
             "email": str(claims.get("email") or ""),
-            "user_metadata": claims.get("user_metadata") or {},
+            "tenant_id": (claims.get("app_metadata") or {}).get("tenant_id"),
         }
     except jwt_verify.Undecided:
         pass
@@ -100,12 +108,14 @@ async def _verified_user(token: str) -> dict:
     return {
         "id": str(getattr(user, "id", "") or ""),
         "email": str(getattr(user, "email", "") or ""),
-        "user_metadata": user.user_metadata or {},
+        "tenant_id": (getattr(user, "app_metadata", None) or {}).get("tenant_id"),
     }
 
 
 def _require_owner(user: dict, tenant_id: str) -> None:
-    if user["user_metadata"].get("tenant_id") != tenant_id:
+    # A missing app_metadata tenant_id never matches: an account not yet
+    # backfilled is denied, not waved through to a user-controlled fallback.
+    if not user["tenant_id"] or user["tenant_id"] != tenant_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
 
