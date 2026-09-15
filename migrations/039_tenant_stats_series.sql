@@ -29,13 +29,19 @@ returns table (metric text, bucket_start timestamptz, cnt bigint, secs numeric)
 language sql
 stable
 security definer
-set search_path = public
+-- search_path pinned EMPTY and every table fully schema-qualified (the 024
+-- convention). The SQL function body is validated at CREATE time, and with a
+-- non-empty search_path that validation resolved bare `calls` against whatever
+-- the running session's path was -- which failed in the SQL editor with
+-- 42P01 "relation calls does not exist". pg_catalog is always implicitly on the
+-- path, so date_trunc/count/sum/coalesce still resolve.
+set search_path = ''
 as $$
     select 'calls'::text,
            date_trunc(p_bucket, created_at at time zone 'UTC') at time zone 'UTC',
            count(*)::bigint,
            coalesce(sum(duration_secs), 0)::numeric
-    from calls
+    from public.calls
     where tenant_id = p_tenant_id and created_at >= p_start
     group by 2
   union all
@@ -43,7 +49,7 @@ as $$
            date_trunc(p_bucket, created_at at time zone 'UTC') at time zone 'UTC',
            count(*)::bigint,
            0::numeric
-    from leads
+    from public.leads
     where tenant_id = p_tenant_id and created_at >= p_start
     group by 2
   union all
@@ -51,7 +57,7 @@ as $$
            date_trunc(p_bucket, created_at at time zone 'UTC') at time zone 'UTC',
            count(*)::bigint,
            0::numeric
-    from appointments
+    from public.appointments
     where tenant_id = p_tenant_id and status <> 'cancelled' and created_at >= p_start
     group by 2
 $$;
