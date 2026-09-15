@@ -37,6 +37,7 @@ from services import regulatory_requirements as rq
 from services import regulatory_state as st
 from services import telephony, vapi  # noqa: F401  (vapi imported for parity of boundaries)
 from services.telephony import _safe_provider_error
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -226,9 +227,9 @@ async def ensure_address(tenant: dict, *, submitted: dict,
     # 027 enforces it at write time; checking here turns a 23503 into a clean refusal.
     if tenant_location_id:
         from db.supabase import get_client
-        loc = (get_client().table("tenant_locations").select("id")
+        loc = ((await run_query(get_client().table("tenant_locations").select("id")
                .eq("id", tenant_location_id).eq("tenant_id", tenant_id)
-               .limit(1).execute().data or [])
+               .limit(1))).data or [])
         if not loc:
             return _result(OWNERSHIP_CONFLICT, detail="tenant_location_not_owned")
 

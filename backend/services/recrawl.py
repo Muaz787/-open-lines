@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 from db import supabase as db
 from services import knowledge
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +102,12 @@ async def find_stale_tenants(limit: int = MAX_TENANTS_PER_RUN) -> list[dict]:
     """Tenants due for a scheduled re-crawl: website set, auto-recrawl on, active or
     trialing, not crawled within STALE_DAYS, and not repeatedly failing."""
     res = (
-        db.get_client()
+        await run_query(db.get_client()
         .table("tenants")
         .select(
             "id, website_url, pinecone_namespace, last_crawl_at, "
             "last_crawl_failures, auto_recrawl_enabled, subscription_status"
-        )
-        .execute()
+        ))
     )
     rows = res.data or []
     cutoff = datetime.now(timezone.utc) - timedelta(days=STALE_DAYS)

@@ -34,6 +34,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from services.trial import TRIAL_DAYS, is_billing_exempt
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -162,10 +163,9 @@ async def run_reclaim() -> dict:
 
     try:
         res = (
-            db.get_client().table("tenants")
+            await run_query(db.get_client().table("tenants")
             .select(_SELECT)
-            .not_.is_("twilio_phone_number", "null")
-            .execute()
+            .not_.is_("twilio_phone_number", "null"))
         )
         rows = res.data or []
     except Exception as e:

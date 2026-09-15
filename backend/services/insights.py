@@ -24,6 +24,7 @@ from openai import AsyncOpenAI
 
 from db import supabase as db
 from services.call_enrichment import OPPORTUNITY_INTENTS
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -67,21 +68,21 @@ def _confidence(n: int) -> tuple[str, int]:
 async def _gather(tenant_id: str, days: int) -> tuple[list, list, list]:
     client = db.get_client()
     since = (_now() - timedelta(days=days)).isoformat()
-    calls = (client.table("calls")
+    calls = ((await run_query(client.table("calls")
              .select("id,lead_id,duration_secs,created_at,intent,service_topic,sentiment,"
                      "pricing_question,ai_confident,knowledge_gap,gap_topic")
-             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000).execute().data or [])
-    leads = (client.table("leads")
+             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000))).data or [])
+    leads = ((await run_query(client.table("leads")
              .select("id,phone,urgency,status,summary,created_at")
-             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000).execute().data or [])
-    appts = (client.table("appointments")
+             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000))).data or [])
+    appts = ((await run_query(client.table("appointments")
              .select("id,service,status,caller_phone,created_at")
-             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000).execute().data or [])
+             .eq("tenant_id", tenant_id).gte("created_at", since).limit(5000))).data or [])
     return calls, leads, appts
 
 
 async def _total_call_count(tenant_id: str) -> int:
-    res = db.get_client().table("calls").select("id", count="exact").eq("tenant_id", tenant_id).execute()
+    res = await run_query(db.get_client().table("calls").select("id", count="exact").eq("tenant_id", tenant_id))
     return res.count or 0
 
 
@@ -339,17 +340,17 @@ async def generate(tenant: dict) -> dict:
 
 
 async def _read_cache(tenant_id: str) -> dict | None:
-    res = db.get_client().table("ai_insights").select("*").eq("tenant_id", tenant_id).limit(1).execute()
+    res = await run_query(db.get_client().table("ai_insights").select("*").eq("tenant_id", tenant_id).limit(1))
     return (res.data or [None])[0]
 
 
 async def _write_cache(tenant_id: str, payload: dict, count: int) -> None:
-    db.get_client().table("ai_insights").upsert({
+    await run_query(db.get_client().table("ai_insights").upsert({
         "tenant_id": tenant_id,
         "payload": payload,
         "generated_at": _now().isoformat(),
         "source_call_count": count,
-    }).execute()
+    }))
 
 
 async def get_insights(tenant: dict, refresh: bool = False) -> dict:

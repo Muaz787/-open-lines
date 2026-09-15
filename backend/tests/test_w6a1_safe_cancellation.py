@@ -322,13 +322,18 @@ async def test_an_appointment_cancelled_between_listing_and_execution():
 @pytest.mark.asyncio
 async def test_two_simultaneous_cancels_on_one_ref_reach_the_provider_once():
     """Two tool calls arriving together — a Vapi retry is ordinary. The claim CAS
-    is the boundary; only one can win it."""
+    is the boundary; only one can win it.
+
+    DB calls yield to the event loop, so the two genuinely interleave. The loser
+    is stopped either by the consumed ref or, if the winner finished first, by
+    the authoritative re-read — both tell the caller it is already done."""
     with Ctx(candidates=[CORK]) as c:
         await c.call()
         results = await asyncio.gather(c.call(ref="appt_1"), c.call(ref="appt_1"))
     assert len(c.cancel_calls) == 1, f"provider called {len(c.cancel_calls)} times"
     assert c.cancelled_ids() == ["a-cork"]
-    assert sum("already been cancelled" in c.text(r) for r in results) == 1
+    already_done = ("already been cancelled", "may already have been cancelled")
+    assert sum(any(m in c.text(r) for m in already_done) for r in results) == 1
 
 
 # ── 11, 12, 21, 22. location safety ──────────────────────────────────────────

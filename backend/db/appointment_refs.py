@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 
 def _now_iso() -> str:
@@ -22,12 +22,12 @@ def _now_iso() -> str:
 
 async def insert_refs(rows: list[dict]) -> None:
     if rows:
-        get_client().table("call_appointment_refs").insert(rows).execute()
+        await run_query(get_client().table("call_appointment_refs").insert(rows))
 
 
 async def count_refs(vapi_call_id: str) -> int:
-    res = (get_client().table("call_appointment_refs")
-           .select("appointment_ref", count="exact").eq("vapi_call_id", vapi_call_id).execute())
+    res = (await run_query(get_client().table("call_appointment_refs")
+           .select("appointment_ref", count="exact").eq("vapi_call_id", vapi_call_id)))
     return res.count or 0
 
 
@@ -35,10 +35,10 @@ async def get_ref(vapi_call_id: str, appointment_ref: str, tenant_id: str,
                   caller_phone: str) -> dict | None:
     """Every scope in the predicate. Wrong call, wrong tenant or wrong caller all
     come back as simply 'not yours'."""
-    res = (get_client().table("call_appointment_refs").select("*")
+    res = (await run_query(get_client().table("call_appointment_refs").select("*")
            .eq("vapi_call_id", vapi_call_id).eq("appointment_ref", appointment_ref)
            .eq("tenant_id", tenant_id).eq("caller_phone", caller_phone)
-           .limit(1).execute())
+           .limit(1)))
     return (res.data or [None])[0]
 
 
@@ -49,24 +49,24 @@ async def consume_ref(vapi_call_id: str, appointment_ref: str) -> bool:
     holding the same ref cannot both proceed to the provider — the loser sees
     False and stops. This is the destructive boundary.
     """
-    res = (get_client().table("call_appointment_refs")
+    res = (await run_query(get_client().table("call_appointment_refs")
            .update({"consumed_at": _now_iso()})
            .eq("vapi_call_id", vapi_call_id).eq("appointment_ref", appointment_ref)
-           .is_("consumed_at", "null").execute())
+           .is_("consumed_at", "null")))
     return len(res.data or []) == 1
 
 
 async def release_ref(vapi_call_id: str, appointment_ref: str) -> None:
     """Hand the ref back after a provider failure so the caller can try again."""
-    (get_client().table("call_appointment_refs").update({"consumed_at": None})
-     .eq("vapi_call_id", vapi_call_id).eq("appointment_ref", appointment_ref).execute())
+    (await run_query(get_client().table("call_appointment_refs").update({"consumed_at": None})
+     .eq("vapi_call_id", vapi_call_id).eq("appointment_ref", appointment_ref)))
 
 
 async def delete_refs(vapi_call_id: str) -> None:
-    get_client().table("call_appointment_refs").delete().eq("vapi_call_id", vapi_call_id).execute()
+    await run_query(get_client().table("call_appointment_refs").delete().eq("vapi_call_id", vapi_call_id))
 
 
 async def purge_expired_refs(now_iso: str) -> int:
-    res = (get_client().table("call_appointment_refs").delete()
-           .lt("expires_at", now_iso).execute())
+    res = (await run_query(get_client().table("call_appointment_refs").delete()
+           .lt("expires_at", now_iso)))
     return len(res.data or [])

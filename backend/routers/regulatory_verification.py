@@ -36,6 +36,7 @@ from services import regulatory_ireland as ie_ux
 from services import regulatory_review as review
 from services import tenant_subaccount
 from services.security import authenticated_tenant_user, require_tenant_owner
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +72,8 @@ def _fail(status: str, result: dict | None = None) -> None:
 
 
 async def _tenant(tenant_id: str) -> dict:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     if not rows:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return rows[0]
@@ -192,9 +193,9 @@ async def verification_state(tenant_id: str):
 
 
 async def _tenant_addresses(tenant_id: str, country: str) -> list[dict]:
-    rows = (get_client().table("tenant_regulatory_addresses").select("*")
+    rows = ((await run_query(get_client().table("tenant_regulatory_addresses").select("*")
             .eq("tenant_id", tenant_id).eq("iso_country", country)
-            .order("created_at").execute().data or [])
+            .order("created_at"))).data or [])
     return rows
 
 

@@ -68,8 +68,8 @@ async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None
 
     token = authorization.removeprefix("Bearer ").strip()
     try:
-        from db.supabase import get_client
-        user_response = get_client().auth.get_user(token)
+        from db.supabase import get_client, run_blocking
+        user_response = await run_blocking(get_client().auth.get_user, token)
         user = user_response.user
         if not user:
             raise ValueError("no user in token response")
@@ -126,8 +126,8 @@ async def authenticated_tenant_user(
 
     token = (authorization or "").removeprefix("Bearer ").strip()
     try:
-        from db.supabase import get_client
-        user = get_client().auth.get_user(token).user
+        from db.supabase import get_client, run_blocking
+        user = (await run_blocking(get_client().auth.get_user, token)).user
     except Exception as e:
         logger.warning("Identity lookup failed after a successful ownership check: %s", e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
