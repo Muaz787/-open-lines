@@ -65,6 +65,23 @@ def _parse_ts(ts: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+async def _stats_series_sql(tenant_id: str, start_iso: str, bucket: str):
+    """Per-(metric, time bucket) counts from the tenant_stats_series SQL function,
+    or None when the function is unavailable (e.g. migration 039 not applied yet)
+    so the caller falls back to counting rows in Python. An empty list is a valid
+    result (a tenant with no data) and is NOT a fallback signal."""
+    try:
+        res = await run_query(db.get_client().rpc("tenant_stats_series", {
+            "p_tenant_id": tenant_id,
+            "p_start":     start_iso,
+            "p_bucket":    bucket,
+        }))
+        return res.data or []
+    except Exception as e:
+        logger.warning("tenant_stats_series unavailable, counting in Python: %s", e)
+        return None
+
+
 @router.get("/{tenant_id}/stats")
 async def get_stats(
     tenant_id: str,
@@ -74,41 +91,65 @@ async def get_stats(
     metric, used to draw the dashboard trend charts."""
     start, n_buckets, bucket_idx = _period_window(period)
     start_iso = start.isoformat()
-    try:
-        client = db.get_client()
-        calls = ((await run_query(client.table("calls").select("created_at,duration_secs")
-                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
-        leads = ((await run_query(client.table("leads").select("created_at")
-                 .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
-        appts = ((await run_query(client.table("appointments").select("created_at")
-                 .eq("tenant_id", tenant_id).neq("status", "cancelled")
-                 .gte("created_at", start_iso).limit(100_000))).data or [])
-    except Exception as e:
-        logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
-        raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
     calls_s = [0] * n_buckets
     leads_s = [0] * n_buckets
     appts_s = [0] * n_buckets
     secs_s  = [0.0] * n_buckets
 
-    for r in calls:
+    grouped = await _stats_series_sql(tenant_id, start_iso, "hour" if period == "today" else "day")
+    if grouped is not None:
+        # SQL counted per (metric, bucket); place each pre-aggregated bucket into
+        # its slot. Every row in a bucket shares its hour/day, so mapping the
+        # bucket start through bucket_idx lands exactly where counting the rows
+        # one by one would have.
+        for row in grouped:
+            try:
+                i = bucket_idx(_parse_ts(row["bucket_start"]))
+            except Exception:
+                continue
+            metric, cnt = row.get("metric"), int(row.get("cnt") or 0)
+            if metric == "calls":
+                calls_s[i] += cnt
+                secs_s[i]  += float(row.get("secs") or 0)
+            elif metric == "leads":
+                leads_s[i] += cnt
+            elif metric == "appts":
+                appts_s[i] += cnt
+    else:
+        # The aggregate function isn't present yet (migration not applied) — count
+        # in Python from the raw rows, exactly as before. Kept so the endpoint is
+        # correct regardless of deploy/migration ordering.
         try:
-            i = bucket_idx(_parse_ts(r["created_at"]))
-        except Exception:
-            continue
-        calls_s[i] += 1
-        secs_s[i]  += (r.get("duration_secs") or 0)
-    for r in leads:
-        try:
-            leads_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
-        except Exception:
-            continue
-    for r in appts:
-        try:
-            appts_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
-        except Exception:
-            continue
+            client = db.get_client()
+            calls = ((await run_query(client.table("calls").select("created_at,duration_secs")
+                     .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
+            leads = ((await run_query(client.table("leads").select("created_at")
+                     .eq("tenant_id", tenant_id).gte("created_at", start_iso).limit(100_000))).data or [])
+            appts = ((await run_query(client.table("appointments").select("created_at")
+                     .eq("tenant_id", tenant_id).neq("status", "cancelled")
+                     .gte("created_at", start_iso).limit(100_000))).data or [])
+        except Exception as e:
+            logger.error("Failed to fetch stats for tenant %s: %s", tenant_id, e)
+            raise HTTPException(status_code=500, detail="Failed to fetch stats")
+
+        for r in calls:
+            try:
+                i = bucket_idx(_parse_ts(r["created_at"]))
+            except Exception:
+                continue
+            calls_s[i] += 1
+            secs_s[i]  += (r.get("duration_secs") or 0)
+        for r in leads:
+            try:
+                leads_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
+            except Exception:
+                continue
+        for r in appts:
+            try:
+                appts_s[bucket_idx(_parse_ts(r["created_at"]))] += 1
+            except Exception:
+                continue
 
     minutes_s   = [round(s / 60) for s in secs_s]
     total_secs  = sum(secs_s)
