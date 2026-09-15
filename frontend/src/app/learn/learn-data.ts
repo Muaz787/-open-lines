@@ -4861,6 +4861,201 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Or skip the build entirely.',
     ctaSub: 'The call gets answered, so there is no thread to manage. Seven days free.',
   },
+  {
+    slug: 'where-is-my-parcel-calls',
+    category: 'Common problem',
+    shortTitle: '"Where is my parcel?"',
+    metaTitle: 'Handling "Where Is My Parcel?" Calls — Open Lines',
+    metaDescription: 'The highest-volume, lowest-value call in delivery. Why tracking links have not killed it, what the caller is really asking, and how to stop it swallowing your dispatch line.',
+    h1: 'The "where is my parcel?" call',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'Every delivery business is drowning in this call. It is the most common thing anybody rings a courier about, it almost never generates revenue, and it arrives in exactly the hours dispatch is busiest — because the reason people ring is that something is late, and things are late when you are busy.',
+    sections: [
+      {
+        heading: 'Why tracking links did not solve it',
+        paras: ['They solved it for the people who were going to be fine anyway. Somebody whose parcel is moving normally checks the link and stops. The ones who ring are the ones whose tracking says something unhelpful — "in transit" for two days, or "delivery attempted" when nobody knocked. The link answers the easy question and sends the hard one to your phone, which is why the call volume never fell as much as anybody expected.'],
+      },
+      {
+        heading: 'What they are actually asking',
+        bullets: [
+          { title: 'Will it come today', body: 'Almost always the real question. They are deciding whether to stay in, not auditing your network.' },
+          { title: 'Has it been lost', body: 'The fear underneath, and the reason a vague answer makes them angrier rather than calmer.' },
+          { title: 'Can somebody do something', body: 'They want a human to have noticed. Half the value of this call is being taken seriously.' },
+          { title: 'Who is to blame', body: 'Occasionally. This one needs a person, and quickly.' },
+        ],
+      },
+      {
+        heading: 'Be honest about what can be automated',
+        paras: ['Answering the call, identifying the consignment, capturing the details and getting it to whoever can act — all of that is routine and shifts a large volume off dispatch. Reading a live tracking status back to the caller is a different thing: it requires a connection into your tracking system, and any assistant that has not got one should say so plainly rather than improvise a status. A confident wrong answer about a parcel is worse than no answer, because the customer stops chasing something that needed chasing.'],
+      },
+      {
+        heading: 'What stops the call happening at all',
+        paras: ['Proactive messages when an exception occurs, not when everything is fine. Nobody rings about a parcel that is on time. They ring when your system knows something has gone wrong and has not told them — which is the moment a message costs you least and saves you most. Businesses that message on exceptions rather than on milestones see this call volume drop in a way that tracking pages never achieved.'],
+      },
+      {
+        heading: 'Separate it from the calls that make money',
+        paras: ['A new customer wanting a same-day collection and a existing customer chasing a late parcel are worth very different amounts and need very different handling, yet they arrive on the same line and are answered in the order they ring. Getting the chasers answered properly but elsewhere is what stops a booking being lost to a queue of status enquiries.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why do customers still ring when we have tracking?', a: 'Tracking answers the easy question. The people who ring are the ones whose tracking says something unhelpful — "in transit" for two days, or an attempted delivery nobody witnessed.' },
+      { q: 'What are they really asking?', a: 'Whether it will arrive today, usually — they are deciding whether to stay in. Underneath that is a fear it has been lost, which is why a vague answer makes things worse.' },
+      { q: 'Can an AI receptionist read out tracking status?', a: 'Only with a connection into your tracking system. Without one it should say so plainly rather than improvise — a confident wrong answer stops a customer chasing something that needed chasing.' },
+      { q: 'What reduces the call volume?', a: 'Messaging on exceptions rather than on milestones. Nobody rings about a parcel that is on time.' },
+      { q: 'Why does it matter that these calls are answered elsewhere?', a: 'Because a new customer wanting a same-day collection is queued behind them on the same line, and that is the call worth money.' },
+    ],
+    related: [
+      { href: '/courier', label: 'For courier businesses', sub: 'Dispatch overflow, answered.' },
+      { href: '/learn/failed-delivery-and-redelivery-calls', label: 'Failed deliveries', sub: 'The other big category.' },
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Separating the calls', sub: 'Which ones make money.' },
+    ],
+    ctaHeading: 'Stop losing collections to a queue of chasers.',
+    ctaSub: 'Every call answered, the revenue ones reaching you first. Seven days free.',
+  },
+  {
+    slug: 'failed-delivery-and-redelivery-calls',
+    category: 'Common problem',
+    shortTitle: 'Failed deliveries',
+    metaTitle: 'Failed Delivery and Redelivery Calls — Open Lines',
+    metaDescription: 'The angriest calls a courier takes, and the most expensive. What to capture, why "attempted delivery" is the phrase that starts arguments, and how to rebook in one call.',
+    h1: 'Failed delivery and redelivery calls',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'A redelivery costs you a second journey for revenue you already earned, and the call that arranges it is usually the least pleasant one of your day. It is also the one where the difference between good and bad handling shows up directly in your costs.',
+    sections: [
+      {
+        heading: 'Why these calls start badly',
+        paras: ['Because the customer often disputes the premise. "Attempted delivery" is the phrase that starts more arguments in this industry than any other — they were in, they heard nothing, and now a card says otherwise. Whether or not a genuine attempt was made, the call begins with somebody who feels they have been told an untruth, and opening with a defence of the driver guarantees the next ten minutes.'],
+      },
+      {
+        heading: 'What to capture, in order',
+        bullets: [
+          { title: 'The consignment, first', body: 'Reference, name, address. Everything else is unusable without it.' },
+          { title: 'When they can actually receive it', body: 'Not "when would you like it" — a window they will genuinely be there for. This is the single field that determines whether the second attempt also fails.' },
+          { title: 'A safe place or a neighbour', body: 'Offered explicitly. Most people have one and will not think to mention it.' },
+          { title: 'Access details', body: 'Buzzer code, gate, which door, the dog. The reason a delivery failed is frequently in this field and nobody asked.' },
+          { title: 'A mobile number that works', body: 'So the driver can ring on approach, which prevents more failed deliveries than anything else on this list.' },
+        ],
+      },
+      {
+        heading: 'Rebook on the call, do not promise a callback',
+        paras: ['A redelivery arranged during the conversation is finished. A promise that "the depot will be in touch" produces a second call tomorrow from somebody now considerably less patient, and often a third. Every one of those costs you a call to handle and costs them more goodwill than the original failure did.'],
+      },
+      {
+        heading: 'The economics nobody calculates',
+        paras: ['A failed delivery costs a journey, the call arranging the redelivery, the redelivery journey itself, and some quantity of goodwill with the retailer whose customer this actually is. Against that, the thirty seconds spent asking for access details on the first booking is free. Most repeat failures are caused by information that was never collected rather than by anything a driver did.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why are redelivery calls so hostile?', a: 'Because the customer often disputes the premise. "Attempted delivery" starts more arguments than any phrase in the industry — they were in and heard nothing, and now a card says otherwise.' },
+      { q: 'What should be captured on the call?', a: 'The consignment reference first, a window they will genuinely be in for, a safe place or neighbour, access details like buzzer codes and gates, and a mobile the driver can ring on approach.' },
+      { q: 'Should redeliveries be booked on the call?', a: 'Always, if you can. "The depot will be in touch" produces a second call tomorrow from someone less patient, and often a third.' },
+      { q: 'What causes repeat failures?', a: 'Usually information nobody collected — access details, a working mobile, a realistic window — rather than anything the driver did.' },
+    ],
+    related: [
+      { href: '/courier', label: 'For courier businesses', sub: 'Every call answered.' },
+      { href: '/learn/where-is-my-parcel-calls', label: '"Where is my parcel?"', sub: 'The higher-volume cousin.' },
+      { href: '/learn/handling-a-complaint-on-the-phone', label: 'When it is a complaint', sub: 'Getting to a person fast.' },
+    ],
+    ctaHeading: 'Rebook it on the first call.',
+    ctaSub: 'Access details, a real window, a working mobile. Seven days free.',
+  },
+  {
+    slug: 'quoting-a-courier-job-on-the-phone',
+    category: 'Guide',
+    shortTitle: 'Quoting a delivery',
+    metaTitle: 'Quoting a Courier Job Over the Phone — Open Lines',
+    metaDescription: 'Five things decide the price and callers volunteer none of them. The order to ask in, the questions that change the number most, and when to refuse to quote.',
+    h1: 'Quoting a courier job over the phone',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'Somebody rings and asks what it costs to get a box to Birmingham. There is no answer to that question yet, and the gap between what the caller thinks they have told you and what you actually need is where courier businesses lose money — either by quoting low and honouring it, or by taking so long to establish the facts that the caller rings somebody quicker.',
+    sections: [
+      {
+        heading: 'The five things that set the price',
+        bullets: [
+          { title: 'Both ends, precisely', body: 'Postcodes, not towns. "Just outside Manchester" can be two very different jobs, and central-city access changes it again.' },
+          { title: 'When', body: 'Same-day, next-day and "sometime this week" are different products at different prices, and callers use the words interchangeably.' },
+          { title: 'What it is', body: 'Dimensions and weight, but also shape. One long awkward item can cost more than a heavier compact one because of what it displaces.' },
+          { title: 'How many', body: 'One box and eleven boxes are not the same job even at the same total weight.' },
+          { title: 'What it needs', body: 'Two people to lift, a tail lift, a signature, a specific time window, anything fragile or restricted.' },
+        ],
+      },
+      {
+        heading: 'Ask for both postcodes first',
+        paras: ['Before anything else, because it is the answer most likely to end the conversation — out of area, or a route you do not run. Establishing it in the first twenty seconds saves both sides the five minutes that would otherwise be spent describing a job you were never going to take. It also lets everything after it be specific rather than hypothetical.'],
+      },
+      {
+        heading: 'Give a range rather than a refusal',
+        paras: ['"Somewhere between forty and sixty, depending on the timing" is an answer. "I would have to check and call you back" is heard as evasion and loses the job to whoever picked up next, who will very often have quoted worse. Couriers are bought on availability and confidence far more than on price, and hesitating on the number undermines both.'],
+      },
+      {
+        heading: 'When not to quote at all',
+        paras: ['Anything hazardous, anything high-value, anything needing specialist equipment, and anything where the caller cannot describe what it is. Those are jobs to price after looking, and a firm "I will not quote that blind, but I can have someone call you in twenty minutes" reads as professional rather than evasive — the difference being that you named a person and a time.'],
+      },
+    ],
+    faqs: [
+      { q: 'What do I need to know before quoting a courier job?', a: 'Both postcodes, the timing, what the item is including shape, how many there are, and any handling needs — two-person lift, tail lift, signature, restricted goods.' },
+      { q: 'What should I ask first?', a: 'Both postcodes. It is the answer most likely to end the call — out of area or a route you do not run — and it saves five minutes of describing a job you would never take.' },
+      { q: 'Should I give a price over the phone?', a: 'A range, yes. "I would have to check and call you back" is heard as evasion and loses the job to whoever answered next, who often quoted worse.' },
+      { q: 'When should I refuse to quote?', a: 'Hazardous or high-value goods, anything needing specialist equipment, or where the caller cannot describe the item. Name a person and a time instead of hedging.' },
+    ],
+    related: [
+      { href: '/courier', label: 'For courier businesses', sub: 'Capturing the job properly.' },
+      { href: '/learn/handling-price-questions-on-the-phone', label: 'Price questions generally', sub: 'Why a range beats a refusal.' },
+      { href: '/learn/when-a-quote-is-not-a-booking', label: 'Quotes versus bookings', sub: 'Booking the next step.' },
+    ],
+    ctaHeading: 'Both postcodes, then the price.',
+    ctaSub: 'Every detail captured in the right order. Seven days free.',
+  },
+  {
+    slug: 'peak-season-in-delivery',
+    category: 'Common problem',
+    shortTitle: 'Delivery peak season',
+    metaTitle: 'Peak Season in Delivery: What Happens to Your Phone — Open Lines',
+    metaDescription: 'In November and December the call mix inverts — status chasers crowd out new work. Why extra drivers do not fix the phone, and what to decide before peak starts.',
+    h1: 'Peak season, and what it does to your phone',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'Delivery peak is unlike other seasonal businesses in one specific way: the extra calls are mostly not new business. Volume rises, service degrades slightly under load, and the phone fills with people chasing consignments — so your busiest period is also the period when your line is least able to take an order.',
+    sections: [
+      {
+        heading: 'The mix inverts',
+        paras: ['For most of the year a courier line carries a healthy proportion of people wanting to book something. From late November that ratio flips: the same line now carries a majority of status enquiries, exception calls and redelivery arrangements, all generated by volume you have already been paid for. Every one of them is queued in front of the caller who wanted to place an order, and that caller does not wait.'],
+      },
+      {
+        heading: 'Why more drivers does not fix it',
+        bullets: [
+          { title: 'Drivers do not answer phones', body: 'Capacity on the road and capacity on the line are separate problems solved separately.' },
+          { title: 'More deliveries means more exceptions', body: 'The very thing you added capacity to do generates the calls that overwhelm the office.' },
+          { title: 'Temporary office staff know nothing', body: 'They arrive in the fortnight where every question is urgent and every answer is specific.' },
+          { title: 'Overtime has a ceiling', body: 'The people who know the business are already working the most hours they can.' },
+        ],
+      },
+      {
+        heading: 'Decide the priority order before peak, not during',
+        paras: ['Someone has to know which calls matter most when everything is ringing at once. A new commercial account is worth more than a status enquiry; a same-day collection is time-critical in a way a redelivery is not. That ordering is obvious in October and impossible to think about clearly on the twelfth of December, which is why it should be written down and agreed while nothing is on fire.'],
+      },
+      {
+        heading: 'The bit that costs you into January',
+        paras: ['Retail customers who could not get through during peak do not simply try again — they are the accounts you lose for the following year, and you will never see the call that caused it. Peak is not only a service problem; it is the period when your competitors acquire the customers you failed to answer, and you find out about it in a quiet February.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why does the phone get worse during delivery peak?', a: 'The call mix inverts. Most extra calls are status enquiries and exceptions generated by volume you have already been paid for, and they queue in front of anyone wanting to place an order.' },
+      { q: 'Does hiring more drivers help the phone?', a: 'No — capacity on the road and on the line are separate problems, and more deliveries generate more exception calls into the office.' },
+      { q: 'What should be decided before peak?', a: 'The priority order. A new commercial account outranks a status enquiry; a same-day collection outranks a redelivery. That is obvious in October and impossible on 12 December.' },
+      { q: 'What is the real cost of an unanswered peak call?', a: 'The accounts you lose for the following year. You never see the call, and you find out in a quiet February.' },
+    ],
+    related: [
+      { href: '/courier', label: 'For courier businesses', sub: 'Overflow when dispatch is full.' },
+      { href: '/learn/where-is-my-parcel-calls', label: 'Status chasers', sub: 'What fills the line.' },
+      { href: '/learn/handling-busy-periods-and-call-spikes', label: 'Handling spikes', sub: 'The general case.' },
+    ],
+    ctaHeading: 'Peak does not have to cost you next year.',
+    ctaSub: 'Capacity on the line that needs no rota. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
