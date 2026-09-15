@@ -5624,6 +5624,200 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Answer the transport question first.',
     ctaSub: 'Because it is the one that decides the booking. Seven days free.',
   },
+  {
+    slug: 'new-client-intake-on-the-phone',
+    category: 'Guide',
+    shortTitle: 'Legal intake calls',
+    metaTitle: 'New Client Intake Calls at a Law Firm — Open Lines',
+    metaDescription: 'What to capture before a conflict check, what must not be discussed yet, and why the first call decides whether a prospective client instructs you or the next firm.',
+    h1: 'New client intake on the phone',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'A prospective client rings having decided they need a solicitor and not much else. The firm that handles the next five minutes well usually gets instructed — and handling it well is mostly about collecting the right things in the right order, before anybody gives an opinion on anything.',
+    sections: [
+      {
+        heading: 'What has to be captured first',
+        bullets: [
+          { title: 'Full name, and every other party', body: 'Not just the caller. The names on the other side are what a conflict check actually needs, and asking later means ringing back.' },
+          { title: 'What kind of matter it is', body: 'Enough to route it — employment, conveyancing, family, probate. Not enough to advise on it.' },
+          { title: 'Any date with consequences', body: 'A hearing, a deadline, a notice period, a limitation date. This is the field that turns a routine enquiry into an urgent one.' },
+          { title: 'How they found you', body: 'Cheap to ask, and the only reliable read you will get on which marketing works.' },
+          { title: 'Contact details that reach them', body: 'Including when it is safe to ring, which matters more in some matters than others.' },
+        ],
+      },
+      {
+        heading: 'The order matters because of conflicts',
+        paras: ['Names before facts. A caller who has described their situation in detail before anyone established who is on the other side has created an awkward problem if the firm already acts for them. Taking the parties first and the narrative second is a small discipline that avoids it, and a well-run intake does that as a matter of course rather than as a special step.'],
+      },
+      {
+        heading: 'What must not happen on this call',
+        paras: ['No view on the merits, no indication of likely outcome, no suggestion about what they should do next beyond speaking to a solicitor. A prospective client will push for this, sometimes hard, because it is the thing they actually want. The correct answer is that a solicitor will look at it and come back — and the reason this matters is not politeness but that an off-hand opinion from whoever answered can be relied on.'],
+      },
+      {
+        heading: 'Why the first call decides it',
+        paras: ['People instructing a firm for the first time have very little to judge on. They cannot assess your drafting, so they judge whether you seemed organised, whether somebody answered, and whether they felt taken seriously. A firm that answers at half six and takes clear details beats a better firm that rang back on Thursday, and it does so consistently enough that it is worth treating the phone as part of the practice rather than as an overhead.'],
+      },
+    ],
+    faqs: [
+      { q: 'What should be captured on a new client enquiry?', a: 'Full names of the caller and every other party, the kind of matter, any date with consequences, how they found you, and contact details including when it is safe to ring.' },
+      { q: 'Why take the names before the facts?', a: 'Conflict checks. A caller who has described their situation in detail before anyone established who is on the other side creates an awkward problem if the firm already acts for them.' },
+      { q: 'Can an AI receptionist give legal advice?', a: 'No, and it should not offer a view on the merits or the likely outcome however hard a caller pushes. An off-hand opinion from whoever answered can be relied on.' },
+      { q: 'Does answering quickly really matter for a law firm?', a: 'A first-time client cannot assess your drafting, so they judge whether somebody answered and whether they felt taken seriously. A firm that answers at half six beats a better firm that rang back Thursday.' },
+    ],
+    related: [
+      { href: '/legal', label: 'For law firms', sub: 'Intake, screening and booking.' },
+      { href: '/learn/confidentiality-on-a-recorded-call', label: 'Confidentiality', sub: 'What gets recorded.' },
+      { href: '/learn/qualifying-leads-on-the-phone', label: 'Qualifying enquiries', sub: 'The general case.' },
+    ],
+    ctaHeading: 'The first call decides the instruction.',
+    ctaSub: 'Answered at half six, with the details taken properly. Seven days free.',
+  },
+  {
+    slug: 'confidentiality-on-a-recorded-call',
+    category: 'Compliance',
+    shortTitle: 'Confidentiality',
+    metaTitle: 'Confidentiality When Calls Are Recorded — Open Lines',
+    metaDescription: 'Professional services hold information other businesses do not. What recording a first call actually creates, and the questions worth settling before you switch anything on.',
+    h1: 'Confidentiality when calls are recorded',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'Solicitors, accountants, therapists and anyone else with a professional duty are in a different position from a salon when it comes to recording calls. The obligations are stricter, the material is more sensitive, and the questions are worth settling deliberately rather than discovering later.',
+    sections: [
+      {
+        heading: 'What a recorded first call actually contains',
+        paras: ['More than the caller intended, almost always. People explaining why they need a solicitor volunteer the circumstances — an affair, a dismissal, a death, a debt — because they are trying to be helpful. None of it was asked for, all of it is now in a recording and a transcript, and your firm is the custodian of it whether or not the person ever becomes a client.'],
+      },
+      {
+        heading: 'The questions to settle before switching it on',
+        bullets: [
+          { title: 'How long do we keep it', body: 'The strongest control available. A short retention period means most of this material simply stops existing.' },
+          { title: 'Who inside the firm can hear it', body: 'Everybody with the login, by default. That is rarely the intended answer in a professional practice.' },
+          { title: 'What happens to non-clients', body: 'Someone who rang, disclosed a great deal, and never instructed you is the most awkward category and the least thought about.' },
+          { title: 'Can we delete on request', body: 'It will be asked eventually, and the answer needs to be yes and demonstrable.' },
+        ],
+      },
+      {
+        heading: 'Disclosure is not the difficult part',
+        paras: ['Telling callers at the start that the call is recorded is straightforward and is what every jurisdiction expects. The harder question is what you then do with the material — because disclosure makes recording lawful, it does not make holding it indefinitely sensible. Firms tend to get the first right and never revisit the second.'],
+      },
+      {
+        heading: 'Where a summary beats a recording',
+        paras: ['For most professional practices the useful content of an intake call is names, matter type, dates and contact details — which a written summary holds perfectly well. Keeping the summary and letting the audio expire quickly gives you the operational value with far less sensitive material sitting in a system, and it is a straightforward setting rather than a project.'],
+      },
+      {
+        heading: 'This is not advice on your obligations',
+        paras: ['Professional conduct rules differ by jurisdiction and by profession, and your regulator’s guidance governs. What is above is the shape of the practical questions, not an answer to them — and for a practice holding privileged material, it is worth twenty minutes with someone who knows your rules specifically.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should a law firm record its calls?', a: 'It can, with disclosure at the start. The harder question is what you do with the material afterwards — disclosure makes recording lawful, it does not make keeping it indefinitely sensible.' },
+      { q: 'What is actually in a recorded intake call?', a: 'More than the caller intended. People explaining why they need a solicitor volunteer circumstances nobody asked for, and the firm is custodian of it whether or not they ever instruct you.' },
+      { q: 'What is the strongest control?', a: 'A short retention period. It means most of the material simply stops existing rather than relying on anyone managing it.' },
+      { q: 'What about people who never become clients?', a: 'The most awkward category and the least considered — they disclosed a great deal and have no ongoing relationship with you.' },
+      { q: 'Is a summary enough?', a: 'For most practices, yes. Names, matter type, dates and contact details are the useful content, and a summary holds them with far less sensitive material sitting in a system.' },
+    ],
+    related: [
+      { href: '/legal', label: 'For law firms', sub: 'Intake without advice.' },
+      { href: '/learn/should-you-record-calls-at-all', label: 'Should you record?', sub: 'The prior question.' },
+      { href: '/learn/who-on-your-team-should-see-call-data', label: 'Who can hear it', sub: 'Access inside the firm.' },
+    ],
+    ctaHeading: 'Keep the summary, not the recording.',
+    ctaSub: 'Retention you control, on every call. Seven days free.',
+  },
+  {
+    slug: 'urgent-matters-and-deadlines',
+    category: 'Guide',
+    shortTitle: 'Deadlines and urgency',
+    metaTitle: 'Spotting a Deadline on a First Phone Call — Open Lines',
+    metaDescription: 'Some enquiries carry a date that changes everything. What callers say when a limitation period is running out, and why they rarely know it themselves.',
+    h1: 'Spotting an urgent matter on the first call',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'Most enquiries can wait a day. A few cannot, and the caller almost never knows which kind they are — they ring about a letter, a hearing or something that happened three years ago, with no sense that a date in it makes their call different from every other one that day.',
+    sections: [
+      {
+        heading: 'What people say when something is running out',
+        bullets: [
+          { title: 'They mention a letter with a date on it', body: 'A response deadline, a notice period, a court form. Ask what the date is, always.' },
+          { title: 'They say how long ago it happened', body: 'Anything described in years rather than months deserves attention, because limitation periods run quietly.' },
+          { title: 'They have a hearing or a meeting', body: 'A date already in the diary is the clearest signal available.' },
+          { title: 'They have been somewhere else first', body: 'Someone on their second or third firm has often already spent time they did not have.' },
+        ],
+      },
+      {
+        heading: 'Ask the date question every time',
+        paras: ['"Is there a date attached to any of this?" is one sentence, it costs nothing, and it is the single most valuable question in intake. Callers do not volunteer it because they do not know it matters — they are focused on what happened rather than on when they must act. Asking it routinely means the handful of genuinely urgent enquiries surface on the first call rather than on Thursday.'],
+      },
+      {
+        heading: 'Urgent means someone is told now',
+        paras: ['Flagging a matter as urgent only helps if that flag reaches a person who can act, immediately, and not as one more item in a summary somebody reads at six. That is a routing decision worth making explicitly: which matters interrupt whom, through what channel, and what happens when that person is in court. An urgent flag with no route attached is filing, not triage.'],
+      },
+      {
+        heading: 'And never reassure them about it',
+        paras: ['Whoever takes the call must not tell a caller they are in time, out of time, or probably fine. That is a view on the merits, it is the thing they most want to hear, and it is exactly what they will rely on. The right response is that it will be looked at today and somebody will come back — which is both true and more reassuring than a guess, because it comes with a commitment attached.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I spot an urgent enquiry on a first call?', a: 'Listen for a letter with a date, events described in years rather than months, a hearing already in the diary, or a caller who has already been to another firm.' },
+      { q: 'What is the single best question to ask?', a: '"Is there a date attached to any of this?" Callers do not volunteer it because they do not know it matters.' },
+      { q: 'What should happen when something is urgent?', a: 'Somebody who can act is told immediately, through a route decided in advance. An urgent flag sitting in a summary read at six is filing, not triage.' },
+      { q: 'Can whoever answers reassure the caller?', a: 'No. Telling somebody they are in time or probably fine is a view on the merits, and it is exactly what they will rely on.' },
+    ],
+    related: [
+      { href: '/legal', label: 'For law firms', sub: 'Flagging urgent matters.' },
+      { href: '/learn/new-client-intake-on-the-phone', label: 'Intake calls', sub: 'What to capture first.' },
+      { href: '/learn/urgent-calls-and-emergencies', label: 'Urgency generally', sub: 'Reaching a person fast.' },
+    ],
+    ctaHeading: 'The date question, asked every time.',
+    ctaSub: 'Urgent matters flagged and routed on the call. Seven days free.',
+  },
+  {
+    slug: 'callers-asking-for-free-advice',
+    category: 'Common problem',
+    shortTitle: 'Free advice calls',
+    metaTitle: 'Callers Who Want Free Advice — Open Lines',
+    metaDescription: 'Every professional practice gets them. Why "can you just tell me if I have a case?" is hard to refuse well, and the answer that keeps the relationship.',
+    h1: '"Can you just tell me if I have a case?"',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'Every professional practice fields these. Somebody wants the answer without the engagement — a quick view, an off-the-record opinion, just a steer. Refusing badly makes you look evasive and mercenary; agreeing is worse, because an opinion given casually can be relied on and you have no file, no facts and no retainer.',
+    sections: [
+      {
+        heading: 'Why it is hard to refuse well',
+        paras: ['Because the caller is not being unreasonable from where they are standing. They do not know whether their problem is a five-minute question or a six-month case, and paying to find out feels like being charged to ask a question. Meeting that with a flat "we cannot advise you" is technically right and sounds like a door closing, which is why so many enquiries end there and instruct someone else who handled the same moment better.'],
+      },
+      {
+        heading: 'What you can say without advising',
+        bullets: [
+          { title: 'Whether it is the kind of work you do', body: 'Completely safe and genuinely useful. Half of these callers are in the wrong place entirely.' },
+          { title: 'What the process usually looks like', body: 'Steps, rough timescales, what tends to be involved. Describing a process is not advising on a matter.' },
+          { title: 'What it typically costs', body: 'A range with its caveats. This is very often the question underneath the question.' },
+          { title: 'What happens in a first appointment', body: 'And what they should bring, which turns a vague enquiry into a prepared meeting.' },
+        ],
+      },
+      {
+        heading: 'Offer the paid version as a real thing',
+        paras: ['A fixed-fee initial appointment with a stated length, a stated price and a clear description of what they will leave with converts far better than an open invitation to instruct. It reframes the request rather than refusing it: they wanted to know where they stand, and that is exactly what they are being offered — at a price they can see in advance, which removes the fear of an open-ended bill that made them ask for it free in the first place.'],
+      },
+      {
+        heading: 'Be straight when the answer is no',
+        paras: ['If it is not work you do, or not worth doing, say so plainly and point them somewhere better. It takes twenty seconds, it costs you nothing you were going to earn, and it is remembered — people come back years later to a firm that told them honestly they did not need one.'],
+      },
+    ],
+    faqs: [
+      { q: 'How do I handle callers wanting free advice?', a: 'Refuse the advice without refusing the person — say whether it is work you do, describe the usual process and typical costs, and offer a fixed-fee first appointment as a real product.' },
+      { q: 'What can be said without advising?', a: 'Whether it is your kind of work, what the process usually involves, what it typically costs, and what happens in a first appointment.' },
+      { q: 'Why does a flat refusal cost me?', a: 'Because the caller does not know whether their problem is a five-minute question or a six-month case. "We cannot advise you" is technically right and sounds like a door closing.' },
+      { q: 'What if I genuinely cannot help?', a: 'Say so plainly and point them somewhere better. It costs nothing you were going to earn and it is remembered.' },
+    ],
+    related: [
+      { href: '/legal', label: 'For law firms', sub: 'Screening without advising.' },
+      { href: '/learn/new-client-intake-on-the-phone', label: 'Intake calls', sub: 'What to capture.' },
+      { href: '/learn/booking-a-consultation-first', label: 'Selling the consultation', sub: 'The same move elsewhere.' },
+    ],
+    ctaHeading: 'Refuse the advice, keep the client.',
+    ctaSub: 'Process, cost and a first appointment — offered on the call. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
