@@ -61,12 +61,71 @@ export function ServiceJsonLd({
         description,
         serviceType: serviceType || 'AI phone receptionist',
         url: `${SITE_URL}${path}`,
-        provider: {
-          '@type': 'Organization',
-          name: 'Open Lines Technologies Inc.',
-          url: SITE_URL,
-        },
+        provider: { '@id': ORG_ID },
         areaServed: SERVED_COUNTRIES.map(name => ({ '@type': 'Country', name })),
+      }}
+    />
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Brand entity. Three months of Search Console showed the site
+   failing to own its own name: "openlines" sat at position 23 and
+   "openline ai" at 65.8. Nothing on the site told a crawler that
+   OpenLines, Open Lines and OpenLines.ai are one entity, because
+   Organization existed only nested inside Service as a provider,
+   never as a subject with an @id of its own.
+
+   These two render site-wide from the root layout. The @id lets
+   every other block point at the same entity instead of restating
+   an anonymous one.
+   ───────────────────────────────────────────────────────────── */
+
+export const ORG_ID = `${SITE_URL}/#organization`
+
+//: Profiles that prove the entity is the same one elsewhere. EMPTY ON PURPOSE:
+//: sameAs must list URLs that genuinely resolve to this company, and inventing
+//: them is worse than omitting the field. Add the real LinkedIn / X / Crunchbase
+//: URLs here and they take effect everywhere at once.
+const SAME_AS: string[] = []
+
+export function OrganizationJsonLd() {
+  return (
+    <Script
+      data={{
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        '@id': ORG_ID,
+        name: 'Open Lines Technologies Inc.',
+        // Every spelling a person actually searches for.
+        alternateName: ['Open Lines', 'OpenLines', 'OpenLines.ai', 'Open Lines AI'],
+        url: SITE_URL,
+        logo: {
+          '@type': 'ImageObject',
+          url: `${SITE_URL}/logo.png`,
+        },
+        description:
+          'Open Lines is an AI receptionist that answers business calls, checks live '
+          + 'availability and books appointments into the calendar a business already uses.',
+        areaServed: SERVED_COUNTRIES.map(name => ({ '@type': 'Country', name })),
+        ...(SAME_AS.length ? { sameAs: SAME_AS } : {}),
+      }}
+    />
+  )
+}
+
+export function WebSiteJsonLd() {
+  return (
+    <Script
+      data={{
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        '@id': `${SITE_URL}/#website`,
+        name: 'Open Lines',
+        alternateName: ['OpenLines', 'OpenLines.ai'],
+        url: SITE_URL,
+        publisher: { '@id': ORG_ID },
+        inLanguage: 'en',
       }}
     />
   )
@@ -126,11 +185,7 @@ export function ProductJsonLd({ plans }: {
           availability: 'https://schema.org/InStock',
           url: `${SITE_URL}/pricing`,
         })),
-        provider: {
-          '@type': 'Organization',
-          name: 'Open Lines Technologies Inc.',
-          url: SITE_URL,
-        },
+        provider: { '@id': ORG_ID },
       }}
     />
   )

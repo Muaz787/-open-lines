@@ -51,10 +51,14 @@ export const metadata: Metadata = {
   },
 }
 
+import { OrganizationJsonLd, WebSiteJsonLd } from './components/JsonLd'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${syne.variable} ${dmSans.variable} ${dmMono.variable}`}>
       <body style={{ fontFamily: 'var(--font-dm), sans-serif' }} suppressHydrationWarning>
+        <OrganizationJsonLd />
+        <WebSiteJsonLd />
         {children}
         <Analytics />
         <Script
