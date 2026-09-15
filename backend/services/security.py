@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Header, Request
 
+from services import jwt_verify
+
 # ---------------------------------------------------------------------------
 # 4. AES-256-GCM symmetric encryption
 # ---------------------------------------------------------------------------
@@ -61,27 +63,56 @@ logger = logging.getLogger(__name__)
 # 1. Tenant ownership
 # ---------------------------------------------------------------------------
 
-async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None:
-    """Raise HTTP 401/403 unless the Bearer token belongs to this tenant."""
+def _bearer_token(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")
+    return authorization.removeprefix("Bearer ").strip()
 
-    token = authorization.removeprefix("Bearer ").strip()
+
+async def _verified_user(token: str) -> dict:
+    """{id, email, user_metadata} for a valid access token, else HTTP 401.
+
+    Verified locally against the project's published signing key when
+    possible (see services/jwt_verify.py); otherwise by asking Supabase Auth,
+    which is what every request used to do.
+    """
     try:
-        from db.supabase import get_client, run_blocking
-        user_response = await run_blocking(get_client().auth.get_user, token)
-        user = user_response.user
-        if not user:
-            raise ValueError("no user in token response")
-        user_tenant_id = (user.user_metadata or {}).get("tenant_id")
-    except HTTPException:
-        raise
-    except Exception as e:
+        claims = await jwt_verify.verify(token)
+        return {
+            "id": str(claims.get("sub") or ""),
+            "email": str(claims.get("email") or ""),
+            "user_metadata": claims.get("user_metadata") or {},
+        }
+    except jwt_verify.Undecided:
+        pass
+    except jwt_verify.InvalidToken as e:
         logger.warning("Token verification failed: %s", e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    if user_tenant_id != tenant_id:
+    try:
+        from db.supabase import get_client, run_blocking
+        user = (await run_blocking(get_client().auth.get_user, token)).user
+        if not user:
+            raise ValueError("no user in token response")
+    except Exception as e:
+        logger.warning("Token verification failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {
+        "id": str(getattr(user, "id", "") or ""),
+        "email": str(getattr(user, "email", "") or ""),
+        "user_metadata": user.user_metadata or {},
+    }
+
+
+def _require_owner(user: dict, tenant_id: str) -> None:
+    if user["user_metadata"].get("tenant_id") != tenant_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None:
+    """Raise HTTP 401/403 unless the Bearer token belongs to this tenant."""
+    user = await _verified_user(_bearer_token(authorization))
+    _require_owner(user, tenant_id)
 
 
 async def require_tenant_owner(
@@ -122,22 +153,11 @@ async def authenticated_tenant_user(
     tenant_id = request.path_params.get("tenant_id")
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
-    await verify_tenant_owner(tenant_id, authorization)
-
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    try:
-        from db.supabase import get_client, run_blocking
-        user = (await run_blocking(get_client().auth.get_user, token)).user
-    except Exception as e:
-        logger.warning("Identity lookup failed after a successful ownership check: %s", e)
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return {
-        "user_id": str(getattr(user, "id", "") or ""),
-        "email": str(getattr(user, "email", "") or ""),
-        "tenant_id": str(tenant_id),
-    }
+    # One verification serves both the ownership check and the identity, so the
+    # name on the record comes from the very token that was granted access.
+    user = await _verified_user(_bearer_token(authorization))
+    _require_owner(user, tenant_id)
+    return {"user_id": user["id"], "email": user["email"], "tenant_id": str(tenant_id)}
 
 
 # ---------------------------------------------------------------------------

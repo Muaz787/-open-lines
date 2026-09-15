@@ -274,8 +274,8 @@ def test_the_schema_derived_client_is_hardened_too():
 
 
 def test_the_gotrue_client_is_hardened():
-    """services/security.py calls auth.get_user() on every authenticated
-    dashboard request, over gotrue's own long-lived HTTP/2 client."""
+    """services/security.py falls back to auth.get_user() whenever a token
+    cannot be verified locally, over gotrue's own long-lived HTTP/2 client."""
     from gotrue._sync.gotrue_base_api import SyncGoTrueBaseAPI
     T.install()
     api = SyncGoTrueBaseAPI(url="https://example.invalid", headers={}, http_client=None)
