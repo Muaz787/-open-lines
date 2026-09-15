@@ -89,8 +89,11 @@ const CONTRACTORS: VerticalContent = {
       { href: '/integrations/google-calendar', label: 'Book estimates into Google Calendar', sub: 'Live availability, no clashes.' },
     ],
     guides: [
-      { href: '/learn/missed-call-text-back', label: 'Turn missed calls into booked jobs', sub: 'Why answering live wins the lead.' },
-      { href: '/learn/virtual-receptionist-small-business', label: 'The small-business receptionist guide', sub: 'Live vs. AI, and how to choose.' },
+      { href: '/learn/deposits-for-materials-on-trade-jobs', label: 'Money up front for materials', sub: 'Asking without losing the job.' },
+      { href: '/learn/landlords-letting-agents-and-tenants', label: 'When the caller is not the payer', sub: 'Reporter, authoriser, payer.' },
+      { href: '/learn/when-a-quote-is-not-a-booking', label: 'Quotes that need a visit', sub: 'Booking the next step.' },
+      { href: '/learn/access-and-keys-for-property-work', label: 'Access and wasted visits', sub: 'Six things to ask.' },
+      { href: '/learn/missed-call-text-back', label: 'Turn missed calls into leads', sub: 'Why answering live wins.' },
     ],
   },
 
