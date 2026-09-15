@@ -2419,8 +2419,12 @@ export const ARTICLES: LearnArticle[] = [
         paras: ['Not into a separate list to be copied over. It is written into the booking system you already use, against the right service and the right staff member, which is what makes the slot genuinely unavailable to the next caller. A booking that lives anywhere else is a double-booking waiting for a busy Saturday.'],
       },
       {
-        heading: 'Your customer is confirmed by your booking system',
-        paras: ['This surprises people, so it is worth stating clearly: the confirmation your customer receives comes from your booking system, not from us. Because the appointment is created in your system properly, its own confirmations and reminders fire exactly as they do for a booking your staff made — same sender, same wording, same branding your customers already recognise. It also means you are not sending two confirmations for one appointment, which is the usual result of bolting a booking tool onto a calendar.'],
+        heading: 'Your customer gets a text, in most cases',
+        paras: ['As soon as the booking is made, the caller is sent a confirmation by text — the service, the time, and your business name — and it comes from your own number, so it lands in the thread they already have with you rather than from a stranger. There is one condition: your number has to be able to send texts. Most can; some cannot, and Irish numbers in particular are voice-only today. Where that is the case the confirmation comes from your booking system instead, which is why a Square-connected business sees Square send it.'],
+      },
+      {
+        heading: 'And your booking system may send one too',
+        paras: ['Because the appointment is created in your system properly rather than parked somewhere separate, its own confirmations and reminders behave exactly as they do for a booking your staff made. If you already have those switched on, check once whether your customer now receives two — it is a setting on your side rather than something to live with, and it is worth resolving before it annoys anybody.'],
       },
       {
         heading: 'You get told separately',
@@ -2437,8 +2441,8 @@ export const ARTICLES: LearnArticle[] = [
     ],
     faqs: [
       { q: 'Where does the appointment end up?', a: 'Directly in the booking system you already use, against the right service and staff member — not in a separate list for someone to copy over.' },
-      { q: 'Who sends the customer their confirmation?', a: 'Your booking system does, exactly as it would for a booking your staff made. Because the appointment is created properly, its own confirmations and reminders fire with your usual wording and branding.' },
-      { q: 'Will my customer get two confirmations?', a: 'No, and that is the reason it works this way. Two confirmations for one appointment is the usual result of bolting a booking tool onto a calendar.' },
+      { q: 'Who sends the customer their confirmation?', a: 'A text goes to the caller from your own number as soon as the booking is made — provided your number can send texts. Some cannot; Irish numbers are voice-only today, and there the confirmation comes from your booking system instead.' },
+      { q: 'Will my customer get two confirmations?', a: 'They can, if your booking system already sends its own and your number also texts. It is a setting on your side rather than something to live with — worth checking once on your first booking.' },
       { q: 'How am I told?', a: 'Separately, by email or by text to the mobile you actually check. Your notification says what happened on the call, not just that a slot was filled.' },
       { q: 'How do I confirm it is all wired up?', a: 'Make a booking yourself and open your calendar rather than the dashboard. If it is there with the right person and details, everything downstream is working.' },
     ],
@@ -4661,6 +4665,201 @@ export const ARTICLES: LearnArticle[] = [
     ],
     ctaHeading: 'The call that keeps or loses a regular.',
     ctaSub: 'Answered straight, with the right colleague and a real time. Seven days free.',
+  },
+  {
+    slug: 'what-is-missed-call-text-back',
+    category: 'Guide',
+    shortTitle: 'What it is',
+    metaTitle: 'What Is Missed-Call Text-Back? A Plain Explanation — Open Lines',
+    metaDescription: 'The automatic text a business sends when it does not answer. How it works, what it typically recovers, and the thing it can never do.',
+    h1: 'What is missed-call text-back?',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'When a call goes unanswered, software notices and sends the caller a text within seconds — usually something like "sorry we missed you, how can we help?" It is one of the cheapest things a business can switch on, and understanding precisely what it does and does not do saves a lot of disappointment.',
+    sections: [
+      {
+        heading: 'The mechanics, in four steps',
+        bullets: [
+          { title: 'A call rings out', body: 'Nobody picks up, or it diverts to voicemail. That event is what triggers everything else.' },
+          { title: 'The number is checked', body: 'Only mobiles can receive a text. Landline callers get nothing, and in many trades that is a sizeable minority of callers.' },
+          { title: 'A text goes out', body: 'Within seconds, from your business number, so it lands in a thread the caller recognises.' },
+          { title: 'Someone has to reply', body: 'This is the part people underestimate. The text starts a conversation that a human then has to conduct.' },
+        ],
+      },
+      {
+        heading: 'What it genuinely fixes',
+        paras: ['The silence. Before text-back, a missed call produced nothing at all — the caller moved on and you never knew they existed. A text acknowledges them inside a minute, which is fast enough that a proportion of people who were about to ring somebody else will wait for you instead. That is a real improvement over voicemail, which most people simply do not use.'],
+      },
+      {
+        heading: 'What it cannot do',
+        paras: ['Answer the question they rang with. Somebody wanting to know whether you can fit them in on Thursday does not want a text inviting them to explain themselves in writing — they wanted an answer thirty seconds ago. Text-back converts a missed call into an admin task for both of you, which is better than nothing and is not the same as having taken the call.'],
+      },
+      {
+        heading: 'The hidden cost nobody mentions',
+        paras: ['Every text-back creates an inbound conversation somebody has to manage, usually on a phone, usually while doing something else. A business getting fifteen missed calls a week has just signed up for fifteen text conversations a week. That load is real, it arrives at inconvenient moments, and it is why many businesses switch text-back on enthusiastically and stop reading the replies within a month.'],
+      },
+    ],
+    faqs: [
+      { q: 'What is missed-call text-back?', a: 'Software notices a call went unanswered and automatically texts the caller within seconds, usually asking how it can help. It turns silence into an acknowledgement.' },
+      { q: 'Does it work on every caller?', a: 'No — only mobiles receive texts. Anyone ringing from a landline gets nothing, which in some trades is a sizeable minority.' },
+      { q: 'Does it book the appointment?', a: 'No. It starts a text conversation that a person then has to conduct. It converts a missed call into an admin task rather than into a booking.' },
+      { q: 'What does it actually cost me?', a: 'Beyond the subscription, the reply load. Fifteen missed calls a week becomes fifteen text conversations a week, arriving whenever they arrive.' },
+    ],
+    related: [
+      { href: '/learn/missed-call-text-back', label: 'Text-back vs answering', sub: 'Which recovers more.' },
+      { href: '/learn/does-missed-call-text-back-work', label: 'Does it actually work?', sub: 'What to expect.' },
+      { href: '/learn/how-many-calls-do-you-actually-miss', label: 'Measuring missed calls', sub: 'Before you fix anything.' },
+    ],
+    ctaHeading: 'Or just answer the call.',
+    ctaSub: 'No text thread to manage, because the question got answered. Seven days free.',
+  },
+  {
+    slug: 'does-missed-call-text-back-work',
+    category: 'Guide',
+    shortTitle: 'Does it work?',
+    metaTitle: 'Does Missed-Call Text-Back Actually Work? — Open Lines',
+    metaDescription: 'An honest look at what text-back recovers, why the headline percentages are misleading, and the two situations where it genuinely outperforms answering.',
+    h1: 'Does missed-call text-back actually work?',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'Yes, partially, and the marketing around it is considerably more confident than the evidence. It recovers some business you were losing entirely, which is a real gain — the disagreement is about how much, and about what you are comparing it against.',
+    sections: [
+      {
+        heading: 'Why the headline numbers are unreliable',
+        paras: ['Recovery rates quoted by vendors are measured against doing nothing, which is a generous baseline — anything beats silence. They also tend to count a reply as a success, when a reply is the start of a conversation rather than a booking. Ask any vendor what proportion of texted callers end up as paying customers, rather than what proportion reply, and the number changes character entirely.'],
+      },
+      {
+        heading: 'What determines whether it works for you',
+        bullets: [
+          { title: 'How urgent your callers are', body: 'Somebody with a leak has already rung the next number by the time your text arrives. Somebody booking a haircut next week will happily text.' },
+          { title: 'Whether your callers use mobiles', body: 'Landline callers receive nothing at all, and the older your customer base the more of them there are.' },
+          { title: 'Whether anybody replies fast', body: 'A text-back that gets answered in four hours has wasted the speed it was built for.' },
+          { title: 'How simple the question is', body: 'Price and availability go fine over text. Anything needing back-and-forth would have taken ninety seconds on the phone.' },
+        ],
+      },
+      {
+        heading: 'Where it genuinely beats answering',
+        paras: ['Two cases, and they are worth acknowledging. Outside hours, when a caller does not expect a human anyway and a text is a perfectly reasonable acknowledgement. And for customers who actively prefer not to speak — a real and growing group, particularly under thirty — for whom a text thread is the more comfortable channel.'],
+      },
+      {
+        heading: 'The comparison that matters',
+        paras: ['Not text-back versus nothing, which text-back wins easily. Text-back versus the call being answered — because that is the actual choice in front of you. Against that baseline it loses on every measure except cost: the caller gets no answer, the booking is not made, and somebody still has to do the work later.'],
+      },
+    ],
+    faqs: [
+      { q: 'Does missed-call text-back work?', a: 'It recovers some business you were otherwise losing entirely, which is real. Compared against the call simply being answered, it loses on every measure except cost.' },
+      { q: 'Why should I distrust vendor recovery rates?', a: 'They are measured against doing nothing, and they usually count a reply as a success. Ask what share of texted callers become paying customers instead.' },
+      { q: 'When does it work best?', a: 'Outside hours, when nobody expects a human, and for customers who genuinely prefer not to speak on the phone.' },
+      { q: 'When does it fail?', a: 'Urgent calls — they have rung somebody else before your text lands — and landline callers, who receive nothing.' },
+    ],
+    related: [
+      { href: '/learn/what-is-missed-call-text-back', label: 'What it is', sub: 'The mechanics.' },
+      { href: '/learn/missed-call-text-back-and-consent', label: 'Is auto-texting legal?', sub: 'Before you switch it on.' },
+      { href: '/learn/stop-losing-callers-to-the-next-business', label: 'Why speed matters', sub: 'What they are deciding.' },
+    ],
+    ctaHeading: 'Compare it against answering, not against silence.',
+    ctaSub: 'Seven days free, and you will see the difference in a week.',
+  },
+  {
+    slug: 'missed-call-text-back-and-consent',
+    category: 'Compliance',
+    shortTitle: 'Is auto-texting legal?',
+    metaTitle: 'Is Automatic Missed-Call Texting Legal? — Open Lines',
+    metaDescription: 'Automated texts to consumers are regulated, and the rules differ by country. What makes a text-back defensible, and the mistake that turns a helpful reply into a marketing message.',
+    h1: 'Is automatic missed-call texting legal?',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'Usually yes for the first reply, and it becomes questionable fast if you keep going. Automated messaging to consumers is regulated almost everywhere, and the distinction that decides it is whether your text is a response or a promotion.',
+    sections: [
+      {
+        heading: 'The distinction everything turns on',
+        paras: ['Someone who just rang you initiated contact, and replying to them is a response — the least contentious category of message there is. A text saying "sorry we missed you, how can we help?" is plainly that. A text adding "and here is twenty per cent off this month" is marketing sent to somebody who never asked for marketing, and it is judged under entirely different rules. Businesses get into difficulty by drifting from the first into the second because it seemed like a natural upsell.'],
+      },
+      {
+        heading: 'What makes a text-back defensible',
+        bullets: [
+          { title: 'Send it because they called', body: 'The trigger is their action. Keep the connection obvious in the wording.' },
+          { title: 'Identify yourself immediately', body: 'The business name in the first few words. An anonymous automated text reads as spam and is treated as such.' },
+          { title: 'Answer, do not sell', body: 'No offers, no promotions, no "while we have you".' },
+          { title: 'Make stopping easy', body: 'A way to opt out, honoured immediately — and required outright in several jurisdictions.' },
+          { title: 'Send one, not a sequence', body: 'A follow-up nudge two days later is not a response to anything.' },
+        ],
+      },
+      {
+        heading: 'It differs by country, materially',
+        paras: ['The United States regulates automated messaging tightly and privately enforceable claims are a genuine commercial risk there. The UK and Ireland approach it through privacy and electronic-communications rules, where consent and the soft-opt-in for existing customers do the work. Canada has anti-spam legislation with its own consent framework and meaningful penalties. The practical advice converges — respond, identify yourself, do not sell, let people stop — but the consequences of getting it wrong vary a great deal, and if you operate in the US it is worth actual advice rather than a blog post.'],
+      },
+      {
+        heading: 'Why answering avoids the question',
+        paras: ['A call you answer creates no automated message to anybody, so none of this applies. That is not the main reason to answer the phone, but it is a genuine simplification: there is no consent posture to maintain, no opt-out list to honour, and no drift from helpful reply into marketing sequence.'],
+      },
+    ],
+    faqs: [
+      { q: 'Is missed-call text-back legal?', a: 'The first reply to somebody who just rang you is the least contentious kind of message there is. It becomes questionable when it turns into marketing or a sequence.' },
+      { q: 'What makes it defensible?', a: 'Send it because they called, name your business immediately, answer rather than sell, make stopping easy, and send one message rather than a sequence.' },
+      { q: 'Can I add an offer to the text?', a: 'That is the common mistake. An offer makes it marketing sent to someone who never asked for marketing, judged under different rules entirely.' },
+      { q: 'Do the rules differ by country?', a: 'Materially. The US regulates automated messaging tightly with real private-claim risk; the UK and Ireland handle it through privacy rules; Canada has its own anti-spam framework. If you operate in the US, get proper advice.' },
+      { q: 'Can I rely on this page?', a: 'No. It is a description of the shape of the rules, and anything with money attached deserves a professional opinion.' },
+    ],
+    related: [
+      { href: '/learn/does-missed-call-text-back-work', label: 'Does it work?', sub: 'Before the legal question.' },
+      { href: '/learn/call-recording-consent', label: 'Recording consent', sub: 'The other disclosure.' },
+      { href: '/learn/disclosing-ai-to-callers', label: 'Disclosing the AI', sub: 'What callers are told.' },
+    ],
+    ctaHeading: 'No automated message, no consent posture.',
+    ctaSub: 'The call gets answered instead. Seven days free.',
+  },
+  {
+    slug: 'building-missed-call-text-back-yourself',
+    category: 'Guide',
+    shortTitle: 'Building it yourself',
+    metaTitle: 'Building Missed-Call Text-Back Yourself — Open Lines',
+    metaDescription: 'It is genuinely a weekend project on Twilio. What the build involves, the four things that make it harder than the tutorial, and when buying wins.',
+    h1: 'Building missed-call text-back yourself',
+    published: '2026-09-22',
+    updated: '2026-09-22',
+    intro: 'If you are technical, this is a real option and cheaper than any product. The core is perhaps forty lines: catch the call-status webhook, check it went unanswered, send a text. The tutorials are accurate. What they leave out is everything after the first week.',
+    sections: [
+      {
+        heading: 'What the build actually is',
+        bullets: [
+          { title: 'A number that posts call events', body: 'Configure a status callback and you receive the outcome of every call.' },
+          { title: 'A rule for "missed"', body: 'No-answer, busy and failed are different outcomes, and treating them identically will text people you actually spoke to.' },
+          { title: 'A send, from the same number', body: 'So the text lands in the thread the caller recognises rather than from an unknown line.' },
+          { title: 'Somewhere for replies to go', body: 'The part most builds forget. An inbound webhook with nothing behind it is a customer talking to a wall.' },
+        ],
+      },
+      {
+        heading: 'The four things that make it harder than the tutorial',
+        bullets: [
+          { title: 'Deduplication', body: 'A caller who rings three times in five minutes should get one text, not three. This is the bug every home-made version ships with.' },
+          { title: 'Landlines', body: 'Texting one silently fails, and you will believe it delivered. You need to check the number type and handle the gap.' },
+          { title: 'Your own outbound calls', body: 'Ringing a customer who does not pick up will text them "sorry we missed you" unless you filter direction.' },
+          { title: 'Quiet hours and opt-outs', body: 'Sending at 3am is legal in some places, unwise everywhere, and an honoured opt-out list is not optional.' },
+        ],
+      },
+      {
+        heading: 'What it costs to run',
+        paras: ['Very little in fees — a number and a few pence per message. The cost is your attention: replies arrive at all hours and nobody else is going to answer them. A build that works perfectly and produces twelve unanswered text threads has made your business look worse than saying nothing would have.'],
+      },
+      {
+        heading: 'When building is the right call',
+        paras: ['When you already run infrastructure, when your volumes are small, and when you want the messages to do something specific no product offers. Buy instead when you want the replies handled rather than merely received — that is the part which is genuinely hard, and it is not hard for technical reasons.'],
+      },
+    ],
+    faqs: [
+      { q: 'Can I build missed-call text-back myself?', a: 'Yes, and on Twilio it is close to a weekend project: catch the call-status webhook, decide the call was missed, send a text from the same number.' },
+      { q: 'What do the tutorials leave out?', a: 'Deduplicating repeat callers, silently failing texts to landlines, accidentally texting people you rang yourself, and quiet hours plus opt-outs.' },
+      { q: 'What does it cost to run?', a: 'Almost nothing in fees. The real cost is that replies arrive at all hours and nobody else will answer them.' },
+      { q: 'When should I buy instead?', a: 'When you want the replies handled rather than just received. Receiving is the easy half.' },
+    ],
+    related: [
+      { href: '/learn/what-is-missed-call-text-back', label: 'What it is', sub: 'The mechanics.' },
+      { href: '/learn/missed-call-text-back-and-consent', label: 'The legal side', sub: 'Quiet hours and opt-outs.' },
+      { href: '/learn/hidden-costs-of-a-cheap-answering-service', label: 'Buy versus build', sub: 'Comparing honestly.' },
+    ],
+    ctaHeading: 'Or skip the build entirely.',
+    ctaSub: 'The call gets answered, so there is no thread to manage. Seven days free.',
   },
 ]
 
