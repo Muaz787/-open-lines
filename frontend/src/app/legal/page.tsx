@@ -89,7 +89,10 @@ const LEGAL: VerticalContent = {
       { href: '/integrations/hubspot', label: 'Log every caller to HubSpot', sub: 'Contact + call summary, automatically.' },
     ],
     guides: [
-      { href: '/learn/what-is-an-ai-receptionist', label: 'What is an AI receptionist?', sub: 'How it answers, screens, and books.' },
+      { href: '/learn/new-client-intake-on-the-phone', label: 'New client intake calls', sub: 'Names before facts.' },
+      { href: '/learn/urgent-matters-and-deadlines', label: 'Spotting a deadline', sub: 'The date question.' },
+      { href: '/learn/callers-asking-for-free-advice', label: '"Do I have a case?"', sub: 'Refusing without losing them.' },
+      { href: '/learn/confidentiality-on-a-recorded-call', label: 'Confidentiality and recording', sub: 'What a first call captures.' },
       { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing compared.' },
     ],
   },
