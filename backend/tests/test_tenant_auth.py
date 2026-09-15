@@ -16,10 +16,11 @@ from services.security import verify_tenant_owner
 
 def _client_for(metadata_tenant_id: str | None):
     """A fake Supabase client whose get_user returns a user with the given
-    user_metadata.tenant_id."""
+    app_metadata.tenant_id (the server-only field authz trusts)."""
     client = MagicMock()
     user = MagicMock()
-    user.user_metadata = {"tenant_id": metadata_tenant_id} if metadata_tenant_id is not None else {}
+    user.app_metadata = {"tenant_id": metadata_tenant_id} if metadata_tenant_id is not None else {}
+    user.user_metadata = {}
     client.auth.get_user.return_value = MagicMock(user=user)
     return client
 

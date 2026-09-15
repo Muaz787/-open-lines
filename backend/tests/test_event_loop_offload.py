@@ -40,7 +40,7 @@ class _SlowClient:
         @staticmethod
         def get_user(_token):
             time.sleep(DELAY)
-            user = type("U", (), {"user_metadata": {"tenant_id": "t1"}})()
+            user = type("U", (), {"app_metadata": {"tenant_id": "t1"}, "user_metadata": {}})()
             return type("R", (), {"user": user})()
 
 
