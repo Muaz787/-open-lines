@@ -48,7 +48,7 @@ def _profile(state=st.PENDING_REVIEW, **over):
 def _row(purpose=lifecycle.PURPOSE_TEMPORARY, status=lifecycle.STATUS_ACTIVE, **over):
     return {"id": "r1", "tenant_id": TENANT, "e164": TEMP_E164, "purpose": purpose,
             "status": status, "provider": "twilio", "provider_account_sid": SUB,
-            "provider_sid": "PN" + "b" * 32, "iso_country": "GB", **over}
+            "provider_sid": "PN" + "b" * 32, "iso_country": "US", **over}
 
 
 def _eligible_world(profiles=None, rows=None):
@@ -301,7 +301,7 @@ async def test_registering_a_temporary_number_does_not_write_the_legacy_scalar()
          patch.object(phone_registry.db, "update_tenant", new=AsyncMock()) as upd:
         out = await phone_registry.register_temporary(
             tenant_id=TENANT, e164=TEMP_E164, provider_account_sid=SUB,
-            provider_sid="PNx", iso_country="GB")
+            provider_sid="PNx", iso_country="US")
     assert out["status"] == phone_registry.OK
     upd.assert_not_called()
 
@@ -321,7 +321,7 @@ async def test_a_temporary_number_starts_provisioning_not_active():
          patch.object(phone_registry.db_phones, "insert_number", new=ins):
         await phone_registry.register_temporary(
             tenant_id=TENANT, e164=TEMP_E164, provider_account_sid=SUB,
-            provider_sid="PNx", iso_country="GB")
+            provider_sid="PNx", iso_country="US")
     assert inserted["status"] == lifecycle.STATUS_PROVISIONING
     assert inserted["purpose"] == lifecycle.PURPOSE_TEMPORARY
     assert lifecycle.STATUS_PROVISIONING not in lifecycle.ROUTABLE_STATUSES
@@ -336,7 +336,7 @@ async def test_a_second_live_temporary_is_refused_before_the_database_has_to():
          patch.object(phone_registry.db_phones, "insert_number", new=AsyncMock()) as ins:
         out = await phone_registry.register_temporary(
             tenant_id=TENANT, e164="+442079999999", provider_account_sid=SUB,
-            provider_sid="PNy", iso_country="GB")
+            provider_sid="PNy", iso_country="US")
     assert out["status"] == phone_registry.CONFLICT
     assert out["detail"] == "tpn_one_live_temporary"
     ins.assert_not_called()
@@ -349,7 +349,7 @@ async def test_another_tenants_number_cannot_be_registered_as_temporary():
          patch.object(phone_registry.db_phones, "insert_number", new=AsyncMock()) as ins:
         out = await phone_registry.register_temporary(
             tenant_id=TENANT, e164=TEMP_E164, provider_account_sid=SUB,
-            provider_sid="PNx", iso_country="GB")
+            provider_sid="PNx", iso_country="US")
     assert out["status"] == phone_registry.CONFLICT
     ins.assert_not_called()
 
@@ -408,7 +408,7 @@ async def test_the_temporary_number_reuses_the_tenants_assistant():
                       new=AsyncMock(return_value={"status": "ok", "row": _row()})):
         out = await tmp._register_and_activate(
             tenant=_tenant(), e164=TEMP_E164, provider_sid="PNx", sub_sid=SUB,
-            sub_tok="tok", iso_country="GB", adopted=False)
+            sub_tok="tok", iso_country="US", adopted=False)
 
     assert out["status"] == tmp.OK
     assert seen["assistant_id"] == "asst_1"
@@ -423,7 +423,7 @@ async def test_no_assistant_means_no_activation():
          patch("services.vapi.import_twilio_number", new=AsyncMock()) as imp:
         out = await tmp._register_and_activate(
             tenant=_tenant(vapi_assistant_id=""), e164=TEMP_E164, provider_sid="PNx",
-            sub_sid=SUB, sub_tok="tok", iso_country="GB", adopted=False)
+            sub_sid=SUB, sub_tok="tok", iso_country="US", adopted=False)
     assert out["status"] == tmp.HEALTH_FAILED
     imp.assert_not_called()
 
@@ -453,7 +453,7 @@ async def test_a_number_is_not_active_merely_because_it_was_purchased():
          patch.object(phone_registry, "mark_temporary_active", new=AsyncMock()) as act:
         out = await tmp._register_and_activate(
             tenant=_tenant(), e164=TEMP_E164, provider_sid="PNx", sub_sid=SUB,
-            sub_tok="tok", iso_country="GB", adopted=False)
+            sub_tok="tok", iso_country="US", adopted=False)
     assert out["status"] == tmp.HEALTH_FAILED
     act.assert_not_called()
 
@@ -471,7 +471,7 @@ async def test_a_vapi_failure_leaves_the_number_unroutable_but_not_thrown_away()
          patch.object(phone_registry, "mark_temporary_active", new=AsyncMock()) as act:
         out = await tmp._register_and_activate(
             tenant=_tenant(), e164=TEMP_E164, provider_sid="PNx", sub_sid=SUB,
-            sub_tok="tok", iso_country="GB", adopted=False)
+            sub_tok="tok", iso_country="US", adopted=False)
     assert out["status"] == tmp.HEALTH_FAILED
     # The REASON matters: a Vapi failure and a failed health check need different
     # things from an operator, and collapsing them hides which one happened.
@@ -528,7 +528,7 @@ async def test_an_unknown_purchase_outcome_does_not_buy_a_second_number():
     with _with(_eligible_world()), \
          patch.object(tmp, "get_client", return_value=_client_with(_tenant())), \
          patch.object(tmp, "source_policy",
-                      return_value=tmp.TemporarySource(enabled=True, iso_country="GB",
+                      return_value=tmp.TemporarySource(enabled=True, iso_country="US",
                                                        number_type="local")), \
          patch.object(tmp.tenant_subaccount, "ensure",
                       new=AsyncMock(return_value={"status": "ok", "sid": SUB,
@@ -557,7 +557,7 @@ async def test_an_unverifiable_purchase_fails_closed_for_an_operator():
     with _with(_eligible_world()), \
          patch.object(tmp, "get_client", return_value=_client_with(_tenant())), \
          patch.object(tmp, "source_policy",
-                      return_value=tmp.TemporarySource(enabled=True, iso_country="GB",
+                      return_value=tmp.TemporarySource(enabled=True, iso_country="US",
                                                        number_type="local")), \
          patch.object(tmp.tenant_subaccount, "ensure",
                       new=AsyncMock(return_value={"status": "ok", "sid": SUB,
@@ -580,7 +580,7 @@ async def test_a_number_already_held_is_adopted_rather_than_bought_again():
     with _with(_eligible_world()), \
          patch.object(tmp, "get_client", return_value=_client_with(_tenant())), \
          patch.object(tmp, "source_policy",
-                      return_value=tmp.TemporarySource(enabled=True, iso_country="GB",
+                      return_value=tmp.TemporarySource(enabled=True, iso_country="US",
                                                        number_type="local")), \
          patch.object(tmp.tenant_subaccount, "ensure",
                       new=AsyncMock(return_value={"status": "ok", "sid": SUB,
@@ -601,7 +601,7 @@ async def test_no_inventory_is_reported_not_retried_forever():
     with _with(_eligible_world()), \
          patch.object(tmp, "get_client", return_value=_client_with(_tenant())), \
          patch.object(tmp, "source_policy",
-                      return_value=tmp.TemporarySource(enabled=True, iso_country="GB",
+                      return_value=tmp.TemporarySource(enabled=True, iso_country="US",
                                                        number_type="local")), \
          patch.object(tmp.tenant_subaccount, "ensure",
                       new=AsyncMock(return_value={"status": "ok", "sid": SUB,
@@ -643,7 +643,7 @@ async def test_a_registration_race_hands_the_number_back():
                       new=AsyncMock(return_value=True)) as rel:
         out = await tmp._register_and_activate(
             tenant=_tenant(), e164=TEMP_E164, provider_sid="PNx", sub_sid=SUB,
-            sub_tok="tok", iso_country="GB", adopted=False)
+            sub_tok="tok", iso_country="US", adopted=False)
     assert out["status"] == tmp.NOT_ELIGIBLE
     rel.assert_called_once()
 
@@ -658,7 +658,7 @@ async def test_an_adopted_number_is_never_released_on_a_registration_conflict():
          patch.object(tmp.telephony, "release_number", new=AsyncMock()) as rel:
         await tmp._register_and_activate(
             tenant=_tenant(), e164=TEMP_E164, provider_sid="PNx", sub_sid=SUB,
-            sub_tok="tok", iso_country="GB", adopted=True)
+            sub_tok="tok", iso_country="US", adopted=True)
     rel.assert_not_called()
 
 
@@ -826,8 +826,8 @@ def test_a_temporary_number_is_always_labelled_temporary():
 
 
 def test_the_customer_view_never_calls_a_non_irish_number_irish():
-    view = tmp.customer_view(_row(iso_country="GB"))
-    assert view["iso_country"] == "GB"
+    view = tmp.customer_view(_row(iso_country="US"))
+    assert view["iso_country"] == "US"
     assert "irish" not in view["message"].lower()
 
 
@@ -847,7 +847,6 @@ def test_no_number_yet_reads_as_unavailable_not_broken():
 def test_ca_and_us_signup_semantics_are_untouched():
     """The regulated branch is the ONLY thing W9I-E added to provisioning."""
     from services import onboarding_lifecycle as ob
-    assert ob.REGULATED_COUNTRIES == frozenset({"IE"})
     assert ob.needs_regulatory_clearance("CA") is False
     assert ob.needs_regulatory_clearance("US") is False
     assert ob.initial_state("CA") == ob.PROVISIONING

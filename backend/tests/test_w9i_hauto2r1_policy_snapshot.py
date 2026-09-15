@@ -83,7 +83,7 @@ def test_an_unset_flag_is_false_everywhere():
     ("ca", "CA"),            # the real parser uppercases
     (" ca ", "CA"),
     ("US", "US"),
-    ("GB", "GB"),
+    ("GB", None),            # regulated -- would never be bought from
     ("IE", None),            # regulated -- would never be bought from
     ("ZZ", None),            # unsupported
     ("", None),              # unset

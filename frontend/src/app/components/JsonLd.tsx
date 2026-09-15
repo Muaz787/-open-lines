@@ -15,8 +15,11 @@ const SITE_URL = 'https://www.openlines.ai'
  *  a result is relevant to someone abroad. An Irish business asking which AI
  *  receptionist works for them was being told, in machine-readable terms, that
  *  this one does not. */
+// The countries we actually accept signups from. GB, AU and NZ require carrier
+// documentation we do not yet have a pipeline for, and country_access refuses
+// them — claiming them as areaServed would be a schema assertion we cannot honour.
 const SERVED_COUNTRIES = [
-  'Canada', 'United States', 'Ireland', 'United Kingdom', 'Australia', 'New Zealand',
+  'Canada', 'United States', 'Ireland',
 ]
 
 function Script({ data }: { data: object }) {

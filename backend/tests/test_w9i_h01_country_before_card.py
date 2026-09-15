@@ -424,3 +424,52 @@ async def test_the_integrity_reason_is_never_the_customer_facing_one():
                                                   "reason": "bound_tenant_mismatch"})):
         out = await country_access.decide(iso_country="IE", onboarding_key=KEY)
     assert "bound_tenant_mismatch" not in str(out["reason"])
+
+
+# ═══ Regulated but not servable — GB, AU and NZ ═════════════════════════════
+#
+# Measured against Twilio's Regulation API: GB, AU and NZ all require supporting
+# documents for local business numbers, so they are regulated as a matter of
+# fact. The pipeline a regulated tenant travels is Ireland's, and it buys with a
+# hardcoded "IE" -- so admitting them would have an Irish number bought for a
+# British business. They are refused here instead, before anything is created.
+
+@pytest.mark.parametrize("country", ["GB", "AU", "NZ"])
+@pytest.mark.asyncio
+async def test_a_regulated_country_without_a_pipeline_is_denied(country):
+    verdict = await country_access.decide(iso_country=country, onboarding_key=KEY)
+    assert verdict["access"] == country_access.DENIED
+    assert verdict["reason"] == country_access.NOT_SERVABLE
+    assert verdict["pilot_grant"] is False
+
+
+@pytest.mark.parametrize("country", ["GB", "AU", "NZ"])
+@pytest.mark.asyncio
+async def test_the_refusal_does_not_depend_on_irelands_flag(country, monkeypatch):
+    """The dangerous coupling, asserted away.
+
+    country_access reaches ireland_onboarding_enabled() only for a servable
+    regulated country. Were GB admitted, turning Ireland's flag off would send
+    British signups into Ireland's pilot-grant path.
+    """
+    for flag in ("true", "false"):
+        monkeypatch.setenv("IRELAND_ONBOARDING_ENABLED", flag)
+        verdict = await country_access.decide(iso_country=country, onboarding_key=KEY)
+        assert verdict["access"] == country_access.DENIED, flag
+        assert verdict["reason"] == country_access.NOT_SERVABLE, flag
+
+
+@pytest.mark.parametrize("country", ["GB", "AU", "NZ"])
+def test_a_regulated_country_without_a_pipeline_creates_nothing(
+        client, monkeypatch, country):
+    """No Stripe customer, no tenant -- the whole point of deciding first."""
+    seen = _flow(monkeypatch, country=country)
+    r = client.post("/onboarding/provision", json=_payload(country=country))
+    assert r.status_code == 503
+    assert seen["provisioned"] == 0
+
+
+@pytest.mark.asyncio
+async def test_ireland_is_still_served():
+    """The guard must not have closed the country it was built around."""
+    assert lifecycle_ob.can_serve_regulated("IE") is True

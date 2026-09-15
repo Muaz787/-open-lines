@@ -1441,8 +1441,8 @@ export const ARTICLES: LearnArticle[] = [
       { href: '/learn/call-recording-consent', label: 'Call recording consent', sub: 'Rules by country.' },
       { href: '/learn/keep-your-business-phone-number', label: 'Keeping your number', sub: 'How forwarding works.' },
     ],
-    ctaHeading: 'Be answering UK calls today.',
-    ctaSub: 'No verification wait, no new number needed. Seven days free, cancel anytime.',
+    ctaHeading: 'Not open for UK signups yet.',
+    ctaSub: 'UK numbers need carrier documentation we have not built the path for, so we are not taking UK signups today. This guide stands for when we do — and everything in it applies whoever you use.',
   },
   {
     slug: 'recognising-returning-callers',

@@ -36,7 +36,7 @@ def test_the_regulated_prefix_table_cannot_drift_from_the_country_list():
     ("+353 87 123 4567", "IE"),
     ("+14165550100", ""),
     ("+12899071026", ""),
-    ("+442071234567", ""),
+    ("+442071234567", "GB"),   # measured as regulated; recognised by prefix
     ("", ""),
 ])
 def test_regulated_numbers_are_recognised_by_their_prefix(number, expected):
@@ -140,7 +140,7 @@ def test_a_regulated_temporary_source_is_refused(monkeypatch):
     assert problem == "source_country_is_regulated:IE"
 
 
-@pytest.mark.parametrize("source", ["CA", "US", "GB"])
+@pytest.mark.parametrize("source", ["CA", "US"])
 def test_an_unregulated_temporary_source_is_accepted(monkeypatch, source):
     monkeypatch.setenv(temp.ENABLED_ENV, "true")
     monkeypatch.setenv(temp.SOURCE_ENV, source)

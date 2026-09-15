@@ -98,13 +98,16 @@ interface Country {
   flag: string
 }
 
+// Only countries the backend will actually accept. GB, AU and NZ all require
+// supporting documents at the carrier, and the pipeline that carries a regulated
+// tenant to a live number is Ireland's — so the backend refuses them
+// (country_access.NOT_SERVABLE) rather than buy a British business an Irish
+// number. Offering them here would send people to a guaranteed 503.
+// Restore a country here in the same change that makes it servable.
 const COUNTRIES: Country[] = [
   { code: 'CA', name: 'Canada',         dial: '+1',   flag: '🇨🇦' },
   { code: 'US', name: 'United States',  dial: '+1',   flag: '🇺🇸' },
-  { code: 'GB', name: 'United Kingdom', dial: '+44',  flag: '🇬🇧' },
-  { code: 'AU', name: 'Australia',      dial: '+61',  flag: '🇦🇺' },
   { code: 'IE', name: 'Ireland',        dial: '+353', flag: '🇮🇪' },
-  { code: 'NZ', name: 'New Zealand',    dial: '+64',  flag: '🇳🇿' },
 ]
 
 function detectCountry(): string {
@@ -115,9 +118,6 @@ function detectCountry(): string {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     if (/Toronto|Montreal|Vancouver|Edmonton|Winnipeg|Halifax|Regina|St_Johns|Moncton/.test(tz)) return 'CA'
     if (/Dublin/.test(tz)) return 'IE'
-    if (/London/.test(tz)) return 'GB'
-    if (tz.startsWith('Australia/')) return 'AU'
-    if (/Auckland|Wellington|Christchurch/.test(tz)) return 'NZ'
     if (tz.startsWith('America/')) return 'US'
     // Fall back to the device-language region only if timezone was inconclusive.
     const lang = navigator.language ?? ''
