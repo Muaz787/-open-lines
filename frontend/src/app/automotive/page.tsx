@@ -88,7 +88,10 @@ const AUTOMOTIVE: VerticalContent = {
       { href: '/integrations/outlook', label: 'Book into Outlook & Microsoft 365', sub: 'For shops on Microsoft.' },
     ],
     guides: [
-      { href: '/learn/answering-service-cost', label: 'What does an answering service cost?', sub: '2026 pricing compared.' },
+      { href: '/learn/quoting-a-repair-without-seeing-the-car', label: 'Quoting a repair on the phone', sub: 'Sell the diagnosis, not a guess.' },
+      { href: '/learn/is-my-car-ready-calls', label: '"Is my car ready?" calls', sub: 'Keeping techs off the phone.' },
+      { href: '/learn/courtesy-cars-and-waiting-customers', label: 'Courtesy cars and waiting', sub: 'The question that decides the booking.' },
+      { href: '/learn/parts-delays-and-telling-customers', label: 'When a part is late', sub: 'The call worth making early.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into booked service', sub: 'Why answering live wins the job.' },
     ],
   },
