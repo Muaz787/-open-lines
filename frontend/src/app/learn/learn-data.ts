@@ -5056,6 +5056,194 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Peak does not have to cost you next year.',
     ctaSub: 'Capacity on the line that needs no rota. Seven days free.',
   },
+  {
+    slug: 'patch-tests-and-colour-appointments',
+    category: 'Guide',
+    shortTitle: 'Patch tests',
+    metaTitle: 'Patch Tests and Colour Bookings on the Phone — Open Lines',
+    metaDescription: 'The forty-eight-hour rule turns one booking into two conversations. Why colour cannot be booked like a cut, and the call that saves you a wasted chair.',
+    h1: 'Patch tests and colour bookings',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Colour is the appointment that cannot be taken like any other, because a test has to happen first and it has to happen days before. That single requirement turns one phone call into two, and handling it badly costs you a full chair on your busiest day.',
+    sections: [
+      {
+        heading: 'Why the timing is the whole problem',
+        paras: ['An allergy alert test needs to sit for a period — typically forty-eight hours — before the colour service. So somebody ringing on Thursday wanting colour on Saturday has already run out of time unless they can get in today. That is not a scheduling preference, it is a safety requirement your insurer and your manufacturer both care about, and it is the reason a colour booking cannot simply be dropped into the next free slot.'],
+      },
+      {
+        heading: 'What has to be established on the call',
+        bullets: [
+          { title: 'Have they been to you before, and when', body: 'A regular tested recently may not need repeating; a client who has not been for a year usually does. This question comes first because it determines everything after it.' },
+          { title: 'Whether anything has changed', body: 'A reaction elsewhere, a new medication, a pregnancy, henna or a box dye since the last visit. Any of these changes the answer.' },
+          { title: 'Whether they can come in for the test', body: 'Two minutes in the salon, two days before. Cheap to do and expensive to skip.' },
+          { title: 'What they actually want', body: 'A root touch-up, a full head and a correction are wildly different amounts of chair time, and callers use "just a colour" for all three.' },
+        ],
+      },
+      {
+        heading: 'The booking you should refuse',
+        paras: ['A colour appointment for somebody who cannot test in time. It feels helpful to say yes and sort it out later, and it ends with a client in your chair who cannot be coloured, an awkward conversation at the worst moment, and a three-hour slot you cannot refill. A clear "I can do the test today and colour you Saturday" is a better answer than a yes you will have to withdraw.'],
+      },
+      {
+        heading: 'Why this call is worth answering live',
+        paras: ['Colour is among the highest-value things on your price list and the most time-sensitive to arrange. A colour enquiry that reaches voicemail on a Wednesday evening is usually gone — not because they found somewhere better, but because by the time you ring back the testing window has closed and somebody else could fit them in.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why can a colour appointment not be booked same-day?', a: 'An allergy alert test needs to sit for a period, typically forty-eight hours, before the service. Somebody ringing Thursday for Saturday has run out of time unless they can test today.' },
+      { q: 'What should be asked on a colour enquiry?', a: 'Whether they have been before and when, whether anything has changed — a reaction, new medication, pregnancy, box dye or henna — whether they can come in for the test, and what the service actually is.' },
+      { q: 'Should I ever book colour without a test in time?', a: 'No. It ends with a client in the chair who cannot be coloured and a long slot you cannot refill. Offer the test today and the colour later.' },
+      { q: 'Does "just a colour" tell me enough?', a: 'No — callers use it for a root touch-up, a full head and a correction, which are very different amounts of chair time.' },
+    ],
+    related: [
+      { href: '/salons', label: 'For salons and spas', sub: 'Booking the right stylist.' },
+      { href: '/learn/can-you-fit-me-in-today', label: '"Can you fit me in today?"', sub: 'The last-minute call.' },
+      { href: '/learn/booking-a-consultation-first', label: 'When a consultation comes first', sub: 'Before the big appointment.' },
+    ],
+    ctaHeading: 'Never lose a colour to a closed testing window.',
+    ctaSub: 'Answered live, tested in time, booked properly. Seven days free.',
+  },
+  {
+    slug: 'walk-ins-versus-appointments',
+    category: 'Guide',
+    shortTitle: 'Walk-ins vs appointments',
+    metaTitle: 'Walk-Ins vs Appointments: the Barbershop Trade-Off — Open Lines',
+    metaDescription: 'Walk-ins fill quiet hours and destroy busy ones. What the phone should say when you run both, and the answer that loses you a customer either way.',
+    h1: 'Walk-ins versus appointments',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Barbering is the trade where this argument never ends, and both sides are right. Walk-ins are the culture, the footfall and the quiet-Tuesday rescue. Appointments are the predictability, the no-show protection and the reason your good barbers stay. Most shops end up running both and have never decided what the phone should say about it.',
+    sections: [
+      {
+        heading: 'What each actually gives you',
+        bullets: [
+          { title: 'Walk-ins fill the hours nobody books', body: 'Ten on a Tuesday is a walk-in hour. It always was.' },
+          { title: 'Appointments protect Saturday', body: 'Your highest-value day should not depend on who happens to wander past.' },
+          { title: 'Walk-ins cost you the regular', body: 'Someone who always sees the same barber will not queue behind three strangers indefinitely.' },
+          { title: 'Appointments cost you the passer-by', body: 'A shop that turns away a man standing at the door has traded revenue for tidiness.' },
+        ],
+      },
+      {
+        heading: 'The answer that loses either way',
+        paras: ['"We do both" — said without any detail. The caller cannot act on it. They do not know whether to come down now, whether there will be a wait, or whether booking is even worth it, so they either turn up at the busiest moment and are disappointed, or do not come at all. Running both is fine; being vague about it on the phone is what costs you.'],
+      },
+      {
+        heading: 'What the phone should be able to say',
+        paras: ['Whether there is a wait right now and roughly how long. Which barbers are bookable and which are walk-in only. Whether a particular time can be held. That last one is the difference between a caller who arrives and one who meant to. A shop that can say "Marcus has two forty-five free, or come down now and it is about twenty minutes" has just made the decision easy in one sentence.'],
+      },
+      {
+        heading: 'Decide the split deliberately',
+        paras: ['The version that works in most shops is not fifty-fifty — it is appointments protecting the hours that are genuinely in demand and walk-ins absorbing everything else, with the boundary written down so everybody gives the same answer. The shops that struggle are the ones where the split changes depending on who picked up the phone and how busy they felt at the time.'],
+      },
+    ],
+    faqs: [
+      { q: 'Should a barbershop take walk-ins or appointments?', a: 'Most do both. Walk-ins fill hours nobody books and bring footfall; appointments protect your busiest day and keep regulars who will not queue behind strangers.' },
+      { q: 'What is the wrong answer on the phone?', a: '"We do both", with no detail. The caller cannot act on it — they do not know whether to come now, whether there is a wait, or whether booking is worth it.' },
+      { q: 'What should the phone be able to tell someone?', a: 'Whether there is a wait and roughly how long, which barbers are bookable, and whether a specific time can be held.' },
+      { q: 'How should the split be decided?', a: 'Appointments protecting the hours genuinely in demand, walk-ins absorbing the rest — and written down, so the answer does not change depending on who picked up.' },
+    ],
+    related: [
+      { href: '/barbers', label: 'For barbershops', sub: 'Keeping the clippers moving.' },
+      { href: '/learn/can-you-fit-me-in-today', label: 'Last-minute callers', sub: 'The walk-in who rings first.' },
+      { href: '/learn/booking-with-a-specific-team-member', label: 'Asking for a barber', sub: 'Per-person availability.' },
+    ],
+    ctaHeading: 'Answer the wait question in one sentence.',
+    ctaSub: 'Live availability, whoever they ask for. Seven days free.',
+  },
+  {
+    slug: 'can-you-fit-me-in-today',
+    category: 'Common problem',
+    shortTitle: '"Fit me in today?"',
+    metaTitle: 'Handling "Can You Fit Me In Today?" — Open Lines',
+    metaDescription: 'The most common call in personal services and the one most often lost to voicemail. Why these callers convert so well, and why they never ring twice.',
+    h1: '"Can you fit me in today?"',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Somebody has a wedding on Saturday, an interview tomorrow, or has simply looked in the mirror and had enough. They want to know one thing, they want to know it now, and they are ringing while walking somewhere. This is the highest-intent call a salon or barbershop receives and the easiest one to lose.',
+    sections: [
+      {
+        heading: 'Why they convert so well',
+        paras: ['There is no deliberation left. They are not comparing prices, reading reviews or asking what products you use — they have decided to spend money today and are looking for somewhere that can take them. Almost nothing else on your phone arrives that far down the decision. The only question is whether you answer before the next place does.'],
+      },
+      {
+        heading: 'And why you never get a second chance',
+        paras: ['They are not going to leave a voicemail about it. The whole premise is urgency, and a message to be picked up later fails the one requirement of the call. They will ring the next salon on the map while still walking, and if that one answers you will never know the call happened — no missed-call log entry survives the story, and nothing about your day will look different.'],
+      },
+      {
+        heading: 'What a good answer contains',
+        bullets: [
+          { title: 'A real time, immediately', body: '"Ten past four with Sarah" ends the search. "Let me see what we have" already sounds like a no.' },
+          { title: 'The nearest alternative if today has gone', body: 'Tomorrow morning, or another stylist this afternoon. Never simply "we are full".' },
+          { title: 'Roughly what it costs', body: 'They have not been to you before and they are not going to ask twice.' },
+          { title: 'How long it takes', body: 'They are fitting this between other things, which is the entire reason for the call.' },
+        ],
+      },
+      {
+        heading: 'These are the calls you are missing',
+        paras: ['Not the leisurely enquiries — those people ring back. It is these, and they arrive precisely when you are with a client and cannot pick up. That is the specific, recurring loss behind most salon phone problems, and it is invisible because the people it affects never appear anywhere in your records.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why is the last-minute call worth so much?', a: 'There is no deliberation left — they have decided to spend money today and just need somewhere that can take them. Nothing else on your phone arrives that far down the decision.' },
+      { q: 'Will they ring back if I miss it?', a: 'No. Urgency is the whole premise, and voicemail fails it. They ring the next place while still walking, and you never learn the call happened.' },
+      { q: 'What makes a good answer?', a: 'A specific time immediately, the nearest alternative if today has gone, roughly what it costs, and how long it takes.' },
+      { q: 'What if I genuinely have nothing today?', a: 'Offer tomorrow morning or another stylist this afternoon. "We are full" ends a call with somebody who was ready to buy.' },
+    ],
+    related: [
+      { href: '/salons', label: 'For salons and spas', sub: 'Answering while you are with a client.' },
+      { href: '/learn/when-you-are-fully-booked', label: 'When today has gone', sub: 'What to offer instead.' },
+      { href: '/learn/walk-ins-versus-appointments', label: 'Walk-ins', sub: 'The same caller, in person.' },
+    ],
+    ctaHeading: 'Be the one that answers.',
+    ctaSub: 'A real time, while they are still walking. Seven days free.',
+  },
+  {
+    slug: 'booking-a-consultation-first',
+    category: 'Guide',
+    shortTitle: 'Consultations',
+    metaTitle: 'When a Consultation Has to Come First — Open Lines',
+    metaDescription: 'Extensions, colour corrections, wedding hair. Why quoting these on the phone loses money, and how to book the conversation without losing the client.',
+    h1: 'When a consultation has to come first',
+    published: '2026-09-23',
+    updated: '2026-09-23',
+    intro: 'Some services cannot be priced or scheduled from a description. Extensions, a colour correction, bridal work — the caller genuinely does not know what they are asking for, and neither do you until somebody has looked at their hair. The trick is booking that conversation without sounding like you are avoiding the question.',
+    sections: [
+      {
+        heading: 'Why a phone quote costs you either way',
+        paras: ['Quote low and you will either honour a price that loses money on a six-hour job, or withdraw it in front of somebody who has already told their friends. Quote high to be safe and they ring the salon that guessed lower and will have the same problem later. Neither outcome is good, and both come from answering a question that did not yet have an answer.'],
+      },
+      {
+        heading: 'Make the consultation sound like progress',
+        bullets: [
+          { title: 'Give it a time, there and then', body: 'A consultation booked in the call is a commitment. "Pop in sometime" is not, and almost nobody does.' },
+          { title: 'Say how long it takes and what it costs', body: 'Fifteen minutes and free, or redeemable against the service. Uncertainty here is what makes people hesitate.' },
+          { title: 'Say what happens in it', body: 'We look at your hair, talk about what is realistic, and give you a firm price. That is a useful appointment, not a sales meeting.' },
+          { title: 'Give a range anyway', body: '"Usually between two and four hundred depending on length" prevents somebody booking a consultation for something they could never afford.' },
+        ],
+      },
+      {
+        heading: 'The range matters more than people think',
+        paras: ['Refusing any indication at all until they come in wastes both parties. Somebody expecting eighty pounds and discovering it is four hundred has lost an afternoon and you have lost a slot. A wide, honest range filters that out on the phone, and the people who remain are genuinely in the market — which makes the consultation a much better use of your chair.'],
+      },
+      {
+        heading: 'It is also your best conversion point',
+        paras: ['A client sitting in front of a stylist discussing exactly what they want books at a far higher rate than one comparing prices over the phone. Treating the consultation as the thing you are selling on that call — rather than as an obstacle before the real booking — changes both how it sounds and how often it happens.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why not just quote extensions or a colour correction on the phone?', a: 'Because nobody knows what the job is yet. Quote low and you honour a losing price or withdraw it; quote high and they book elsewhere.' },
+      { q: 'How do I book a consultation without sounding evasive?', a: 'Give it a specific time on the call, say how long it takes and what it costs, and say what actually happens in it — a look, a realistic conversation, a firm price.' },
+      { q: 'Should I give any price at all beforehand?', a: 'A wide honest range, yes. It stops somebody booking a consultation for something they could never afford, which wastes your chair and their afternoon.' },
+      { q: 'Is a consultation worth the slot?', a: 'It is usually your best conversion point — someone sitting with a stylist books at a far higher rate than someone comparing prices by phone.' },
+    ],
+    related: [
+      { href: '/salons', label: 'For salons and spas', sub: 'Booking the right stylist.' },
+      { href: '/learn/patch-tests-and-colour-appointments', label: 'Colour and patch tests', sub: 'The other two-step booking.' },
+      { href: '/learn/when-a-quote-is-not-a-booking', label: 'Quotes that need a look', sub: 'The same problem in trades.' },
+    ],
+    ctaHeading: 'Book the conversation, not a guess.',
+    ctaSub: 'Consultations offered and booked on the call. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
