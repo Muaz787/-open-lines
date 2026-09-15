@@ -5437,6 +5437,193 @@ export const ARTICLES: LearnArticle[] = [
     ctaHeading: 'Price your own month, not a headline.',
     ctaSub: 'Our plans, our rounding, our overage — all published. Seven days free.',
   },
+  {
+    slug: 'is-my-car-ready-calls',
+    category: 'Common problem',
+    shortTitle: '"Is my car ready?"',
+    metaTitle: 'Handling "Is My Car Ready?" Calls — Open Lines',
+    metaDescription: 'The call that interrupts a technician mid-job to ask a question the workshop already knows. Why it happens, and how to stop it costing you billable hours.',
+    h1: 'The "is my car ready?" call',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'Somebody dropped their car off at eight, has no transport, and wants to know whether to arrange a lift home or wait. It is a completely reasonable question, it arrives ten times a day, and answering it means walking into the workshop and interrupting the person whose time you are billing.',
+    sections: [
+      {
+        heading: 'Why it costs more than the two minutes',
+        paras: ['The interruption does not cost two minutes; it costs the thread. A technician stopped mid-diagnosis loses the sequence they were working through and picks it up imperfectly, which is how things get missed. Ten of those a day across three bays is a real amount of productive time, and none of it appears on any job sheet — it simply shows up as the workshop running slower than it should.'],
+      },
+      {
+        heading: 'They are usually asking something more specific',
+        bullets: [
+          { title: 'Can I collect it today', body: 'They are arranging their evening, not auditing your workshop.' },
+          { title: 'Has it turned out worse than expected', body: 'The anxious version of the question, and the one that needs careful handling rather than a quick yes or no.' },
+          { title: 'Will it be more than the estimate', body: 'Frequently the real question, asked obliquely because nobody enjoys asking about money.' },
+          { title: 'Did anyone ring me', body: 'Sometimes they are chasing an authorisation they were promised and did not get.' },
+        ],
+      },
+      {
+        heading: 'The call that prevents the call',
+        paras: ['Ringing customers when something changes — not when it does not — removes most of this volume. A customer told at eleven that their car needs a part arriving tomorrow does not ring at two, at three and at four. Garages that make one proactive call per job consistently report the status calls dropping away, because the anxiety driving them has been dealt with.'],
+      },
+      {
+        heading: 'What the phone can and cannot tell them',
+        paras: ['Taking the call, identifying the vehicle and the customer, and getting an accurate message to the right person is straightforward and takes the interruption off the workshop floor. Reading back a live job status is a different matter — it requires a connection into your job management system, and without one an assistant should say plainly that it will find out rather than guess. Telling somebody their car is ready when it is not produces a wasted journey and a complaint.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why do status calls cost so much in a garage?', a: 'The interruption costs the thread, not the two minutes. A technician stopped mid-diagnosis picks it up imperfectly, and none of that lost time appears on a job sheet.' },
+      { q: 'What are customers really asking?', a: 'Usually whether they can collect today, whether it has turned out worse than expected, or — obliquely — whether it will cost more than the estimate.' },
+      { q: 'How do I reduce these calls?', a: 'One proactive call per job when something changes. A customer told at eleven that a part arrives tomorrow does not ring at two, three and four.' },
+      { q: 'Can an AI receptionist tell them if the car is ready?', a: 'Only with a connection into your job management system. Without one it should say it will find out rather than guess — telling somebody their car is ready when it is not produces a wasted journey and a complaint.' },
+    ],
+    related: [
+      { href: '/automotive', label: 'For garages and dealers', sub: 'Keeping the bays working.' },
+      { href: '/learn/parts-delays-and-telling-customers', label: 'When parts are late', sub: 'The call worth making.' },
+      { href: '/learn/where-is-my-parcel-calls', label: 'The same call in delivery', sub: 'Status chasers.' },
+    ],
+    ctaHeading: 'Keep the interruptions off the workshop floor.',
+    ctaSub: 'Every call answered, the right message to the right person. Seven days free.',
+  },
+  {
+    slug: 'quoting-a-repair-without-seeing-the-car',
+    category: 'Guide',
+    shortTitle: 'Quoting a repair',
+    metaTitle: 'Quoting a Car Repair Over the Phone — Open Lines',
+    metaDescription: 'Callers describe a noise and expect a price. Why a number given blind costs you either way, and the answer that books the car in without committing to anything.',
+    h1: 'Quoting a repair over the phone',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'A caller describes a noise — a grinding, a knocking, something that started on Tuesday — and asks what it will cost to fix. There is no honest answer to that, and every garage knows it. The difficulty is that saying so badly loses the job to whoever was willing to guess.',
+    sections: [
+      {
+        heading: 'Why a blind number hurts either way',
+        paras: ['Quote low and the real fault is worse, so you either absorb the difference or have the conversation nobody wants with a customer who feels misled. Quote high to protect yourself and they book with the garage down the road who guessed lower — and who will have the same conversation later, which is no comfort to you. Neither outcome comes from being unhelpful; both come from answering a question that did not have an answer yet.'],
+      },
+      {
+        heading: 'What you can price with confidence',
+        bullets: [
+          { title: 'Anything with a fixed menu', body: 'A service, an inspection, a brake fluid change. These have prices and should be given immediately and without hedging.' },
+          { title: 'The diagnostic itself', body: 'A firm number for finding out what is wrong is the most useful thing you can offer on this call.' },
+          { title: 'Typical ranges, clearly flagged', body: '"Front pads and discs are usually two-fifty to four hundred depending on the car" is genuinely helpful and commits you to nothing.' },
+          { title: 'What it will not be', body: 'Sometimes the most reassuring thing is a ceiling — "it will not be a thousand pounds" settles somebody who feared it might be.' },
+        ],
+      },
+      {
+        heading: 'Sell the diagnosis, not the repair',
+        paras: ['The outcome you want from this call is the car booked in, not a price agreed. "I cannot price that without looking, but I can get it on the ramp Thursday morning and ring you with a firm figure before we touch anything" is a complete answer — it gives them a time, a process and a promise that nothing happens without their say-so. That last part is what converts, because the fear underneath the question is an open-ended bill.'],
+      },
+      {
+        heading: 'Take enough detail to be useful',
+        paras: ['Make, model, year, engine, mileage, and what it is actually doing — when it happens, whether it changes with speed or braking, whether a warning light is on. Half of that determines how long the diagnostic takes and whether a part is worth having on the shelf. It also means whoever eventually looks at the car is not starting from a one-line note saying "noise".'],
+      },
+    ],
+    faqs: [
+      { q: 'Should I quote a repair over the phone?', a: 'Not for an undiagnosed fault. Quote low and you absorb the difference or have an unpleasant conversation; quote high and they book elsewhere.' },
+      { q: 'What can I price confidently?', a: 'Fixed-menu work like a service or an inspection, the diagnostic itself, typical ranges clearly flagged as ranges, and sometimes a ceiling — "it will not be a thousand pounds" settles a worried caller.' },
+      { q: 'What should the call actually achieve?', a: 'The car booked in, not a price agreed. Offer a time, a firm diagnostic fee, and a promise that nothing happens without their approval.' },
+      { q: 'What details should be taken?', a: 'Make, model, year, engine, mileage, and what the fault actually does — when it happens, whether it changes with speed or braking, and any warning lights.' },
+    ],
+    related: [
+      { href: '/automotive', label: 'For garages and dealers', sub: 'Capturing the vehicle properly.' },
+      { href: '/learn/when-a-quote-is-not-a-booking', label: 'Booking the next step', sub: 'When you cannot price it.' },
+      { href: '/learn/handling-price-questions-on-the-phone', label: 'Price questions generally', sub: 'Ranges beat refusals.' },
+    ],
+    ctaHeading: 'Book the car in, not a guess.',
+    ctaSub: 'Vehicle and fault captured, diagnostic booked. Seven days free.',
+  },
+  {
+    slug: 'parts-delays-and-telling-customers',
+    category: 'Common problem',
+    shortTitle: 'Parts delays',
+    metaTitle: 'Parts Delays: the Call Most Garages Avoid Making — Open Lines',
+    metaDescription: 'A part is late and the car is on your ramp. Why the call nobody wants to make is the one that saves the relationship, and what to say when you do not know either.',
+    h1: 'When the part does not arrive',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'The car is stripped, the customer expected it back today, and the part is somewhere between a supplier and a van. It is nobody in your workshop’s fault and it is entirely your problem, because you are the only person the customer can ring.',
+    sections: [
+      {
+        heading: 'Why the call gets put off',
+        paras: ['Because there is no good news in it and no firm answer to give, so it is easy to wait until there is — and the waiting is what does the damage. The customer finds out at half five when they turn up expecting their car, which converts a supply problem into a service failure. Told at eleven, most people are mildly annoyed and rearrange. Told on arrival, they are furious and they tell people.'],
+      },
+      {
+        heading: 'What to say when you do not know either',
+        bullets: [
+          { title: 'Say what has happened, plainly', body: 'The part has not arrived. Not "there has been a slight delay" — people hear the hedge and assume worse.' },
+          { title: 'Say what you actually know', body: 'Expected tomorrow, chasing the supplier this afternoon, or genuinely unknown. Any of those beats vagueness.' },
+          { title: 'Say when you will next make contact', body: 'A named time is the entire point. "I will ring you by four either way" turns an open-ended wait into a manageable one.' },
+          { title: 'Offer the thing that helps', body: 'A courtesy car, a lift, reassembling it so they can drive it and come back. Ask rather than assume which they need.' },
+        ],
+      },
+      {
+        heading: 'The second call matters more than the first',
+        paras: ['Making the promised follow-up — especially when there is still no news — is what separates a garage people return to from one they endure. A customer rung at four to be told the part is still not here has been treated well; one who has to chase you has learned something about how you operate that no amount of good workmanship undoes.'],
+      },
+      {
+        heading: 'Meanwhile the phone is still ringing',
+        paras: ['The awkward truth is that these are the days the workshop is least able to answer calls, because everyone is dealing with the consequences. New enquiries arrive into that, get nothing, and go elsewhere — so a supply problem quietly costs you next week’s work as well as this week’s goodwill. Whatever else is going on, the line has to keep working.'],
+      },
+    ],
+    faqs: [
+      { q: 'When should I tell a customer a part is delayed?', a: 'As soon as you know, not when you have a firm answer. Told at eleven most people rearrange; told at half five on arrival, a supply problem has become a service failure.' },
+      { q: 'What do I say when I do not know when it will arrive?', a: 'Say plainly that the part has not come, say what you do know, and name a time you will make contact again — "I will ring you by four either way".' },
+      { q: 'What should I offer?', a: 'A courtesy car, a lift, or reassembling it so they can drive it and return. Ask which they need rather than assuming.' },
+      { q: 'Which call matters most?', a: 'The promised follow-up, especially when there is still no news. A customer who has to chase you has learned something no amount of good workmanship undoes.' },
+    ],
+    related: [
+      { href: '/automotive', label: 'For garages and dealers', sub: 'Answering while the workshop is busy.' },
+      { href: '/learn/is-my-car-ready-calls', label: '"Is my car ready?"', sub: 'The calls this prevents.' },
+      { href: '/learn/temporary-closures-and-unexpected-days-off', label: 'When things go wrong', sub: 'Telling people early.' },
+    ],
+    ctaHeading: 'Bad days are when the phone matters most.',
+    ctaSub: 'New enquiries answered while you deal with the ramp. Seven days free.',
+  },
+  {
+    slug: 'courtesy-cars-and-waiting-customers',
+    category: 'Guide',
+    shortTitle: 'Courtesy cars',
+    metaTitle: 'Courtesy Cars and Waiting Appointments — Open Lines',
+    metaDescription: 'Whether someone can get to work tomorrow decides whether they book at all. The three questions to ask, and why "we might have one" loses the job.',
+    h1: 'Courtesy cars and waiting appointments',
+    published: '2026-09-24',
+    updated: '2026-09-24',
+    intro: 'For a great many customers the repair is not the decision — transport is. Whether they can get to work on Thursday determines whether they book with you at all, and it is frequently the question they ask before price.',
+    sections: [
+      {
+        heading: 'Three ways people cope without their car',
+        bullets: [
+          { title: 'A courtesy car', body: 'The strongest offer you have, and the most constrained. Usually a small fleet, booked well ahead, and subject to insurance conditions worth stating early.' },
+          { title: 'Waiting while it is done', body: 'Works for short jobs, and turns your waiting area into part of the product. People will accept ninety minutes if told it is ninety minutes.' },
+          { title: 'Dropping off and collecting later', body: 'The default, and the one that generates the "is it ready?" calls.' },
+        ],
+      },
+      {
+        heading: 'Why "we might have one" loses the booking',
+        paras: ['A caller cannot plan around a maybe. They are deciding whether to take a day off, and an uncertain answer sends them to a garage that gave a definite one — even a definite no, which at least lets them arrange something. Certainty is worth more than generosity here: "no courtesy car Thursday, but Friday I can do one" converts better than an open maybe.'],
+      },
+      {
+        heading: 'The three questions worth asking early',
+        paras: ['Whether they need transport at all, which a surprising number do not. Whether they can wait, which turns a two-day job into a morning if the work is short enough. And whether anyone else can collect the car, which sometimes removes the problem entirely. Establishing these before discussing dates avoids arranging a slot that has to be undone.'],
+      },
+      {
+        heading: 'Say the conditions on the call, not at the counter',
+        paras: ['Minimum age, licence held for a period, an excess, fuel policy, whether it can go on a motorway. Discovering any of these while standing at the desk on the morning of the job is how a good experience turns bad before the work has started. None of them is a problem when mentioned in advance; all of them are when sprung.'],
+      },
+    ],
+    faqs: [
+      { q: 'Why does transport decide the booking?', a: 'For many customers the repair is not the decision — getting to work is. It is frequently asked before price.' },
+      { q: 'What is wrong with "we might have a courtesy car"?', a: 'A caller cannot plan around a maybe while deciding whether to take a day off. A definite no with an alternative date converts better than an open maybe.' },
+      { q: 'What should be asked early?', a: 'Whether they need transport at all, whether they could wait while it is done, and whether somebody else could collect the car.' },
+      { q: 'When should courtesy car conditions be mentioned?', a: 'On the call — minimum age, licence held, excess, fuel policy. Sprung at the counter on the morning, they turn a good experience bad before work starts.' },
+    ],
+    related: [
+      { href: '/automotive', label: 'For garages and dealers', sub: 'Booking the right slot.' },
+      { href: '/learn/quoting-a-repair-without-seeing-the-car', label: 'Pricing the job', sub: 'The other early question.' },
+      { href: '/learn/is-my-car-ready-calls', label: 'Collection calls', sub: 'What happens after.' },
+    ],
+    ctaHeading: 'Answer the transport question first.',
+    ctaSub: 'Because it is the one that decides the booking. Seven days free.',
+  },
 ]
 
 export const ARTICLE_SLUGS = ARTICLES.map(a => a.slug)
