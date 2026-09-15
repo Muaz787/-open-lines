@@ -31,7 +31,9 @@ export default function LoginPage() {
     try {
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) throw authError
-      const tenantId = data.user?.user_metadata?.tenant_id
+      // tenant_id now lives in app_metadata (server-only). user_metadata is the
+      // fallback for accounts not yet migrated; see backend security._verified_user.
+      const tenantId = data.user?.app_metadata?.tenant_id ?? data.user?.user_metadata?.tenant_id
       if (!tenantId) {
         // Check if this is an admin account
         const meRes = await fetch('/api/admin/me', {
