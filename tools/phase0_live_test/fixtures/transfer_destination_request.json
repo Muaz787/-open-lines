@@ -1,0 +1,15 @@
+{
+  "message": {
+    "type": "transfer-destination-request",
+    "timestamp": 1730000000000,
+    "call": {
+      "id": "call_TESTAAA111",
+      "customer": {"number": "+16475550123"},
+      "transcript": "SHOULD NOT BE PERSISTED",
+      "phoneCallProviderId": "CA00000000000000000000000000000000"
+    },
+    "phoneNumber": {"number": "+14385550199"},
+    "toolCallList": [{"id": "toolcall_1", "function": {"name": "transfer_call", "arguments": "{}"}}],
+    "headers": {"authorization": "Bearer SHOULD_NOT_PERSIST"}
+  }
+}
