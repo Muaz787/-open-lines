@@ -88,7 +88,10 @@ const COURIER: VerticalContent = {
       { href: '/integrations/slack', label: 'Push new orders into Slack', sub: 'Dispatch sees every order instantly.' },
     ],
     guides: [
-      { href: '/learn/automate-your-workflow-2026-ai', label: 'Automate your workflow with AI', sub: 'Where AI saves the most time.' },
+      { href: '/learn/where-is-my-parcel-calls', label: '"Where is my parcel?" calls', sub: 'The call that swallows dispatch.' },
+      { href: '/learn/failed-delivery-and-redelivery-calls', label: 'Failed deliveries and redeliveries', sub: 'Rebooking on the first call.' },
+      { href: '/learn/quoting-a-courier-job-on-the-phone', label: 'Quoting a job on the phone', sub: 'Both postcodes, then the price.' },
+      { href: '/learn/peak-season-in-delivery', label: 'Peak season and your phone', sub: 'Why the call mix inverts.' },
       { href: '/learn/missed-call-text-back', label: 'Turn missed calls into booked orders', sub: 'Why answering live wins the order.' },
     ],
   },
