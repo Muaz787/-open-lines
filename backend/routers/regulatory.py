@@ -23,6 +23,7 @@ from services import regulatory_ireland as ie_ux
 from services import regulatory_requirements as rq
 from services import regulatory_state as st
 from services.security import require_tenant_owner
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,8 @@ _STATUS_FOR = {
 
 
 async def _tenant(tenant_id: str) -> dict:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     if not rows:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return rows[0]
@@ -271,8 +272,8 @@ async def twilio_regulatory_callback(
     # payload. The parent token is offered only as the second candidate because
     # Twilio's documentation does not say which one signs a sub-account resource's
     # callback -- see regulatory_callback.select_credential.
-    rows = (get_client().table("tenants").select("twilio_auth_token")
-            .eq("id", profile.get("tenant_id")).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("twilio_auth_token")
+            .eq("id", profile.get("tenant_id")).limit(1))).data or [])
     subaccount_token = str((rows[0] if rows else {}).get("twilio_auth_token") or "")
     url = engine.callback_url()
     credential = cb.select_credential(

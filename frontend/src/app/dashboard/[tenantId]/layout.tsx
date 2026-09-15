@@ -59,7 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // Idempotent re-identify keeps returning sessions tied to the person
       identifyUser(user.id, {
         email: user.email,
-        tenant_id: user.user_metadata?.tenant_id,
+        tenant_id: user.app_metadata?.tenant_id ?? user.user_metadata?.tenant_id,
       })
     })
   }, [router])

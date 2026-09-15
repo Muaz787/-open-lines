@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import re
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ async def confirm(tenant_id: str, iso_country: str) -> dict:
                 "detail": "expected a two-letter ISO 3166-1 alpha-2 code"}
 
     client = get_client()
-    rows = (client.table("tenants").select("id, business_country_code")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(client.table("tenants").select("id, business_country_code")
+            .eq("id", tenant_id).limit(1))).data or [])
     if not rows:
         return {"status": NOT_FOUND, "business_country_code": None}
     current = rows[0].get("business_country_code")
@@ -68,26 +68,25 @@ async def confirm(tenant_id: str, iso_country: str) -> dict:
 
     if current:
         # A change, not a first confirmation. Anything already filed pins it.
-        profiles = (client.table("tenant_regulatory_profiles").select("id")
-                    .eq("tenant_id", tenant_id).limit(1).execute().data or [])
-        addresses = (client.table("tenant_regulatory_addresses").select("id")
-                     .eq("tenant_id", tenant_id).limit(1).execute().data or [])
+        profiles = ((await run_query(client.table("tenant_regulatory_profiles").select("id")
+                    .eq("tenant_id", tenant_id).limit(1))).data or [])
+        addresses = ((await run_query(client.table("tenant_regulatory_addresses").select("id")
+                     .eq("tenant_id", tenant_id).limit(1))).data or [])
         if profiles or addresses:
             logger.warning("Refused business_country_code change for tenant %s: "
                            "regulatory resources exist", tenant_id)
             return {"status": BLOCKED_REGULATORY, "business_country_code": current,
                     "detail": "a regulatory address or profile already exists"}
-        numbers = (client.table("tenant_phone_numbers")
+        numbers = ((await run_query(client.table("tenant_phone_numbers")
                    .select("id").eq("tenant_id", tenant_id)
-                   .not_.is_("regulatory_profile_id", "null").limit(1)
-                   .execute().data or [])
+                   .not_.is_("regulatory_profile_id", "null").limit(1))).data or [])
         if numbers:
             return {"status": BLOCKED_REGULATED_NUMBER,
                     "business_country_code": current,
                     "detail": "a regulated number is bound to this tenant"}
 
-    client.table("tenants").update({"business_country_code": code}) \
-        .eq("id", tenant_id).execute()
+    await run_query(client.table("tenants").update({"business_country_code": code}) \
+        .eq("id", tenant_id))
     # Country is not sensitive, and recording the transition is what makes an
     # explicit confirmation auditable.
     logger.info("business_country_code confirmed for tenant %s: %s -> %s",
@@ -96,6 +95,6 @@ async def confirm(tenant_id: str, iso_country: str) -> dict:
 
 
 async def get_confirmed(tenant_id: str) -> str | None:
-    rows = (get_client().table("tenants").select("business_country_code")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("business_country_code")
+            .eq("id", tenant_id).limit(1))).data or [])
     return (rows[0].get("business_country_code") if rows else None) or None

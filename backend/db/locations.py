@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 
 def _now_iso() -> str:
@@ -29,25 +29,25 @@ async def list_locations(tenant_id: str, active_only: bool = False) -> list:
          .eq("tenant_id", tenant_id))
     if active_only:
         q = q.eq("active", True)
-    res = q.order("created_at").execute()
+    res = await run_query(q.order("created_at"))
     return res.data or []
 
 
 async def get_default_location(tenant_id: str) -> dict | None:
-    res = (get_client().table("tenant_locations").select("*")
-           .eq("tenant_id", tenant_id).eq("is_default", True).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_locations").select("*")
+           .eq("tenant_id", tenant_id).eq("is_default", True).limit(1)))
     return (res.data or [None])[0]
 
 
 async def get_location_by_slug(tenant_id: str, slug: str) -> dict | None:
-    res = (get_client().table("tenant_locations").select("*")
-           .eq("tenant_id", tenant_id).eq("slug", slug).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_locations").select("*")
+           .eq("tenant_id", tenant_id).eq("slug", slug).limit(1)))
     return (res.data or [None])[0]
 
 
 async def get_location_by_id(tenant_id: str, location_id: str) -> dict | None:
-    res = (get_client().table("tenant_locations").select("*")
-           .eq("tenant_id", tenant_id).eq("id", location_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_locations").select("*")
+           .eq("tenant_id", tenant_id).eq("id", location_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -55,21 +55,21 @@ async def delete_location(tenant_id: str, location_id: str) -> None:
     """Only for the compensating rollback in services/location_adoption when a
     location was created but its binding could not be attached. Normal removal is
     deactivation (active=false) — a location may be referenced by history."""
-    (get_client().table("tenant_locations").delete()
-     .eq("tenant_id", tenant_id).eq("id", location_id).execute())
+    (await run_query(get_client().table("tenant_locations").delete()
+     .eq("tenant_id", tenant_id).eq("id", location_id)))
 
 
 async def insert_location(tenant_id: str, data: dict) -> dict:
     row = {**data, "tenant_id": tenant_id,
            "created_at": _now_iso(), "updated_at": _now_iso()}
-    res = get_client().table("tenant_locations").insert(row).execute()
+    res = await run_query(get_client().table("tenant_locations").insert(row))
     return (res.data or [{}])[0]
 
 
 async def update_location(tenant_id: str, location_id: str, data: dict) -> dict:
-    res = (get_client().table("tenant_locations")
+    res = (await run_query(get_client().table("tenant_locations")
            .update({**data, "updated_at": _now_iso()})
-           .eq("tenant_id", tenant_id).eq("id", location_id).execute())
+           .eq("tenant_id", tenant_id).eq("id", location_id)))
     return (res.data or [{}])[0]
 
 
@@ -105,7 +105,7 @@ async def refresh_derived_timezone(tenant_id: str, location_id: str, *,
     q = (get_client().table("tenant_locations").update({"timezone": now, "updated_at": _now_iso()})
          .eq("tenant_id", tenant_id).eq("id", location_id))
     q = q.is_("timezone", "null") if was is None else q.eq("timezone", was)
-    res = q.execute()
+    res = await run_query(q)
     return len(res.data or []) == 1
 
 
@@ -114,32 +114,32 @@ async def list_bindings(tenant_id: str, provider: str | None = None) -> list:
          .eq("tenant_id", tenant_id))
     if provider is not None:
         q = q.eq("provider", provider)
-    res = q.order("created_at").execute()
+    res = await run_query(q.order("created_at"))
     return res.data or []
 
 
 async def get_binding(tenant_id: str, provider: str, provider_location_id: str) -> dict | None:
     """Look up by the provider's own immutable id — the natural key that makes
     every sync idempotent."""
-    res = (get_client().table("location_provider_bindings").select("*")
+    res = (await run_query(get_client().table("location_provider_bindings").select("*")
            .eq("tenant_id", tenant_id)
            .eq("provider", provider)
            .eq("provider_location_id", provider_location_id)
-           .limit(1).execute())
+           .limit(1)))
     return (res.data or [None])[0]
 
 
 async def insert_binding(tenant_id: str, data: dict) -> dict:
     row = {**data, "tenant_id": tenant_id,
            "created_at": _now_iso(), "updated_at": _now_iso()}
-    res = get_client().table("location_provider_bindings").insert(row).execute()
+    res = await run_query(get_client().table("location_provider_bindings").insert(row))
     return (res.data or [{}])[0]
 
 
 async def update_binding(tenant_id: str, binding_id: str, data: dict) -> dict:
-    res = (get_client().table("location_provider_bindings")
+    res = (await run_query(get_client().table("location_provider_bindings")
            .update({**data, "updated_at": _now_iso()})
-           .eq("tenant_id", tenant_id).eq("id", binding_id).execute())
+           .eq("tenant_id", tenant_id).eq("id", binding_id)))
     return (res.data or [{}])[0]
 
 
@@ -154,10 +154,10 @@ async def list_all_tenants_for_backfill() -> list:
     business reading, and a narrow select keeps credentials (tokens, auth keys)
     out of the process entirely.
     """
-    res = (get_client().table("tenants")
+    res = (await run_query(get_client().table("tenants")
            .select("id, business_name, country, calendar_timezone, "
                    "square_location_id, square_location_timezone, square_currency")
-           .order("created_at").execute())
+           .order("created_at")))
     return res.data or []
 
 
@@ -168,36 +168,36 @@ async def list_all_tenants_for_backfill() -> list:
 async def get_call_state(vapi_call_id: str) -> dict | None:
     if not vapi_call_id:
         return None
-    res = (get_client().table("call_location_state").select("*")
-           .eq("vapi_call_id", vapi_call_id).limit(1).execute())
+    res = (await run_query(get_client().table("call_location_state").select("*")
+           .eq("vapi_call_id", vapi_call_id).limit(1)))
     return (res.data or [None])[0]
 
 
 async def insert_call_state(data: dict) -> dict:
-    res = get_client().table("call_location_state").insert(
-        {**data, "created_at": _now_iso(), "updated_at": _now_iso()}).execute()
+    res = await run_query(get_client().table("call_location_state").insert(
+        {**data, "created_at": _now_iso(), "updated_at": _now_iso()}))
     return (res.data or [{}])[0]
 
 
 async def update_call_state(vapi_call_id: str, tenant_id: str, data: dict) -> dict:
     """Tenant-scoped on purpose: a call id from one tenant must never be able to
     mutate another tenant's state, even if an id were guessed."""
-    res = (get_client().table("call_location_state")
+    res = (await run_query(get_client().table("call_location_state")
            .update({**data, "updated_at": _now_iso()})
-           .eq("vapi_call_id", vapi_call_id).eq("tenant_id", tenant_id).execute())
+           .eq("vapi_call_id", vapi_call_id).eq("tenant_id", tenant_id)))
     return (res.data or [{}])[0]
 
 
 async def delete_call_state(vapi_call_id: str) -> None:
     if not vapi_call_id:
         return
-    (get_client().table("call_location_state").delete()
-     .eq("vapi_call_id", vapi_call_id).execute())
+    (await run_query(get_client().table("call_location_state").delete()
+     .eq("vapi_call_id", vapi_call_id)))
 
 
 async def purge_expired_call_state(now_iso: str) -> int:
-    res = (get_client().table("call_location_state").delete()
-           .lt("expires_at", now_iso).execute())
+    res = (await run_query(get_client().table("call_location_state").delete()
+           .lt("expires_at", now_iso)))
     return len(res.data or [])
 
 
@@ -207,10 +207,10 @@ async def purge_expired_call_state(now_iso: str) -> int:
 
 async def get_binding_for_location(tenant_id: str, tenant_location_id: str,
                                    provider: str = "square") -> dict | None:
-    res = (get_client().table("location_provider_bindings").select("*")
+    res = (await run_query(get_client().table("location_provider_bindings").select("*")
            .eq("tenant_id", tenant_id)
            .eq("tenant_location_id", tenant_location_id)
-           .eq("provider", provider).limit(1).execute())
+           .eq("provider", provider).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -221,7 +221,7 @@ async def get_binding_for_location(tenant_id: str, tenant_location_id: str,
 async def insert_slot_offers(rows: list[dict]) -> list:
     if not rows:
         return []
-    res = get_client().table("call_slot_offers").insert(rows).execute()
+    res = await run_query(get_client().table("call_slot_offers").insert(rows))
     return res.data or []
 
 
@@ -230,15 +230,15 @@ async def get_slot_offer(vapi_call_id: str, slot_ref: str, tenant_id: str) -> di
     the call that issued it, and only for the tenant that owns that call."""
     if not (vapi_call_id and slot_ref and tenant_id):
         return None
-    res = (get_client().table("call_slot_offers").select("*")
+    res = (await run_query(get_client().table("call_slot_offers").select("*")
            .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
-           .eq("tenant_id", tenant_id).limit(1).execute())
+           .eq("tenant_id", tenant_id).limit(1)))
     return (res.data or [None])[0]
 
 
 async def count_slot_offers(vapi_call_id: str) -> int:
-    res = (get_client().table("call_slot_offers").select("slot_ref", count="exact")
-           .eq("vapi_call_id", vapi_call_id).execute())
+    res = (await run_query(get_client().table("call_slot_offers").select("slot_ref", count="exact")
+           .eq("vapi_call_id", vapi_call_id)))
     return res.count or 0
 
 
@@ -254,10 +254,10 @@ async def claim_slot_offer(vapi_call_id: str, slot_ref: str, tenant_id: str) -> 
     booking_id stays NULL, which is what distinguishes "claimed, in flight" from
     "booked" without needing another column.
     """
-    res = (get_client().table("call_slot_offers")
+    res = (await run_query(get_client().table("call_slot_offers")
            .update({"consumed_at": _now_iso()})
            .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
-           .eq("tenant_id", tenant_id).is_("consumed_at", "null").execute())
+           .eq("tenant_id", tenant_id).is_("consumed_at", "null")))
     return len(res.data or []) == 1
 
 
@@ -267,9 +267,9 @@ async def release_slot_offer(vapi_call_id: str, slot_ref: str) -> None:
     Guarded on booking_id IS NULL so a successful booking can never be un-consumed
     by a late release.
     """
-    (get_client().table("call_slot_offers").update({"consumed_at": None})
+    (await run_query(get_client().table("call_slot_offers").update({"consumed_at": None})
      .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
-     .is_("booking_id", "null").execute())
+     .is_("booking_id", "null")))
 
 
 async def consume_slot_offer(vapi_call_id: str, slot_ref: str, booking_id: str) -> dict:
@@ -278,19 +278,19 @@ async def consume_slot_offer(vapi_call_id: str, slot_ref: str, booking_id: str) 
     Conditional on booking_id IS NULL so a retry cannot overwrite the id of an
     existing booking with a different one.
     """
-    res = (get_client().table("call_slot_offers")
+    res = (await run_query(get_client().table("call_slot_offers")
            .update({"consumed_at": _now_iso(), "booking_id": booking_id})
            .eq("vapi_call_id", vapi_call_id).eq("slot_ref", slot_ref)
-           .is_("booking_id", "null").execute())
+           .is_("booking_id", "null")))
     return (res.data or [{}])[0]
 
 
 async def delete_slot_offers(vapi_call_id: str) -> None:
     if not vapi_call_id:
         return
-    get_client().table("call_slot_offers").delete().eq("vapi_call_id", vapi_call_id).execute()
+    await run_query(get_client().table("call_slot_offers").delete().eq("vapi_call_id", vapi_call_id))
 
 
 async def purge_expired_slot_offers(now_iso: str) -> int:
-    res = get_client().table("call_slot_offers").delete().lt("expires_at", now_iso).execute()
+    res = await run_query(get_client().table("call_slot_offers").delete().lt("expires_at", now_iso))
     return len(res.data or [])

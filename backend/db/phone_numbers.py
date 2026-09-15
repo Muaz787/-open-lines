@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from db.supabase import get_client
 from services import phone_lifecycle as lifecycle
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,9 @@ async def find_routable_by_e164(e164: str) -> dict | None:
     if not number:
         return None
     try:
-        res = (get_client().table("tenant_phone_numbers").select("*")
+        res = (await run_query(get_client().table("tenant_phone_numbers").select("*")
                .eq("e164", number)
-               .in_("status", list(lifecycle.ROUTABLE_STATUSES))
-               .execute())
+               .in_("status", list(lifecycle.ROUTABLE_STATUSES))))
         rows = res.data or []
     except Exception as e:
         # Migration not applied, or a transport blip. The scalar fallback in
@@ -83,10 +83,10 @@ async def find_owned_by_e164(e164: str) -> dict | None:
     (phone_lifecycle.OWNED_E164_STATUSES), so this answers the same question the
     database would.
     """
-    res = (get_client().table("tenant_phone_numbers").select("*")
+    res = (await run_query(get_client().table("tenant_phone_numbers").select("*")
            .eq("e164", e164)
            .in_("status", list(lifecycle.OWNED_E164_STATUSES))
-           .limit(2).execute())
+           .limit(2)))
     rows = res.data or []
     if len(rows) > 1:
         logger.error("tenant_phone_numbers: %d owned rows for one number — the "
@@ -103,7 +103,7 @@ async def list_for_tenant(tenant_id: str, *, purpose: str = "",
         q = q.eq("purpose", purpose)
     if statuses:
         q = q.in_("status", list(statuses))
-    return (q.order("created_at").execute().data or [])
+    return ((await run_query(q.order("created_at"))).data or [])
 
 
 async def get_current_permanent(tenant_id: str) -> dict | None:
@@ -118,14 +118,14 @@ async def insert_number(row: dict) -> dict | None:
     lifecycle.live_conflict() first; the partial unique indexes remain the
     enforcer of last resort and a 23505 here is a real error, not a no-op."""
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
-    res = get_client().table("tenant_phone_numbers").insert(payload).execute()
+    res = await run_query(get_client().table("tenant_phone_numbers").insert(payload))
     return (res.data or [None])[0]
 
 
 async def update_number(number_id: str, patch: dict) -> dict | None:
-    res = (get_client().table("tenant_phone_numbers")
+    res = (await run_query(get_client().table("tenant_phone_numbers")
            .update({**patch, "updated_at": _now_iso()})
-           .eq("id", number_id).execute())
+           .eq("id", number_id)))
     return (res.data or [None])[0]
 
 
@@ -165,12 +165,12 @@ async def release_number_cas(*, number_id: str, tenant_id: str, e164: str,
          .eq("provider_account_sid", provider_account_sid)
          .eq("provider_sid", provider_sid)
          .in_("status", list(lifecycle.RELEASABLE_STATUSES)))
-    return q.execute().data or []
+    return (await run_query(q)).data or []
 
 
 async def get_by_id(number_id: str) -> dict | None:
-    res = (get_client().table("tenant_phone_numbers").select("*")
-           .eq("id", number_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_phone_numbers").select("*")
+           .eq("id", number_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -187,12 +187,11 @@ async def claim_activation_email(number_id: str) -> list[dict]:
     a row back. Returns the rows it changed: one for the winner, none for
     everybody else.
     """
-    return ((get_client().table("tenant_phone_numbers")
+    return (((await run_query(get_client().table("tenant_phone_numbers")
              .update({"activation_email_claimed_at": _now_iso(),
                       "updated_at": _now_iso()})
              .eq("id", number_id)
-             .is_("activation_email_claimed_at", "null")
-             .execute().data) or [])
+             .is_("activation_email_claimed_at", "null"))).data) or [])
 
 
 async def confirm_activation_email(number_id: str, provider_id: str = "") -> list[dict]:
@@ -205,11 +204,10 @@ async def confirm_activation_email(number_id: str, provider_id: str = "") -> lis
     patch = {"activation_email_sent_at": _now_iso(), "updated_at": _now_iso()}
     if provider_id:
         patch["activation_email_provider_id"] = provider_id[:255]
-    return ((get_client().table("tenant_phone_numbers").update(patch)
+    return (((await run_query(get_client().table("tenant_phone_numbers").update(patch)
              .eq("id", number_id)
              .not_.is_("activation_email_claimed_at", "null")
-             .is_("activation_email_sent_at", "null")
-             .execute().data) or [])
+             .is_("activation_email_sent_at", "null"))).data) or [])
 
 
 async def release_activation_email_claim(number_id: str) -> list[dict]:
@@ -221,12 +219,11 @@ async def release_activation_email_claim(number_id: str) -> list[dict]:
     provider's deduplication. Fenced on the send not being recorded, which 032's
     CHECK also enforces.
     """
-    return ((get_client().table("tenant_phone_numbers")
+    return (((await run_query(get_client().table("tenant_phone_numbers")
              .update({"activation_email_claimed_at": None,
                       "updated_at": _now_iso()})
              .eq("id", number_id)
-             .is_("activation_email_sent_at", "null")
-             .execute().data) or [])
+             .is_("activation_email_sent_at", "null"))).data) or [])
 
 
 async def promote_permanent_cas(*, number_id: str, tenant_id: str, e164: str,
@@ -241,7 +238,7 @@ async def promote_permanent_cas(*, number_id: str, tenant_id: str, e164: str,
     `expected prior status = provisioning` is part of the fence, so a second
     worker cannot re-promote an already-active row and restamp its activation.
     """
-    return ((get_client().table("tenant_phone_numbers")
+    return (((await run_query(get_client().table("tenant_phone_numbers")
              .update({"status": lifecycle.STATUS_ACTIVE,
                       "activated_at": _now_iso(),
                       "activated_at_source": "promotion",
@@ -251,5 +248,4 @@ async def promote_permanent_cas(*, number_id: str, tenant_id: str, e164: str,
              .eq("e164", e164)
              .eq("provider_sid", provider_sid)
              .eq("provider_account_sid", provider_account_sid)
-             .eq("status", lifecycle.STATUS_PROVISIONING)
-             .execute().data) or [])
+             .eq("status", lifecycle.STATUS_PROVISIONING))).data) or [])

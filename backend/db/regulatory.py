@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from db.supabase import get_client
+from db.supabase import get_client, run_query
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ def _now_iso() -> str:
 # ── tenant_regulatory_addresses ────────────────────────────────────────────
 
 async def get_address(tenant_id: str, address_row_id: str) -> dict | None:
-    res = (get_client().table("tenant_regulatory_addresses").select("*")
-           .eq("tenant_id", tenant_id).eq("id", address_row_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_regulatory_addresses").select("*")
+           .eq("tenant_id", tenant_id).eq("id", address_row_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -38,13 +38,13 @@ async def find_address(tenant_id: str, iso_country: str,
          .eq("tenant_id", tenant_id).eq("iso_country", iso_country))
     q = (q.eq("tenant_location_id", tenant_location_id) if tenant_location_id
          else q.is_("tenant_location_id", "null"))
-    return (q.limit(1).execute().data or [None])[0]
+    return ((await run_query(q.limit(1))).data or [None])[0]
 
 
 async def insert_address(row: dict) -> dict | None:
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
-    return (get_client().table("tenant_regulatory_addresses")
-            .insert(payload).execute().data or [None])[0]
+    return ((await run_query(get_client().table("tenant_regulatory_addresses")
+            .insert(payload))).data or [None])[0]
 
 
 # ── the address creation claim (W9H-QA.3) ──────────────────────────────────
@@ -98,8 +98,8 @@ async def claim_address(row: dict) -> dict | None:
     """
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
     try:
-        res = (get_client().table("tenant_regulatory_addresses")
-               .insert(payload).execute())
+        res = (await run_query(get_client().table("tenant_regulatory_addresses")
+               .insert(payload)))
     except Exception as e:
         if _is_unique_violation(e):
             return None
@@ -134,9 +134,9 @@ async def attach_address_sid(address_row_id: str, patch: dict) -> dict | None:
 
     One row updated proves we won; zero proves we did not.
     """
-    res = (get_client().table("tenant_regulatory_addresses")
+    res = (await run_query(get_client().table("tenant_regulatory_addresses")
            .update({**patch, "updated_at": _now_iso()})
-           .eq("id", address_row_id).is_("address_sid", "null").execute())
+           .eq("id", address_row_id).is_("address_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -161,16 +161,16 @@ async def take_over_address_claim(address_row_id: str) -> dict | None:
     cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
     base = {"updated_at": _now_iso(), "validation_error": None}
 
-    res = (get_client().table("tenant_regulatory_addresses").update(base)
+    res = (await run_query(get_client().table("tenant_regulatory_addresses").update(base)
            .eq("id", address_row_id).is_("address_sid", "null")
-           .not_.is_("validation_error", "null").execute())
+           .not_.is_("validation_error", "null")))
     if len(res.data or []) == 1:
         return res.data[0]
 
-    res = (get_client().table("tenant_regulatory_addresses").update(base)
+    res = (await run_query(get_client().table("tenant_regulatory_addresses").update(base)
            .eq("id", address_row_id).is_("address_sid", "null")
            .is_("validation_error", "null")
-           .lt("updated_at", cutoff_iso).execute())
+           .lt("updated_at", cutoff_iso)))
     return res.data[0] if len(res.data or []) == 1 else None
 
 
@@ -183,9 +183,9 @@ async def release_address_claim(address_row_id: str) -> dict | None:
     release_provider_claim -- safe because the next attempt reconciles by marker
     before creating anything.
     """
-    res = (get_client().table("tenant_regulatory_addresses")
+    res = (await run_query(get_client().table("tenant_regulatory_addresses")
            .update({"updated_at": _EPOCH})
-           .eq("id", address_row_id).is_("address_sid", "null").execute())
+           .eq("id", address_row_id).is_("address_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -195,39 +195,39 @@ async def record_address_failure(address_row_id: str, error: str) -> dict | None
     Fenced the same way as attachment: if we no longer hold the claim, our failure
     is stale news and must not overwrite a newer owner's state.
     """
-    res = (get_client().table("tenant_regulatory_addresses")
+    res = (await run_query(get_client().table("tenant_regulatory_addresses")
            .update({"validated": False, "validation_error": error,
                     "updated_at": _now_iso()})
-           .eq("id", address_row_id).is_("address_sid", "null").execute())
+           .eq("id", address_row_id).is_("address_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
 async def update_address(address_row_id: str, patch: dict) -> dict | None:
-    return (get_client().table("tenant_regulatory_addresses")
+    return ((await run_query(get_client().table("tenant_regulatory_addresses")
             .update({**patch, "updated_at": _now_iso()})
-            .eq("id", address_row_id).execute().data or [None])[0]
+            .eq("id", address_row_id))).data or [None])[0]
 
 
 # ── tenant_regulatory_profiles ─────────────────────────────────────────────
 
 async def list_profiles(tenant_id: str) -> list[dict]:
-    return (get_client().table("tenant_regulatory_profiles").select("*")
-            .eq("tenant_id", tenant_id).order("created_at").execute().data or [])
+    return ((await run_query(get_client().table("tenant_regulatory_profiles").select("*")
+            .eq("tenant_id", tenant_id).order("created_at"))).data or [])
 
 
 async def get_profile(tenant_id: str, profile_id: str) -> dict | None:
-    res = (get_client().table("tenant_regulatory_profiles").select("*")
-           .eq("tenant_id", tenant_id).eq("id", profile_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_regulatory_profiles").select("*")
+           .eq("tenant_id", tenant_id).eq("id", profile_id).limit(1)))
     return (res.data or [None])[0]
 
 
 async def find_profile_for_address(tenant_id: str, iso_country: str, number_type: str,
                                    end_user_type: str,
                                    regulatory_address_id: str) -> dict | None:
-    res = (get_client().table("tenant_regulatory_profiles").select("*")
+    res = (await run_query(get_client().table("tenant_regulatory_profiles").select("*")
            .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
            .eq("number_type", number_type).eq("end_user_type", end_user_type)
-           .eq("regulatory_address_id", regulatory_address_id).limit(1).execute())
+           .eq("regulatory_address_id", regulatory_address_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -240,8 +240,8 @@ async def find_profile_by_bundle(bundle_sid: str) -> dict | None:
     sid = str(bundle_sid or "").strip()
     if not sid:
         return None
-    res = (get_client().table("tenant_regulatory_profiles").select("*")
-           .eq("bundle_sid", sid).limit(2).execute())
+    res = (await run_query(get_client().table("tenant_regulatory_profiles").select("*")
+           .eq("bundle_sid", sid).limit(2)))
     rows = res.data or []
     if len(rows) > 1:
         logger.error("REGULATORY IDENTITY CONFLICT: %d profiles share a bundle sid",
@@ -251,9 +251,9 @@ async def find_profile_by_bundle(bundle_sid: str) -> dict | None:
 
 
 async def list_nonterminal_profiles(states: tuple[str, ...], limit: int = 200) -> list[dict]:
-    return (get_client().table("tenant_regulatory_profiles").select("*")
+    return ((await run_query(get_client().table("tenant_regulatory_profiles").select("*")
             .in_("state", list(states)).order("last_synced_at", desc=False)
-            .limit(limit).execute().data or [])
+            .limit(limit))).data or [])
 
 
 async def insert_profile(row: dict) -> dict | None:
@@ -267,8 +267,8 @@ async def insert_profile(row: dict) -> dict | None:
     """
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
     try:
-        res = (get_client().table("tenant_regulatory_profiles")
-               .insert(payload).execute())
+        res = (await run_query(get_client().table("tenant_regulatory_profiles")
+               .insert(payload)))
     except Exception as e:
         if _is_unique_violation(e):
             return None
@@ -277,9 +277,9 @@ async def insert_profile(row: dict) -> dict | None:
 
 
 async def update_profile(profile_id: str, patch: dict) -> dict | None:
-    return (get_client().table("tenant_regulatory_profiles")
+    return ((await run_query(get_client().table("tenant_regulatory_profiles")
             .update({**patch, "updated_at": _now_iso()})
-            .eq("id", profile_id).execute().data or [None])[0]
+            .eq("id", profile_id))).data or [None])[0]
 
 
 async def transition_profile(profile_id: str, *, expected_state: str,
@@ -290,38 +290,38 @@ async def transition_profile(profile_id: str, *, expected_state: str,
     reconciliation sweep racing on the same profile cannot both apply a transition.
     len(data) == 1 proves we were the one that moved it.
     """
-    res = (get_client().table("tenant_regulatory_profiles")
+    res = (await run_query(get_client().table("tenant_regulatory_profiles")
            .update({**(patch or {}), "state": new_state, "updated_at": _now_iso()})
-           .eq("id", profile_id).eq("state", expected_state).execute())
+           .eq("id", profile_id).eq("state", expected_state)))
     return len(res.data or []) == 1
 
 
 # ── tenant_regulatory_events ───────────────────────────────────────────────
 
 async def latest_event(bundle_sid: str) -> dict | None:
-    res = (get_client().table("tenant_regulatory_events").select("*")
+    res = (await run_query(get_client().table("tenant_regulatory_events").select("*")
            .eq("bundle_sid", bundle_sid).order("last_received_at", desc=True)
-           .limit(1).execute())
+           .limit(1)))
     return (res.data or [None])[0]
 
 
 async def count_events_with_fingerprint(bundle_sid: str, fingerprint: str) -> int:
-    res = (get_client().table("tenant_regulatory_events").select("id", count="exact")
-           .eq("bundle_sid", bundle_sid).eq("fingerprint", fingerprint).execute())
+    res = (await run_query(get_client().table("tenant_regulatory_events").select("id", count="exact")
+           .eq("bundle_sid", bundle_sid).eq("fingerprint", fingerprint)))
     return res.count or 0
 
 
 async def insert_event(row: dict) -> dict | None:
     payload = {**row, "created_at": _now_iso(), "updated_at": _now_iso()}
-    return (get_client().table("tenant_regulatory_events")
-            .insert(payload).execute().data or [None])[0]
+    return ((await run_query(get_client().table("tenant_regulatory_events")
+            .insert(payload))).data or [None])[0]
 
 
 async def bump_event_delivery(event_id: str, delivery_count: int) -> dict | None:
-    return (get_client().table("tenant_regulatory_events")
+    return ((await run_query(get_client().table("tenant_regulatory_events")
             .update({"delivery_count": delivery_count,
                      "last_received_at": _now_iso(), "updated_at": _now_iso()})
-            .eq("id", event_id).execute().data or [None])[0]
+            .eq("id", event_id))).data or [None])[0]
 
 
 # ── tenant_regulatory_business_details (migration 028) ─────────────────────
@@ -342,9 +342,9 @@ BUSINESS_DETAIL_COLUMNS = (
 
 async def get_business_details(tenant_id: str, iso_country: str,
                               end_user_type: str = "business") -> dict | None:
-    res = (get_client().table("tenant_regulatory_business_details").select("*")
+    res = (await run_query(get_client().table("tenant_regulatory_business_details").select("*")
            .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
-           .eq("end_user_type", end_user_type).limit(1).execute())
+           .eq("end_user_type", end_user_type).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -365,13 +365,13 @@ async def upsert_business_details(tenant_id: str, iso_country: str, *,
     if existing:
         if not patch:
             return existing
-        return (get_client().table("tenant_regulatory_business_details")
+        return ((await run_query(get_client().table("tenant_regulatory_business_details")
                 .update({**patch, "updated_at": _now_iso()})
-                .eq("id", existing["id"]).execute().data or [None])[0]
-    return (get_client().table("tenant_regulatory_business_details").insert({
+                .eq("id", existing["id"]))).data or [None])[0]
+    return ((await run_query(get_client().table("tenant_regulatory_business_details").insert({
         "tenant_id": tenant_id, "iso_country": iso_country,
         "end_user_type": end_user_type, **patch,
-        "created_at": _now_iso(), "updated_at": _now_iso()}).execute().data
+        "created_at": _now_iso(), "updated_at": _now_iso()}))).data
             or [None])[0]
 
 
@@ -485,7 +485,7 @@ async def claim_provider_resource(*, tenant_id: str, resource: str, scope_key: s
                "claimed_at": _now_iso(), "created_at": _now_iso(),
                "updated_at": _now_iso()}
     try:
-        res = get_client().table(CLAIM_TABLE).insert(payload).execute()
+        res = await run_query(get_client().table(CLAIM_TABLE).insert(payload))
     except Exception as e:
         if _is_unique_violation(e):
             return None
@@ -495,9 +495,9 @@ async def claim_provider_resource(*, tenant_id: str, resource: str, scope_key: s
 
 async def find_provider_claim(*, tenant_id: str, resource: str, scope_key: str,
                               provider: str = "twilio") -> dict | None:
-    res = (get_client().table(CLAIM_TABLE).select("*")
+    res = (await run_query(get_client().table(CLAIM_TABLE).select("*")
            .eq("tenant_id", tenant_id).eq("provider", provider)
-           .eq("resource", resource).eq("scope_key", scope_key).limit(1).execute())
+           .eq("resource", resource).eq("scope_key", scope_key).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -509,11 +509,11 @@ async def attach_provider_sid(claim_id: str, provider_sid: str,
     its provider resource exactly once. A worker that was taken over and then woke
     up gets None back and learns it lost, instead of overwriting the new owner.
     """
-    res = (get_client().table(CLAIM_TABLE)
+    res = (await run_query(get_client().table(CLAIM_TABLE)
            .update({"provider_sid": provider_sid,
                     "provider_account_sid": provider_account_sid,
                     "failure": None, "updated_at": _now_iso()})
-           .eq("id", claim_id).is_("provider_sid", "null").execute())
+           .eq("id", claim_id).is_("provider_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -537,15 +537,15 @@ async def take_over_provider_claim(claim_id: str) -> dict | None:
               - timedelta(seconds=CLAIM_STALE_SECONDS)).isoformat()
     base = {"claimed_at": _now_iso(), "failure": None, "updated_at": _now_iso()}
 
-    res = (get_client().table(CLAIM_TABLE).update(base)
+    res = (await run_query(get_client().table(CLAIM_TABLE).update(base)
            .eq("id", claim_id).is_("provider_sid", "null")
-           .not_.is_("failure", "null").execute())
+           .not_.is_("failure", "null")))
     if len(res.data or []) == 1:
         return res.data[0]
 
-    res = (get_client().table(CLAIM_TABLE).update(base)
+    res = (await run_query(get_client().table(CLAIM_TABLE).update(base)
            .eq("id", claim_id).is_("provider_sid", "null")
-           .is_("failure", "null").lt("claimed_at", cutoff).execute())
+           .is_("failure", "null").lt("claimed_at", cutoff)))
     return res.data[0] if len(res.data or []) == 1 else None
 
 
@@ -560,11 +560,11 @@ async def reconcile_profile_end_user_sids(tenant_id: str, iso_country: str,
     profiles referencing a SID the provider no longer has, which is the very
     divergence W9H-QA.5 blocked the release over.
     """
-    res = (get_client().table("tenant_regulatory_profiles")
+    res = (await run_query(get_client().table("tenant_regulatory_profiles")
            .update({"end_user_sid": canonical_sid, "updated_at": _now_iso()})
            .eq("tenant_id", tenant_id).eq("iso_country", iso_country)
            .eq("end_user_type", end_user_type)
-           .neq("end_user_sid", canonical_sid).execute())
+           .neq("end_user_sid", canonical_sid)))
     return len(res.data or [])
 
 
@@ -598,11 +598,11 @@ async def retire_provider_claim(claim_id: str,
     Returns the retired row, or None if we lost the race -- in which case the
     caller must re-read and follow whatever the canonical state now says.
     """
-    res = (get_client().table(CLAIM_TABLE)
+    res = (await run_query(get_client().table(CLAIM_TABLE)
            .update({"provider_sid": None, "claimed_at": _now_iso(),
                     "failure": None, "updated_at": _now_iso()})
            .eq("id", claim_id)
-           .eq("provider_sid", expected_provider_sid).execute())
+           .eq("provider_sid", expected_provider_sid)))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -619,18 +619,18 @@ async def release_provider_claim(claim_id: str) -> dict | None:
     resource this attempt may have created is adopted rather than duplicated.
     Fenced on provider_sid IS NULL so a claim that already succeeded is untouched.
     """
-    res = (get_client().table(CLAIM_TABLE)
+    res = (await run_query(get_client().table(CLAIM_TABLE)
            .update({"claimed_at": _EPOCH, "updated_at": _now_iso()})
-           .eq("id", claim_id).is_("provider_sid", "null").execute())
+           .eq("id", claim_id).is_("provider_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
 async def record_provider_claim_failure(claim_id: str, failure: str) -> dict | None:
     """Record a provider refusal on a claim we still hold. Fenced like attachment:
     if we no longer hold it, our failure is stale news."""
-    res = (get_client().table(CLAIM_TABLE)
+    res = (await run_query(get_client().table(CLAIM_TABLE)
            .update({"failure": failure, "updated_at": _now_iso()})
-           .eq("id", claim_id).is_("provider_sid", "null").execute())
+           .eq("id", claim_id).is_("provider_sid", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -670,8 +670,8 @@ async def insert_authorization(row: dict) -> dict | None:
     payload["authorized_at"] = _now_iso()
     payload["created_at"] = _now_iso()
     try:
-        res = (get_client().table("tenant_regulatory_authorizations")
-               .insert(payload).execute())
+        res = (await run_query(get_client().table("tenant_regulatory_authorizations")
+               .insert(payload)))
     except Exception as e:
         if _is_unique_violation(e):
             return None
@@ -694,7 +694,7 @@ async def find_active_authorization(tenant_id: str, iso_country: str,
          .is_("authorization_revoked_at", "null"))
     if fingerprint:
         q = q.eq("authorized_details_fingerprint", fingerprint)
-    return (q.limit(1).execute().data or [None])[0]
+    return ((await run_query(q.limit(1))).data or [None])[0]
 
 
 async def list_authorizations(tenant_id: str, iso_country: str | None = None,
@@ -706,12 +706,12 @@ async def list_authorizations(tenant_id: str, iso_country: str | None = None,
         q = q.eq("iso_country", iso_country)
     if address_row_id:
         q = q.eq("tenant_regulatory_address_id", address_row_id)
-    return q.order("authorized_at", desc=True).execute().data or []
+    return (await run_query(q.order("authorized_at", desc=True))).data or []
 
 
 async def get_authorization(tenant_id: str, authorization_id: str) -> dict | None:
-    res = (get_client().table("tenant_regulatory_authorizations").select("*")
-           .eq("tenant_id", tenant_id).eq("id", authorization_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenant_regulatory_authorizations").select("*")
+           .eq("tenant_id", tenant_id).eq("id", authorization_id).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -723,10 +723,10 @@ async def revoke_authorization(tenant_id: str, authorization_id: str,
     than a rewrite of the first one's timestamp, and authorized_at is never
     touched -- the history of who consented, and when, survives the withdrawal.
     """
-    res = (get_client().table("tenant_regulatory_authorizations")
+    res = (await run_query(get_client().table("tenant_regulatory_authorizations")
            .update({"authorization_revoked_at": revoked_at or _now_iso()})
            .eq("tenant_id", tenant_id).eq("id", authorization_id)
-           .is_("authorization_revoked_at", "null").execute())
+           .is_("authorization_revoked_at", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None
 
 
@@ -739,7 +739,7 @@ async def attach_profile_authorization(profile_id: str,
     under. Same fence discipline as the address SID in W9H-QA.3, and for the same
     reason: this is an identity a row acquires exactly once.
     """
-    res = (get_client().table("tenant_regulatory_profiles")
+    res = (await run_query(get_client().table("tenant_regulatory_profiles")
            .update({"authorization_id": authorization_id, "updated_at": _now_iso()})
-           .eq("id", profile_id).is_("authorization_id", "null").execute())
+           .eq("id", profile_id).is_("authorization_id", "null")))
     return (res.data or [None])[0] if len(res.data or []) == 1 else None

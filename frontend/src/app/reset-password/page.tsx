@@ -82,7 +82,9 @@ export default function ResetPasswordPage() {
   // Reuse the existing post-auth routing: tenant_id -> dashboard, else admin, else login.
   const goToDashboard = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const tenantId = user?.user_metadata?.tenant_id
+    // tenant_id now lives in app_metadata (server-only); user_metadata is the
+    // pre-migration fallback. See backend security._verified_user.
+    const tenantId = user?.app_metadata?.tenant_id ?? user?.user_metadata?.tenant_id
     if (tenantId) { router.replace(`/dashboard/${tenantId}`); return }
     const { data: { session } } = await supabase.auth.getSession()
     try {

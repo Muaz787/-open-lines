@@ -1,6 +1,10 @@
 import os
+import asyncio
+import contextvars
+import functools
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -71,6 +75,36 @@ def close_client() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Running blocking client calls off the event loop
+# ---------------------------------------------------------------------------
+# The supabase client is synchronous: .execute() and the auth calls block on the
+# network. Called directly inside an `async def` they froze the whole event
+# loop, and with one uvicorn process every other request -- dashboards, Vapi
+# webhooks, live-call tool calls -- waited behind them, one at a time.
+#
+# A dedicated pool rather than asyncio.to_thread's default executor: it is sized
+# to the HTTP connection pool, so a burst queues here (no timeout) instead of in
+# httpx (a 5s PoolTimeout), and a long website crawl on the default executor
+# cannot starve queries.
+_executor = ThreadPoolExecutor(
+    max_workers=supabase_transport.build_limits().max_connections,
+    thread_name_prefix="supabase",
+)
+
+
+async def run_blocking(fn, /, *args, **kwargs):
+    """Call a blocking Supabase client function on the query pool."""
+    loop = asyncio.get_running_loop()
+    call = functools.partial(contextvars.copy_context().run, fn, *args, **kwargs)
+    return await loop.run_in_executor(_executor, call)
+
+
+async def run_query(query):
+    """Execute a PostgREST query builder without blocking the event loop."""
+    return await run_blocking(query.execute)
+
+
+# ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
 
@@ -100,25 +134,32 @@ async def create_auth_user(email: str, password: str, tenant_id: str) -> str:
     ORPHAN account (no tenant_id — e.g. an admin-only or abandoned signup), link
     it to this tenant instead of failing. Never resets an existing password, and
     never re-points an account that already owns a tenant."""
+    return await run_blocking(_create_auth_user_sync, email, password, tenant_id)
+
+
+def _create_auth_user_sync(email: str, password: str, tenant_id: str) -> str:
     client = get_client()
+    # tenant_id lives in app_metadata, which only the service-role key can write.
+    # It is what services.security trusts for tenant ownership; user_metadata is
+    # user-editable and must never carry it. See security._verified_user.
     try:
         res = client.auth.admin.create_user({
             "email": email,
             "password": password,
             "email_confirm": True,
-            "user_metadata": {"tenant_id": tenant_id},
+            "app_metadata": {"tenant_id": tenant_id},
         })
         return res.user.id
     except Exception as create_err:
         existing = _find_auth_user_by_email(client, email)
         if not existing:
             raise
-        meta = dict(getattr(existing, "user_metadata", None) or {})
-        if meta.get("tenant_id"):
+        app_meta = dict(getattr(existing, "app_metadata", None) or {})
+        if app_meta.get("tenant_id"):
             # Already owns a tenant — refuse to hijack it.
             raise RuntimeError(f"Email already registered to another account: {email}") from create_err
-        meta["tenant_id"] = tenant_id
-        client.auth.admin.update_user_by_id(existing.id, {"user_metadata": meta})
+        app_meta["tenant_id"] = tenant_id
+        client.auth.admin.update_user_by_id(existing.id, {"app_metadata": app_meta})
         logger.info("Linked existing orphan auth user to tenant %s", tenant_id)
         return existing.id
 
@@ -128,7 +169,7 @@ async def create_auth_user(email: str, password: str, tenant_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 async def get_tenant_by_id(tenant_id: str) -> dict:
-    res = get_client().table("tenants").select("*").eq("id", tenant_id).single().execute()
+    res = await run_query(get_client().table("tenants").select("*").eq("id", tenant_id).single())
     return res.data
 
 
@@ -173,12 +214,11 @@ async def get_tenant_by_phone(phone_number: str) -> dict | None:
     # 2) legacy scalar. Read even when (1) hit, so a disagreement is DETECTED
     #    rather than shadowed by whichever model happened to answer first.
     scalar = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .select("*")
         .eq("twilio_phone_number", number)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     scalar_tenant = (scalar.data or [None])[0]
 
@@ -212,28 +252,26 @@ async def get_tenant_by_phone(phone_number: str) -> dict | None:
     # Fallback: Vapi end-of-call-report payloads sometimes provide the Vapi phone number
     # UUID instead of the Twilio number — match on vapi_phone_number_id.
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .select("*")
         .eq("vapi_phone_number_id", phone_number)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def insert_tenant(data: dict) -> dict:
-    res = get_client().table("tenants").insert(data).execute()
+    res = await run_query(get_client().table("tenants").insert(data))
     return res.data[0] if res.data else {}
 
 
 async def update_tenant(tenant_id: str, data: dict) -> dict:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .update(data)
-        .eq("id", tenant_id)
-        .execute()
+        .eq("id", tenant_id))
     )
     return res.data[0] if res.data else {}
 
@@ -253,14 +291,13 @@ async def clear_tenant_number_fenced(tenant_id: str, e164: str,
     caller decides which, by looking at what is actually there.
     """
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .update({"twilio_phone_number": None,
                  "vapi_phone_number_id": None,
                  "number_released_at": released_at})
         .eq("id", tenant_id)
-        .eq("twilio_phone_number", e164)
-        .execute()
+        .eq("twilio_phone_number", e164))
     )
     return res.data or []
 
@@ -271,36 +308,33 @@ async def clear_tenant_number_fenced(tenant_id: str, e164: str,
 
 async def insert_lead(tenant_id: str, data: dict) -> dict:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("leads")
-        .insert({"tenant_id": tenant_id, **data})
-        .execute()
+        .insert({"tenant_id": tenant_id, **data}))
     )
     return res.data[0] if res.data else {}
 
 
 async def get_leads(tenant_id: str, limit: int = 50) -> list:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("leads")
         .select("*")
         .eq("tenant_id", tenant_id)
         .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
+        .limit(limit))
     )
     return res.data
 
 
 async def get_lead_by_phone(tenant_id: str, phone: str) -> dict | None:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("leads")
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("phone", phone)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -310,12 +344,11 @@ async def update_lead(tenant_id: str, lead_id: str, data: dict) -> dict:
     # touched (e.g. by a new call), not just when it was created.
     data = {**data, "updated_at": datetime.now(timezone.utc).isoformat()}
     res = (
-        get_client()
+        await run_query(get_client()
         .table("leads")
         .update(data)
         .eq("id", lead_id)
-        .eq("tenant_id", tenant_id)
-        .execute()
+        .eq("tenant_id", tenant_id))
     )
     return res.data[0] if res.data else {}
 
@@ -326,10 +359,9 @@ async def update_lead(tenant_id: str, lead_id: str, data: dict) -> dict:
 
 async def insert_call(tenant_id: str, lead_id: str, data: dict) -> dict:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("calls")
-        .insert({"tenant_id": tenant_id, "lead_id": lead_id, **data})
-        .execute()
+        .insert({"tenant_id": tenant_id, "lead_id": lead_id, **data}))
     )
     return res.data[0] if res.data else {}
 
@@ -342,7 +374,7 @@ async def list_staff(tenant_id: str, active_only: bool = False) -> list:
          .eq("tenant_id", tenant_id).order("created_at", desc=False))
     if active_only:
         q = q.eq("is_active", True)
-    return q.execute().data or []
+    return (await run_query(q)).data or []
 
 
 async def get_active_staff(tenant_id: str) -> list:
@@ -353,15 +385,15 @@ async def get_active_staff(tenant_id: str) -> list:
 # System metadata (small KV — cron heartbeat, etc.)
 # ---------------------------------------------------------------------------
 async def get_system_meta(key: str) -> dict | None:
-    res = get_client().table("system_meta").select("*").eq("key", key).limit(1).execute()
+    res = await run_query(get_client().table("system_meta").select("*").eq("key", key).limit(1))
     return (res.data or [None])[0]
 
 
 async def set_system_meta(key: str, value: str) -> None:
-    get_client().table("system_meta").upsert({
+    await run_query(get_client().table("system_meta").upsert({
         "key": key, "value": value,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+    }))
 
 
 async def sum_minutes_used_this_period() -> int:
@@ -370,18 +402,18 @@ async def sum_minutes_used_this_period() -> int:
     alert). Note: per-tenant periods are staggered, and PostgREST caps returned rows
     (~1000). Fine at the scale this alert fires (tens of tenants); paginate with
     .range() if the tenant count ever exceeds the row cap."""
-    res = get_client().table("tenants").select("minutes_used_this_period").execute()
+    res = await run_query(get_client().table("tenants").select("minutes_used_this_period"))
     return sum((r.get("minutes_used_this_period") or 0) for r in (res.data or []))
 
 
 async def create_staff(tenant_id: str, name: str) -> dict:
-    res = get_client().table("staff").insert({"tenant_id": tenant_id, "name": name}).execute()
+    res = await run_query(get_client().table("staff").insert({"tenant_id": tenant_id, "name": name}))
     return res.data[0] if res.data else {}
 
 
 async def update_staff(tenant_id: str, staff_id: str, data: dict) -> dict:
-    res = (get_client().table("staff").update(data)
-           .eq("id", staff_id).eq("tenant_id", tenant_id).execute())
+    res = (await run_query(get_client().table("staff").update(data)
+           .eq("id", staff_id).eq("tenant_id", tenant_id)))
     return res.data[0] if res.data else {}
 
 
@@ -391,68 +423,66 @@ async def update_staff(tenant_id: str, staff_id: str, data: dict) -> dict:
 # ---------------------------------------------------------------------------
 async def replace_square_services(tenant_id: str, rows: list[dict]) -> None:
     client = get_client()
-    client.table("square_services").delete().eq("tenant_id", tenant_id).execute()
+    await run_query(client.table("square_services").delete().eq("tenant_id", tenant_id))
     if rows:
-        client.table("square_services").insert(
-            [{**r, "tenant_id": tenant_id} for r in rows]).execute()
+        await run_query(client.table("square_services").insert(
+            [{**r, "tenant_id": tenant_id} for r in rows]))
 
 
 async def replace_square_staff(tenant_id: str, rows: list[dict]) -> None:
     client = get_client()
-    client.table("square_staff").delete().eq("tenant_id", tenant_id).execute()
+    await run_query(client.table("square_staff").delete().eq("tenant_id", tenant_id))
     if rows:
-        client.table("square_staff").insert(
-            [{**r, "tenant_id": tenant_id} for r in rows]).execute()
+        await run_query(client.table("square_staff").insert(
+            [{**r, "tenant_id": tenant_id} for r in rows]))
 
 
 async def get_square_services(tenant_id: str, bookable_only: bool = True) -> list:
     q = get_client().table("square_services").select("*").eq("tenant_id", tenant_id)
     if bookable_only:
         q = q.eq("available_for_booking", True)
-    return q.execute().data or []
+    return (await run_query(q)).data or []
 
 
 async def get_square_staff(tenant_id: str) -> list:
-    return (get_client().table("square_staff").select("*")
-            .eq("tenant_id", tenant_id).eq("active", True).execute().data or [])
+    return ((await run_query(get_client().table("square_staff").select("*")
+            .eq("tenant_id", tenant_id).eq("active", True))).data or [])
 
 
 async def get_tenant_by_square_merchant_id(merchant_id: str) -> dict | None:
     if not merchant_id:
         return None
-    res = (get_client().table("tenants").select("*")
-           .eq("square_merchant_id", merchant_id).limit(1).execute())
+    res = (await run_query(get_client().table("tenants").select("*")
+           .eq("square_merchant_id", merchant_id).limit(1)))
     return (res.data or [None])[0]
 
 
 async def get_appointment_by_event_id(tenant_id: str, event_id: str) -> dict | None:
     if not event_id:
         return None
-    res = (get_client().table("appointments").select("*")
-           .eq("tenant_id", tenant_id).eq("google_event_id", event_id).limit(1).execute())
+    res = (await run_query(get_client().table("appointments").select("*")
+           .eq("tenant_id", tenant_id).eq("google_event_id", event_id).limit(1)))
     return (res.data or [None])[0]
 
 
 async def update_call(call_id: str, data: dict) -> dict:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("calls")
         .update(data)
-        .eq("id", call_id)
-        .execute()
+        .eq("id", call_id))
     )
     return res.data[0] if res.data else {}
 
 
 async def get_calls(tenant_id: str, limit: int = 50) -> list:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("calls")
         .select("*")
         .eq("tenant_id", tenant_id)
         .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
+        .limit(limit))
     )
     return res.data
 
@@ -462,7 +492,7 @@ async def get_calls(tenant_id: str, limit: int = 50) -> list:
 # ---------------------------------------------------------------------------
 
 async def insert_appointment(data: dict) -> dict:
-    res = get_client().table("appointments").insert(data).execute()
+    res = await run_query(get_client().table("appointments").insert(data))
     return res.data[0] if res.data else {}
 
 
@@ -470,14 +500,13 @@ async def get_active_appointments_between(tenant_id: str, start_iso: str, end_is
     """Active (non-cancelled) appointments starting in [start_iso, end_iso).
     Used for pooled-capacity overlap counting."""
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("id, appointment_datetime, duration_minutes, status, google_event_id, staff_id")
         .eq("tenant_id", tenant_id)
         .gte("appointment_datetime", start_iso)
         .lt("appointment_datetime", end_iso)
-        .neq("status", "cancelled")
-        .execute()
+        .neq("status", "cancelled"))
     )
     return res.data or []
 
@@ -485,26 +514,24 @@ async def get_active_appointments_between(tenant_id: str, start_iso: str, end_is
 async def get_appointments(tenant_id: str, limit: int = 50) -> list:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("tenant_id", tenant_id)
         .gte("appointment_datetime", now_iso)
         .order("appointment_datetime", desc=False)
-        .limit(limit)
-        .execute()
+        .limit(limit))
     )
     return res.data
 
 
 async def get_tenants_with_calendar() -> list:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .select("id, vapi_assistant_id, google_refresh_token, appointment_duration_minutes, calendar_timezone")
         .not_.is_("google_refresh_token", "null")
-        .not_.is_("vapi_assistant_id", "null")
-        .execute()
+        .not_.is_("vapi_assistant_id", "null"))
     )
     return res.data or []
 
@@ -514,12 +541,11 @@ async def get_all_tenants_for_reprompt() -> list:
     for a bulk system-prompt rebuild. Full rows are needed by
     rebuild_and_push_system_prompt (industry, profile, KB namespace, tokens…)."""
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .select("*")
         .not_.is_("vapi_assistant_id", "null")
-        .order("created_at", desc=False)
-        .execute()
+        .order("created_at", desc=False))
     )
     return res.data or []
 
@@ -534,7 +560,7 @@ async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | 
     from datetime import timedelta
     window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("tenant_id", tenant_id)
@@ -542,20 +568,18 @@ async def get_active_appointment_by_phone(tenant_id: str, phone: str) -> dict | 
         .in_("status", ["confirmed", "pending_payment"])
         .gte("appointment_datetime", window_start)
         .order("appointment_datetime", desc=False)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def get_tenant_by_stripe_customer(customer_id: str) -> dict | None:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("tenants")
         .select("*")
         .eq("stripe_customer_id", customer_id)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -574,15 +598,14 @@ async def get_active_appointments_by_phone(tenant_id: str, phone: str) -> list:
     from datetime import timedelta
     window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("caller_phone", phone)
         .in_("status", ["confirmed", "pending_payment"])
         .gte("appointment_datetime", window_start)
-        .order("appointment_datetime", desc=False)
-        .execute()
+        .order("appointment_datetime", desc=False))
     )
     return res.data or []
 
@@ -590,26 +613,24 @@ async def get_active_appointments_by_phone(tenant_id: str, phone: str) -> list:
 async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     now_iso = datetime.now(timezone.utc).isoformat()
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("caller_phone", phone)
         .gte("appointment_datetime", now_iso)
         .order("appointment_datetime", desc=False)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def update_appointment(appointment_id: str, data: dict) -> dict:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .update(data)
-        .eq("id", appointment_id)
-        .execute()
+        .eq("id", appointment_id))
     )
     return res.data[0] if res.data else {}
 
@@ -625,36 +646,33 @@ async def confirm_appointment_unless_cancelled(appointment_id: str) -> bool:
     Returns True if the row was confirmed, False if it was already cancelled.
     """
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .update({"status": "confirmed"})
         .eq("id", appointment_id)
-        .neq("status", "cancelled")
-        .execute()
+        .neq("status", "cancelled"))
     )
     return len(res.data or []) == 1
 
 
 async def get_appointment_by_id(appointment_id: str) -> dict | None:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("id", appointment_id)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def get_appointment_by_call_id(call_id: str) -> dict | None:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("vapi_call_id", call_id)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -664,29 +682,28 @@ async def get_appointment_by_call_id(call_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 async def insert_kb_entry(tenant_id: str, type_: str, label: str, preview: str | None = None) -> dict:
-    res = get_client().table("kb_entries").insert({
+    res = await run_query(get_client().table("kb_entries").insert({
         "tenant_id": tenant_id,
         "type": type_,
         "label": label,
         **({"preview": preview} if preview else {}),
-    }).execute()
+    }))
     return res.data[0] if res.data else {}
 
 
 async def get_kb_entries(tenant_id: str) -> list:
     res = (
-        get_client()
+        await run_query(get_client()
         .table("kb_entries")
         .select("*")
         .eq("tenant_id", tenant_id)
-        .order("added_at", desc=True)
-        .execute()
+        .order("added_at", desc=True))
     )
     return res.data or []
 
 
 async def delete_kb_entry(tenant_id: str, entry_id: str) -> None:
-    get_client().table("kb_entries").delete().eq("id", entry_id).eq("tenant_id", tenant_id).execute()
+    await run_query(get_client().table("kb_entries").delete().eq("id", entry_id).eq("tenant_id", tenant_id))
 
 
 # ---------------------------------------------------------------------------
@@ -708,20 +725,19 @@ async def get_calls_with_leads(tenant_id: str, days: int = 30, limit: int = 100)
         from datetime import timedelta
         since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         query = query.gte("created_at", since)
-    res = query.execute()
+    res = await run_query(query)
     return res.data or []
 
 
 async def get_call_detail(tenant_id: str, call_id: str) -> dict | None:
     """Return a single call with full transcript and lead data."""
     res = (
-        get_client()
+        await run_query(get_client()
         .table("calls")
         .select("*, leads(name, phone, urgency, summary, metadata)")
         .eq("tenant_id", tenant_id)
         .eq("id", call_id)
-        .single()
-        .execute()
+        .single())
     )
     return res.data
 
@@ -733,11 +749,11 @@ async def get_call_detail(tenant_id: str, call_id: str) -> dict | None:
 async def enqueue_webhook_event(event_type: str, call_id: str | None, payload: dict) -> bool:
     """Insert a webhook event. Returns False if already enqueued (idempotent)."""
     try:
-        get_client().table("webhook_events").insert({
+        await run_query(get_client().table("webhook_events").insert({
             "event_type": event_type,
             "call_id": call_id,
             "payload": payload,
-        }).execute()
+        }))
         return True
     except Exception as e:
         if "duplicate" in str(e).lower() or "unique" in str(e).lower() or "23505" in str(e):
@@ -757,27 +773,25 @@ async def claim_pending_webhook_events(limit: int = 10) -> list:
 
     # Fresh events — never been retried (next_retry_at IS NULL)
     res1 = (
-        get_client()
+        await run_query(get_client()
         .table("webhook_events")
         .select("*")
         .eq("status", "pending")
         .is_("next_retry_at", "null")
         .order("created_at", desc=False)
-        .limit(limit)
-        .execute()
+        .limit(limit))
     )
 
     # Retry-eligible events — retry delay has elapsed.
     # No NOT NULL filter needed: SQL NULL semantics mean lte() already excludes NULL rows.
     res2 = (
-        get_client()
+        await run_query(get_client()
         .table("webhook_events")
         .select("*")
         .eq("status", "pending")
         .lte("next_retry_at", now_iso)
         .order("created_at", desc=False)
-        .limit(limit)
-        .execute()
+        .limit(limit))
     )
 
     combined = (res1.data or []) + (res2.data or [])
@@ -786,26 +800,26 @@ async def claim_pending_webhook_events(limit: int = 10) -> list:
 
 
 async def mark_webhook_done(event_id: str) -> None:
-    get_client().table("webhook_events").update({
+    await run_query(get_client().table("webhook_events").update({
         "status": "done",
         "processed_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", event_id).execute()
+    }).eq("id", event_id))
 
 
 async def mark_webhook_retry(event_id: str, attempts: int, error: str, retry_at: str) -> None:
-    get_client().table("webhook_events").update({
+    await run_query(get_client().table("webhook_events").update({
         "attempts": attempts,
         "last_error": error[:500],
         "next_retry_at": retry_at,
-    }).eq("id", event_id).execute()
+    }).eq("id", event_id))
 
 
 async def mark_webhook_failed(event_id: str, attempts: int, error: str) -> None:
-    get_client().table("webhook_events").update({
+    await run_query(get_client().table("webhook_events").update({
         "status": "failed",
         "attempts": attempts,
         "last_error": error[:500],
-    }).eq("id", event_id).execute()
+    }).eq("id", event_id))
 
 
 # ---------------------------------------------------------------------------
@@ -813,21 +827,21 @@ async def mark_webhook_failed(event_id: str, attempts: int, error: str) -> None:
 # ---------------------------------------------------------------------------
 
 async def insert_payment(data: dict) -> dict:
-    res = get_client().table("payments").insert(data).execute()
+    res = await run_query(get_client().table("payments").insert(data))
     return res.data[0] if res.data else {}
 
 
 async def update_payment(payment_id: str, data: dict) -> dict:
     res = (
-        get_client().table("payments").update(data).eq("id", payment_id).execute()
+        await run_query(get_client().table("payments").update(data).eq("id", payment_id))
     )
     return res.data[0] if res.data else {}
 
 
 async def get_payment_by_checkout_session(session_id: str) -> dict | None:
     res = (
-        get_client().table("payments").select("*")
-        .eq("checkout_session_id", session_id).limit(1).execute()
+        await run_query(get_client().table("payments").select("*")
+        .eq("checkout_session_id", session_id).limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -835,26 +849,26 @@ async def get_payment_by_checkout_session(session_id: str) -> dict | None:
 async def get_payment_by_appointment_id(appointment_id: str) -> dict | None:
     """Return the most recent succeeded deposit for an appointment, if any."""
     res = (
-        get_client().table("payments").select("*")
+        await run_query(get_client().table("payments").select("*")
         .eq("appointment_id", appointment_id)
         .eq("status", "succeeded")
-        .order("created_at", desc=True).limit(1).execute()
+        .order("created_at", desc=True).limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def get_payment_by_payment_intent(payment_intent_id: str) -> dict | None:
     res = (
-        get_client().table("payments").select("*")
-        .eq("payment_intent_id", payment_intent_id).limit(1).execute()
+        await run_query(get_client().table("payments").select("*")
+        .eq("payment_intent_id", payment_intent_id).limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
     res = (
-        get_client().table("payments").select("*")
-        .eq("tenant_id", tenant_id).order("created_at", desc=True).limit(limit).execute()
+        await run_query(get_client().table("payments").select("*")
+        .eq("tenant_id", tenant_id).order("created_at", desc=True).limit(limit))
     )
     return res.data or []
 
@@ -865,17 +879,16 @@ async def get_payments_by_tenant(tenant_id: str, limit: int = 50) -> list:
 
 async def insert_api_key(tenant_id: str, key_hash: str, key_prefix: str, label: str | None) -> dict:
     res = (
-        get_client().table("tenant_api_keys")
-        .insert({"tenant_id": tenant_id, "key_hash": key_hash, "key_prefix": key_prefix, "label": label})
-        .execute()
+        await run_query(get_client().table("tenant_api_keys")
+        .insert({"tenant_id": tenant_id, "key_hash": key_hash, "key_prefix": key_prefix, "label": label}))
     )
     return res.data[0] if res.data else {}
 
 
 async def get_api_keys(tenant_id: str) -> list:
     res = (
-        get_client().table("tenant_api_keys").select("id, key_prefix, label, last_used_at, revoked_at, created_at")
-        .eq("tenant_id", tenant_id).order("created_at", desc=True).execute()
+        await run_query(get_client().table("tenant_api_keys").select("id, key_prefix, label, last_used_at, revoked_at, created_at")
+        .eq("tenant_id", tenant_id).order("created_at", desc=True))
     )
     return res.data or []
 
@@ -883,16 +896,16 @@ async def get_api_keys(tenant_id: str) -> list:
 async def get_tenant_by_api_key_hash(key_hash: str) -> dict | None:
     """Return the tenant owning a non-revoked API key, or None."""
     res = (
-        get_client().table("tenant_api_keys").select("id, tenant_id, revoked_at")
-        .eq("key_hash", key_hash).limit(1).execute()
+        await run_query(get_client().table("tenant_api_keys").select("id, tenant_id, revoked_at")
+        .eq("key_hash", key_hash).limit(1))
     )
     row = res.data[0] if res.data else None
     if not row or row.get("revoked_at"):
         return None
     try:
-        get_client().table("tenant_api_keys").update(
+        await run_query(get_client().table("tenant_api_keys").update(
             {"last_used_at": datetime.now(timezone.utc).isoformat()}
-        ).eq("id", row["id"]).execute()
+        ).eq("id", row["id"]))
     except Exception:
         pass
     return await get_tenant_by_id(row["tenant_id"])
@@ -900,34 +913,33 @@ async def get_tenant_by_api_key_hash(key_hash: str) -> dict | None:
 
 async def revoke_api_key(tenant_id: str, key_id: str) -> bool:
     res = (
-        get_client().table("tenant_api_keys")
+        await run_query(get_client().table("tenant_api_keys")
         .update({"revoked_at": datetime.now(timezone.utc).isoformat()})
-        .eq("id", key_id).eq("tenant_id", tenant_id).execute()
+        .eq("id", key_id).eq("tenant_id", tenant_id))
     )
     return bool(res.data)
 
 
 async def insert_zapier_subscription(tenant_id: str, event: str, target_url: str) -> dict:
     res = (
-        get_client().table("zapier_subscriptions")
-        .insert({"tenant_id": tenant_id, "event": event, "target_url": target_url})
-        .execute()
+        await run_query(get_client().table("zapier_subscriptions")
+        .insert({"tenant_id": tenant_id, "event": event, "target_url": target_url}))
     )
     return res.data[0] if res.data else {}
 
 
 async def get_zapier_subscriptions(tenant_id: str, event: str) -> list:
     res = (
-        get_client().table("zapier_subscriptions").select("id, target_url")
-        .eq("tenant_id", tenant_id).eq("event", event).execute()
+        await run_query(get_client().table("zapier_subscriptions").select("id, target_url")
+        .eq("tenant_id", tenant_id).eq("event", event))
     )
     return res.data or []
 
 
 async def delete_zapier_subscription(tenant_id: str, subscription_id: str) -> bool:
     res = (
-        get_client().table("zapier_subscriptions").delete()
-        .eq("id", subscription_id).eq("tenant_id", tenant_id).execute()
+        await run_query(get_client().table("zapier_subscriptions").delete()
+        .eq("id", subscription_id).eq("tenant_id", tenant_id))
     )
     return bool(res.data)
 
@@ -937,17 +949,16 @@ async def delete_zapier_subscription(tenant_id: str, subscription_id: str) -> bo
 # ---------------------------------------------------------------------------
 
 async def create_payment_short_link(data: dict) -> dict:
-    res = get_client().table("payment_short_links").insert(data).execute()
+    res = await run_query(get_client().table("payment_short_links").insert(data))
     return res.data[0] if res.data else {}
 
 
 async def get_payment_short_link_by_code(short_code: str) -> dict | None:
     res = (
-        get_client().table("payment_short_links")
+        await run_query(get_client().table("payment_short_links")
         .select("*")
         .eq("short_code", short_code)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -956,9 +967,9 @@ async def increment_short_link_click(link_id: str) -> None:
     from datetime import datetime, timezone
     client = get_client()
     row = (
-        client.table("payment_short_links")
+        await run_query(client.table("payment_short_links")
         .select("click_count, clicked_at")
-        .eq("id", link_id).limit(1).execute()
+        .eq("id", link_id).limit(1))
     )
     if not row.data:
         return
@@ -966,23 +977,23 @@ async def increment_short_link_click(link_id: str) -> None:
     update: dict = {"click_count": (current.get("click_count") or 0) + 1}
     if not current.get("clicked_at"):
         update["clicked_at"] = datetime.now(timezone.utc).isoformat()
-    client.table("payment_short_links").update(update).eq("id", link_id).execute()
+    await run_query(client.table("payment_short_links").update(update).eq("id", link_id))
 
 
 async def get_latest_appointment_by_phone(tenant_id: str, phone: str) -> dict | None:
     """Most recent appointment (any status) for this caller."""
     res = (
-        get_client().table("appointments").select("*")
+        await run_query(get_client().table("appointments").select("*")
         .eq("tenant_id", tenant_id).eq("caller_phone", phone)
-        .order("created_at", desc=True).limit(1).execute()
+        .order("created_at", desc=True).limit(1))
     )
     return res.data[0] if res.data else None
 
 
 async def get_stripe_webhook_event(stripe_event_id: str) -> dict | None:
     res = (
-        get_client().table("stripe_webhook_events").select("id, processed")
-        .eq("stripe_event_id", stripe_event_id).limit(1).execute()
+        await run_query(get_client().table("stripe_webhook_events").select("id, processed")
+        .eq("stripe_event_id", stripe_event_id).limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -990,18 +1001,18 @@ async def get_stripe_webhook_event(stripe_event_id: str) -> dict | None:
 async def insert_stripe_webhook_event(
     stripe_event_id: str, event_type: str, tenant_id: str | None, payload: dict
 ) -> None:
-    get_client().table("stripe_webhook_events").insert({
+    await run_query(get_client().table("stripe_webhook_events").insert({
         "stripe_event_id": stripe_event_id,
         "event_type": event_type,
         "tenant_id": tenant_id,
         "payload": payload,
-    }).execute()
+    }))
 
 
 async def mark_stripe_webhook_processed(stripe_event_id: str) -> None:
-    get_client().table("stripe_webhook_events").update({"processed": True}).eq(
+    await run_query(get_client().table("stripe_webhook_events").update({"processed": True}).eq(
         "stripe_event_id", stripe_event_id
-    ).execute()
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -1009,10 +1020,10 @@ async def mark_stripe_webhook_processed(stripe_event_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
-    get_client().table("kb_entries").delete().eq("tenant_id", tenant_id).eq("type", "website").execute()
-    res = get_client().table("kb_entries").insert({
+    await run_query(get_client().table("kb_entries").delete().eq("tenant_id", tenant_id).eq("type", "website"))
+    res = await run_query(get_client().table("kb_entries").insert({
         "tenant_id": tenant_id, "type": "website", "label": label,
-    }).execute()
+    }))
     return res.data[0] if res.data else {}
 
 
@@ -1021,22 +1032,22 @@ async def upsert_kb_website_entry(tenant_id: str, label: str) -> dict:
 # ---------------------------------------------------------------------------
 
 async def insert_oauth_state(nonce: str, tenant_id: str, provider: str, expires_at_iso: str) -> None:
-    get_client().table("oauth_states").insert({
+    await run_query(get_client().table("oauth_states").insert({
         "nonce":      nonce,
         "tenant_id":  tenant_id,
         "provider":   provider,
         "expires_at": expires_at_iso,
-    }).execute()
+    }))
 
 
 async def consume_oauth_state(nonce: str) -> dict | None:
     """Fetch and atomically delete an OAuth state row by nonce. Returns the row
     (or None if not found). Deleting on read makes every state single-use."""
-    res = get_client().table("oauth_states").select("*").eq("nonce", nonce).limit(1).execute()
+    res = await run_query(get_client().table("oauth_states").select("*").eq("nonce", nonce).limit(1))
     row = res.data[0] if res.data else None
     if row:
         try:
-            get_client().table("oauth_states").delete().eq("nonce", nonce).execute()
+            await run_query(get_client().table("oauth_states").delete().eq("nonce", nonce))
         except Exception:
             pass  # best-effort; expiry still bounds reuse
     return row
@@ -1046,7 +1057,7 @@ async def purge_expired_oauth_states() -> None:
     """Housekeeping: delete states whose expiry has passed (safe to call anytime)."""
     from datetime import datetime, timezone as _tz
     now_iso = datetime.now(_tz.utc).isoformat()
-    get_client().table("oauth_states").delete().lt("expires_at", now_iso).execute()
+    await run_query(get_client().table("oauth_states").delete().lt("expires_at", now_iso))
 
 
 async def get_appointment_by_rescheduled_from(source_appointment_id: str) -> dict | None:
@@ -1061,12 +1072,11 @@ async def get_appointment_by_rescheduled_from(source_appointment_id: str) -> dic
     if not source_appointment_id:
         return None
     res = (
-        get_client()
+        await run_query(get_client()
         .table("appointments")
         .select("*")
         .eq("rescheduled_from_appointment_id", source_appointment_id)
-        .limit(1)
-        .execute()
+        .limit(1))
     )
     return res.data[0] if res.data else None
 
@@ -1088,8 +1098,8 @@ async def get_appointment_by_provider_booking(booking_id: str) -> dict | None:
     """
     if not booking_id:
         return None
-    res = (get_client().table("appointments").select("*")
-           .eq("google_event_id", booking_id).limit(1).execute())
+    res = (await run_query(get_client().table("appointments").select("*")
+           .eq("google_event_id", booking_id).limit(1)))
     return res.data[0] if res.data else None
 
 
@@ -1114,11 +1124,10 @@ async def reconcile_appointment_if_newer(appointment_id: str, provider_version,
     """
     if not appointment_id or provider_version is None:
         return False
-    res = (get_client().table("appointments")
+    res = (await run_query(get_client().table("appointments")
            .update({**patch, "provider_version": int(provider_version)})
            .eq("id", appointment_id)
-           .or_(f"provider_version.is.null,provider_version.lt.{int(provider_version)}")
-           .execute())
+           .or_(f"provider_version.is.null,provider_version.lt.{int(provider_version)}")))
     return len(res.data or []) == 1
 
 
@@ -1139,7 +1148,7 @@ async def claim_onboarding_tenant(onboarding_key: str, row: dict) -> dict | None
     """
     payload = {**row, "onboarding_key": onboarding_key}
     try:
-        res = get_client().table("tenants").insert(payload).execute()
+        res = await run_query(get_client().table("tenants").insert(payload))
     except Exception as e:
         if _is_unique_violation(e):
             return None
@@ -1149,8 +1158,8 @@ async def claim_onboarding_tenant(onboarding_key: str, row: dict) -> dict | None
 
 async def find_onboarding_tenant(onboarding_key: str) -> dict | None:
     """The tenant a previous attempt with this key created, if any."""
-    res = (get_client().table("tenants").select("*")
-           .eq("onboarding_key", onboarding_key).limit(1).execute())
+    res = (await run_query(get_client().table("tenants").select("*")
+           .eq("onboarding_key", onboarding_key).limit(1)))
     return (res.data or [None])[0]
 
 
@@ -1189,12 +1198,11 @@ async def mirror_permanent_number_fenced(tenant_id: str, e164: str) -> list[dict
     # PostgREST cannot express "IS NULL OR = value" in one filter, so the empty
     # case is tried first and the idempotent case second. Both are fenced; the
     # dangerous write -- onto some OTHER number -- is impossible either way.
-    changed = (q.is_("twilio_phone_number", "null").execute().data) or []
+    changed = ((await run_query(q.is_("twilio_phone_number", "null"))).data) or []
     if changed:
         return changed
-    return ((get_client().table("tenants")
+    return (((await run_query(get_client().table("tenants")
              .update({"twilio_phone_number": e164,
                       "onboarding_state": _ob.ACTIVE})
              .eq("id", tenant_id)
-             .eq("twilio_phone_number", e164)
-             .execute().data) or [])
+             .eq("twilio_phone_number", e164))).data) or [])

@@ -47,6 +47,7 @@ from services import phone_registry
 from services import regulatory_state as st
 from services import telephony
 from services import tenant_subaccount
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,8 @@ def purchase_enabled() -> bool:
 # ── Stage B/C: eligibility, and approval re-read from the provider ─────────
 
 async def _tenant(tenant_id: str) -> dict | None:
-    rows = (get_client().table("tenants").select("*")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+    rows = ((await run_query(get_client().table("tenants").select("*")
+            .eq("id", tenant_id).limit(1))).data or [])
     return rows[0] if rows else None
 
 

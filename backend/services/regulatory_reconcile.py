@@ -22,6 +22,7 @@ from services import regulatory_callback as cb
 from services import regulatory_state as st
 from services import telephony
 from services.telephony import _safe_provider_error
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,9 @@ async def reconcile_profile(profile: dict, *, dry_run: bool = True) -> dict:
     if not bundle_sid:
         return {**out, "outcome": MISSING_BUNDLE}
 
-    rows = (get_client().table("tenants")
+    rows = ((await run_query(get_client().table("tenants")
             .select("id, twilio_subaccount_sid, twilio_auth_token")
-            .eq("id", profile.get("tenant_id")).limit(1).execute().data or [])
+            .eq("id", profile.get("tenant_id")).limit(1))).data or [])
     if not rows:
         return {**out, "outcome": OWNERSHIP_CONFLICT, "detail": "tenant_missing"}
     sub_sid = str(rows[0].get("twilio_subaccount_sid") or "")

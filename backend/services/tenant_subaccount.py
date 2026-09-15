@@ -37,6 +37,7 @@ import logging
 
 from db.supabase import get_client
 from services import telephony
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +118,11 @@ async def ensure(tenant: dict) -> dict:
     # ── 2. THE FENCED ATTACH DECIDES THE WINNER ───────────────────────────
     # Only a row that still has NO sub-account may take ours. PostgREST returns
     # the rows it changed, so exactly one concurrent caller sees a row back.
-    changed = (get_client().table("tenants")
+    changed = ((await run_query(get_client().table("tenants")
                .update({"twilio_subaccount_sid": adopted["sid"],
                         "twilio_auth_token": adopted["auth_token"]})
                .eq("id", tenant_id)
-               .is_("twilio_subaccount_sid", "null")
-               .execute().data or [])
+               .is_("twilio_subaccount_sid", "null"))).data or [])
 
     if changed:
         logger.info("Attached Twilio sub-account to tenant %s (created=%s)",
@@ -131,9 +131,9 @@ async def ensure(tenant: dict) -> dict:
                 "auth_token": adopted["auth_token"], "created": created}
 
     # Someone else won. Re-read to find out what the tenant actually has.
-    rows = (get_client().table("tenants")
+    rows = ((await run_query(get_client().table("tenants")
             .select("twilio_subaccount_sid, twilio_auth_token")
-            .eq("id", tenant_id).limit(1).execute().data or [])
+            .eq("id", tenant_id).limit(1))).data or [])
     winner_sid = str((rows[0] if rows else {}).get("twilio_subaccount_sid") or "")
     winner_tok = str((rows[0] if rows else {}).get("twilio_auth_token") or "")
 

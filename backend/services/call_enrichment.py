@@ -16,6 +16,7 @@ import json
 import logging
 
 from openai import AsyncOpenAI
+from db.supabase import run_query
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ async def backfill_missing_intents(limit: int = 200, tenant_id: str | None = Non
     q = client.table("calls").select("id,tenant_id,transcript").is_("intent", "null").limit(limit)
     if tenant_id:
         q = q.eq("tenant_id", tenant_id)
-    rows = q.execute().data or []
+    rows = (await run_query(q)).data or []
 
     tenants: dict = {}
     enriched = skipped = failed = 0

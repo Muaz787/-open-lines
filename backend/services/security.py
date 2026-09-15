@@ -17,6 +17,8 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Header, Request
 
+from services import jwt_verify
+
 # ---------------------------------------------------------------------------
 # 4. AES-256-GCM symmetric encryption
 # ---------------------------------------------------------------------------
@@ -61,27 +63,66 @@ logger = logging.getLogger(__name__)
 # 1. Tenant ownership
 # ---------------------------------------------------------------------------
 
-async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None:
-    """Raise HTTP 401/403 unless the Bearer token belongs to this tenant."""
+def _bearer_token(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")
+    return authorization.removeprefix("Bearer ").strip()
 
-    token = authorization.removeprefix("Bearer ").strip()
+
+async def _verified_user(token: str) -> dict:
+    """{id, email, tenant_id} for a valid access token, else HTTP 401.
+
+    Verified locally against the project's published signing key when
+    possible (see services/jwt_verify.py); otherwise by asking Supabase Auth,
+    which is what every request used to do.
+
+    tenant_id is read from app_metadata, NEVER from user_metadata. app_metadata
+    is writable only with the service-role key (the admin API); user_metadata is
+    writable by the signed-in user themselves via supabase.auth.updateUser. When
+    ownership was read from user_metadata, any account could grant itself another
+    tenant's data by editing its own token payload -- confirmed exploitable. The
+    tenant_id is written to app_metadata at signup (db.create_auth_user) and, for
+    accounts created before this change, by scripts/backfill_app_metadata_tenant.py.
+    """
     try:
-        from db.supabase import get_client
-        user_response = get_client().auth.get_user(token)
-        user = user_response.user
-        if not user:
-            raise ValueError("no user in token response")
-        user_tenant_id = (user.user_metadata or {}).get("tenant_id")
-    except HTTPException:
-        raise
-    except Exception as e:
+        claims = await jwt_verify.verify(token)
+        return {
+            "id": str(claims.get("sub") or ""),
+            "email": str(claims.get("email") or ""),
+            "tenant_id": (claims.get("app_metadata") or {}).get("tenant_id"),
+        }
+    except jwt_verify.Undecided:
+        pass
+    except jwt_verify.InvalidToken as e:
         logger.warning("Token verification failed: %s", e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    if user_tenant_id != tenant_id:
+    try:
+        from db.supabase import get_client, run_blocking
+        user = (await run_blocking(get_client().auth.get_user, token)).user
+        if not user:
+            raise ValueError("no user in token response")
+    except Exception as e:
+        logger.warning("Token verification failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {
+        "id": str(getattr(user, "id", "") or ""),
+        "email": str(getattr(user, "email", "") or ""),
+        "tenant_id": (getattr(user, "app_metadata", None) or {}).get("tenant_id"),
+    }
+
+
+def _require_owner(user: dict, tenant_id: str) -> None:
+    # A missing app_metadata tenant_id never matches: an account not yet
+    # backfilled is denied, not waved through to a user-controlled fallback.
+    if not user["tenant_id"] or user["tenant_id"] != tenant_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+async def verify_tenant_owner(tenant_id: str, authorization: str | None) -> None:
+    """Raise HTTP 401/403 unless the Bearer token belongs to this tenant."""
+    user = await _verified_user(_bearer_token(authorization))
+    _require_owner(user, tenant_id)
 
 
 async def require_tenant_owner(
@@ -122,22 +163,11 @@ async def authenticated_tenant_user(
     tenant_id = request.path_params.get("tenant_id")
     if not tenant_id:
         raise HTTPException(status_code=400, detail="tenant_id is required")
-    await verify_tenant_owner(tenant_id, authorization)
-
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    try:
-        from db.supabase import get_client
-        user = get_client().auth.get_user(token).user
-    except Exception as e:
-        logger.warning("Identity lookup failed after a successful ownership check: %s", e)
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return {
-        "user_id": str(getattr(user, "id", "") or ""),
-        "email": str(getattr(user, "email", "") or ""),
-        "tenant_id": str(tenant_id),
-    }
+    # One verification serves both the ownership check and the identity, so the
+    # name on the record comes from the very token that was granted access.
+    user = await _verified_user(_bearer_token(authorization))
+    _require_owner(user, tenant_id)
+    return {"user_id": user["id"], "email": user["email"], "tenant_id": str(tenant_id)}
 
 
 # ---------------------------------------------------------------------------
