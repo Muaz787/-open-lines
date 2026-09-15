@@ -331,11 +331,37 @@ async def test_an_irish_retry_resumes_the_same_pending_tenant():
     assert w.purchases == 0
 
 
-def test_ireland_is_the_only_country_marked_regulated():
-    assert lifecycle_ob.needs_regulatory_clearance("IE") is True
-    for cc in ("CA", "US", "GB", "AU", "NZ"):
+def test_the_regulated_set_is_what_the_carrier_actually_requires():
+    """GB, AU and NZ were excluded here until somebody measured them.
+
+    They have been: Twilio's Regulation API was queried for local BUSINESS
+    numbers in every country offered at signup, and CA and US are the only two
+    requiring no supporting document at all.
+    """
+    for cc in ("IE", "GB", "AU", "NZ"):
+        assert lifecycle_ob.needs_regulatory_clearance(cc) is True, \
+            f"{cc} requires supporting documents at the carrier and must be regulated"
+    for cc in ("CA", "US"):
         assert lifecycle_ob.needs_regulatory_clearance(cc) is False, \
-            f"{cc} was silently added to the regulated set without measurement"
+            f"{cc} requires no supporting document and must not be gated"
+
+
+def test_a_regulated_country_is_never_servable_before_its_pipeline_exists():
+    """The tripwire that replaces the old one, guarding the dangerous direction.
+
+    Being regulated is a fact about the carrier. Being servable is a claim about
+    OUR code, and the pipeline a regulated tenant travels is Ireland's:
+    permanent_numbers searches and buys with a hardcoded "IE". Adding a country
+    to REGULATED_SERVABLE without changing that would have an Irish number bought
+    for a business somewhere else.
+    """
+    assert lifecycle_ob.REGULATED_SERVABLE <= lifecycle_ob.REGULATED_COUNTRIES, \
+        "a servable country that is not regulated is a contradiction"
+    for cc in ("GB", "AU", "NZ"):
+        assert lifecycle_ob.can_serve_regulated(cc) is False, (
+            f"{cc} was marked servable, but permanent_numbers still hardcodes IE. "
+            "Generalise the purchase path before adding a country here.")
+    assert lifecycle_ob.can_serve_regulated("IE") is True
 
 
 def test_ireland_signup_is_closed_to_the_public_by_default():

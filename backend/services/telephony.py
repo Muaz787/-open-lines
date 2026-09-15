@@ -103,7 +103,7 @@ SUPPORTED_COUNTRIES = set(_COUNTRY_CONFIG.keys())
 #: E.164 prefixes of the countries a regulator must clear before we may hold a
 #: number there. Derived from onboarding_lifecycle.REGULATED_COUNTRIES so the two
 #: cannot drift: adding a regulated country there closes this path too.
-_REGULATED_DIAL_PREFIXES = {"IE": "+353"}
+_REGULATED_DIAL_PREFIXES = {"IE": "+353", "GB": "+44", "AU": "+61", "NZ": "+64"}
 
 
 def _regulated_country_of(phone_number: str) -> str:

@@ -39,6 +39,10 @@ DENIED = "denied"
 #: signup has a grant to spend afterwards.
 UNREGULATED = "unregulated_country"
 PUBLICLY_OPEN = "publicly_open"
+
+#: Regulated, and we have not built the path that country needs yet. A refusal
+#: rather than a failure: nothing is created, and the customer is told plainly.
+NOT_SERVABLE = "regulated_country_not_servable"
 PILOT_CREATE = "pilot_grant_create"
 PILOT_RESUME = "pilot_grant_resume"
 
@@ -56,6 +60,13 @@ async def decide(*, iso_country: str, onboarding_key: str = "") -> dict:
         # CA, US and everything else we serve openly. Unchanged, and deliberately
         # short-circuited before any grant lookup.
         return {"access": ALLOWED, "reason": UNREGULATED, "pilot_grant": False}
+
+    if not lifecycle_ob.can_serve_regulated(country):
+        # Regulated, but the pipeline for it does not exist. Refuse here, before
+        # anything is created, rather than admit them to Ireland's pipeline --
+        # which would buy them an Irish number. See REGULATED_SERVABLE.
+        logger.info("Signup refused: %s is regulated and not yet servable", country)
+        return {"access": DENIED, "reason": NOT_SERVABLE, "pilot_grant": False}
 
     if lifecycle_ob.ireland_onboarding_enabled():
         # Publicly open. A grant is a way past a CLOSED gate, not an extra check

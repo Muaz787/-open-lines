@@ -61,17 +61,49 @@ RESUMABLE_STATES = (PROVISIONING, REGULATORY_REQUIRED)
 # Twilio exposes no way to learn that beforehand. So Ireland cannot be a branch
 # inside the number search -- it has to divert before telephony is touched.
 #
-# GB, AU and NZ are NOT listed as regulated here, and that is a deliberate
-# limit on what this gate claims: nobody has measured them. They keep today's
-# behaviour exactly, and if one of them turns out to need a bundle it will fail
-# the same way Ireland did -- loudly, at purchase, on a tenant that now survives
-# the failure and can be resumed.
-REGULATED_COUNTRIES = frozenset({"IE"})
+# GB, AU and NZ were previously excluded here on the stated grounds that nobody
+# had measured them. They have now been measured: Twilio's Regulation API was
+# queried for local BUSINESS numbers in every country offered at signup, and the
+# supporting documents required are
+#
+#   CA  none                      US  none
+#   GB  business_address          IE  business_address_info
+#   NZ  business_name_info, business_address_proof_info
+#   AU  business_name_info, business_address_proof_info,
+#       name_of_auth_rep_info, auth_of_auth_rep_info
+#
+# so all four are regulated as a matter of fact, and this set now says so.
+REGULATED_COUNTRIES = frozenset({"IE", "GB", "AU", "NZ"})
+
+# BEING REGULATED AND BEING SERVABLE ARE DIFFERENT FACTS, AND CONFLATING THEM
+# WOULD SELL SOMEBODY THE WRONG COUNTRY'S NUMBER.
+#
+# The pipeline that carries a regulated tenant from filing to a live number is
+# Ireland's: permanent_numbers searches and buys with a hardcoded "IE", and its
+# held-number filter treats an unknown country as "match everything". A GB tenant
+# admitted to that pipeline would, on approval, have an Irish number bought for
+# them -- a silent wrong-country purchase, which is worse than the loud failure
+# at Twilio that not listing them produced.
+#
+# So this second set is what we can actually deliver end to end. A regulated
+# country outside it is refused at signup, honestly and before anything is
+# created, rather than admitted to a pipeline shaped for somewhere else. Adding a
+# country here is the LAST step of making it work, never the first.
+REGULATED_SERVABLE = frozenset({"IE"})
 
 
 def needs_regulatory_clearance(iso_country: str) -> bool:
     """Must a regulator be satisfied before this country can hold a number?"""
     return str(iso_country or "").strip().upper() in REGULATED_COUNTRIES
+
+
+def can_serve_regulated(iso_country: str) -> bool:
+    """Can we carry this regulated country all the way to a live number?
+
+    False for a country we know to be regulated but have not built the path for.
+    Says nothing about unregulated countries, which never reach this question.
+    """
+    return str(iso_country or "").strip().upper() in REGULATED_SERVABLE
 
 
 def initial_state(iso_country: str) -> str:
