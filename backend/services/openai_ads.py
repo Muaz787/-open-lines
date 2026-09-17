@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 _ENDPOINT = "https://bzr.openai.com/v1/events"
 # Public pixel id (also inlined in the frontend root layout). Overridable by env.
 DEFAULT_PIXEL_ID = "MuZXtrxLm9EAMNURQggmNL"
+# OpenAI REJECTS a web event without source_url ("source_url_required_for_web"),
+# so it must never be empty. Last-resort fallback when FRONTEND_URL is unset.
+_DEFAULT_SOURCE_URL = "https://www.openlines.ai"
 
 
 def _pixel_id() -> str:
@@ -72,10 +75,9 @@ async def send_conversion(
         "timestamp_ms": int(timestamp_ms if timestamp_ms is not None else time.time() * 1000),
         "action_source": "web",
         "data": data or {},
+        # Required for web events — always present, or OpenAI rejects the event.
+        "source_url": source_url or os.getenv("FRONTEND_URL", "").strip() or _DEFAULT_SOURCE_URL,
     }
-    src = source_url or (os.getenv("FRONTEND_URL", "").strip() or None)
-    if src:
-        event["source_url"] = src
 
     payload = {"validate_only": False, "events": [event]}
     try:

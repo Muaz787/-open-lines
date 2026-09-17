@@ -71,6 +71,20 @@ async def test_sends_correct_request_with_key(monkeypatch):
     assert ev["source_url"] == "https://www.openlines.ai"
 
 
+async def test_source_url_is_always_present_even_without_frontend_url(monkeypatch):
+    """OpenAI rejects a web event without source_url. It must be sent even when
+    FRONTEND_URL is unset — falling back to the production URL."""
+    monkeypatch.setenv("OPENAI_ADS_CONVERSION_KEY", "sk-conv-123")
+    monkeypatch.delenv("FRONTEND_URL", raising=False)
+    captured: dict = {}
+    with patch("httpx.AsyncClient", return_value=_mock_client(captured)):
+        await openai_ads.send_conversion("trial_started", event_id="t1",
+                                         data={"type": "plan_enrollment"})
+    ev = captured["json"]["events"][0]
+    assert ev.get("source_url"), "web events must always carry source_url"
+    assert ev["source_url"].startswith("http")
+
+
 async def test_missing_event_id_does_not_send(monkeypatch):
     monkeypatch.setenv("OPENAI_ADS_CONVERSION_KEY", "sk-conv-123")
     with patch("httpx.AsyncClient") as ac:
