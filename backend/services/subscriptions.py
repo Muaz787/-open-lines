@@ -61,8 +61,12 @@ def upcoming_charge(tenant: dict) -> dict:
     """
     plan     = (tenant.get("subscription_plan") or "").lower()
     fallback = PLAN_LIST_PRICES.get(plan)
+    # Currency comes from _money's default (CAD) — the same currency every real
+    # billing path uses. The fallback quotes the pre-tax list price only when
+    # Stripe can't be reached for the exact figure; it must still name the
+    # currency the card is actually charged in, never a hardcoded "USD".
     result   = {
-        "amount_text": f"${fallback} USD" if fallback else "",
+        "amount_text": _money(fallback * 100) if fallback else "",
         "card_last4":  "",
     }
 
