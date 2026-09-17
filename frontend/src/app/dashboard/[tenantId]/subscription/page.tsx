@@ -9,7 +9,7 @@ import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
 
 import { authedFetch } from '@/lib/api'
-import { trackConversion, trackAdsConversion, ADS_SUBSCRIPTION_CONVERSION, trackOaiEvent, oaiEventId } from '@/lib/analytics'
+import { trackConversion, trackAdsConversion, ADS_SUBSCRIPTION_CONVERSION } from '@/lib/analytics'
 import { PLANS as PLAN_CATALOG, type PlanId } from '@/lib/plans'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -778,15 +778,6 @@ function SubscriptionPage() {
                     })
                     // Google Ads conversion (for campaign bidding/ROAS).
                     trackAdsConversion(ADS_SUBSCRIPTION_CONVERSION, { value, currency: 'CAD' })
-                    // OpenAI/ChatGPT Ads conversion — same activation, oaiq's
-                    // standard 'subscription_created' event (field names differ:
-                    // amount, not value). Configure the matching conversion in the
-                    // OpenAI Ads dashboard to key on 'subscription_created'.
-                    trackOaiEvent(
-                      'subscription_created',
-                      { ...(value != null ? { amount: value } : {}), currency: 'CAD', plan_id: payingPlan.id },
-                      { event_id: oaiEventId() },
-                    )
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
                     await fetchData()

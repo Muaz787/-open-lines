@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import MicButton from '@/app/components/MicButton'
-import { trackEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
+import { trackEvent, trackOaiEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
 import { PLANS, type PlanId } from '@/lib/plans'
 import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 import NotificationPreferences from '@/components/NotificationPreferences'
@@ -445,6 +445,10 @@ export default function OnboardingPage() {
       trackEvent('activation_screen_viewed', { tenant_id: provisioned.tenant_id })
       if (provisioned.trial?.trial_ends_at) {
         trackEvent('trial_started', { tenant_id: provisioned.tenant_id, plan })
+        // OpenAI/ChatGPT Ads conversion. This is the campaign's configured
+        // conversion (trial_started); it fires only when a real trial
+        // subscription was created, at the true trial-start moment.
+        trackOaiEvent('trial_started', { type: 'plan_enrollment', plan_id: plan })
       }
       setResult(provisioned)
       // Remember the tenant so a refresh can resume from durable server state
