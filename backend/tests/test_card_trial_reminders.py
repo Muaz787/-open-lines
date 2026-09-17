@@ -268,3 +268,23 @@ async def test_a_null_is_active_does_not_silence_a_live_tenant():
     for value in (None, True):
         result, sends = await _run_legacy([_legacy(is_active=value)])
         assert result["ending"] == 1, value
+
+
+# ── upcoming_charge fallback currency (regression: the notice must never say USD) ──
+
+def test_upcoming_charge_fallback_quotes_cad_not_usd(monkeypatch):
+    """When Stripe can't be reached the notice degrades to the list price. That
+    fallback used to hardcode 'USD'; the card is charged in CAD, so a trialing
+    tenant got 'Tomorrow: $199 USD ...' for a CAD charge. It must name CAD."""
+    from services import subscriptions
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)  # force the fallback path
+    for plan, price in (("pro", 199), ("starter", 99), ("business", 379)):
+        out = subscriptions.upcoming_charge({"subscription_plan": plan})
+        assert "USD" not in out["amount_text"]
+        assert out["amount_text"] == f"${price}.00 CAD"
+
+
+def test_upcoming_charge_fallback_empty_for_unknown_plan(monkeypatch):
+    monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    from services import subscriptions
+    assert subscriptions.upcoming_charge({"subscription_plan": "enterprise"})["amount_text"] == ""

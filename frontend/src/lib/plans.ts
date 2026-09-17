@@ -15,11 +15,11 @@ export type PlanId = 'starter' | 'pro' | 'business'
 export interface Plan {
   id: PlanId
   name: string
-  /** Monthly price, USD. */
+  /** Monthly price, CAD. */
   price: number
-  /** Annual price, USD (2 months free). */
+  /** Annual price, CAD (2 months free). */
   priceYear: number
-  /** Annual saving vs. paying monthly, USD. */
+  /** Annual saving vs. paying monthly, CAD. */
   saveYear: number
   /** Included minutes per month. */
   minutes: number
