@@ -7,6 +7,7 @@ import './globals.css'
 // Google tags (gtag.js), loaded on every route via the root layout. IDs are public.
 const GA_ID = 'G-06VMJV17HC'       // GA4 analytics
 const GADS_ID = 'AW-18323006317'   // Google Ads (conversion tracking)
+const OAI_PIXEL_ID = 'MuZXtrxLm9EAMNURQggmNL'  // OpenAI/ChatGPT Ads pixel (oaiq)
 
 const syne = Syne({
   subsets: ['latin'],
@@ -73,6 +74,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             gtag('config', '${GA_ID}');
             gtag('config', '${GADS_ID}');
           `}
+        </Script>
+        {/* OpenAI/ChatGPT Ads pixel — loads the oaiq SDK and records a page view
+            on every route. The IIFE is idempotent (returns if w.oaiq exists), so
+            it stays "one setup per page". debug:false for production. */}
+        <Script id="oai-pixel" strategy="afterInteractive">
+          {`!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"${OAI_PIXEL_ID}",debug:false});`}
         </Script>
       </body>
     </html>
