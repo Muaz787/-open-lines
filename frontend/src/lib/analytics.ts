@@ -46,9 +46,16 @@ export function trackAdsConversion(sendTo: string, params?: Record<string, unkno
 // or not yet loaded. The command is 'measure' (what the OpenAI Ads dashboard's
 // generated code uses — NOT 'track'), and `event` must be a documented oaiq
 // measurement event, e.g. 'trial_started' with { type: 'plan_enrollment' }.
-export function trackOaiEvent(event: string, eventProps?: Record<string, unknown>) {
+// Pass eventOptions.event_id matching the server-side Conversions API id for the
+// same conversion (we use the tenant id) so OpenAI de-duplicates the two.
+export function trackOaiEvent(
+  event: string,
+  eventProps?: Record<string, unknown>,
+  eventOptions?: Record<string, unknown>,
+) {
   if (typeof window === 'undefined' || typeof window.oaiq !== 'function') return
-  window.oaiq('measure', event, eventProps ?? {})
+  if (eventOptions) window.oaiq('measure', event, eventProps ?? {}, eventOptions)
+  else window.oaiq('measure', event, eventProps ?? {})
 }
 
 // PRIVACY: only pass safe user properties here — never passwords, call

@@ -447,8 +447,14 @@ export default function OnboardingPage() {
         trackEvent('trial_started', { tenant_id: provisioned.tenant_id, plan })
         // OpenAI/ChatGPT Ads conversion. This is the campaign's configured
         // conversion (trial_started); it fires only when a real trial
-        // subscription was created, at the true trial-start moment.
-        trackOaiEvent('trial_started', { type: 'plan_enrollment', plan_id: plan })
+        // subscription was created, at the true trial-start moment. event_id =
+        // tenant id so it de-duplicates with the backend Conversions API event
+        // for the same signup (services/openai_ads.py).
+        trackOaiEvent(
+          'trial_started',
+          { type: 'plan_enrollment', plan_id: plan },
+          { event_id: String(provisioned.tenant_id) },
+        )
       }
       setResult(provisioned)
       // Remember the tenant so a refresh can resume from durable server state
