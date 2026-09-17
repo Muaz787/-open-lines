@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from typing import Annotated, Literal
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
@@ -11,6 +11,7 @@ from services import country_access
 from services import regulatory_filing as filing
 from services import payment_customer
 from services import ireland_pilot
+from services import openai_ads
 from services import onboarding_lifecycle as lifecycle_ob
 from services.ratelimit import limiter
 from services.security import validate_public_url, validate_business_instructions, verify_tenant_owner
@@ -341,7 +342,9 @@ async def setup_card(request: Request, body: SetupCardRequest):
 
 @router.post("/provision")
 @limiter.limit("3/hour")
-async def provision(request: Request, body: ProvisionRequest):
+async def provision(request: Request, body: ProvisionRequest, background_tasks: BackgroundTasks = None):
+    # FastAPI injects the real BackgroundTasks by type in production; the default
+    # keeps direct callers (tests) working, and the scheduling below is guarded.
     import time
     # Reject prompt-injection / unsafe-use directives in tenant free-text before they
     # ever reach the assistant's system prompt.
@@ -560,6 +563,17 @@ async def provision(request: Request, body: ProvisionRequest):
                     "plan": body.plan,
                     "trial_ends_at": trial_sub.get("trial_ends_at"),
                 })
+                # OpenAI/ChatGPT Ads server-side conversion (Conversions API).
+                # event_id = tenant id so it de-duplicates with the browser pixel's
+                # trial_started for the same signup. Runs after the response, so it
+                # never adds latency to provisioning; no-ops without a key.
+                if background_tasks is not None:
+                    background_tasks.add_task(
+                        openai_ads.send_conversion,
+                        "trial_started",
+                        event_id=str(result.get("tenant_id") or ""),
+                        data={"type": "plan_enrollment", "plan_id": body.plan},
+                    )
             else:
                 logger.error(
                     "TRIAL SUBSCRIPTION FAILED for tenant %s (plan=%s, customer=%s, error=%s) "
