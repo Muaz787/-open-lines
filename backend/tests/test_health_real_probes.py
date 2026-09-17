@@ -86,26 +86,35 @@ def test_a_missing_key_is_reported_before_any_request():
         assert "Not configured" in body, f"{service} does not handle an absent key"
 
 
-def test_square_treats_rejected_credentials_as_an_error():
-    """Verified against the live API: junk credentials return 401, so Square
-    checks them before the code. Confusing that with the deliberate bad-code
-    400 would turn a dead integration green."""
-    src = _strip_docstrings(_health_src())
-    i = src.index("_chk_square")
-    body = src[i:i + 1800]
-    assert "401" in body and "403" in body
-    err = body[body.index("401"):body.index("401") + 400]
-    assert "'error'" in err or '"error"' in err, "a 401 from Square must be an error"
+# Square's ACTUAL /oauth2/token responses to the health probe (junk code),
+# captured against the live production API 2026-09-17. Both are HTTP 401.
+_SQUARE_BAD_CREDS = '{"message": "Not Authorized", "type": "service.not_authorized"}'
+_SQUARE_GOOD_CREDS_BAD_CODE = (
+    '{"errors":[{"category":"AUTHENTICATION_ERROR","code":"UNAUTHORIZED",'
+    '"detail":"Authorization code not found for app sq0idp-w5OgvTbvj_7nKw8Et3rWJw"}]}'
+)
 
 
-def test_square_only_passes_on_the_anticipated_status():
-    """Anything unanticipated degrades to a warning rather than a tick — the
-    pass branch is the narrow one, which is the safe direction for a status
-    this code did not foresee."""
-    src = _strip_docstrings(_health_src())
-    i = src.index("_chk_square")
-    body = src[i:i + 1800]
-    assert "'warning'" in body, "Square has no fallback branch"
-    ok_at = body.index("'ok'")
-    assert "400" in body[max(0, ok_at - 200):ok_at], \
-        "the Square pass must be tied to the 400 that means 'credentials accepted'"
+def test_square_good_credentials_pass_despite_a_401():
+    """The bug this fixes: Square returns 401 for good creds + a junk code
+    ('Authorization code not found'), NOT the 400 the old check assumed, so
+    healthy production credentials were reported as rejected."""
+    from routers.admin import _classify_square_probe
+    status, msg = _classify_square_probe(401, _SQUARE_GOOD_CREDS_BAD_CODE, "production")
+    assert status == "ok", f"good creds must pass, got {status}: {msg}"
+
+
+def test_square_bad_credentials_are_an_error():
+    """A real credential rejection (service.not_authorized) must still fail,
+    at either 401 or 403."""
+    from routers.admin import _classify_square_probe
+    for code in (401, 403):
+        status, msg = _classify_square_probe(code, _SQUARE_BAD_CREDS, "production")
+        assert status == "error", f"bad creds at {code} must error, got {status}"
+        assert "credentials rejected" in msg.lower()
+
+
+def test_square_400_still_passes_and_unexpected_is_a_warning():
+    from routers.admin import _classify_square_probe
+    assert _classify_square_probe(400, '{"errors":[]}', "production")[0] == "ok"
+    assert _classify_square_probe(500, "upstream boom", "production")[0] == "warning"
