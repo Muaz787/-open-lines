@@ -621,6 +621,40 @@ async def backfill_call_intents(body: dict | None = None, x_admin_key: str | Non
     return {**result, "note": "re-run while considered == limit to finish the backlog"}
 
 
+def _classify_square_probe(status_code: int, body_text: str, env: str) -> tuple[str, str]:
+    """Classify Square's /oauth2/token response to the credential health probe.
+
+    The probe presents the app credentials with a deliberately-invalid
+    authorization code. Square authenticates the APP before it looks at the code,
+    and returns HTTP 401 for BOTH outcomes — they differ only in the body:
+
+        {"type": "service.not_authorized"}                  -> app id/secret rejected
+        {"errors":[{"detail":"Authorization code not found   -> app AUTHENTICATED; only
+                    for app sq0idp-..."}]}                      the junk code was rejected
+
+    So an HTTP 401 is NOT proof the credentials are bad. The original check keyed
+    on status (400 = pass, 401 = fail) and therefore reported healthy PRODUCTION
+    credentials as rejected — Square returns 401 + "Authorization code not found"
+    for good creds, never the 400 the check expected. We classify on the body:
+    only 'service.not_authorized' is a real credential rejection.
+
+    Returns (status, message) with status in ok / error / warning.
+    """
+    body = (body_text or "").lower()
+    creds_rejected = "service.not_authorized" in body
+    # Square names the authorization code (and the app) only once the app itself
+    # has been authenticated — that is the signal the credentials are good.
+    app_authenticated = "authorization code" in body or "code not found" in body
+
+    if status_code == 400 or (status_code in (401, 403) and app_authenticated and not creds_rejected):
+        return ("ok", f"Credentials accepted ({env})")
+    if status_code in (401, 403) and creds_rejected:
+        return ("error",
+                f"App credentials rejected (HTTP {status_code}) — check "
+                f"SQUARE_APP_ID/SECRET match the {env} environment")
+    return ("warning", f"HTTP {status_code}")
+
+
 # ---------------------------------------------------------------------------
 # GET /admin/health — service health for the admin System Health page
 # ---------------------------------------------------------------------------
@@ -765,23 +799,12 @@ async def system_health(x_admin_key: str | None = Header(None)):
         """Square publishes no read endpoint an OAuth APP can call.
 
         It issues client credentials, not a platform token, so the only way to
-        learn whether ours still work is to present them at the token endpoint.
-        We do that with a deliberately invalid authorization code, which cannot
-        mint a token, cannot revoke one, and changes nothing:
-
-            401 / service.not_authorized -> the app id or secret is wrong
-            400 (bad code)               -> the credentials were ACCEPTED, and
-                                            the only thing Square rejected was
-                                            the code we knew to be junk
-
-        Verified against the live API: junk credentials return 401, so Square
-        checks them BEFORE it looks at the code. Good credentials therefore
-        cannot produce a 401 here.
-
-        Only 400 is treated as a pass. Anything else — including a status this
-        comment did not anticipate — is a warning, never a tick, so a surprise
-        from Square degrades to "look at this" rather than to the false green
-        this check was written to remove.
+        learn whether ours still work is to present them at the token endpoint
+        with a deliberately invalid authorization code, which cannot mint a
+        token, cannot revoke one, and changes nothing. Square authenticates the
+        app before it looks at the code, so the response tells us whether the
+        credentials are good — see _classify_square_probe for how Square's two
+        different 401s are told apart.
         """
         from services import square_service as sq
         app_id, secret = sq._app_id(), sq._app_secret()
@@ -799,13 +822,8 @@ async def system_health(x_admin_key: str | None = Header(None)):
                 })
         except Exception as e:
             return ("Square", "error", f"Unreachable: {str(e)[:60]}")
-        if r.status_code in (401, 403):
-            return ("Square", "error",
-                    f"App credentials rejected (HTTP {r.status_code}) — check "
-                    f"SQUARE_APP_ID/SECRET match the {env} environment")
-        if r.status_code == 400:
-            return ("Square", "ok", f"Credentials accepted ({env})")
-        return ("Square", "warning", f"HTTP {r.status_code}")
+        status, message = _classify_square_probe(r.status_code, r.text, env)
+        return ("Square", status, message)
 
     pinged = await asyncio.gather(
         _chk_supabase(), _chk_twilio(), _chk_stripe(), _chk_resend(),
