@@ -15,6 +15,9 @@ declare global {
     // gtag is loaded site-wide by the root layout (GA4). Optional so this
     // no-ops safely if the tag is blocked or not yet loaded.
     gtag?: (...args: unknown[]) => void
+    // oaiq is the OpenAI/ChatGPT Ads pixel, also loaded site-wide by the root
+    // layout. Optional for the same reason (blocked / not yet loaded).
+    oaiq?: (...args: unknown[]) => void
   }
 }
 
@@ -38,6 +41,30 @@ export function trackAdsConversion(sendTo: string, params?: Record<string, unkno
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
   window.gtag('event', 'conversion', { send_to: sendTo, ...params })
 }
+
+// Fire an OpenAI/ChatGPT Ads pixel event (oaiq). No-ops if the pixel is blocked
+// or not yet loaded. `event` must be a documented oaiq measurement event
+// (e.g. 'subscription_created', 'trial_started'); note oaiq's field names differ
+// from gtag — revenue is `amount`, not `value`.
+export function trackOaiEvent(
+  event: string,
+  eventProps?: Record<string, unknown>,
+  eventOptions?: Record<string, unknown>,
+) {
+  if (typeof window === 'undefined' || typeof window.oaiq !== 'function') return
+  window.oaiq('track', event, eventProps ?? {}, eventOptions)
+}
+
+// A unique id per conversion, so OpenAI can de-duplicate if a server-side event
+// is ever sent for the same activation. Falls back to a timestamp+random string
+// where crypto.randomUUID is unavailable.
+function newEventId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  } catch { /* fall through */ }
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
+export { newEventId as oaiEventId }
 
 // PRIVACY: only pass safe user properties here — never passwords, call
 // transcripts, caller phone numbers, knowledge-base content, or calendar
