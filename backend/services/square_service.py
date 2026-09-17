@@ -7,12 +7,19 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SQUARE_APP_ID         = os.getenv("SQUARE_APP_ID", "")          # Production app ID (sq0idp-...)
-SQUARE_APP_SECRET     = os.getenv("SQUARE_APP_SECRET", "")       # Production app secret
-SQUARE_SANDBOX_APP_ID = os.getenv("SQUARE_SANDBOX_APP_ID", "")   # Sandbox app ID (sandbox-sq0idp-...)
-SQUARE_SANDBOX_APP_SECRET = os.getenv("SQUARE_SANDBOX_APP_SECRET", "")  # Sandbox app secret
-SQUARE_ENVIRONMENT    = os.getenv("SQUARE_ENVIRONMENT", "sandbox")  # "sandbox" or "production"
-SQUARE_WEBHOOK_SIGNATURE_KEY = os.getenv("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
+# .strip() every value: a trailing newline/space from a copy-paste into the
+# Railway variables UI is invisible there but is sent verbatim to Square, which
+# rejects it (oauth2/token -> 401 service.not_authorized) even though the value
+# "looks" identical to the dashboard. That exact whitespace mismatch is what made
+# the admin system-health Square check red while the value appeared correct. A
+# trailing space on SQUARE_ENVIRONMENT would likewise break the "== production"
+# check and silently pick the sandbox endpoint.
+SQUARE_APP_ID         = os.getenv("SQUARE_APP_ID", "").strip()          # Production app ID (sq0idp-...)
+SQUARE_APP_SECRET     = os.getenv("SQUARE_APP_SECRET", "").strip()       # Production app secret
+SQUARE_SANDBOX_APP_ID = os.getenv("SQUARE_SANDBOX_APP_ID", "").strip()   # Sandbox app ID (sandbox-sq0idp-...)
+SQUARE_SANDBOX_APP_SECRET = os.getenv("SQUARE_SANDBOX_APP_SECRET", "").strip()  # Sandbox app secret
+SQUARE_ENVIRONMENT    = os.getenv("SQUARE_ENVIRONMENT", "sandbox").strip()  # "sandbox" or "production"
+SQUARE_WEBHOOK_SIGNATURE_KEY = os.getenv("SQUARE_WEBHOOK_SIGNATURE_KEY", "").strip()
 
 
 def _app_id() -> str:
