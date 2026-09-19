@@ -399,12 +399,14 @@ async def _handle_assistant_request(msg: dict) -> dict:
         overrides["serverMessages"] = vapi_svc.ROUTING_SERVER_MESSAGES
 
     # Public "try the AI" demo line — bound cost/abuse on that tenant only:
-    # short max call length + quicker hang-up on silence. Set DEMO_TENANT_ID (and
+    # capped max call length + quicker hang-up on silence. Set DEMO_TENANT_ID (and
     # optionally DEMO_MAX_CALL_SECONDS / DEMO_SILENCE_SECONDS) in Railway once the
     # demo tenant is provisioned. Real tenants are unaffected.
+    # Default is 300s (5 min): 2 min cut testers off mid-conversation. NOTE: a
+    # DEMO_MAX_CALL_SECONDS set in Railway OVERRIDES this default.
     demo_tid = os.getenv("DEMO_TENANT_ID", "").strip()
     if demo_tid and tenant_id == demo_tid:
-        overrides["maxDurationSeconds"] = int(os.getenv("DEMO_MAX_CALL_SECONDS", "120"))
+        overrides["maxDurationSeconds"] = int(os.getenv("DEMO_MAX_CALL_SECONDS", "300"))
         overrides["silenceTimeoutSeconds"] = int(os.getenv("DEMO_SILENCE_SECONDS", "15"))
 
     return {
