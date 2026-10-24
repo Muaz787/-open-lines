@@ -40,7 +40,7 @@ def _fresh_policy(monkeypatch):
 
     # install() rebinds these names for the whole PROCESS, and any earlier test
     # module that reaches a real get_client() will have triggered it. Capturing
-    # `module.SyncClient` as-is therefore captures the FACTORY, not the library
+    # the module attribute as-is therefore captures the FACTORY, not the library
     # class — and the fixture would then "restore" the factory, so the next
     # install() saw its own work and reported already-patched instead of the
     # module path.
@@ -51,13 +51,12 @@ def _fresh_policy(monkeypatch):
     #
     # So: unwrap to the library class and rebind it BEFORE the test body, and
     # put back whatever was actually there afterwards.
-    restore, originals = [], []
-    for module in (pg, gt):
-        current = module.SyncClient
+    restore = []
+    for module, attr in ((pg, "Client"), (gt, "SyncClient")):
+        current = getattr(module, attr)
         original = getattr(current, "wrapped_cls", current)
-        restore.append((module, "SyncClient", current))
-        originals.append((module, "SyncClient", original))
-        setattr(module, "SyncClient", original)
+        restore.append((module, attr, current))
+        setattr(module, attr, original)
 
     saved = (T._installed, dict(T._patched))
     T._installed = False
@@ -152,7 +151,7 @@ def test_keepalive_ceiling_is_clamped_to_the_connection_ceiling(monkeypatch):
 def test_install_patches_both_construction_sites():
     result = T.install()
     assert result == {
-        "postgrest": "postgrest._sync.client.SyncClient",
+        "postgrest": "postgrest._sync.client.Client",
         "gotrue": "gotrue._sync.gotrue_base_api.SyncClient",
     }
 
@@ -160,9 +159,9 @@ def test_install_patches_both_construction_sites():
 def test_install_is_idempotent():
     first = T.install()
     import postgrest._sync.client as pg
-    factory = pg.SyncClient
+    factory = pg.Client
     assert T.install() == first
-    assert pg.SyncClient is factory, "a second install() must not wrap the wrapper"
+    assert pg.Client is factory, "a second install() must not wrap the wrapper"
 
 
 def test_install_does_not_double_wrap_across_a_reset():
@@ -172,30 +171,40 @@ def test_install_does_not_double_wrap_across_a_reset():
     T._installed = False
     T.install()
     import postgrest._sync.client as pg
-    assert pg.SyncClient.wrapped_cls.__module__.startswith("postgrest")
+    assert pg.Client.wrapped_cls is httpx.Client
 
 
 def test_install_fails_open_when_a_library_moves_the_name(monkeypatch):
     """A postgrest refactor must degrade us to the old transport, never take
     the API down. The diagnostic then reports the component as FAILED."""
     import postgrest._sync.client as pg
-    monkeypatch.delattr(pg, "SyncClient")
+    monkeypatch.delattr(pg, "Client")
     result = T.install()
     assert result["postgrest"].startswith("FAILED")
     assert result["gotrue"] == "gotrue._sync.gotrue_base_api.SyncClient"
 
 
 def test_the_factory_constructs_the_librarys_own_class_not_a_bare_httpx_client():
-    """postgrest and gotrue both call session.aclose() on shutdown, which only
-    their httpx.Client subclasses have. Returning httpx.Client would break
-    every close path."""
-    import postgrest._sync.client as pg
-    original = pg.SyncClient
+    """gotrue calls session.aclose() on shutdown, which only its httpx.Client
+    subclass has. Returning httpx.Client would break that close path."""
+    import gotrue._sync.gotrue_base_api as gt
+    original = gt.SyncClient
     T.install()
-    session = pg.SyncClient(base_url="https://example.invalid", headers={}, timeout=1)
+    session = gt.SyncClient(base_url="https://example.invalid", headers={}, timeout=1)
     assert isinstance(session, original)
     assert hasattr(session, "aclose")
-    session.close()
+    session.aclose()
+
+
+def test_the_postgrest_replacement_is_still_a_class():
+    """postgrest 1.1 does `isinstance(self.http_client, Client)` against the
+    very name we rebind. A function there raises TypeError on every client
+    build, which is the API down, not merely unhardened."""
+    import postgrest._sync.client as pg
+    T.install()
+    assert isinstance(pg.Client, type)
+    assert issubclass(pg.Client, httpx.Client)
+    assert isinstance(httpx.Client(), pg.Client) is False
 
 
 def test_the_factory_overrides_http2_even_when_the_caller_demands_it():
@@ -203,7 +212,7 @@ def test_the_factory_overrides_http2_even_when_the_caller_demands_it():
     has to win over the argument, not merely supply a default."""
     import postgrest._sync.client as pg
     T.install()
-    session = pg.SyncClient(base_url="https://example.invalid", headers={}, timeout=1, http2=True)
+    session = pg.Client(base_url="https://example.invalid", headers={}, timeout=1, http2=True)
     assert T.session_http2_enabled(session) is False
     session.close()
 
@@ -211,7 +220,7 @@ def test_the_factory_overrides_http2_even_when_the_caller_demands_it():
 def test_the_factory_replaces_the_callers_timeout_and_adds_limits():
     import postgrest._sync.client as pg
     T.install()
-    session = pg.SyncClient(base_url="https://example.invalid", headers={}, timeout=120)
+    session = pg.Client(base_url="https://example.invalid", headers={}, timeout=120)
     assert session.timeout.connect == 5.0
     assert session._transport._pool._keepalive_expiry == 30.0
     assert session._transport._pool._max_connections == 20
@@ -223,7 +232,7 @@ def test_the_factory_preserves_base_url_and_headers():
     caller, only transport comes from us."""
     import postgrest._sync.client as pg
     T.install()
-    session = pg.SyncClient(
+    session = pg.Client(
         base_url="https://example.invalid/rest/v1",
         headers={"Accept-Profile": "public"},
         timeout=1,
@@ -238,7 +247,7 @@ def test_the_escape_hatch_reaches_the_constructed_session(monkeypatch):
     monkeypatch.setenv("SUPABASE_HTTP2", "1")
     import postgrest._sync.client as pg
     T.install()
-    session = pg.SyncClient(base_url="https://example.invalid", headers={}, timeout=1)
+    session = pg.Client(base_url="https://example.invalid", headers={}, timeout=1)
     assert T.session_http2_enabled(session) is True
     session.close()
 
@@ -340,7 +349,7 @@ def test_the_diagnostic_reports_protocol_pool_and_versions():
     assert info["sessions"]["postgrest"]["http2"] is False
     assert info["sessions"]["auth"]["http2"] is False
     assert info["limits"]["keepalive_expiry"] == 30.0
-    assert info["versions"]["postgrest"] == "1.0.2"
+    assert info["versions"]["postgrest"] == "1.1.1"
     client.postgrest.session.close()
     client.auth._http_client.close()
 
@@ -383,7 +392,7 @@ def test_no_drift_against_the_installed_stack():
 def test_requirements_pins_the_whole_transport_stack():
     import pathlib
     text = pathlib.Path(__file__).resolve().parents[1].joinpath("requirements.txt").read_text()
-    for line in ("httpx==0.27.2", "supabase==2.15.0", "postgrest==1.0.2",
+    for line in ("httpx==0.27.2", "supabase==2.16.0", "postgrest==1.1.1",
                  "gotrue==2.12.4", "httpcore==1.0.9", "h2==4.3.0"):
         assert line in text, f"{line} is not pinned; a rebuild could change the transport"
 
