@@ -50,14 +50,25 @@ not hold:
     HTTP/2 session.
   * `SyncPostgrestClient.schema()` constructs a fresh client too.
 
-`ClientOptions` exposes no transport hook and `supabase 2.15.0` pins
-`postgrest (>0.19,<1.1)`, so postgrest 1.1's injectable-client API is not
-reachable without moving supabase itself. The one place that is both a single
-point and durable is the name each library calls to construct its session:
-`postgrest._sync.client.SyncClient` and `gotrue._sync.gotrue_base_api.SyncClient`.
-We rebind those to a factory that applies the policy and then constructs the
-library's own class, so every future construction -- including the two rebuild
+The one place that is both a single point and durable is the name each
+library calls to construct its session: `postgrest._sync.client.Client` and
+`gotrue._sync.gotrue_base_api.SyncClient`. We rebind those to a subclass that
+applies the policy, so every future construction -- including the two rebuild
 paths above -- is covered.
+
+WHY NOT POSTGREST 1.1's INJECTABLE CLIENT
+-----------------------------------------
+supabase 2.16 (needed for the `sb_secret_` API keys, which 2.15's JWT-shaped
+key check rejects) moved us to postgrest 1.1, which accepts an `http_client`.
+It does not hold either: `create_session()` overwrites the injected client's
+`base_url` and headers in place, so one client shared through `ClientOptions`
+would be re-pointed by storage and functions, and `schema()` drops the
+injected client and builds a default HTTP/2 one. So we still patch the
+constructor -- now the bare `httpx.Client` name, because postgrest 1.1 no
+longer has its own subclass. That module also does
+`isinstance(self.http_client, Client)` against the same name, which is why the
+replacement is a class and not a function: a function there raises TypeError
+on every client build.
 """
 
 from __future__ import annotations
@@ -76,8 +87,8 @@ logger = logging.getLogger(__name__)
 # `postgrest`, `httpcore` and `h2` were unpinned before W7T and a fresh Railway
 # build could otherwise install a different stack than the one we proved.
 TESTED_VERSIONS = {
-    "supabase": "2.15.0",
-    "postgrest": "1.0.2",
+    "supabase": "2.16.0",
+    "postgrest": "1.1.1",
     "gotrue": "2.12.4",
     "httpx": "0.27.2",
     "httpcore": "1.0.9",
@@ -163,40 +174,49 @@ def build_limits() -> httpx.Limits:
     )
 
 
-def _make_factory(original_cls: type, component: str) -> Callable[..., Any]:
-    """Wrap a library's httpx.Client subclass in our transport policy.
+def _make_factory(original_cls: type, component: str) -> type:
+    """Wrap a library's httpx client class in our transport policy.
 
-    The library's own class is still what gets constructed -- both `postgrest`
-    and `gotrue` subclass `httpx.Client` only to add an `aclose()` alias, and
-    both call it on shutdown, so returning a bare `httpx.Client` here would
-    break close paths.
+    Returns a subclass rather than a function, so the result stays usable
+    everywhere the library uses the name -- including `isinstance` checks --
+    and what gets constructed is still the library's own class. gotrue
+    subclasses `httpx.Client` to add an `aclose()` alias it calls on shutdown,
+    so returning a bare `httpx.Client` there would break close paths.
     """
 
-    def factory(*args: Any, **kwargs: Any) -> Any:
+    def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
         kwargs["http2"] = http2_enabled()
         kwargs["limits"] = build_limits()
         kwargs["timeout"] = build_timeout()
         kwargs.setdefault("follow_redirects", True)
-        return original_cls(*args, **kwargs)
+        original_cls.__init__(self, *args, **kwargs)
 
-    factory.__name__ = f"hardened_{component}_client"
-    factory.__qualname__ = factory.__name__
-    factory.__doc__ = (
-        f"W7T transport policy applied to {original_cls.__module__}.{original_cls.__qualname__}."
+    name = f"hardened_{component}_client"
+    return type(
+        name,
+        (original_cls,),
+        {
+            "__init__": __init__,
+            "__qualname__": name,
+            "__module__": __name__,
+            "__doc__": (
+                f"W7T transport policy applied to "
+                f"{original_cls.__module__}.{original_cls.__qualname__}."
+            ),
+            # Kept so tests (and `describe()`) can prove what we wrapped.
+            "wrapped_cls": original_cls,
+            "component": component,
+        },
     )
-    # Kept so tests (and `describe()`) can prove what we wrapped without
-    # reaching into the closure.
-    factory.wrapped_cls = original_cls  # type: ignore[attr-defined]
-    factory.component = component  # type: ignore[attr-defined]
-    return factory
 
 
-# The construction sites we rebind. Both are `from ..utils import SyncClient`
-# style imports, so rebinding the attribute on the *consuming* module replaces
+# The construction sites we rebind. Both are `from x import Name` style
+# imports, so rebinding the attribute on the *consuming* module replaces
 # exactly the one call site and leaves the library's own class untouched for
-# everyone else.
+# everyone else -- for postgrest that matters doubly, since the name there is
+# httpx.Client itself.
 _TARGETS = (
-    ("postgrest", "postgrest._sync.client", "SyncClient"),
+    ("postgrest", "postgrest._sync.client", "Client"),
     ("gotrue", "gotrue._sync.gotrue_base_api", "SyncClient"),
 )
 
