@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { presentAccount } from './accountState.ts'
 import { emptyCallsCopy } from './emptyStates.ts'
+import { parseChoice, withChoice } from './queryState.ts'
+import { routingReasonText } from './routingReason.ts'
 
 const base = { plan: 'pro', feature_plan: 'pro', phone_line: 'on', has_provider_subscription: true, line_active: true, pending_activation: false }
 const account = over => ({ ...base, source: 'subscription', subscription: 'active', ...over })
@@ -158,5 +160,40 @@ describe('emptyCallsCopy', () => {
     const c = emptyCallsCopy('all', '0', 0)
     assert.equal(c.title, 'No calls yet.')
     assert.equal(c.canClear, false)
+  })
+})
+
+describe('URL filter state', () => {
+  const periods = ['today', '7d', '30d']
+
+  it('accepts a known value', () => {
+    assert.equal(parseChoice('30d', periods, '7d'), '30d')
+  })
+
+  it('falls back on a missing or edited value', () => {
+    assert.equal(parseChoice(null, periods, '7d'), '7d')
+    assert.equal(parseChoice('999d', periods, '7d'), '7d')
+    assert.equal(parseChoice("'; drop table", periods, '7d'), '7d')
+  })
+
+  it('keeps other params and drops the default', () => {
+    assert.equal(withChoice('?period=7&quality=hot', 'quality', 'all', 'all'), '?period=7')
+    assert.equal(withChoice('?quality=hot', 'period', '7', '30'), '?quality=hot&period=7')
+    assert.equal(withChoice('?quality=hot', 'quality', 'all', 'all'), '')
+  })
+})
+
+describe('routingReasonText', () => {
+  it('explains known reasons in plain words', () => {
+    assert.equal(routingReasonText('rule_match'), 'A routing rule matched this call.')
+  })
+
+  it('explains dynamic fallback reasons', () => {
+    assert.match(routingReasonText('no_match_fallback:voicemail'), /No rule matched/)
+    assert.match(routingReasonText('fallback:callback'), /fallback applies/)
+  })
+
+  it('never shows a raw code it does not know', () => {
+    assert.doesNotMatch(routingReasonText('some_new_reason'), /_/)
   })
 })

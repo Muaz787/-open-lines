@@ -485,8 +485,8 @@ function KnowledgeBasePage() {
             </div>
 
             {/* Danger zone */}
-            <div className="kb-danger-zone">
-              <div className="kb-danger-hdr">⚠ Danger zone</div>
+            <details className="kb-danger-zone">
+              <summary className="kb-danger-hdr" style={{ cursor: 'pointer' }}>Advanced</summary>
               <div className="kb-danger-body">
                 <div>
                   <div className="kb-danger-desc">Clear all knowledge base content</div>
@@ -499,7 +499,7 @@ function KnowledgeBasePage() {
                   {clearLoading ? 'Clearing…' : 'Clear Knowledge Base'}
                 </button>
               </div>
-            </div>
+            </details>
 
           </div>
         </div>

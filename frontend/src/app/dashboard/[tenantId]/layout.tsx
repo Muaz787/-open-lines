@@ -116,7 +116,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Hold everything until we know. A brief blank beats flashing an authenticated
   // page at someone who is not.
-  if (signedIn !== true) return null
+  if (signedIn !== true) return <div className="db-root" aria-busy="true" />
 
   return (
     <AccountProvider value={{ account: tenant?.account, status: tenant ? 'ready' : tenantFailed ? 'error' : 'loading', provider }}>

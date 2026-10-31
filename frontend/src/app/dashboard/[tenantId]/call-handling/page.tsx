@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { authedFetch, API } from '@/lib/api'
+import { routingReasonText } from '../lib/routingReason'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -457,7 +458,7 @@ function CallHandlingPage() {
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 8 }}>{decision.reason}</div>
+            <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 8 }}>{routingReasonText(decision.reason)}</div>
           </div>
         )}
       </div>

@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { formatCallDate, formatDuration, initials, capitalize } from '../lib/format'
 import { urgBadgeClass, dispositionBadgeClass, dispositionLabel } from '../lib/badges'
 import { TranscriptLines } from '../components/TranscriptLines'
-import { LoadingState, EmptyState } from '../components/PageStates'
+import { LoadingState, EmptyState, ErrorState } from '../components/PageStates'
 import { emptyCallsCopy, type CallPeriod, type CallQuality } from '../lib/emptyStates'
+import { useQueryParam } from '../lib/useQueryParam'
+import { disclosureProps } from '../lib/disclosure'
+import { usePathname, useRouter } from 'next/navigation'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -45,20 +48,28 @@ interface Analytics {
 type UrgencyFilter = CallQuality
 type Period = CallPeriod
 
+const CALL_PERIODS = ['7', '30', '0'] as const
+const CALL_QUALITIES = ['all', 'hot', 'warm', 'cold'] as const
+
 export default function CallsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
-  const [period, setPeriod]           = useState<Period>('30')
+  const router   = useRouter()
+  const pathname = usePathname()
+  const [period, setPeriod]       = useQueryParam<Period>('period', CALL_PERIODS, '30')
+  const [urgFilter, setUrgFilter] = useQueryParam<UrgencyFilter>('quality', CALL_QUALITIES, 'all')
   const callsUrl     = `${API}/calls/${tenantId}?days=${period}`
   const analyticsUrl = `${API}/calls/${tenantId}/analytics?days=${period}`
   // A tab shown before paints its last data at once; fetchData then refreshes it.
   const [calls, setCalls]             = useState<CallRow[]>(() => peekJson<CallRow[]>(callsUrl) ?? [])
   const [analytics, setAnalytics]     = useState<Analytics | null>(() => peekJson<Analytics>(analyticsUrl) ?? null)
   const [loading, setLoading]         = useState(() => peekJson(callsUrl) === undefined)
-  const [urgFilter, setUrgFilter]     = useState<UrgencyFilter>('all')
+  const [failed, setFailed]           = useState(false)
   const [expandedId, setExpandedId]   = useState<string | null>(null)
   const [detailMap, setDetailMap]     = useState<Record<string, CallDetail>>({})
   const [detailLoading, setDetailLoading] = useState<string | null>(null)
+
+  const latestRequest = useRef(0)
 
   const fetchData = useCallback(async () => {
     // Switching to a period already seen shows its last data, not a spinner.
@@ -66,15 +77,25 @@ export default function CallsPage() {
     const cachedAnalytics = peekJson<Analytics>(analyticsUrl)
     if (cachedCalls && cachedAnalytics) { setCalls(cachedCalls); setAnalytics(cachedAnalytics) }
     else setLoading(true)
+    const request = ++latestRequest.current
     try {
       const [callsRes, analyticsRes] = await Promise.all([
         authedFetch(callsUrl),
         authedFetch(analyticsUrl),
       ])
-      if (callsRes.ok) setCalls(await callsRes.json())
-      if (analyticsRes.ok) setAnalytics(await analyticsRes.json())
-    } catch {}
-    finally { setLoading(false) }
+      if (!callsRes.ok || !analyticsRes.ok) throw new Error('calls request failed')
+      const [nextCalls, nextAnalytics] = await Promise.all([callsRes.json(), analyticsRes.json()])
+      // Only the newest request may paint, so a slow answer for the previous
+      // period can't replace the one on screen.
+      if (request !== latestRequest.current) return
+      setCalls(nextCalls)
+      setAnalytics(nextAnalytics)
+      setFailed(false)
+    } catch {
+      if (request === latestRequest.current) setFailed(true)
+    } finally {
+      if (request === latestRequest.current) setLoading(false)
+    }
   }, [callsUrl, analyticsUrl])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -120,6 +141,7 @@ export default function CallsPage() {
                 <button
                   key={v}
                   className={`db-period-tab${period === v ? ' active' : ''}`}
+                  aria-pressed={period === v}
                   onClick={() => setPeriod(v)}
                 >
                   {label}
@@ -188,6 +210,8 @@ export default function CallsPage() {
 
             {loading ? (
               <LoadingState />
+            ) : failed && calls.length === 0 ? (
+              <ErrorState title="We couldn’t load your calls." onRetry={fetchData} />
             ) : filtered.length === 0 ? (
               <EmptyState
                 icon={
@@ -198,7 +222,7 @@ export default function CallsPage() {
                 title={empty.title}
                 sub={empty.sub}
                 action={empty.canClear ? (
-                  <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => { setUrgFilter('all'); setPeriod('0') }}>
+                  <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => router.push(`${pathname}?period=0`, { scroll: false })}>
                     Clear filters
                   </button>
                 ) : undefined}
@@ -211,8 +235,8 @@ export default function CallsPage() {
                 const isLoadingDetail = detailLoading === call.id
 
                 return (
-                  <div key={call.id} className="db-lead-row" onClick={() => toggleExpand(call.id)}>
-                    <div className="db-lead-main">
+                  <div key={call.id} className="db-lead-row">
+                    <div className="db-lead-main" {...disclosureProps(isExpanded, () => toggleExpand(call.id), `call-${call.id}`)}>
                       <div className="db-lead-av">{initials(lead?.name, lead?.phone)}</div>
                       <div className="db-lead-info">
                         <div className="db-lead-name">
@@ -237,7 +261,7 @@ export default function CallsPage() {
 
                     <AnimatePresence>
                       {isExpanded && (
-                        <motion.div
+                        <motion.div id={`call-${call.id}`}
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}

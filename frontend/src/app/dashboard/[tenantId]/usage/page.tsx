@@ -19,9 +19,9 @@ const PLAN_ALLOCATIONS: Record<string, number> = {
 }
 
 const PLAN_PRICE: Record<string, string> = {
-  starter: '$99/mo',
-  pro: '$199/mo',
-  business: '$379/mo',
+  starter: '$99 CAD/mo + tax',
+  pro: '$199 CAD/mo + tax',
+  business: '$379 CAD/mo + tax',
 }
 
 interface UsageSummary {
@@ -142,7 +142,7 @@ export default function UsagePage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--db-faint)', marginBottom: 18, fontFamily: 'var(--font-mono), monospace' }}>
                   <span>0 min</span>
-                  <span>{Math.round(usage.minutes_included * 0.8)} min (80%)</span>
+                  <span>{Math.round(usage.minutes_included * 0.8)} min (80% marker)</span>
                   <span>{usage.minutes_included} min</span>
                 </div>
               </div>
@@ -183,7 +183,7 @@ export default function UsagePage() {
                       Overage Charges
                     </div>
                     <div style={{ fontSize: 13, color: 'var(--db-text-2)' }}>
-                      {usage.overage_minutes} overage min × $0.69 =&nbsp;
+                      {usage.overage_minutes} overage min × $0.69 CAD =&nbsp;
                       <span style={{ fontWeight: 700, color: 'var(--db-danger-text)' }}>
                         ${(usage.overage_cost_cents / 100).toFixed(2)}
                       </span>

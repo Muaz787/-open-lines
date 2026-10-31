@@ -144,7 +144,7 @@ export default function Sidebar({
   const navItem = (href: string, icon: React.ReactNode, label: React.ReactNode, badge?: React.ReactNode) => {
     const active = isActive(href)
     return (
-      <Link href={href} className={`db-nav-item${active ? ' active' : ''}`} onClick={click}>
+      <Link href={href} className={`db-nav-item${active ? ' active' : ''}`} aria-current={active ? 'page' : undefined} onClick={click}>
         {active && <div className="db-nav-indicator" />}
         {icon}
         {label}

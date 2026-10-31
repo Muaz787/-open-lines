@@ -11,10 +11,12 @@ import { timeAgo, formatCallDate, formatApptDate, formatDuration, initials, capi
 import { urgBadgeClass } from './lib/badges'
 import { TranscriptLines } from './components/TranscriptLines'
 import { Toast } from './components/Toast'
-import { LoadingState, EmptyState } from './components/PageStates'
+import { LoadingState, EmptyState, ErrorState } from './components/PageStates'
 import type { Account } from './lib/accountState'
 import { useAccountView } from './lib/AccountContext'
 import { AccountStatus } from './components/AccountStatus'
+import { useQueryParam } from './lib/useQueryParam'
+import { disclosureProps } from './lib/disclosure'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -125,6 +127,8 @@ function TrendChart({ data, active }: { data: number[]; active: boolean }) {
 }
 
 /* Logo SVG — exact copy of landing page brand mark, white on green */
+const OVERVIEW_PERIODS = ['today', '7d', '30d'] as const
+
 function DashboardPage() {
   const { tenantId }  = useParams<{ tenantId: string }>()
   const searchParams  = useSearchParams()
@@ -144,8 +148,7 @@ function DashboardPage() {
   const [copied, setCopied]           = useState(false)
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
 
-  // '7d' is the initial period below.
-  const [stats, setStats] = useState<Stats | null>(() => peekJson<Stats>(`${API}/leads/${tenantId}/stats?period=7d`) ?? null)
+  const [stats, setStats] = useState<Stats | null>(null)
 
   const [payingPlan, setPayingPlan]         = useState<{ id: string; label: string; price: string } | null>(null)
 
@@ -154,7 +157,8 @@ function DashboardPage() {
   const [calToast, setCalToast]             = useState<string | null>(null)
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [durSaving, setDurSaving]           = useState(false)
-  const [period, setPeriod]                 = useState<'today' | '7d' | '30d'>('7d')
+  const [period, setPeriod] = useQueryParam('period', OVERVIEW_PERIODS, '7d')
+  const [statsFailed, setStatsFailed]       = useState(false)
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -177,34 +181,40 @@ function DashboardPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const [tRes, lRes, sRes] = await Promise.all([
+        const [tRes, lRes] = await Promise.all([
           authedFetch(`${API}/onboarding/status/${tenantId}`),
           authedFetch(`${API}/leads/${tenantId}`),
-          authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`),
         ])
         if (tRes.ok) setTenant(await tRes.json())
         if (lRes.ok) setLeads(await lRes.json())
-        if (sRes.ok) setStats(await sRes.json())
       } finally {
         setLoading(false)
       }
     }
     init()
     fetchCalendar()
-    const interval = setInterval(() => {
-      fetchLeads()
-      authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`).then(r => r.ok ? r.json() : null).then(d => d && setStats(d))
-    }, 30_000)
+    const interval = setInterval(fetchLeads, 30_000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, fetchLeads, fetchCalendar])
 
-  // Re-fetch performance stats when the period toggle changes.
+  // Stats for the selected period, refreshed every 30s. Living here means the
+  // timer always asks for the current period, and `stale` stops a slow response
+  // for the previous one from replacing it.
+  const statsUrl = `${API}/leads/${tenantId}/stats?period=${period}`
+  const loadStats = useCallback(() => {
+    let stale = false
+    authedFetch(statsUrl)
+      .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() })
+      .then(d => { if (!stale) { setStats(d); setStatsFailed(false) } })
+      .catch(() => { if (!stale) setStatsFailed(true) })
+    return () => { stale = true }
+  }, [statsUrl])
+
   useEffect(() => {
-    authedFetch(`${API}/leads/${tenantId}/stats?period=${period}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => d && setStats(d))
-  }, [period, tenantId])
+    let cancelCurrent = loadStats()
+    const interval = setInterval(() => { cancelCurrent(); cancelCurrent = loadStats() }, 30_000)
+    return () => { clearInterval(interval); cancelCurrent() }
+  }, [loadStats])
 
   useEffect(() => {
     const calParam     = searchParams.get('calendar')
@@ -430,6 +440,8 @@ function DashboardPage() {
             )}
           </div>
 
+          {statsFailed && !stats && <ErrorState title="We couldn’t load your performance numbers." onRetry={loadStats} />}
+
           {/* Stats row — full width */}
           {stats && (
             <div className="db-stats-wrap">
@@ -557,8 +569,8 @@ function DashboardPage() {
                   const isExpanded    = expandedId === lead.id
 
                   return (
-                    <div key={lead.id} className="db-lead-row" onClick={() => toggleExpand(lead.id)}>
-                      <div className="db-lead-main">
+                    <div key={lead.id} className="db-lead-row">
+                      <div className="db-lead-main" {...disclosureProps(isExpanded, () => toggleExpand(lead.id), `lead-${lead.id}`)}>
                         <div className="db-lead-av">{initials(lead.name, lead.phone)}</div>
                         <div className="db-lead-info">
                           <div className="db-lead-name">
@@ -585,7 +597,7 @@ function DashboardPage() {
 
                       <AnimatePresence>
                         {isExpanded && (
-                          <motion.div
+                          <motion.div id={`lead-${lead.id}`}
                             className="db-lead-expanded"
                             initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
