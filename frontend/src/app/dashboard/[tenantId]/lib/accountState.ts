@@ -33,7 +33,7 @@ export interface AccountView {
   // to buy a plan they already have because a request is slow.
   needsPlan: boolean
   // Show the self-service plan picker on Billing. False for accounts that must not
-  // start paying by accident: complimentary, and anything Stripe can't confirm.
+  // start paying by accident: complimentary, manual, and anything Stripe can't confirm.
   canChoosePlan: boolean
   // Shown on Billing in place of plan details when there is nothing to manage.
   billingNotice: { title: string; body: string } | null
@@ -98,10 +98,10 @@ function subscriptionView(account: Account, provider?: ProviderState): Pick<Acco
       planLabel: plan ? `${plan} (manual access)` : 'Manual access',
       subscription: NEUTRAL('Manual'),
       needsPlan: false,
-      canChoosePlan: true,
+      canChoosePlan: false,
       billingNotice: {
         title: 'No paid subscription',
-        body: `${plan ? `${plan} features were` : 'Access was'} set up on this account by Open Lines. There’s no paid subscription to manage.`,
+        body: `${plan ? `${plan} features were` : 'Access was'} set up on this account by Open Lines, so there’s no paid subscription to manage. To move to a paid plan, email support@openlines.ai.`,
       },
     }
   }

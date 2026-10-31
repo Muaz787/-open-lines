@@ -42,6 +42,12 @@ describe('presentAccount', () => {
     assert.match(v.billingNotice.title, /No paid subscription/)
   })
 
+  it('sends a manual plan to support instead of the plan picker', () => {
+    const v = presentAccount(account({ source: 'manual', has_provider_subscription: false }), 'ready', 'none')
+    assert.equal(v.canChoosePlan, false)
+    assert.match(v.billingNotice.body, /support@openlines\.ai/)
+  })
+
   it('offers plans when there is no subscription', () => {
     const v = presentAccount(account({ source: 'none', subscription: 'none', plan: null, feature_plan: null }), 'ready', 'none')
     assert.equal(v.planLabel, 'No active plan')

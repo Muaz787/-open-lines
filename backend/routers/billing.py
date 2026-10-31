@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from db import supabase as db
 from services import analytics, subscriptions, trial
+from services.account_state import LIVE_STATUSES, account_state
 from services.security import verify_tenant_owner
 
 load_dotenv()
@@ -126,6 +127,46 @@ def _invoice_breakdown(invoice) -> dict:
     }
 
 
+# Stripe statuses whose subscription is over, so a new one can't duplicate it.
+_ENDED_SUB_STATUSES = frozenset({"canceled", "incomplete_expired"})
+# What /create-subscription handles without a second subscription: it changes a
+# live one in place and resumes an incomplete one.
+_IN_PLACE_SUB_STATUSES = _ENDED_SUB_STATUSES | {"active", "trialing", "past_due", "incomplete"}
+
+
+def _guard_plan_purchase(tenant: dict, allowed_sub_statuses: frozenset | None = None) -> None:
+    """Refuse a plan purchase or change this account must not make for itself.
+
+    Runs before anything is written, here or in Stripe. A lookup that can't reach a
+    verdict refuses too, because guessing wrong here bills someone twice.
+    allowed_sub_statuses is the set of Stripe statuses the caller can act on safely;
+    None means the caller only changes the existing subscription.
+    """
+    if trial.is_billing_exempt(tenant):
+        raise HTTPException(status_code=409, detail="This is a complimentary account, so there's no plan to buy. To talk about a paid plan, email support@openlines.ai.")
+    if account_state(tenant)["source"] == "manual":
+        raise HTTPException(status_code=409, detail="Open Lines set up this account's plan, so moving to a paid plan is done with support. Email support@openlines.ai.")
+
+    sub_id = str(tenant.get("stripe_subscription_id") or "").strip()
+    if not sub_id:
+        return
+    try:
+        sub = stripe.Subscription.retrieve(sub_id)
+    except stripe.InvalidRequestError:
+        status = str(tenant.get("subscription_status") or "").strip().lower()
+        if status in LIVE_STATUSES:
+            logger.warning("Blocked plan purchase: %s is not in Stripe for tenant %s", sub_id, tenant.get("id"))
+            raise HTTPException(status_code=409, detail="We couldn't verify this account's subscription. Email support@openlines.ai before choosing a plan, so you aren't billed twice.")
+        return
+    except stripe.StripeError as e:
+        logger.error("Could not verify sub %s for tenant %s: %s", sub_id, tenant.get("id"), e)
+        raise HTTPException(status_code=503, detail="We couldn't check this account's subscription just now. Nothing was changed. Please try again in a moment.")
+
+    if allowed_sub_statuses is not None and sub.status not in allowed_sub_statuses:
+        logger.warning("Blocked second subscription for tenant %s: %s is %s", tenant.get("id"), sub_id, sub.status)
+        raise HTTPException(status_code=409, detail="This account already has a subscription. Manage it on the Billing page, or email support@openlines.ai.")
+
+
 @router.post("/create-checkout")
 async def create_checkout(body: dict, authorization: Annotated[str | None, Header()] = None):
     tenant_id: str = body.get("tenant_id", "")
@@ -151,6 +192,7 @@ async def create_checkout(body: dict, authorization: Annotated[str | None, Heade
 
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    _guard_plan_purchase(tenant, _ENDED_SUB_STATUSES)
 
     success_url = f"{FRONTEND_URL}/dashboard/{tenant_id}?billing=success"
     cancel_url  = f"{FRONTEND_URL}/dashboard/{tenant_id}?billing=canceled"
@@ -536,6 +578,7 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
         raise HTTPException(status_code=404, detail="Tenant not found")
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    _guard_plan_purchase(tenant, _IN_PLACE_SUB_STATUSES)
 
     # Get or create Stripe customer
     customer_id: str = tenant.get("stripe_customer_id", "") or ""
@@ -1108,6 +1151,7 @@ async def upgrade_plan(body: dict, authorization: Annotated[str | None, Header()
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    _guard_plan_purchase(tenant)
 
     sub_id = tenant.get("stripe_subscription_id") or ""
     if not sub_id:
@@ -1182,6 +1226,7 @@ async def downgrade_plan(body: dict, authorization: Annotated[str | None, Header
     tenant = await db.get_tenant_by_id(tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    _guard_plan_purchase(tenant)
 
     sub_id = tenant.get("stripe_subscription_id") or ""
     if not sub_id:
