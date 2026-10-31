@@ -718,7 +718,13 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
 
 @router.post("/confirm-payment")
 async def confirm_payment(body: dict, authorization: Annotated[str | None, Header()] = None):
-    """Called by the frontend after Payment Element confirms — syncs subscription status to DB."""
+    """Called by the frontend after Payment Element confirms — syncs subscription status to DB.
+
+    subscription_id comes from the caller, so nothing is written until Stripe says it
+    belongs to this tenant's customer. Plan and status come from Stripe, never the
+    request. A foreign id and a nonexistent one get the same answer, so this can't be
+    used to probe for other customers' subscriptions.
+    """
     tenant_id: str       = body.get("tenant_id", "")
     subscription_id: str = body.get("subscription_id", "")
 
@@ -726,22 +732,35 @@ async def confirm_payment(body: dict, authorization: Annotated[str | None, Heade
         raise HTTPException(status_code=400, detail="tenant_id and subscription_id are required")
     await verify_tenant_owner(tenant_id, authorization)
 
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    not_found = HTTPException(status_code=404, detail="Subscription not found")
+    customer_id = str(tenant.get("stripe_customer_id") or "")
+    if not customer_id:
+        raise not_found
+
     try:
         sub = stripe.Subscription.retrieve(subscription_id)
+    except stripe.InvalidRequestError:
+        raise not_found
     except stripe.StripeError as e:
         logger.error("Stripe subscription retrieve failed for %s: %s", subscription_id, e)
         raise HTTPException(status_code=500, detail="Failed to retrieve subscription from Stripe")
 
+    if sub.customer != customer_id:
+        logger.warning("Rejected confirm-payment: %s is not on tenant %s's customer", subscription_id, tenant_id)
+        raise not_found
+
     stripe_status: str = sub.status or ""
     our_status = _our_status(stripe_status)
 
-    items = _items_data(sub)
-    plan = "starter"
-    for _it in items:
-        _p = _plan_from_price((_it.get("price") or {}).get("id", ""))
-        if _p:
-            plan = _p
-            break
+    base_price = getattr(getattr(_base_item(sub), "price", None), "id", "") or ""
+    plan = _plan_from_price(base_price)
+    if not plan:
+        logger.error("confirm-payment: %s has no known plan price for tenant %s", subscription_id, tenant_id)
+        raise HTTPException(status_code=409, detail="Could not confirm this subscription's plan")
 
     await db.update_tenant(tenant_id, {
         "stripe_subscription_id": subscription_id,
