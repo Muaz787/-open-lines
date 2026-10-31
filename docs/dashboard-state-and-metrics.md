@@ -4,6 +4,16 @@ How the dashboard decides what to show. Tests are noted so changes stay checked.
 
 ## Account state
 
+Three facts are shown separately, because one says nothing about the others:
+
+| Label | Answers | Source | Values |
+|---|---|---|---|
+| Phone line | Is there a number, and may it take calls? | `account.phone_line` | On, Off, No number yet |
+| Features | Which plan's features are in force? | `account.feature_plan` | Plan name, No paid plan |
+| Subscription | How is the plan paid for? | `account.source` and Stripe | See below |
+
+A subscription only reads Active after a direct Stripe lookup confirms it. The dashboard layout does that lookup once and shares it with every page, and until it answers the label is "Checking…".
+
 `services/account_state.py` derives one record from the tenant row, with no Stripe call. It is returned as `account` on `GET /onboarding/status/{id}`. `lib/accountState.ts` turns it into every label, so no page reads `subscription_status` to decide wording.
 
 | `source` | Meaning | Plan label | Status |
@@ -20,8 +30,10 @@ How the dashboard decides what to show. Tests are noted so changes stay checked.
 |---|---|---|
 | `ok` | Stripe confirmed it | Normal |
 | `none` | No subscription ID on the tenant | Uses the account record |
-| `missing` | Tenant has an ID that Stripe doesn't know | "Needs review"; plan picker hidden to avoid double billing |
-| `unavailable` | Stripe couldn't be reached | Shows stored plan details |
+| `missing` | Stripe rejected the stored subscription ID | "Unverified"; plan picker hidden to avoid double billing; line and features unchanged |
+| `unavailable` | Stripe couldn't be reached | "Not verified right now"; plan picker hidden |
+
+Complimentary accounts don't see the plan picker, because no deliberate conversion flow exists. This is a dashboard rule; the billing API doesn't enforce it.
 
 While loading, labels are empty and no plan is offered. After a failed request, the label is "Plan unavailable", never "No active plan".
 

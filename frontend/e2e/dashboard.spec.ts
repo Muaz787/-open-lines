@@ -12,7 +12,7 @@ const API = 'http://api.test'
 const BASE = `/dashboard/${TENANT}`
 
 const paidAccount = {
-  plan: 'pro', source: 'subscription', subscription: 'active',
+  plan: 'pro', feature_plan: 'pro', phone_line: 'on', source: 'subscription', subscription: 'active',
   has_provider_subscription: true, line_active: true, pending_activation: false,
 }
 const manualAccount = { ...paidAccount, source: 'manual', has_provider_subscription: false }
@@ -26,6 +26,9 @@ interface Mock {
   provider: object
   failCalls?: boolean
   failStats?: boolean
+  failProvider?: boolean
+  holdProvider?: boolean
+  releaseProvider?: () => void
   statsRequests: string[]
   mutations: string[]
 }
@@ -63,7 +66,11 @@ async function answer(route: Route, m: Mock) {
     return json({ total_calls: 1, avg_duration_secs: 60, urgency_breakdown: { hot: 0, warm: 1, cold: 0, unknown: 0 }, calls_by_day: {} })
   }
   if (url.includes('/calls/')) return m.failCalls ? json({}, 500) : json([CALL])
-  if (url.includes('/subscription-details/')) return json(m.provider)
+  if (url.includes('/subscription-details/')) {
+    if (m.failProvider) return json({}, 500)
+    if (m.holdProvider) await new Promise<void>(resolve => { m.releaseProvider = resolve })
+    return json(m.provider)
+  }
   if (url.includes('/billing/usage/')) return json({ plan: 'pro', minutes_included: 400, minutes_used: 36, minutes_remaining: 364, overage_minutes: 0, overage_cost_cents: 0, usage_pct: 9 })
   if (/\/leads\/[^/]+(\?|$)/.test(url)) return json([LEAD])
   return json([], 200)
@@ -115,15 +122,87 @@ test('a manual plan is never shown as a paid subscription', async ({ page, conte
   await page.goto(BASE)
   await expect(page.getByRole('link', { name: /Billing/ }).locator('.db-nav-badge')).toHaveText('Manual')
   await expect(page.locator('.db-sub-compact')).toContainText('Pro (manual access)')
+  await expect(status(page)).not.toContainText('Active')
   await page.goto(`${BASE}/subscription`)
   await expect(page.getByText('No paid subscription', { exact: true })).toBeVisible()
 })
 
-test('a subscription Stripe has lost hides the plan picker', async ({ page, context }) => {
+const status = (page: Page) => page.getByTestId('account-status')
+
+test('an unverified subscription is labelled on every page, with the line still on', async ({ page, context }) => {
+  await signIn(page, context, mock({
+    account: { ...paidAccount, plan: 'business', feature_plan: 'business' },
+    provider: { has_subscription: false, provider_state: 'missing' },
+  }))
+  for (const route of ['', '/usage', '/subscription']) {
+    await page.goto(BASE + route)
+    await expect(status(page)).toContainText('Phone line')
+    await expect(status(page)).toContainText('On')
+    await expect(status(page)).toContainText('Features')
+    await expect(status(page)).toContainText('Business')
+    await expect(status(page)).toContainText('Unverified')
+    await expect(status(page)).not.toContainText('Active')
+    await expect(page.getByRole('link', { name: /Billing/ }).locator('.db-nav-badge')).toHaveText('Unverified')
+    await expect(page.locator('.db-clinic-tag')).toContainText('Phone line: On')
+  }
+})
+
+test('an unverified subscription offers no way to buy a second one', async ({ page, context }) => {
   await signIn(page, context, mock({ provider: { has_subscription: false, provider_state: 'missing' } }))
   await page.goto(`${BASE}/subscription`)
-  await expect(page.getByText('We couldn’t find your subscription')).toBeVisible()
+  await expect(page.getByText('We couldn’t verify your subscription')).toBeVisible()
   await expect(page.getByText('Choose a Plan')).toHaveCount(0)
+  await expect(page.getByText('Change Plan')).toHaveCount(0)
+})
+
+test('nothing says Active while Stripe is still answering', async ({ page, context }) => {
+  const m = mock({ holdProvider: true })
+  await signIn(page, context, m)
+  await page.goto(`${BASE}/usage`)
+  await expect(status(page)).toContainText('Checking…')
+  await expect(page.getByRole('link', { name: /Billing/ }).locator('.db-nav-badge')).toHaveText('Checking…')
+  m.releaseProvider?.()
+  await expect(status(page)).toContainText('Active')
+})
+
+test('a Stripe outage reads as not verified, not as a lost subscription', async ({ page, context }) => {
+  await signIn(page, context, mock({ failProvider: true }))
+  await page.goto(`${BASE}/usage`)
+  await expect(status(page)).toContainText('Not verified right now')
+  await expect(status(page)).not.toContainText('Unverified')
+})
+
+test('a tenant with no number reads apart from its subscription', async ({ page, context }) => {
+  await signIn(page, context, mock({ account: { ...paidAccount, phone_line: 'none' } }))
+  await page.goto(`${BASE}/usage`)
+  await expect(status(page)).toContainText('No number yet')
+  await expect(status(page)).toContainText('Active')
+})
+
+test('a complimentary account cannot buy a plan', async ({ page, context }) => {
+  const m = mock({
+    account: { ...manualAccount, source: 'complimentary' },
+    provider: { has_subscription: false, provider_state: 'none' },
+  })
+  await signIn(page, context, m)
+  await page.goto(`${BASE}/subscription`)
+  await expect(page.getByText('Complimentary account')).toBeVisible()
+  await expect(status(page)).toContainText('Complimentary')
+  await expect(page.getByText('Choose a Plan')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'support@openlines.ai' }).or(page.getByText(/support@openlines\.ai/))).toBeVisible()
+  await expect(page.getByText('Choose a plan', { exact: false })).toHaveCount(0)
+  await page.goto(BASE)
+  await expect(page.getByText('No active plan')).toHaveCount(0)
+  expect(m.mutations).toEqual([])
+})
+
+test('an account with no plan can still choose one', async ({ page, context }) => {
+  await signIn(page, context, mock({
+    account: { ...paidAccount, plan: null, feature_plan: null, source: 'none', subscription: 'none', has_provider_subscription: false },
+    provider: { has_subscription: false, provider_state: 'none' },
+  }))
+  await page.goto(`${BASE}/subscription`)
+  await expect(page.getByText('Choose a Plan', { exact: true })).toBeVisible()
 })
 
 test('the overview period survives reload and Back/Forward', async ({ page, context }) => {
@@ -237,9 +316,9 @@ test('a call row stays readable on a phone', async ({ page, context }) => {
 })
 
 test('the sidebar reports the real line state', async ({ page, context }) => {
-  await signIn(page, context, mock({ account: { ...paidAccount, line_active: false } }))
+  await signIn(page, context, mock({ account: { ...paidAccount, phone_line: 'off' } }))
   await page.goto(`${BASE}/usage`)
-  await expect(page.locator('.db-clinic-tag')).toHaveText('Line off')
+  await expect(page.locator('.db-clinic-tag')).toHaveText('Phone line: Off')
 })
 
 test('30d survives the 30-second refresh', async ({ page, context }) => {
@@ -309,7 +388,7 @@ if (process.env.DASHBOARD_SHOTS) {
     past_due: { account: { ...paidAccount, subscription: 'past_due' }, provider: { has_subscription: true, provider_state: 'ok', plan: 'pro', status: 'past_due' } },
     manual: { account: manualAccount, provider: none },
     complimentary: { account: { ...manualAccount, source: 'complimentary' }, provider: none },
-    missing: { provider: { has_subscription: false, provider_state: 'missing' } },
+    unverified: { provider: { has_subscription: false, provider_state: 'missing' } },
     none: { account: { ...paidAccount, plan: null, source: 'none', subscription: 'none', has_provider_subscription: false }, provider: none },
   }
   for (const [state, over] of Object.entries(states)) {
