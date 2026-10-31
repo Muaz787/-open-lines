@@ -8,6 +8,7 @@ import { trackEvent, getUtmParams } from '@/lib/analytics'
 import CapabilityCarousel from './components/CapabilityCarousel'
 import AskAiSection from './components/AskAiSection'
 import IntegrationsMarquee from './components/IntegrationsMarquee'
+import { PLANS } from '@/lib/plans'
 
 // ── Update this when you have your Calendly link ──
 const DEMO_BOOKING_URL = 'https://calendly.com/open-lines/demo'
@@ -69,7 +70,7 @@ const PROBLEMS = [
   {
     icon: 'phone-off',
     title: 'Missed calls, lost revenue.',
-    body: "Most callers won't leave a voicemail — they'll call your competitor. The first business to pick up wins the client, and right now that's not you.",
+    body: "A caller who reaches voicemail may not leave a message, and may try the next business on their list instead.",
   },
   {
     icon: 'moon',
@@ -78,15 +79,23 @@ const PROBLEMS = [
   },
   {
     icon: 'clipboard',
-    title: 'Leads that never convert.',
-    body: "Your team spends hours returning calls only to find the prospect wasn't a fit, wanted the wrong service, or already booked elsewhere.",
+    title: 'Time lost on poor-fit calls.',
+    body: "Returning calls takes time, and some callers turn out to want a different service or have already booked elsewhere.",
   },
   {
     icon: 'dollar',
     title: "Overhead that doesn't scale.",
-    body: "A full-time receptionist costs $2,800–$4,000 a month. Part-time staff means gaps. Neither adapts to call volume or grows with your business.",
+    body: "A full-time receptionist is a significant monthly cost, and part-time cover can leave gaps when call volume changes.",
   },
 ]
+
+const STARTER = PLANS[0]
+
+// Job Bank Canada national median for Receptionist (NOC 14101), 2023-2024,
+// updated 19 Nov 2025. Update the date in the page footnote with this figure.
+const RECEPTIONIST_HOURLY = 21
+const RECEPTIONIST_YEARLY = RECEPTIONIST_HOURLY * 40 * 52
+const JOB_BANK_URL = 'https://www.jobbank.gc.ca/marketreport/wages-occupation/24391/ca'
 
 const INDUSTRIES = [
   { id: 're',     label: 'Realtors' },
@@ -187,17 +196,17 @@ const PROCESS_STEPS = [
   {
     n: '01',
     title: 'Sign up & connect',
-    body: 'Enter your business details and website. Your AI agent is trained and your dedicated phone number goes live in under 10 minutes.',
+    body: 'Enter your business details and website. Your AI receptionist is set up and your dedicated phone number goes live in under 10 minutes. Some countries require verification first.',
   },
   {
     n: '02',
     title: 'Calls handled from day one',
-    body: 'Your AI answers every call, qualifies leads, books appointments, texts customers an instant confirmation, and emails you a summary after each one.',
+    body: 'Your AI answers incoming calls, captures caller details and books appointments when your calendar is connected. You get a summary after each call.',
   },
   {
     n: '03',
-    title: 'It gets smarter over time',
-    body: 'Update your knowledge base anytime. The AI learns from every interaction and improves with your business.',
+    title: 'Keep it up to date',
+    body: 'Keep answers current by updating your services, hours and policies in your knowledge base.',
   },
 ]
 
@@ -293,11 +302,11 @@ export default function Home() {
   ]
 
   const IND_ROWS: Record<string, typeof RealtorRows> = { re: RealtorRows, dental: DentalRows, legal: LegalRows, beauty: BeautyRows }
-  const IND_HEADS: Record<string, { title: string; live: string }> = {
-    re:     { title: 'Active Lead Queue — Shahid Real Estate',      live: 'Live · 3 new today' },
-    dental: { title: 'Patient Inquiry Queue — Smile Dental Group',  live: 'Live · 5 calls today' },
-    legal:  { title: 'Client Intake — Hartwell & Associates LLP',   live: 'Live · 4 this afternoon' },
-    beauty: { title: 'Booking Queue — Studio Nova Hair & Beauty',   live: 'Live · 8 bookings today' },
+  const IND_HEADS: Record<string, { title: string }> = {
+    re:     { title: 'Lead Queue — Sample Realty' },
+    dental: { title: 'Patient Inquiries — Sample Dental Clinic' },
+    legal:  { title: 'Client Intake — Sample Law Firm' },
+    beauty: { title: 'Booking Queue — Sample Hair Salon' },
   }
 
   const [menuOpen, setMenuOpen] = useState(false)
@@ -400,7 +409,7 @@ export default function Home() {
           </span>
         </motion.h1>
         <motion.p className="hero-sub" {...up(0.5)}>
-          Answers calls, captures leads, books appointments. 24/7. No staff required.
+          Answers calls, captures caller details and books appointments, around the clock.
         </motion.p>
         <motion.div className="hero-cta" {...up(0.7)}>
           <a href={DEMO_BOOKING_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackEvent('demo_cta_clicked', { location: 'hero' })}>
@@ -413,7 +422,7 @@ export default function Home() {
 
         {/* Social proof line */}
         <motion.p {...up(0.9)} style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 22 }}>
-          Setup in under 10 minutes · No contracts · Cancel any time
+          Setup in under 10 minutes · Free for 7 days · Card required · Cancel any time
         </motion.p>
       </section>
 
@@ -494,10 +503,10 @@ export default function Home() {
               <p className="sec-sub">Skip the reading — call our live AI agent and experience it for yourself. It&rsquo;s exactly what your callers will hear.</p>
               <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
-                  'Answers calls instantly, 24/7',
+                  'Answers calls 24/7',
                   'Qualifies leads while they\'re on the line',
-                  'Books appointments directly into your calendar',
-                  'Emails you a summary after every call',
+                  'Books appointments when your calendar is connected',
+                  'Sends you a summary after each call',
                 ].map(f => (
                   <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: 'var(--text-2)' }}>
                     <span style={{ color: 'var(--accent-text)', fontWeight: 700, fontSize: 15 }}>✓</span>
@@ -532,7 +541,7 @@ export default function Home() {
               >
                 📞 Call {formatPhone(DEMO_PHONE)}
               </a>
-              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Answers instantly · 24/7 · no wait</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>Live demo line · 24/7</div>
             </div>
           </div>
         </div>
@@ -565,7 +574,7 @@ export default function Home() {
                 exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                 <div className="ind-head">
                   <span className="ind-title">{IND_HEADS[activeInd].title}</span>
-                  <span className="live-pill"><span className="live-dot" />{IND_HEADS[activeInd].live}</span>
+                  <span className="live-pill">Example dashboard · sample data</span>
                 </div>
                 {IND_ROWS[activeInd].map(r => (
                   <div key={r.init} className="row">
@@ -612,8 +621,8 @@ export default function Home() {
       <div className="dash-wrap" id="platform">
         <div className="sec wrap">
           <div className="sec-label">Platform</div>
-          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Everything surfaces.<br />Nothing slips.</h2>
-          <p className="sec-sub">Your AI handles the call. The intelligence lands in your pocket.</p>
+          <h2 style={{ fontFamily: 'var(--font-syne), sans-serif' }}>See what happened<br />on each call.</h2>
+          <p className="sec-sub">Your AI handles the call. The details come to you.</p>
 
           <div className="dash-grid">
             <div className="card">
@@ -623,19 +632,19 @@ export default function Home() {
                   <path d="m22 7-10 6L2 7"/>
                 </svg>
               </div>
-              <div className="card-lbl">Instant Alert</div>
+              <div className="card-lbl">Example alert · sample data</div>
               <div className="card-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Email Summary</div>
-              <div className="card-sub">Delivered within seconds of every call ending — name, intent, urgency, and suggested next step.</div>
+              <div className="card-sub">Sent after each call with the caller&rsquo;s name, intent, urgency and a suggested next step.</div>
               <div className="wp-box">
                 <div className="wp-hd">
                   <div className="wp-av" />
                   <span className="wp-nm">Open Lines</span>
-                  <span className="wp-ts">now</span>
+                  <span className="wp-ts">Example</span>
                 </div>
                 <div className="wp-msg">
-                  📞 <span className="hi">New Lead: John Doe</span><br />
+                  📞 <span className="hi">New Lead: Sample Caller</span><br />
                   Intent: <span className="hi">Buying · Urgency: High</span><br />
-                  Property: 42 Harbour Blvd · Pre-approved ✓<br />
+                  Property: 123 Sample St · Pre-approved ✓<br />
                   <span style={{ color: 'var(--text-3)' }}>→ Suggested: Call back within 2 hrs</span>
                 </div>
               </div>
@@ -650,12 +659,10 @@ export default function Home() {
               </div>
               <div className="card-lbl">Calendar Booking</div>
               <div className="card-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>Books While You Sleep</div>
-              <div className="card-sub">Connects to Google Calendar and confirms appointments in real time — no follow-up needed.</div>
+              <div className="card-sub">Connects to Google Calendar or Outlook, checks availability and books appointments during the call.</div>
               <div className="stats">
-                <div className="stat"><div className="stat-n">24/7</div><div className="stat-l">Always available</div></div>
-                <div className="stat"><div className="stat-n">&lt;1s</div><div className="stat-l">Answer latency</div></div>
-                <div className="stat"><div className="stat-n">0</div><div className="stat-l">Missed calls</div></div>
-                <div className="stat"><div className="stat-n" style={{ color: 'var(--accent-text)', fontSize: 18 }}>●</div><div className="stat-l">Live right now</div></div>
+                <div className="stat"><div className="stat-n">24/7</div><div className="stat-l">Call answering</div></div>
+                <div className="stat"><div className="stat-n">2</div><div className="stat-l">Calendars on every plan</div></div>
               </div>
             </div>
           </div>
@@ -670,12 +677,18 @@ export default function Home() {
 
           {/* Left: copy */}
           <div className="cmp-copy">
-            <div className="sec-label" style={{ marginBottom: 16 }}>The math</div>
+            <div className="sec-label" style={{ marginBottom: 16 }}>Pricing</div>
             <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 16 }}>
-              Lower cost.<br />Better coverage.
+              A clear price.<br />Calls covered after hours.
             </h2>
             <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.75, marginBottom: 10 }}>
-              <strong style={{ color: 'var(--text)', fontWeight: 700 }}>Save up to $45,000 a year.</strong> That's the difference between a full-time receptionist and Open Lines — with better availability, zero turnover, and a line that never goes to voicemail.
+              Plans start at <strong style={{ color: 'var(--text)', fontWeight: 700 }}>${STARTER.price} CAD a month plus tax</strong>, with {STARTER.minutes} minutes included and {STARTER.note.replace(' / min overage', '')} CAD per minute after that.
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 300, lineHeight: 1.7, marginBottom: 10 }}>
+              Your 7-day free trial requires a card and includes 60 minutes. Your plan starts and your card is charged when the trial ends or those minutes run out, whichever comes first. Cancel before then and you pay nothing.
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 300, lineHeight: 1.7, marginBottom: 10 }}>
+              *Based on the <a href={JOB_BANK_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>Job Bank Canada</a> national median of ${RECEPTIONIST_HOURLY}.00 an hour for receptionists (NOC 14101, 2023&ndash;2024, updated November 2025), at 40 hours a week for 52 weeks. Before employer costs; actual wages vary by location. A receptionist also does in-person work an AI cannot, so the two are not like-for-like.
             </p>
             <Link href="/pricing">
               <button className="btn-ghost" style={{ marginTop: 20, fontSize: 13 }}>See pricing →</button>
@@ -704,12 +717,12 @@ export default function Home() {
               </thead>
               <tbody>
                 {[
-                  { label: 'Availability',    human: '9–5, Mon–Fri',   ours: '24/7, every day' },
-                  { label: 'Starting cost',   human: '$2,800 / mo',    ours: 'From $99 / mo' },
-                  { label: 'Annual cost',     human: '$33,600+',       ours: 'From $1,188 / yr' },
-                  { label: 'Setup time',      human: 'Weeks',          ours: 'Under 10 min' },
-                  { label: 'Turnover risk',   human: 'High',           ours: 'None' },
-                  { label: 'Scales with calls', human: 'No',           ours: 'Yes' },
+                  { label: 'Availability', human: 'Scheduled hours',      ours: '24/7' },
+                  { label: 'Monthly cost', human: `$${(RECEPTIONIST_YEARLY / 12).toLocaleString('en-CA')} CAD*`, ours: `From $${STARTER.price} CAD + tax` },
+                  { label: 'Annual cost',  human: `$${RECEPTIONIST_YEARLY.toLocaleString('en-CA')} CAD*`,      ours: `From $${STARTER.priceYear} CAD + tax` },
+                  { label: 'Included',     human: '40 hours a week',      ours: `${STARTER.minutes} call minutes a month` },
+                  { label: 'Setup',        human: 'Hiring and training',  ours: 'Under 10 min' },
+                  { label: 'Best at',      human: 'In-person work and judgment calls', ours: 'Phone calls your setup covers' },
                 ].map((row, i) => (
                   <tr key={i} className={i % 2 === 0 ? 'cmp-row-shaded' : ''}>
                     <td className="cmp-label">{row.label}</td>
@@ -733,10 +746,10 @@ export default function Home() {
           <div className="process-copy">
             <div className="sec-label" style={{ marginBottom: 16 }}>How it works</div>
             <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', marginBottom: 16 }}>
-              Live in minutes.<br />Smarter every call.
+              Live in minutes.<br />Keep it current.
             </h2>
             <p style={{ fontSize: 15, color: 'var(--text-2)', fontWeight: 300, lineHeight: 1.75, marginBottom: 28 }}>
-              Getting started takes under 10 minutes. From there, your AI handles every call — and improves with every interaction.
+              Getting started takes under 10 minutes. Then update its knowledge whenever your services, hours or policies change.
             </p>
             <Link href="/onboarding" onClick={() => trackEvent('get_started_clicked', { location: 'how_it_works' })}>
               <button className="btn-main" style={{ fontSize: 14 }}>Get started →</button>
@@ -780,7 +793,7 @@ export default function Home() {
             </Link>
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 18 }}>
-            Setup in under 10 minutes · No contracts · Cancel any time
+            Setup in under 10 minutes · Free for 7 days · Card required · Cancel any time
           </p>
         </div>
       </section>
@@ -797,6 +810,7 @@ export default function Home() {
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
           </div>
+          <p className="ft-tag" style={{ fontStyle: 'normal' }}>© {new Date().getFullYear()} Open Lines Technologies Inc. · <a href="mailto:support@openlines.ai">support@openlines.ai</a></p>
         </div>
         <div className="ft-right">
           <div className="ft-social">

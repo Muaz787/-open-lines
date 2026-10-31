@@ -20,8 +20,9 @@ export default function SiteFooter() {
           <span className="logo-name">Open Lines</span>
         </div>
         <div className="ft-tag">
-          AI voice receptionist — answers every call, captures every lead, books every appointment.
+          AI voice receptionist that answers calls, captures caller details and books appointments.
         </div>
+        <div className="ft-tag" style={{ fontStyle: 'normal' }}>© {new Date().getFullYear()} Open Lines Technologies Inc. · <a href="mailto:support@openlines.ai">support@openlines.ai</a></div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
         <div className="ft-links">

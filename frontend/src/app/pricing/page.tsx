@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 
 
 const ALL_INCLUDED = [
-  { icon: '📞', label: 'Answers every call, 24/7', sub: 'No voicemail, no missed leads' },
+  { icon: '📞', label: 'Answers calls, 24/7', sub: 'Day, night, weekends and holidays' },
   { icon: '🧠', label: 'Trained on your business', sub: 'Website, files, and custom FAQs' },
   { icon: '👤', label: 'Recognises returning callers', sub: 'Greets by name and recalls history' },
-  { icon: '📋', label: 'Qualifies every lead', sub: 'Custom questions for your industry' },
+  { icon: '📋', label: 'Qualifies leads', sub: 'Custom questions for your industry' },
   { icon: '📧', label: 'Email summary after each call', sub: 'Name, intent, urgency & next step' },
   { icon: '🔒', label: 'Your own Twilio number', sub: 'Dedicated line, never shared' },
 ]
@@ -38,7 +38,7 @@ const FAQS = [
   },
   {
     q: 'Can the AI really book appointments?',
-    a: 'Yes. Connect your Google Calendar in one click and the AI will check real-time availability, offer slots, and confirm bookings live during the call — no follow-up needed.',
+    a: 'Yes. Connect your calendar and the AI can check availability, offer slots and book appointments during the call.',
   },
   {
     q: 'What industries does Open Lines support?',
@@ -46,7 +46,7 @@ const FAQS = [
   },
   {
     q: 'Can I try it before paying?',
-    a: 'Book a demo and we\'ll walk you through a live call on your industry. We\'re also adding a free-trial option — join the waitlist and you\'ll be first to know.',
+    a: 'Yes. Every plan starts with a 7-day free trial. A card is required, the trial runs on monthly billing and it includes 60 minutes. Your plan starts and your card is charged when the 7 days end or those minutes run out, whichever comes first. Cancel before then and you pay nothing.',
   },
 ]
 
@@ -70,13 +70,13 @@ export default function PricingPage() {
           letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 18,
           fontFamily: 'var(--font-syne), sans-serif',
         }}>
-          Cheaper than a missed call.
+          Simple monthly pricing.
         </h1>
         <p style={{ fontSize: 16, color: 'var(--text-2)', maxWidth: 460, margin: '0 auto 12px', lineHeight: 1.7, fontWeight: 300 }}>
-          No setup fees. No contracts. Cancel any time.
+          Prices in CAD, plus tax. No setup fees. No contracts. Cancel any time.
         </p>
-        <p style={{ fontSize: 13, color: 'var(--text-3)', fontStyle: 'italic' }}>
-          A full-time human receptionist costs $2,800 – $4,000 / month.
+        <p style={{ fontSize: 13, color: 'var(--text-3)' }}>
+          Every plan starts with a 7-day free trial. Card required.
         </p>
       </div>
 

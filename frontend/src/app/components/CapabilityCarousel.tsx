@@ -4,14 +4,14 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 
 const CARDS: { title: string; body: string }[] = [
-  { title: 'Answer every call, 24/7',        body: 'Never send a customer to voicemail again — day, night, weekends and holidays.' },
+  { title: 'Answer calls, 24/7',             body: 'Your AI receptionist picks up day, night, weekends and holidays.' },
   { title: 'Book, reschedule & cancel',      body: 'Straight into your own calendar — Google, Outlook, or Square Appointments.' },
-  { title: 'Collect deposits on the call',   body: 'A secure Stripe or Square payment link, texted to the caller instantly.' },
+  { title: 'Collect deposits on the call',   body: 'A secure Stripe or Square payment link, texted to the caller.' },
   { title: 'Recognize returning callers',    body: 'Greets them by name and picks up right where they left off.' },
   { title: 'Answer from your knowledge base',body: 'Hours, services, pricing and policies — in your own words.' },
   { title: 'Book with a specific person',    body: '“I’d like to see Sam” just works — matched to your team roster.' },
   { title: 'Confirmations & owner alerts',   body: 'Text confirmations to callers, plus SMS or WhatsApp alerts to you.' },
-  { title: 'Capture & qualify every lead',   body: 'Full transcript, AI summary and insights waiting in your dashboard.' },
+  { title: 'Capture & qualify leads',       body: 'Full transcript, AI summary and insights waiting in your dashboard.' },
 ]
 
 export default function CapabilityCarousel() {
@@ -66,7 +66,7 @@ export default function CapabilityCarousel() {
           <div>
             <div className="sec-label" style={{ marginBottom: 16 }}>Capabilities</div>
             <h2 className="cap-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
-              What can your OpenLines<br />receptionist do on every call?
+              What can your OpenLines<br />receptionist do on a call?
             </h2>
           </div>
           <div className="cap-nav">
