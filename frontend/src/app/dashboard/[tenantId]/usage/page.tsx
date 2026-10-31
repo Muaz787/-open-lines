@@ -6,7 +6,9 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { capitalize } from '../lib/format'
 import { LoadingState, EmptyState } from '../components/PageStates'
-import { presentAccount, type Account } from '../lib/accountState'
+import type { Account } from '../lib/accountState'
+import { useAccountView } from '../lib/AccountContext'
+import { AccountStatus } from '../components/AccountStatus'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -99,7 +101,7 @@ export default function UsagePage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const account = presentAccount(tenant?.account, tenant ? 'ready' : loading ? 'loading' : 'error')
+  const account = useAccountView()
   const pct = usage?.usage_pct ?? 0
   const barColor = pct >= 100 ? 'var(--db-danger)' : pct >= 80 ? 'var(--db-warn-text)' : 'var(--db-accent)'
 
@@ -140,12 +142,8 @@ export default function UsagePage() {
                       <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>
                         {PLAN_PRICE[usage.plan] ?? ''}
                       </span>
-                      {account.statusLabel && (
-                        <span className={`db-badge db-badge--${account.tone === 'neutral' ? 'info' : account.tone}`}>
-                          {account.statusLabel}
-                        </span>
-                      )}
                     </div>
+                    <div style={{ marginTop: 8 }}><AccountStatus view={account} /></div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 28, fontWeight: 700, color: barColor, fontFamily: 'var(--font-mono), monospace', letterSpacing: '-1px' }}>

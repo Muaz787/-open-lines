@@ -12,7 +12,9 @@ import { urgBadgeClass } from './lib/badges'
 import { TranscriptLines } from './components/TranscriptLines'
 import { Toast } from './components/Toast'
 import { LoadingState, EmptyState, ErrorState } from './components/PageStates'
-import { presentAccount, type Account } from './lib/accountState'
+import type { Account } from './lib/accountState'
+import { useAccountView } from './lib/AccountContext'
+import { AccountStatus } from './components/AccountStatus'
 import { useQueryParam } from './lib/useQueryParam'
 import { disclosureProps } from './lib/disclosure'
 
@@ -353,7 +355,7 @@ function DashboardPage() {
     setTimeout(() => setCopiedPhone(null), 2000)
   }
 
-  const account = presentAccount(tenant?.account, tenant ? 'ready' : loading ? 'loading' : 'error')
+  const account = useAccountView()
 
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
@@ -516,12 +518,8 @@ function DashboardPage() {
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
                         {account.planLabel}
                       </span>
-                      {account.statusLabel && (
-                        <span className={`db-badge db-badge--${account.tone === 'neutral' ? 'info' : account.tone}`}>
-                          {account.statusLabel}
-                        </span>
-                      )}
                     </div>
+                    <AccountStatus view={account} />
                     <Link
                       href={`/dashboard/${tenantId}/subscription`}
                       className="db-btn db-btn--accent-ghost db-btn--sm"
