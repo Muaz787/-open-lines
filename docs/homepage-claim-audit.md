@@ -38,6 +38,29 @@ review, not legal advice.
 | Prices in CAD | Confirmed by the owner, 31 October 2026 |
 | Setup in under 10 minutes | Confirmed as realistic by the owner, 31 October 2026, and not measured here. The verification caveat stays because regulated countries take longer |
 
+## /salons and /barbers
+
+Checked against the backend on 31 October 2026.
+
+| Former wording | Support found | Risk | Replacement |
+|---|---|---|---|
+| "80%", "Four out of five callers" never call back | No source | Invented statistic | "May not leave a message" |
+| "Quotes walk-in waits", "how busy you are" | No feature. The AI cannot see the shop floor | False capability | Explains the walk-in policy and offers the next open time; states it doesn't quote live waits |
+| "Knows who's in today", "the day's roster" | Team names and per-person availability exist; no daily roster | False capability | Checks a named barber's availability |
+| "Confirmation and reminder", "Cuts no-shows" | No appointment reminder in the backend | False capability | "Confirms by text" |
+| "Callers rarely realise it's AI" | No evidence, and awkward beside the disclosure | Unsupported | States the opening disclosure |
+| "It never guesses", "nothing falls through" | No guarantee | Absolute | Takes details; summary for follow-up |
+| "No double-booking" | Live checks exist; no absolute guarantee | Absolute | "Checks live availability" |
+| "Answered in 1 ring" | Hardcoded | Performance promise | "Example call · sample data" |
+| "Picks up where they left off" | Caller recognition exists | Overclaim | Greets returning callers using earlier calls |
+| "Never lose", "no booking gets missed", "answers every call" | No guarantee | Absolute | Plain capability wording |
+| "Studio Luxe", "Fade Co." | Could match real businesses | Implied customers | "Sample Salon", "Sample Barbershop" |
+| Trial CTA without card or price | Card required; plans start at $99 CAD | Incomplete offer | Adds both |
+
+The trial CTA and sample labels are in `VerticalLanding`, so they also apply to the other industry pages. Their page copy has not been audited.
+
+Confirmed real: Square Appointments on any active plan, booking with a named team member, caller recognition, party size, and deposits on Pro and Business.
+
 ## Salary comparison
 
 The homepage uses the Job Bank Canada national median for Receptionist (NOC 14101): $21.00 an hour, from the Labour Force Survey, reference period 2023-2024, updated 19 November 2025.
@@ -58,6 +81,7 @@ Cross-check: PayScale showed C$18.18 an hour for Receptionist in Canada from 231
 Out of this P0 pass. These still need the same treatment:
 
 - "Every call" appears in about 25 other files; "never miss" in 7. Many are learn or SEO pages.
+- The other industry pages using `VerticalLanding`. `/ireland` also inherits "Live in under 10 minutes", which doesn't fit a country that needs verification first.
 - Homepage P1 items: rotating hero, "Build your own agent", duplicate demo sections, Ask-an-AI block, and the hardcoded "System Status: Online".
 - The homepage overflows sideways by 8px on mobile, from the integrations marquee. This predates the change.
 
