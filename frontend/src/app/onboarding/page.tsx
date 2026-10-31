@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import MicButton from '@/app/components/MicButton'
 import { trackEvent, trackOaiEvent, identifyUser, getFirstTouch } from '@/lib/analytics'
+import { resolvePendingTrialConversion, trackTrialSignupConversion } from '@/lib/adsConversion'
 import { PLANS, type PlanId } from '@/lib/plans'
 import { TrialCardStep, trialEndDate, type CardResult } from './TrialCardStep'
 import NotificationPreferences from '@/components/NotificationPreferences'
@@ -155,6 +156,9 @@ interface ProvisionResult {
   // absence of phone_number.
   onboarding_state?: 'provisioning' | 'regulatory_required' | 'active'
   next_step?: string
+  // Which trial is running on the live line, if any. Drives the Google Ads
+  // conversion; see lib/adsConversion.
+  trial_activation?: 'card' | 'fallback'
   // Present only when the trial subscription was created. Absent if Stripe was
   // unavailable, in which case the tenant is live on the card-free fallback trial.
   trial?: { plan: string; status: string; trial_ends_at: string | null }
@@ -237,6 +241,10 @@ export default function OnboardingPage() {
   const [analyzeIndex, setAnalyzeIndex] = useState(0)
   const [result, setResult]         = useState<ProvisionResult | null>(null)
   const [error, setError]           = useState<string | null>(null)
+  // Part of the payment stage's key. A provision can fail before the exit animation
+  // ends, and AnimatePresence would then revive the same card form, still "working"
+  // and holding a used SetupIntent. A new key always mounts a fresh one.
+  const [paymentAttempt, setPaymentAttempt] = useState(0)
   const fileInputRef                = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -417,6 +425,10 @@ export default function OnboardingPage() {
       }
       const provisioned: ProvisionResult = await res.json()
 
+      // Right after the server confirms the trial, ahead of sign-in and document
+      // upload: either can fail or be abandoned, and the trial has started anyway.
+      trackTrialSignupConversion(provisioned)
+
       if (form.email && form.password) {
         const { data: signInData } = await supabase.auth.signInWithPassword({ email: form.email, password: form.password })
         if (signInData?.user) {
@@ -470,6 +482,7 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       // Back to the card step. It re-runs setup-card on mount, so the retry gets a
       // fresh SetupIntent rather than reusing one that may already be consumed.
+      setPaymentAttempt(n => n + 1)
       setStage('payment')
     }
   }
@@ -523,6 +536,7 @@ export default function OnboardingPage() {
     if (!res.ok) return null
     const st = await res.json()
     setSetup(st)
+    resolvePendingTrialConversion(tid, !!st.trial?.started)
     return st
   }, [])
 
@@ -1184,7 +1198,7 @@ export default function OnboardingPage() {
 
           {/* ───────── STAGE: PAYMENT ───────── */}
           {stage === 'payment' && (
-            <motion.div key="payment" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <motion.div key={`payment-${paymentAttempt}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="ob-title" style={{ fontFamily: 'var(--font-syne), sans-serif' }}>
                 Start your free trial
               </div>

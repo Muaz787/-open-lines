@@ -633,6 +633,12 @@ async def provision(request: Request, body: ProvisionRequest, background_tasks: 
                 "trial_ends_at": trial_sub.get("trial_ends_at"),
             }
 
+        # Tells the browser a trial is running on a live line, whichever kind, so
+        # the Google Ads conversion can count both. Anything short of a successful
+        # Stripe trial leaves the tenant on the card-free one (services/trial).
+        if result.get("phone_number"):
+            result["trial_activation"] = "card" if trial_sub.get("ok") else "fallback"
+
         return result
     except HTTPException:
         raise
