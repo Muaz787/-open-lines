@@ -29,7 +29,7 @@ const BARBERS: VerticalContent = {
   h1: 'Keep your hands on the cut. Let Open Lines handle the calls.',
   subhead:
     'Open Lines is an AI receptionist that answers calls while you’re mid-cut, books appointments with the barber a caller asks for, and answers questions about your hours, prices and walk-ins.',
-  trustline: 'Works with Google Calendar, Outlook and Square Appointments',
+  trustline: 'Books fades, cuts and beard trims with the barber your client wants',
   heroArt: 'call',
 
   painsLabel: 'The real cost',
@@ -42,12 +42,12 @@ const BARBERS: VerticalContent = {
 
   solutionLabel: 'The fix',
   solutionHeading: 'It answers the way your shop would.',
-  solutionSub: 'Open Lines uses the hours, prices and team details you give it, books into your calendar, and answers walk-in questions, so you can keep the clippers moving.',
+  solutionSub: 'Give it your shop hours, cut prices and barbers. It fills open chairs and fields walk-in questions, so the clippers keep moving.',
   features: [
     { icon: '💈', title: 'Books the right barber', body: 'Client wants a specific barber and service? It checks that barber’s availability and books an open time in your calendar.' },
     { icon: '🚶', title: 'Handles walk-in questions', body: 'Explains your walk-in policy from your knowledge base and offers the next open appointment.' },
     { icon: '🕒', title: 'Checks a barber’s times', body: 'When a caller asks for a barber by name, it checks that barber’s open times.' },
-    { icon: '💬', title: 'Answers common questions', body: 'Hours, pricing, location and parking, answered from your website and knowledge base.' },
+    { icon: '💬', title: 'Answers common questions', body: 'Opening times, cut prices, directions and parking, pulled from what you’ve told it about the shop.' },
     { icon: '📲', title: 'Confirms by text', body: 'Texts the client a confirmation after booking.' },
     { icon: '🌙', title: 'Works 24/7', body: 'After close, weekends and holidays, your AI receptionist is there to take the call.' },
   ],
@@ -82,8 +82,8 @@ const BARBERS: VerticalContent = {
   faqs: [
     { q: 'Can it book with a specific barber?', a: 'Yes. Add your team, and it checks the requested barber’s availability and books the service the caller asks for.' },
     { q: 'Can it handle walk-in questions?', a: 'Yes. It explains your walk-in policy and can offer the next open appointment. It doesn’t quote live wait times, because it can’t see how busy the shop is.' },
-    { q: 'Does it work with my calendar?', a: 'It works with Google Calendar, Outlook and Square Appointments. If you use another booking app, it can’t book into that app directly.' },
-    { q: 'Will callers know it’s AI?', a: 'Yes. Each call opens by saying it’s a virtual receptionist and that the call may be recorded.' },
+    { q: 'Does it work with my calendar?', a: 'Google Calendar, Outlook and Square Appointments are supported. Shops on another app can still take calls and messages, but bookings won’t land in that app.' },
+    { q: 'Will callers know it’s AI?', a: 'Yes. Right at the start, callers hear that they’ve reached a virtual receptionist and that the line may be recorded.' },
   ],
 
   related: {
@@ -100,7 +100,7 @@ const BARBERS: VerticalContent = {
   },
 
   ctaHeading: 'Keep the clippers moving. Let the AI answer.',
-  ctaSub: 'Set it up in under 10 minutes and let it take calls while your hands are full.',
+  ctaSub: 'Under 10 minutes to set up, then the phone stops pulling you away from the fade.',
 }
 
 export default function BarbersPage() {

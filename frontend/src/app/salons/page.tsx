@@ -83,7 +83,7 @@ const SALONS: VerticalContent = {
     { q: 'Can it book with a specific stylist?', a: 'Yes. Add your team, and if a client asks for a particular stylist it checks that person’s availability and books them.' },
     { q: 'Does it book into the salon calendar we already use?', a: 'It works with Google Calendar, Outlook and Square Appointments. If you use another booking system, it can’t book into that system directly.' },
     { q: 'What does it sound like to a client booking in?', a: 'A natural voice. Each call opens by saying it’s a virtual receptionist and that the call may be recorded.' },
-    { q: 'What if it can’t answer something?', a: 'It takes the caller’s details, and you get a summary after the call so you can follow up.' },
+    { q: 'What if it can’t answer something?', a: 'It notes the client’s question and contact details, and your post-call summary shows what to follow up on.' },
   ],
 
   related: {
