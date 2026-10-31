@@ -193,7 +193,6 @@ function DashboardPage() {
     fetchCalendar()
     const interval = setInterval(fetchLeads, 30_000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, fetchLeads, fetchCalendar])
 
   // Stats for the selected period, refreshed every 30s. Living here means the
