@@ -936,10 +936,10 @@ footer {
   .cmp-grid { padding-top: 48px; padding-bottom: 48px; padding-left: 20px; padding-right: 20px; gap: 28px; }
   .cmp-table td { padding: 10px 10px; font-size: 12px; }
   .cmp-table th { padding: 14px 10px 12px; }
-  .cmp-col-head { font-size: 11px; gap: 5px; white-space: nowrap; }
+  .cmp-table { table-layout: fixed; }
+  .cmp-col-head { font-size: 11px; gap: 5px; }
   .cmp-col-head svg { display: none; }
-  .cmp-ours, .cmp-human { white-space: nowrap; }
-  .cmp-table th:first-child { width: 30%; }
+  .cmp-table th:first-child { width: 26%; }
 
   /* Problem cards → single column */
   .prob-grid { grid-template-columns: 1fr; gap: 12px; }
