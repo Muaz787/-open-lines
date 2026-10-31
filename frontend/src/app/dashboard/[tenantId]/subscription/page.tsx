@@ -7,6 +7,9 @@ import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm, AddressCollectForm 
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
+import { presentAccount, type ProviderState } from '../lib/accountState'
+import { useAccountState } from '../lib/AccountContext'
+import { AccountStatus } from '../components/AccountStatus'
 
 import { authedFetch } from '@/lib/api'
 import { trackConversion } from '@/lib/analytics'
@@ -39,6 +42,7 @@ interface PaymentMethod {
 
 interface SubDetails {
   has_subscription: boolean
+  provider_state?: ProviderState
   plan?: PlanId
   status?: string
   interval?: 'month' | 'year'
@@ -498,6 +502,9 @@ function SubscriptionPage() {
     }
   }
 
+  // This page's own lookup is the freshest answer, so it wins once it has landed.
+  const shared = useAccountState()
+  const account = presentAccount(shared.account, shared.status, subDetails?.provider_state ?? shared.provider)
   const currentPlan = PLANS.find(p => p.id === subDetails?.plan)
   const periodEnd   = subDetails?.current_period_end ? fmtDate(subDetails.current_period_end) : null
   const isCanceling = subDetails?.cancel_at_period_end
@@ -591,6 +598,8 @@ function SubscriptionPage() {
         <div style={{ maxWidth: 1080 }}>
 
         {/* ── Current plan card ── */}
+        <div style={{ marginBottom: 16 }}><AccountStatus view={account} /></div>
+
         {subDetails?.has_subscription && subDetails.status !== 'canceled' ? (
           <div className="db-card" style={{ overflow: 'hidden', marginBottom: 32 }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -677,10 +686,14 @@ function SubscriptionPage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : subDetails && (
           <div className="db-card" style={{ padding: '20px', marginBottom: 32 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No active subscription</div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>Choose a plan below to get started.</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>
+              {account.billingNotice?.title ?? 'No active subscription'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>
+              {account.billingNotice?.body ?? 'Choose a plan below to get started.'}
+            </div>
           </div>
         )}
 
@@ -792,7 +805,7 @@ function SubscriptionPage() {
         </AnimatePresence>
 
         {/* ── Change plan ── */}
-        {!payingPlan && (
+        {!payingPlan && account.canChoosePlan && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>

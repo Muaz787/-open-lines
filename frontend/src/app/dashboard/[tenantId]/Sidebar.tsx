@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { Account } from './lib/accountState'
+import { useAccountView } from './lib/AccountContext'
 
 export const BOOKING_INDUSTRIES = new Set([
   'realtor', 'clinic', 'dental', 'legal', 'plumber',
@@ -14,6 +16,7 @@ export interface SidebarTenant {
   industry: string
   subscription_plan?: string
   subscription_status?: string
+  account?: Account
   // W9I-C: present only while a regulated country still needs verification, so
   // the nav item appears for the tenants who must act and for nobody else.
   onboarding_state?: string
@@ -128,17 +131,14 @@ export default function Sidebar({
   // Active when the path equals the item's href. Dashboard is the exact base.
   const isActive = (href: string) => href === base ? pathname === base : pathname.startsWith(href)
 
+  // No badge until the tenant has loaded: a guess here would flash a wrong plan.
+  const account = useAccountView()
   const planBadge = () => {
-    if (tenant?.subscription_status === 'active' && tenant?.subscription_plan)
-      return <span className="db-nav-badge db-badge-green">{tenant.subscription_plan}</span>
-    if (!tenant?.subscription_status || tenant.subscription_status === 'none' || tenant.subscription_status === 'incomplete')
-      return <span className="db-nav-badge db-badge-amber">Free</span>
-    if (tenant?.subscription_status === 'past_due')
-      return <span className="db-nav-badge db-badge-red">Past due</span>
-    return null
+    const { label, tone } = account.subscription
+    if (!label) return null
+    const colour = { success: 'green', warn: 'amber', danger: 'red', neutral: 'amber' }[tone]
+    return <span className={`db-nav-badge db-badge-${colour}`} title={`Subscription: ${label}`}>{label}</span>
   }
-
-  const isSubscribed = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling'
   const click = onNavigate
 
   const navItem = (href: string, icon: React.ReactNode, label: React.ReactNode, badge?: React.ReactNode) => {
@@ -192,10 +192,10 @@ export default function Sidebar({
           </div>
         )}
       </div>
-      {!isSubscribed && (
+      {account.needsPlan && (
         <Link href={`${base}/subscription`} className="db-upgrade-pill" onClick={click}>
           <div className="db-upgrade-label">↑ Choose a plan</div>
-          <div className="db-upgrade-sub">Start from $99/mo</div>
+          <div className="db-upgrade-sub">From $99 CAD/mo + tax</div>
         </Link>
       )}
       <div className="db-sidebar-footer">

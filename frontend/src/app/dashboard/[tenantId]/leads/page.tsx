@@ -169,7 +169,7 @@ function LeadsPage() {
                       {/* Name / phone */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
-                          {lead.name || 'Unknown'}
+                          {lead.name || 'Unknown caller'}
                         </div>
                         {lead.phone && (
                           <div style={{ fontSize: 11, color: 'var(--db-muted)', marginTop: 1 }}>{lead.phone}</div>

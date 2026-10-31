@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from db import supabase as db
 from services.security import require_tenant_owner
 from db.supabase import run_query
+from services import date_ranges
 
 logger = logging.getLogger(__name__)
 
@@ -47,17 +48,18 @@ async def list_leads(
         raise HTTPException(status_code=500, detail="Failed to fetch leads")
 
 
-def _period_window(period: str):
-    """Return (start_dt, bucket_count, index_fn) for the requested period.
-    'today' buckets by hour since midnight UTC; 7d/30d bucket by day."""
-    now = datetime.now(timezone.utc)
+def _period_window(period: str, tz=timezone.utc, now: datetime | None = None):
+    """Return (start_dt, bucket_count, index_fn) for the requested period, using
+    the shared definition in services/date_ranges. 'today' buckets by hour since
+    local midnight, counting elapsed hours so a daylight-saving day still works;
+    7d/30d bucket by local calendar day."""
+    now = now or datetime.now(timezone.utc)
+    start = date_ranges.period_start(date_ranges.PERIOD_DAYS[period], tz, now)
     if period == "today":
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        n = now.hour + 1
-        return start, n, (lambda dt: min(max(dt.hour, 0), n - 1))
-    days = 30 if period == "30d" else 7
-    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
-    return start, days, (lambda dt: min(max((dt - start).days, 0), days - 1))
+        n = int((now - start).total_seconds() // 3600) + 1
+        return start, n, (lambda dt: min(max(int((dt - start).total_seconds() // 3600), 0), n - 1))
+    days = date_ranges.PERIOD_DAYS[period]
+    return start, days, (lambda dt: min(max(date_ranges.day_index(dt, start, tz), 0), days - 1))
 
 
 def _parse_ts(ts: str) -> datetime:
@@ -89,7 +91,13 @@ async def get_stats(
 ):
     """Period-scoped performance totals plus a per-bucket time series for each
     metric, used to draw the dashboard trend charts."""
-    start, n_buckets, bucket_idx = _period_window(period)
+    # A failed lookup must not lose the numbers, so it falls back to UTC.
+    try:
+        tz = date_ranges.tenant_zone(await db.get_tenant_by_id(tenant_id))
+    except Exception as e:
+        logger.warning("Stats: timezone lookup failed for %s: %s", tenant_id, e)
+        tz = date_ranges.tenant_zone(None)
+    start, n_buckets, bucket_idx = _period_window(period, tz)
     start_iso = start.isoformat()
 
     calls_s = [0] * n_buckets
@@ -97,7 +105,10 @@ async def get_stats(
     appts_s = [0] * n_buckets
     secs_s  = [0.0] * n_buckets
 
-    grouped = await _stats_series_sql(tenant_id, start_iso, "hour" if period == "today" else "day")
+    # Always hourly: the SQL buckets in UTC, and an hour is what can be moved onto
+    # the tenant's local day here. Zones offset by a half hour may place a call in
+    # the neighbouring chart bar; totals are unaffected.
+    grouped = await _stats_series_sql(tenant_id, start_iso, "hour")
     if grouped is not None:
         # SQL counted per (metric, bucket); place each pre-aggregated bucket into
         # its slot. Every row in a bucket shares its hour/day, so mapping the
@@ -156,6 +167,8 @@ async def get_stats(
 
     return {
         "period":              period,
+        "timezone":            str(tz),
+        "range_start":         start_iso,
         "total_calls":         sum(calls_s),
         "total_leads":         sum(leads_s),
         "minutes_handled":     round(total_secs / 60),

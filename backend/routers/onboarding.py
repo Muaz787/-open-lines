@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
 from db import supabase as db
+from services.account_state import account_state
 from services import analytics, provisioning, subscriptions, telephony, vapi, website_analysis
 from services import country_access
 from services import regulatory_filing as filing
@@ -1061,7 +1062,11 @@ async def onboarding_status(tenant_id: str, authorization: Annotated[str | None,
         raise HTTPException(status_code=404, detail="Tenant not found")
 
     from services import trial
-    return {**_sanitize_tenant(tenant), "trial": trial.trial_status(tenant)}
+    return {
+        **_sanitize_tenant(tenant),
+        "trial": trial.trial_status(tenant),
+        "account": account_state(tenant),
+    }
 
 
 @router.post("/admin-reprompt/{tenant_id}")

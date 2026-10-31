@@ -7,6 +7,7 @@ data, and the fallback triggers only on a missing function, never on empty data.
 from datetime import timedelta
 from types import SimpleNamespace
 
+from unittest.mock import AsyncMock
 import pytest
 
 from routers import leads
@@ -106,6 +107,8 @@ async def test_empty_sql_result_is_not_a_fallback(monkeypatch):
     client.table = counting_table
 
     monkeypatch.setattr(leads.db, "get_client", lambda: client)
+    # The timezone lookup reads the tenant, which isn't the row fetch under test.
+    monkeypatch.setattr(leads.db, "get_tenant_by_id", AsyncMock(return_value={}))
     out = await leads.get_stats("t1", "7d")
     assert calls["n"] == 0, "empty SQL result must not trigger the row-fetch fallback"
     assert out["total_calls"] == 0 and out["series"]["calls"] == [0] * 7
