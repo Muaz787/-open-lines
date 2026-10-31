@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
@@ -84,6 +85,10 @@ CRAWL_EXCLUDES = [
     "cart", "checkout", "account", "tag/", "/tag", "author/", "feed",
 ]
 MAX_CRAWL_PAGES = 20
+# The SDK's own wait loop has no time limit, so the job is polled here instead.
+CRAWL_TIMEOUT_SECONDS = 120
+CRAWL_POLL_SECONDS = 3
+CRAWL_PENDING_STATUSES = {"active", "paused", "pending", "queued", "waiting"}
 
 
 def _page_text(page) -> str:
@@ -106,9 +111,10 @@ async def crawl_website(url: str, max_pages: int = MAX_CRAWL_PAGES) -> tuple[str
     """Bounded, same-domain multi-page crawl via Firecrawl. Returns (combined
     markdown with per-page source headers, list of page metadata).
 
-    Always safe: on ANY failure, empty result, or timeout it falls back to a
-    single-page homepage scrape, so ingestion never breaks. Run off the event
-    loop because the Firecrawl SDK is synchronous."""
+    Always safe: on ANY failure or empty result it falls back to a single-page
+    homepage scrape, so ingestion never breaks. At the time limit it keeps the
+    pages finished so far. Firecrawl may finish the job on its side, as the SDK
+    cannot cancel one. Run off the event loop because the SDK is synchronous."""
     if not FIRECRAWL_API_KEY:
         raise RuntimeError("FIRECRAWL_API_KEY must be set")
 
@@ -123,13 +129,21 @@ async def crawl_website(url: str, max_pages: int = MAX_CRAWL_PAGES) -> tuple[str
             },
             "pageOptions": {"onlyMainContent": True, "formats": ["markdown"]},
         }
-        res = app.crawl_url(url, params=params, wait_until_done=True, timeout=120)
-        # Normalise: SDK may return a list, or a dict with 'data'/'pages'.
-        if isinstance(res, list):
-            return res
-        if isinstance(res, dict):
-            return res.get("data") or res.get("pages") or []
-        return getattr(res, "data", None) or []
+        job = app.crawl_url(url, params=params, wait_until_done=False)
+        deadline = time.monotonic() + CRAWL_TIMEOUT_SECONDS
+        while True:
+            status = app.check_crawl_status(job["jobId"])
+            state = status.get("status")
+            if state == "completed":
+                return status.get("data") or []
+            if state not in CRAWL_PENDING_STATUSES:
+                raise RuntimeError(f"crawl job ended as {state}")
+            if time.monotonic() >= deadline:
+                partial = status.get("partial_data") or []
+                logger.warning("crawl_website: %s hit the %ds limit, keeping %d pages",
+                               url, CRAWL_TIMEOUT_SECONDS, len(partial))
+                return partial
+            time.sleep(CRAWL_POLL_SECONDS)
 
     try:
         pages = await asyncio.to_thread(_do_crawl)
@@ -468,8 +482,6 @@ async def refresh_tenant_knowledge(
          content is in place, so a failure leaves duplicates — never an empty KB —
          and uploaded-document vectors are never touched.
     """
-    import time
-
     # Phase 1 — bounded multi-page crawl (falls back to single page internally).
     # Most likely failure point, so it runs first: if nothing comes back we raise
     # and the caller keeps the existing KB.
