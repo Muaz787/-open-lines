@@ -225,3 +225,19 @@ for (const width of [390, 768, 1024, 1440]) {
     }
   })
 }
+
+// Review images only: set DASHBOARD_SHOTS to a folder to capture every route.
+if (process.env.DASHBOARD_SHOTS) {
+  const shots = process.env.DASHBOARD_SHOTS
+  for (const [name, width, height] of [['desktop', 1440, 900], ['mobile', 390, 844]] as const) {
+    test(`capture ${name} screenshots`, async ({ page, context }) => {
+      await page.setViewportSize({ width, height })
+      await signIn(page, context, mock())
+      for (const route of ROUTES) {
+        await page.goto(BASE + route)
+        await page.waitForTimeout(1200)
+        await page.screenshot({ path: `${shots}/${name}${route.replace('/', '-') || '-overview'}.png` })
+      }
+    })
+  }
+}

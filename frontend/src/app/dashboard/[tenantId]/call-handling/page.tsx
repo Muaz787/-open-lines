@@ -226,7 +226,7 @@ function CallHandlingPage() {
       <div className="db-card" style={{ maxWidth: 560, padding: 26 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--db-text)', margin: 0 }}>Call handling &amp; routing</h1>
-          <span className="db-badge" style={{ background: 'var(--db-gold-grad)', color: 'var(--db-gold-text)', border: '1px solid var(--db-gold-border)' }}>Pro</span>
+          <span className="db-badge" style={{ background: 'var(--db-accent-bg)', color: 'var(--db-accent-text)', border: '1px solid var(--db-accent-border)' }}>Pro</span>
         </div>
         <p style={{ color: 'var(--db-muted)', lineHeight: 1.6, margin: '0 0 10px', fontSize: 14 }}>
           Answer routine calls with AI and transfer the ones that need a person to the right

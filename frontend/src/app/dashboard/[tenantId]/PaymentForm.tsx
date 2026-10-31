@@ -460,14 +460,13 @@ export interface PaymentFormProps {
   onCancel: () => void
 }
 
-// Shared LIGHT Elements appearance. The dashboard uses the Warm Studio light
-// theme (ivory cards, dark navy text), so Stripe's rendered inputs and labels
-// must be light too — otherwise labels wash out to invisible on the ivory card.
+// Shared LIGHT Elements appearance. The dashboard is light-only, so Stripe's
+// rendered inputs and labels must be light too, or labels wash out on the card.
 const ELEMENTS_APPEARANCE = {
   theme: 'stripe' as const,
   variables: {
-    colorPrimary: '#2F6B4F',       // Warm Studio forest-green accent (focus ring)
-    colorBackground: '#FFFFFF',    // white inputs on the ivory card
+    colorPrimary: '#2563EB',       // --db-accent
+    colorBackground: '#FFFFFF',    // white inputs on the canvas card
     colorText: '#001F3F',          // --text (dark navy)
     colorTextSecondary: '#5A6A7A', // --text-2
     colorDanger: '#E53E3E',

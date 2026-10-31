@@ -416,7 +416,7 @@ function DashboardPage() {
             </div>
           )}
 
-          {/* Greeting + brass hero KPI */}
+          {/* Greeting */}
           <div className="db-hero">
             <div className="db-hero-greet">
               <div className="db-hero-eyebrow">
@@ -425,17 +425,6 @@ function DashboardPage() {
               <div className="db-hero-title">{tenant?.business_name || 'Welcome back'}</div>
               <div className="db-hero-sub">Here&apos;s what your receptionist has been up to.</div>
             </div>
-            {stats && (
-              <div className="db-kpi">
-                <div className="db-kpi-label">
-                  Calls answered · {period === 'today' ? 'Today' : period === '7d' ? 'Last 7 days' : 'Last 30 days'}
-                </div>
-                <div className="db-kpi-num">{(stats.total_calls || 0).toLocaleString()}</div>
-                <div className="db-kpi-sub">
-                  {(stats.appointments_booked || 0).toLocaleString()} booked · {(stats.total_leads || 0).toLocaleString()} leads captured
-                </div>
-              </div>
-            )}
           </div>
 
           {statsFailed && !stats && <ErrorState title="We couldn’t load your performance numbers." onRetry={loadStats} />}
