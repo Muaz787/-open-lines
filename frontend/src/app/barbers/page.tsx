@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import VerticalLanding, { type VerticalContent } from '../components/VerticalLanding'
-import { ogImageUrl } from '@/lib/og-card'
 
-const OG = ogImageUrl({ eyebrow: 'For Barbershops', title: 'Keep the clippers moving. Let the AI answer.', benefit: 'Books the right barber and quotes walk-in waits.' })
+const OG = { url: '/og/barbers.jpg', width: 1200, height: 630, alt: 'Barbershop calls, covered. 24/7 AI receptionist for barbershops.' }
 
 export const metadata: Metadata = {
   title: 'AI Receptionist for Barbershops | Open Lines',
@@ -12,6 +11,12 @@ export const metadata: Metadata = {
     title: 'AI Receptionist for Barbershops',
     description: 'Answer every call, book the right barber, and quote walk-in waits — 24/7.',
     url: 'https://www.openlines.ai/barbers',
+    images: [OG],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AI Receptionist for Barbershops',
+    description: 'Answer every call, book the right barber, and quote walk-in waits — 24/7.',
     images: [OG],
   },
 }
