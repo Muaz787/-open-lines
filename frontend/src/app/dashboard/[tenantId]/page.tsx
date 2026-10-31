@@ -67,6 +67,7 @@ interface CalendarStatus {
 }
 
 interface Stats {
+  timezone?: string
   total_calls: number
   total_leads: number
   minutes_handled: number
@@ -434,6 +435,7 @@ function DashboardPage() {
             <div className="db-stats-wrap">
               <div className="db-stats-topbar">
                 <span className="db-stats-title">Performance</span>
+                {stats.timezone && <span className="db-section-hint">Days in {stats.timezone.replace('_', ' ')}</span>}
               </div>
               <div className="db-stats-v2">
                 {[

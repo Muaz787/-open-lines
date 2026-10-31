@@ -1862,6 +1862,10 @@ footer {
 }
 
 @media (max-width: 768px) {
+  /* The row's badges and times take a line of their own on a phone. */
+  .db-lead-main { flex-wrap: wrap; }
+  .db-lead-info { flex: 1 1 calc(100% - 48px); }
+  .db-lead-phone-inline { display: block; }
   .db-two-col { grid-template-columns: 1fr; }
   .db-right-col { flex-direction: row; gap: 10px; }
   .db-stats-v2 { grid-template-columns: repeat(2,1fr); }

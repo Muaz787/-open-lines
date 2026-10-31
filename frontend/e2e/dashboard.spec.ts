@@ -226,6 +226,22 @@ for (const width of [390, 768, 1024, 1440]) {
   })
 }
 
+test('a call row stays readable on a phone', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/calls`)
+  await expect(page.locator('.db-lead-phone-inline').first()).toBeVisible()
+  const phone = await page.locator('.db-lead-phone-inline').first().boundingBox()
+  const badge = await page.locator('.db-lead-main .db-urg-warm').first().boundingBox()
+  expect(phone!.y + phone!.height <= badge!.y || phone!.x + phone!.width <= badge!.x).toBe(true)
+})
+
+test('the sidebar reports the real line state', async ({ page, context }) => {
+  await signIn(page, context, mock({ account: { ...paidAccount, line_active: false } }))
+  await page.goto(`${BASE}/usage`)
+  await expect(page.locator('.db-clinic-tag')).toHaveText('Line off')
+})
+
 // Review images only: set DASHBOARD_SHOTS to a folder to capture every route.
 if (process.env.DASHBOARD_SHOTS) {
   const shots = process.env.DASHBOARD_SHOTS

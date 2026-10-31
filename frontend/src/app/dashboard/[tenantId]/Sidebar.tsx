@@ -160,7 +160,9 @@ export default function Sidebar({
       {tenant && (
         <div className="db-clinic-sw">
           <div className="db-clinic-name">{tenant.business_name}</div>
-          <div className="db-clinic-tag">{tenant.industry} · Active</div>
+          <div className="db-clinic-tag">
+            {[tenant.industry, tenant.account && (tenant.account.line_active ? 'Line on' : 'Line off')].filter(Boolean).join(' · ')}
+          </div>
         </div>
       )}
       <div className="db-sidebar-nav">
