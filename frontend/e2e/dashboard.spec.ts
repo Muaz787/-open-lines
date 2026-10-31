@@ -242,6 +242,52 @@ test('the sidebar reports the real line state', async ({ page, context }) => {
   await expect(page.locator('.db-clinic-tag')).toHaveText('Line off')
 })
 
+test('30d survives the 30-second refresh', async ({ page, context }) => {
+  const m = mock()
+  await page.clock.install()
+  await signIn(page, context, m)
+  await page.goto(`${BASE}?period=30d`)
+  await expect(page.locator('.db-stat-num').first()).toHaveText('5')
+  m.statsRequests.length = 0
+  await page.clock.fastForward(31_000)
+  await expect.poll(() => m.statsRequests.length).toBeGreaterThan(0)
+  expect(m.statsRequests.every(u => u.includes('period=30d'))).toBe(true)
+  await expect(page.locator('.db-stat-num').first()).toHaveText('5')
+})
+
+test('filters persist across pages and reload', async ({ page, context }) => {
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/calls`)
+  await page.getByRole('button', { name: '7d' }).click()
+  await expect(page).toHaveURL(/period=7/)
+  await page.getByRole('button', { name: /WARM|Warm/ }).first().click()
+  await expect(page).toHaveURL(/quality=warm/)
+  await page.reload()
+  await expect(page).toHaveURL(/period=7/)
+  await expect(page).toHaveURL(/quality=warm/)
+  await expect(page.getByText('Sample Caller')).toBeVisible()
+})
+
+test('matching periods ask for the same range on overview and calls', async ({ page, context }) => {
+  const m = mock()
+  await signIn(page, context, m)
+  await page.goto(BASE)
+  await expect(page.locator('.db-stat-num').first()).toHaveText('2')
+  expect(m.statsRequests.at(-1)).toContain('period=7d')
+  await page.goto(`${BASE}/calls?period=7`)
+  await expect(page.getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('mobile navigation opens and moves between pages', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/usage`)
+  await page.getByRole('button', { name: /menu/i }).click()
+  await page.getByRole('link', { name: 'Calls' }).click()
+  await expect(page).toHaveURL(/\/calls/)
+  await expect(page.getByText('Sample Caller')).toBeVisible()
+})
+
 // Review images only: set DASHBOARD_SHOTS to a folder to capture every route.
 if (process.env.DASHBOARD_SHOTS) {
   const shots = process.env.DASHBOARD_SHOTS
@@ -253,6 +299,27 @@ if (process.env.DASHBOARD_SHOTS) {
         await page.goto(BASE + route)
         await page.waitForTimeout(1200)
         await page.screenshot({ path: `${shots}/${name}${route.replace('/', '-') || '-overview'}.png` })
+      }
+    })
+  }
+  const none = { has_subscription: false, provider_state: 'none' }
+  const states: Record<string, Partial<Mock>> = {
+    active: {},
+    trial: { account: { ...paidAccount, subscription: 'trialing' }, provider: { has_subscription: true, provider_state: 'ok', plan: 'pro', status: 'trialing' } },
+    past_due: { account: { ...paidAccount, subscription: 'past_due' }, provider: { has_subscription: true, provider_state: 'ok', plan: 'pro', status: 'past_due' } },
+    manual: { account: manualAccount, provider: none },
+    complimentary: { account: { ...manualAccount, source: 'complimentary' }, provider: none },
+    missing: { provider: { has_subscription: false, provider_state: 'missing' } },
+    none: { account: { ...paidAccount, plan: null, source: 'none', subscription: 'none', has_provider_subscription: false }, provider: none },
+  }
+  for (const [state, over] of Object.entries(states)) {
+    test(`capture billing state ${state}`, async ({ page, context }) => {
+      await signIn(page, context, mock(over))
+      for (const [name, width, height] of [['desktop', 1440, 900], ['mobile', 390, 844]] as const) {
+        await page.setViewportSize({ width, height })
+        await page.goto(`${BASE}/subscription`)
+        await page.waitForTimeout(1200)
+        await page.screenshot({ path: `${shots}/billing-${state}-${name}.png` })
       }
     })
   }
