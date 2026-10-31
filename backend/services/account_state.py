@@ -17,7 +17,7 @@ reported separately by /billing/subscription-details.
 from services import trial
 
 SUBSCRIPTION_STATUSES = {"trialing", "active", "past_due", "canceling", "canceled"}
-FEATURE_STATUSES = {"trialing", "active", "past_due", "canceling"}
+LIVE_STATUSES = {"trialing", "active", "past_due", "canceling"}
 
 
 def account_state(tenant: dict) -> dict:
@@ -47,7 +47,7 @@ def account_state(tenant: dict) -> dict:
 
     return {
         "plan": plan,
-        "feature_plan": plan if status in FEATURE_STATUSES else None,
+        "feature_plan": plan if status in LIVE_STATUSES else None,
         "phone_line": phone_line,
         "source": source,
         "subscription": status,
