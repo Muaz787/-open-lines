@@ -40,6 +40,24 @@ for (const width of [360, 390, 768]) {
   })
 }
 
+for (const path of ['/salons', '/barbers']) {
+  test(`${path} makes only supported claims and states the offer`, async ({ page }) => {
+    const text = await open(page, path)
+    const removed = [
+      'Four out of five', '80%', 'answered in 1 ring', 'answers every call', 'Answers instantly',
+      'never lose', 'Never lose', 'rarely realise', 'never guesses', 'no double-booking',
+      'walk-in waits', 'how busy you are', 'who’s in today', 'Who’s in today', 'reminder',
+      'Studio Luxe', 'Fade Co.', 'every call gets', 'Works with your booking software',
+    ]
+    for (const claim of removed) expect(text, claim).not.toContain(claim)
+    expect(text).toContain('Card required')
+    expect(text).toContain(`from $${PLANS[0].price} CAD a month plus tax`)
+    expect(text).toContain('under 10 minutes')
+    expect(text).toContain('sample data')
+    expect(text).toContain('virtual receptionist')
+  })
+}
+
 test('every homepage industry example is labelled as sample data', async ({ page }) => {
   await open(page, '/')
   for (const label of ['Realtors', 'Dental', 'Legal', 'Beauty']) {
