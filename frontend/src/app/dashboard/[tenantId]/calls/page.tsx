@@ -7,6 +7,7 @@ import { formatCallDate, formatDuration, initials, capitalize } from '../lib/for
 import { urgBadgeClass, dispositionBadgeClass, dispositionLabel } from '../lib/badges'
 import { TranscriptLines } from '../components/TranscriptLines'
 import { LoadingState, EmptyState } from '../components/PageStates'
+import { emptyCallsCopy, type CallPeriod, type CallQuality } from '../lib/emptyStates'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -41,8 +42,8 @@ interface Analytics {
   calls_by_day: Record<string, number>
 }
 
-type UrgencyFilter = 'all' | 'hot' | 'warm' | 'cold'
-type Period = '7' | '30' | '0'
+type UrgencyFilter = CallQuality
+type Period = CallPeriod
 
 export default function CallsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
@@ -100,6 +101,8 @@ export default function CallsPage() {
   const filtered = urgFilter === 'all'
     ? calls
     : calls.filter(c => (c.leads?.urgency ?? 'unknown').toLowerCase() === urgFilter)
+
+  const empty = emptyCallsCopy(urgFilter, period, calls.length)
 
   const hotPct = analytics && analytics.total_calls > 0
     ? Math.round((analytics.urgency_breakdown.hot / analytics.total_calls) * 100)
@@ -192,8 +195,13 @@ export default function CallsPage() {
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
                   </svg>
                 }
-                title="No calls yet."
-                sub="Calls will appear here after your first inbound call."
+                title={empty.title}
+                sub={empty.sub}
+                action={empty.canClear ? (
+                  <button className="db-btn db-btn--ghost db-btn--sm" onClick={() => { setUrgFilter('all'); setPeriod('0') }}>
+                    Clear filters
+                  </button>
+                ) : undefined}
               />
             ) : (
               filtered.map(call => {
@@ -208,7 +216,7 @@ export default function CallsPage() {
                       <div className="db-lead-av">{initials(lead?.name, lead?.phone)}</div>
                       <div className="db-lead-info">
                         <div className="db-lead-name">
-                          {lead?.name ?? 'Unknown'}
+                          {lead?.name ?? 'Unknown caller'}
                           {lead?.phone && <span className="db-lead-phone-inline"> · {lead.phone}</span>}
                         </div>
                         <div className="db-lead-sum">{lead?.summary ?? 'No summary'}</div>

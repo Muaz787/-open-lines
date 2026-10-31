@@ -840,7 +840,7 @@ async def subscription_details(tenant_id: str, authorization: Annotated[str | No
     db_status   = tenant.get("subscription_status") or "none"
 
     if not sub_id:
-        return {"has_subscription": False}
+        return {"has_subscription": False, "provider_state": "none"}
 
     # ── Live Stripe data ──────────────────────────────────────────────────────
     # Wrapped entirely — any Stripe issue falls back to DB-only response so the
@@ -889,13 +889,16 @@ async def subscription_details(tenant_id: str, authorization: Annotated[str | No
             pass
 
     except stripe.InvalidRequestError:
-        # Subscription deleted from Stripe — treat as no subscription
-        return {"has_subscription": False}
+        # Subscription deleted from Stripe — treat as no subscription. Said aloud
+        # so the page can show that this disagrees with the tenant row.
+        logger.warning("subscription_details: %s is not in Stripe for tenant %s", sub_id, tenant_id)
+        return {"has_subscription": False, "provider_state": "missing"}
     except Exception as e:
         # Any other Stripe/network error — return DB fallback so page doesn't break
         logger.error("subscription_details failed for %s: %s", tenant_id, e)
         return {
             "has_subscription":     True,
+            "provider_state":       "unavailable",
             "plan":                 db_plan,
             "status":               db_status,
             "cancel_at_period_end": False,
@@ -907,6 +910,7 @@ async def subscription_details(tenant_id: str, authorization: Annotated[str | No
 
     return {
         "has_subscription":      True,
+        "provider_state":        "ok",
         "plan":                  db_plan,
         "status":                sub_status,
         "interval":              interval,

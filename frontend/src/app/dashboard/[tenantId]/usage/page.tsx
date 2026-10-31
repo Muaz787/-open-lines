@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { capitalize } from '../lib/format'
 import { LoadingState, EmptyState } from '../components/PageStates'
+import { presentAccount, type Account } from '../lib/accountState'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -39,6 +40,7 @@ interface Tenant {
   industry: string
   subscription_plan?: string
   subscription_status?: string
+  account?: Account
 }
 
 function ProgressBar({ pct }: { pct: number }) {
@@ -97,6 +99,7 @@ export default function UsagePage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  const account = presentAccount(tenant?.account, tenant ? 'ready' : loading ? 'loading' : 'error')
   const pct = usage?.usage_pct ?? 0
   const barColor = pct >= 100 ? 'var(--db-danger)' : pct >= 80 ? 'var(--db-warn-text)' : 'var(--db-accent)'
 
@@ -137,8 +140,10 @@ export default function UsagePage() {
                       <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>
                         {PLAN_PRICE[usage.plan] ?? ''}
                       </span>
-                      {tenant?.subscription_status === 'active' && (
-                        <span className="db-badge db-badge--success">Active</span>
+                      {account.statusLabel && (
+                        <span className={`db-badge db-badge--${account.tone === 'neutral' ? 'info' : account.tone}`}>
+                          {account.statusLabel}
+                        </span>
                       )}
                     </div>
                   </div>

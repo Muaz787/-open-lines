@@ -12,6 +12,7 @@ import { urgBadgeClass } from './lib/badges'
 import { TranscriptLines } from './components/TranscriptLines'
 import { Toast } from './components/Toast'
 import { LoadingState, EmptyState } from './components/PageStates'
+import { presentAccount, type Account } from './lib/accountState'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -51,6 +52,7 @@ interface Tenant {
   last_crawl_at?: string
   subscription_plan?: string
   subscription_status?: string
+  account?: Account
   square_appointments_enabled?: boolean
 }
 
@@ -340,7 +342,7 @@ function DashboardPage() {
     setTimeout(() => setCopiedPhone(null), 2000)
   }
 
-  const isSubscribed = tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling'
+  const account = presentAccount(tenant?.account, tenant ? 'ready' : loading ? 'loading' : 'error')
 
   // ── Loading ───────────────────────────────────────────────
   if (loading) {
@@ -445,9 +447,7 @@ function DashboardPage() {
                     <div key={label} className="db-stat-card">
                       <div className="db-stat-meta">
                         <span className="db-stat-label">{label}</span>
-                        <span className={`db-stat-delta ${value > 0 && !noData ? 'db-delta-up' : 'db-delta-neu'}`}>
-                          {noData ? '—' : value > 0 ? `↑ ${periodLabel}` : '—'}
-                        </span>
+                        <span className="db-stat-delta db-delta-neu">{periodLabel}</span>
                       </div>
                       <div className="db-stat-num">
                         {noData ? <span style={{ color: 'var(--db-faint)' }}>—</span> : value.toLocaleString()}
@@ -469,7 +469,7 @@ function DashboardPage() {
 
 
               {/* Subscription (if no active plan) */}
-              {!isSubscribed && (
+              {account.needsPlan && (
                 <div className="db-sub-compact">
                   {payingPlan ? (
                     <PaymentForm
@@ -506,23 +506,17 @@ function DashboardPage() {
               )}
 
               {/* Subscription — active plan management link */}
-              {(tenant?.subscription_status === 'active' || tenant?.subscription_status === 'canceling' || tenant?.subscription_status === 'past_due') && (
+              {tenant && !account.needsPlan && (
                 <div className="db-sub-compact">
                   <div style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)' }}>
-                        {tenant?.subscription_plan
-                          ? `${capitalize(tenant.subscription_plan)} Plan`
-                          : 'Active Plan'}
+                        {account.planLabel}
                       </span>
-                      {tenant?.subscription_status === 'active' && (
-                        <span className="db-badge db-badge--success">Active</span>
-                      )}
-                      {tenant?.subscription_status === 'canceling' && (
-                        <span className="db-badge db-badge--warn">Canceling</span>
-                      )}
-                      {tenant?.subscription_status === 'past_due' && (
-                        <span className="db-badge db-badge--danger">Past due</span>
+                      {account.statusLabel && (
+                        <span className={`db-badge db-badge--${account.tone === 'neutral' ? 'info' : account.tone}`}>
+                          {account.statusLabel}
+                        </span>
                       )}
                     </div>
                     <Link
@@ -541,7 +535,7 @@ function DashboardPage() {
                 <div className="db-section-title-row">
                   <div className="db-section-icon" style={{ background: '#fff5f0' }}>⚡</div>
                   <span className="db-section-name">Lead Queue</span>
-                  <span className="db-section-hint">auto-refreshes 30s</span>
+                  <span className="db-section-hint">Latest leads, all time</span>
                 </div>
               </div>
 
@@ -570,13 +564,13 @@ function DashboardPage() {
                         <div className="db-lead-av">{initials(lead.name, lead.phone)}</div>
                         <div className="db-lead-info">
                           <div className="db-lead-name">
-                            {lead.name ?? 'Unknown'}
+                            {lead.name ?? 'Unknown caller'}
                             {lead.phone && <span className="db-lead-phone-inline"> · {lead.phone}</span>}
                           </div>
                           <div className="db-lead-sum">{lead.summary ?? 'No summary yet'}</div>
                         </div>
                         <span className={urgBadgeClass(lead.urgency)}>
-                          {lead.urgency ? capitalize(lead.urgency) : 'New'}
+                          {lead.urgency ? capitalize(lead.urgency) : 'Unrated'}
                         </span>
                         <span className="db-lead-time">{timeAgo(lead.updated_at || lead.created_at)}</span>
                         <div className="db-lead-actions" onClick={e => e.stopPropagation()}>

@@ -7,6 +7,7 @@ import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm, AddressCollectForm 
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
+import { presentAccount, type Account, type ProviderState } from '../lib/accountState'
 
 import { authedFetch } from '@/lib/api'
 import { trackConversion } from '@/lib/analytics'
@@ -39,6 +40,7 @@ interface PaymentMethod {
 
 interface SubDetails {
   has_subscription: boolean
+  provider_state?: ProviderState
   plan?: PlanId
   status?: string
   interval?: 'month' | 'year'
@@ -305,6 +307,7 @@ function CancelModal({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 interface SidebarTenant {
+  account?: Account
   id: string; business_name: string; industry: string
   twilio_phone_number?: string; subscription_plan?: string; subscription_status?: string
 }
@@ -498,6 +501,11 @@ function SubscriptionPage() {
     }
   }
 
+  const account = presentAccount(
+    sidebarTenant?.account,
+    sidebarTenant ? 'ready' : 'loading',
+    subDetails?.provider_state,
+  )
   const currentPlan = PLANS.find(p => p.id === subDetails?.plan)
   const periodEnd   = subDetails?.current_period_end ? fmtDate(subDetails.current_period_end) : null
   const isCanceling = subDetails?.cancel_at_period_end
@@ -677,10 +685,14 @@ function SubscriptionPage() {
               </div>
             )}
           </div>
-        ) : (
+        ) : subDetails && (
           <div className="db-card" style={{ padding: '20px', marginBottom: 32 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No active subscription</div>
-            <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>Choose a plan below to get started.</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>
+              {account.billingNotice?.title ?? 'No active subscription'}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--db-muted)' }}>
+              {account.billingNotice?.body ?? 'Choose a plan below to get started.'}
+            </div>
           </div>
         )}
 
@@ -792,7 +804,7 @@ function SubscriptionPage() {
         </AnimatePresence>
 
         {/* ── Change plan ── */}
-        {!payingPlan && (
+        {!payingPlan && subDetails?.provider_state !== 'missing' && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
