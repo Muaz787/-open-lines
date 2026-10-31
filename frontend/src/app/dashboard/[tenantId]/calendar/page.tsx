@@ -7,6 +7,7 @@ import { trackEvent } from '@/lib/analytics'
 import { Toast } from '../components/Toast'
 import { LoadingState, EmptyState } from '../components/PageStates'
 import SquareAppointmentsCard from './SquareAppointmentsCard'
+import { useQueryParam } from '../lib/useQueryParam'
 
 import { authedFetch } from '@/lib/api'
 import { CALENDAR_PROVIDERS } from '@/lib/calendarProviders'
@@ -52,6 +53,8 @@ function fmtTime(iso: string): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
+const APPOINTMENT_TABS = ['upcoming', 'past'] as const
+
 function isUpcoming(iso: string): boolean {
   return new Date(iso) > new Date()
 }
@@ -66,7 +69,8 @@ function CalendarPage() {
   const [calDisconnecting, setCalDisconnecting] = useState(false)
   const [msDisconnecting, setMsDisconnecting]   = useState(false)
   const [toast, setToast]                 = useState<string | null>(null)
-  const [showPast, setShowPast]           = useState(false)
+  const [apptTab, setApptTab] = useQueryParam('appointments', APPOINTMENT_TABS, 'upcoming')
+  const showPast = apptTab === 'past'
 
   // Availability settings
   const [bhStart, setBhStart]   = useState<number>(9)
@@ -580,13 +584,15 @@ function CalendarPage() {
           <div className="cal-toggle-bar">
             <button
               className={`db-pill${!showPast ? ' active' : ''}`}
-              onClick={() => setShowPast(false)}
+              aria-pressed={!showPast}
+              onClick={() => setApptTab('upcoming')}
             >
               Upcoming ({upcoming.length})
             </button>
             <button
               className={`db-pill${showPast ? ' active' : ''}`}
-              onClick={() => setShowPast(true)}
+              aria-pressed={showPast}
+              onClick={() => setApptTab('past')}
             >
               Past &amp; Cancelled ({past.length})
             </button>

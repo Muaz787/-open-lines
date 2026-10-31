@@ -6,7 +6,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { timeAgo, capitalize } from '../lib/format'
 import { urgBadgeClass, statusBadgeClass } from '../lib/badges'
 import { Toast } from '../components/Toast'
-import { LoadingState, EmptyState } from '../components/PageStates'
+import { LoadingState, EmptyState, ErrorState } from '../components/PageStates'
+import { useQueryParam } from '../lib/useQueryParam'
+import { disclosureProps } from '../lib/disclosure'
 
 import { authedFetch, peekJson } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -27,6 +29,7 @@ interface Lead {
 }
 
 type StatusFilter = 'all' | 'new' | 'contacted' | 'converted'
+const LEAD_FILTERS = ['all', 'new', 'contacted', 'converted'] as const
 
 function LeadsPage() {
   const { tenantId } = useParams<{ tenantId: string }>()
@@ -36,13 +39,20 @@ function LeadsPage() {
   const [leads, setLeads]                 = useState<Lead[]>(() => peekJson<Lead[]>(leadsUrl) ?? [])
   const [loading, setLoading]             = useState(() => peekJson(leadsUrl) === undefined)
   const [toast, setToast]                 = useState<string | null>(null)
-  const [filter, setFilter]               = useState<StatusFilter>('all')
+  const [filter, setFilter] = useQueryParam<StatusFilter>('status', LEAD_FILTERS, 'all')
+  const [failed, setFailed]               = useState(false)
   const [expanded, setExpanded]           = useState<string | null>(null)
   const [updating, setUpdating]           = useState<string | null>(null)
 
   const loadLeads = useCallback(async () => {
-    const res = await authedFetch(leadsUrl)
-    if (res.ok) setLeads(await res.json())
+    try {
+      const res = await authedFetch(leadsUrl)
+      if (!res.ok) throw new Error(String(res.status))
+      setLeads(await res.json())
+      setFailed(false)
+    } catch {
+      setFailed(true)
+    }
   }, [leadsUrl])
 
   useEffect(() => {
@@ -119,6 +129,7 @@ function LeadsPage() {
               <button
                 key={f}
                 className={`db-pill${filter === f ? ' active' : ''}`}
+                aria-pressed={filter === f}
                 onClick={() => setFilter(f)}
               >
                 {capitalize(f)}
@@ -135,7 +146,9 @@ function LeadsPage() {
           </div>
 
           {/* Lead list */}
-          {filtered.length === 0 ? (
+          {failed && leads.length === 0 ? (
+            <div className="db-card"><ErrorState title="We couldn’t load your leads." onRetry={loadLeads} /></div>
+          ) : filtered.length === 0 ? (
             <div className="db-card">
               <EmptyState
                 icon={
@@ -164,7 +177,7 @@ function LeadsPage() {
                         display: 'flex', alignItems: 'center', gap: 12,
                         padding: '12px 14px', cursor: 'pointer',
                       }}
-                      onClick={() => setExpanded(isOpen ? null : lead.id)}
+                      {...disclosureProps(isOpen, () => setExpanded(isOpen ? null : lead.id), `lead-${lead.id}`)}
                     >
                       {/* Name / phone */}
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -206,7 +219,7 @@ function LeadsPage() {
                     {/* Expanded details */}
                     <AnimatePresence>
                       {isOpen && (
-                        <motion.div
+                        <motion.div id={`lead-${lead.id}`}
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: 'auto', opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
