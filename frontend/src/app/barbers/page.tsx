@@ -5,18 +5,18 @@ const OG = { url: '/og/barbers.jpg', width: 1200, height: 630, alt: 'Barbershop 
 
 export const metadata: Metadata = {
   title: 'AI Receptionist for Barbershops | Open Lines',
-  description: 'Stop putting down the clippers to answer the phone. Open Lines answers every call, books the right barber, and handles walk-in questions 24/7.',
+  description: 'Open Lines answers barbershop calls 24/7, books the right barber, and handles questions about hours, prices and walk-ins.',
   alternates: { canonical: '/barbers' },
   openGraph: {
     title: 'AI Receptionist for Barbershops',
-    description: 'Answer every call, book the right barber, and quote walk-in waits — 24/7.',
+    description: 'Answer calls, book the right barber, and handle walk-in questions 24/7.',
     url: 'https://www.openlines.ai/barbers',
     images: [OG],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'AI Receptionist for Barbershops',
-    description: 'Answer every call, book the right barber, and quote walk-in waits — 24/7.',
+    description: 'Answer calls, book the right barber, and handle walk-in questions 24/7.',
     images: [OG],
   },
 }
@@ -26,39 +26,39 @@ const BARBERS: VerticalContent = {
   name: 'AI Receptionist for Barbershops',
   shortName: 'Barbershops',
   eyebrow: 'For Barbershops',
-  h1: 'Never put down the clippers to answer the phone again.',
+  h1: 'Keep your hands on the cut. Let Open Lines handle the calls.',
   subhead:
-    'Open Lines is an AI receptionist that answers every call mid-cut — booking chairs, quoting walk-in waits, and telling callers which barber is in. The phone stops interrupting your fade, and no booking gets missed.',
-  trustline: 'Live in under 10 minutes · Books with the right barber · Cancel anytime',
+    'Open Lines is an AI receptionist that answers calls while you’re mid-cut, books appointments with the barber a caller asks for, and answers questions about your hours, prices and walk-ins.',
+  trustline: 'Works with Google Calendar, Outlook and Square Appointments',
   heroArt: 'call',
 
   painsLabel: 'The real cost',
   painsHeading: 'The phone always rings mid-fade.',
   pains: [
-    { stat: 'Every ring', title: 'Interrupts the cut', body: 'Stop to grab the phone and you rush the line-up. Let it ring and the booking goes to the shop down the street.' },
+    { stat: 'Every ring', title: 'Interrupts the cut', body: 'Stop to grab the phone and you rush the line-up. Let it ring and the caller may try the shop down the street.' },
     { stat: '3 questions', title: 'Asked all day long', body: '“You open?” “Take walk-ins?” “Is Marcus in today?” — the same calls, on repeat, while your hands are busy.' },
-    { stat: 'Nights + Mondays', title: 'Missed when you’re closed', body: 'Guys book when they clock off work. A call after close is a head of hair you never hear from again.' },
+    { stat: 'Nights + Mondays', title: 'Missed when you’re closed', body: 'Clients often call after work. A call after close may be a booking you never hear about.' },
   ],
 
   solutionLabel: 'The fix',
-  solutionHeading: 'It answers like the guy behind the counter.',
-  solutionSub: 'Open Lines knows your hours, prices and barbers from your own website, books chairs into your app, and handles the walk-in questions — so you keep the clippers moving.',
+  solutionHeading: 'It answers the way your shop would.',
+  solutionSub: 'Open Lines uses the hours, prices and team details you give it, books into your calendar, and answers walk-in questions, so you can keep the clippers moving.',
   features: [
-    { icon: '💈', title: 'Books the right barber', body: 'Client wants a specific barber and service? It books that chair, at a real open slot, in your booking app.' },
-    { icon: '🚶', title: 'Quotes walk-in waits', body: 'Answers “are you busy right now?” and points walk-ins to the next available time.' },
-    { icon: '🕒', title: 'Knows who’s in today', body: 'Tells callers which barbers are working and when they’re next free.' },
-    { icon: '💬', title: 'Answers instantly', body: 'Hours, pricing, location, parking — all handled from your website, no interruption to you.' },
-    { icon: '📲', title: 'Cuts no-shows', body: 'Texts a confirmation and reminder so booked chairs actually show up.' },
-    { icon: '🌙', title: 'Works 24/7', body: 'After close, weekends, holidays — every call gets answered and booked.' },
+    { icon: '💈', title: 'Books the right barber', body: 'Client wants a specific barber and service? It checks that barber’s availability and books an open time in your calendar.' },
+    { icon: '🚶', title: 'Handles walk-in questions', body: 'Explains your walk-in policy from your knowledge base and offers the next open appointment.' },
+    { icon: '🕒', title: 'Checks a barber’s times', body: 'When a caller asks for a barber by name, it checks that barber’s open times.' },
+    { icon: '💬', title: 'Answers common questions', body: 'Hours, pricing, location and parking, answered from your website and knowledge base.' },
+    { icon: '📲', title: 'Confirms by text', body: 'Texts the client a confirmation after booking.' },
+    { icon: '🌙', title: 'Works 24/7', body: 'After close, weekends and holidays, your AI receptionist is there to take the call.' },
   ],
 
   setup: {
     heading: 'What we configure for barbershops',
-    intro: 'Your AI receptionist is tuned to how a shop actually runs — the right barber, the walk-in wait, and who’s on the floor today.',
+    intro: 'Your AI receptionist is set up with your barbers, your services and your walk-in policy.',
     points: [
-      { title: 'Barber & chair matching', body: 'It learns your barbers and services and books the requested barber at a real open slot, in the booking app you already use.' },
-      { title: 'Walk-in wait quotes', body: 'It answers “are you busy right now?”, quotes the next available time, and points walk-ins to a slot instead of a busy signal.' },
-      { title: 'Who’s in today', body: 'It knows the day’s roster, so it tells callers which barbers are working and when they’re next free.' },
+      { title: 'Barber & chair matching', body: 'Add your barbers and services, and it can book the requested barber at an open time in your connected calendar.' },
+      { title: 'Walk-in questions', body: 'Add your walk-in policy to its knowledge base. It explains the policy and can offer the next open appointment. It doesn’t track how busy the shop is right now.' },
+      { title: 'Barber availability', body: 'It checks a named barber’s calendar availability when a caller asks to book with them.' },
     ],
   },
   intake: {
@@ -69,27 +69,27 @@ const BARBERS: VerticalContent = {
       'Preferred date and time',
       'Walk-in or booked appointment',
       'Contact name and phone',
-      'Confirmation + reminder sent',
+      'Confirmation text sent',
     ],
   },
 
   demoMock: { name: 'Chris D.', service: 'Skin fade + beard', when: 'Sat 11:00 AM', with: 'Marcus' },
-  textback: { business: 'Fade Co.', reply: 'You got any spots for a fade today?' },
+  textback: { business: 'Sample Barbershop', reply: 'You got any spots for a fade today?' },
 
   integrationsHeading: 'Plugs into the tools you already run.',
   integrations: ['Google Calendar', 'Outlook', 'Square Appointments'],
 
   faqs: [
-    { q: 'Can it book with a specific barber?', a: 'Yes. It books the barber and service the caller asks for, using your real live availability.' },
-    { q: 'Can it handle walk-in questions?', a: 'It answers how busy you are and quotes the next open slot, so walk-in callers know when to come in.' },
-    { q: 'Does it work with my calendar?', a: 'It books into Google Calendar, Outlook and Square Appointments with your real live availability — no change to how you already run the shop.' },
-    { q: 'Will callers know it’s AI?', a: 'It sounds natural and to the point, and always discloses that it’s a virtual assistant, as required.' },
+    { q: 'Can it book with a specific barber?', a: 'Yes. Add your team, and it checks the requested barber’s availability and books the service the caller asks for.' },
+    { q: 'Can it handle walk-in questions?', a: 'Yes. It explains your walk-in policy and can offer the next open appointment. It doesn’t quote live wait times, because it can’t see how busy the shop is.' },
+    { q: 'Does it work with my calendar?', a: 'It works with Google Calendar, Outlook and Square Appointments. If you use another booking app, it can’t book into that app directly.' },
+    { q: 'Will callers know it’s AI?', a: 'Yes. Each call opens by saying it’s a virtual receptionist and that the call may be recorded.' },
   ],
 
   related: {
     integrations: [
       { href: '/integrations/square-appointments', label: 'Book into Square Appointments', sub: 'Live Square availability.' },
-      { href: '/integrations/google-calendar', label: 'Book into Google Calendar', sub: 'Real-time, no double-booking.' },
+      { href: '/integrations/google-calendar', label: 'Book into Google Calendar', sub: 'Checks live availability.' },
     ],
     guides: [
       { href: '/learn/walk-ins-versus-appointments', label: 'Walk-ins versus appointments', sub: 'What the phone should say.' },
@@ -100,7 +100,7 @@ const BARBERS: VerticalContent = {
   },
 
   ctaHeading: 'Keep the clippers moving. Let the AI answer.',
-  ctaSub: 'Set it up in under 10 minutes and never lose another booking to a phone you couldn’t reach.',
+  ctaSub: 'Set it up in under 10 minutes and let it take calls while your hands are full.',
 }
 
 export default function BarbersPage() {
