@@ -125,6 +125,9 @@ test('a manual plan is never shown as a paid subscription', async ({ page, conte
   await expect(status(page)).not.toContainText('Active')
   await page.goto(`${BASE}/subscription`)
   await expect(page.getByText('No paid subscription', { exact: true })).toBeVisible()
+  await expect(page.getByText(/support@openlines\.ai/)).toBeVisible()
+  await expect(page.getByText('Choose a Plan')).toHaveCount(0)
+  await expect(page.getByText('Change Plan')).toHaveCount(0)
 })
 
 const status = (page: Page) => page.getByTestId('account-status')

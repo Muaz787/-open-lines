@@ -33,7 +33,21 @@ A subscription only reads Active after a direct Stripe lookup confirms it. The d
 | `missing` | Stripe rejected the stored subscription ID | "Unverified"; plan picker hidden to avoid double billing; line and features unchanged |
 | `unavailable` | Stripe couldn't be reached | "Not verified right now"; plan picker hidden |
 
-Complimentary accounts don't see the plan picker, because no deliberate conversion flow exists. This is a dashboard rule; the billing API doesn't enforce it.
+Complimentary and manual accounts don't see the plan picker, because no deliberate conversion flow exists; both are pointed to support.
+
+The billing API enforces this too. `_guard_plan_purchase` runs in `/create-checkout`, `/create-subscription`, `/upgrade-plan` and `/downgrade-plan` before anything is written:
+
+| Account | Result |
+|---|---|
+| Complimentary or manual | 409 |
+| Live status, but Stripe rejects the subscription ID | 409 |
+| Stripe can't be reached | 503 |
+| `/create-checkout` when a subscription exists and hasn't ended | 409 |
+| `/create-subscription` when Stripe says `unpaid` or `paused` | 409 |
+
+These keep working: a first purchase, resubscribing after cancellation (even if Stripe no longer has the old ID), plan changes on a trialing, past-due or canceling subscription, resuming an incomplete payment, and upgrades and downgrades on an active plan.
+
+A comped tenant that also has a live subscription still sees the picker, because the subscription decides the label, but the API refuses the change. No production tenant is in this state.
 
 While loading, labels are empty and no plan is offered. After a failed request, the label is "Plan unavailable", never "No active plan".
 
