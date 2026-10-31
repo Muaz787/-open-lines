@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { presentAccount, type Account } from './lib/accountState'
+import type { Account } from './lib/accountState'
+import { useAccountView } from './lib/AccountContext'
 
 export const BOOKING_INDUSTRIES = new Set([
   'realtor', 'clinic', 'dental', 'legal', 'plumber',
@@ -131,11 +132,12 @@ export default function Sidebar({
   const isActive = (href: string) => href === base ? pathname === base : pathname.startsWith(href)
 
   // No badge until the tenant has loaded: a guess here would flash a wrong plan.
-  const account = presentAccount(tenant?.account, tenant ? 'ready' : 'loading')
+  const account = useAccountView()
   const planBadge = () => {
-    if (!account.statusLabel) return null
-    const tone = { success: 'green', warn: 'amber', danger: 'red', neutral: 'amber' }[account.tone]
-    return <span className={`db-nav-badge db-badge-${tone}`}>{account.statusLabel}</span>
+    const { label, tone } = account.subscription
+    if (!label) return null
+    const colour = { success: 'green', warn: 'amber', danger: 'red', neutral: 'amber' }[tone]
+    return <span className={`db-nav-badge db-badge-${colour}`} title={`Subscription: ${label}`}>{label}</span>
   }
   const click = onNavigate
 

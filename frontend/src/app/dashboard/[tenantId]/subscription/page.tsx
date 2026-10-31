@@ -7,7 +7,9 @@ import { PaymentForm, UpdatePaymentForm, UpgradePaymentForm, AddressCollectForm 
 import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
-import { presentAccount, type Account, type ProviderState } from '../lib/accountState'
+import { presentAccount, type ProviderState } from '../lib/accountState'
+import { useAccountState } from '../lib/AccountContext'
+import { AccountStatus } from '../components/AccountStatus'
 
 import { authedFetch } from '@/lib/api'
 import { trackConversion } from '@/lib/analytics'
@@ -307,7 +309,6 @@ function CancelModal({
 // ── Main page ────────────────────────────────────────────────────────────────
 
 interface SidebarTenant {
-  account?: Account
   id: string; business_name: string; industry: string
   twilio_phone_number?: string; subscription_plan?: string; subscription_status?: string
 }
@@ -501,11 +502,9 @@ function SubscriptionPage() {
     }
   }
 
-  const account = presentAccount(
-    sidebarTenant?.account,
-    sidebarTenant ? 'ready' : 'loading',
-    subDetails?.provider_state,
-  )
+  // This page's own lookup is the freshest answer, so it wins once it has landed.
+  const shared = useAccountState()
+  const account = presentAccount(shared.account, shared.status, subDetails?.provider_state ?? shared.provider)
   const currentPlan = PLANS.find(p => p.id === subDetails?.plan)
   const periodEnd   = subDetails?.current_period_end ? fmtDate(subDetails.current_period_end) : null
   const isCanceling = subDetails?.cancel_at_period_end
@@ -599,6 +598,8 @@ function SubscriptionPage() {
         <div style={{ maxWidth: 1080 }}>
 
         {/* ── Current plan card ── */}
+        <div style={{ marginBottom: 16 }}><AccountStatus view={account} /></div>
+
         {subDetails?.has_subscription && subDetails.status !== 'canceled' ? (
           <div className="db-card" style={{ overflow: 'hidden', marginBottom: 32 }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--db-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -804,7 +805,7 @@ function SubscriptionPage() {
         </AnimatePresence>
 
         {/* ── Change plan ── */}
-        {!payingPlan && subDetails?.provider_state !== 'missing' && (
+        {!payingPlan && account.canChoosePlan && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>

@@ -8,6 +8,7 @@ import RelatedLinks from './RelatedLinks'
 import CustomerStory, { type Story } from './CustomerStory'
 import { FaqJsonLd, BreadcrumbJsonLd, ServiceJsonLd } from './JsonLd'
 import { trackEvent, getUtmParams } from '@/lib/analytics'
+import { PLANS } from '@/lib/plans'
 
 /* ─────────────────────────────────────────────────────────────
    Content model — one plain, serializable object per vertical.
@@ -77,7 +78,7 @@ function TrialCta({ slug, location, secondary = true }: { slug: string; location
         )}
       </div>
       <p style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 12 }}>
-        Free for 7 days, cancel anytime. Live in under 10 minutes.
+        Free for 7 days, then from ${PLANS[0].price} CAD a month plus tax. Card required. Cancel anytime. Live in under 10 minutes.
       </p>
     </div>
   )
@@ -89,8 +90,7 @@ function CallMock() {
     <div style={mockCard}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Incoming call · answered in 1 ring</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>Example call · sample data</span>
         </div>
         <span style={{ fontSize: 11, color: 'var(--text-3)', fontFamily: 'monospace' }}>00:14</span>
       </div>
@@ -255,7 +255,8 @@ export default function VerticalLanding({ content: c }: { content: VerticalConte
         <section className="sec">
           <div className="wrap">
             <div className="sec-label" style={{ textAlign: 'center' }}>See it in action</div>
-            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', textAlign: 'center', marginBottom: 36 }}>Answered, booked, and confirmed by text — automatically.</h2>
+            <h2 style={{ fontFamily: 'var(--font-syne), sans-serif', textAlign: 'center', marginBottom: 36 }}>Answered, booked, and confirmed by text.</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', margin: '-24px 0 28px' }}>Illustrative example · sample data</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'center', alignItems: 'flex-start' }}>
               <CalendarMock name={c.demoMock.name} service={c.demoMock.service} when={c.demoMock.when} withWho={c.demoMock.with} />
               <TextbackMock business={c.textback.business} reply={c.textback.reply} />
