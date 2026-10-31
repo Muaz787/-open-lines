@@ -6,7 +6,6 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { capitalize } from '../lib/format'
 import { LoadingState, EmptyState } from '../components/PageStates'
-import type { Account } from '../lib/accountState'
 import { useAccountView } from '../lib/AccountContext'
 import { AccountStatus } from '../components/AccountStatus'
 
@@ -34,15 +33,6 @@ interface UsageSummary {
   overage_cost_cents: number
   usage_pct: number
   billing_period_anchor?: string
-}
-
-interface Tenant {
-  id: string
-  business_name: string
-  industry: string
-  subscription_plan?: string
-  subscription_status?: string
-  account?: Account
 }
 
 function ProgressBar({ pct }: { pct: number }) {
@@ -78,26 +68,19 @@ function ProgressBar({ pct }: { pct: number }) {
 export default function UsagePage() {
   const { tenantId } = useParams<{ tenantId: string }>()
 
-  const tenantUrl = `${API}/onboarding/status/${tenantId}`
   const usageUrl  = `${API}/billing/usage/${tenantId}`
   // A tab shown before paints its last data at once; fetchData then refreshes it.
-  // The tenant is usually already cached by the dashboard layout.
-  const [tenant, setTenant]   = useState<Tenant | null>(() => peekJson<Tenant>(tenantUrl) ?? null)
   const [usage, setUsage]     = useState<UsageSummary | null>(() => peekJson<UsageSummary>(usageUrl) ?? null)
   const [loading, setLoading] = useState(() => peekJson(usageUrl) === undefined)
 
   const fetchData = useCallback(async () => {
     if (peekJson(usageUrl) === undefined) setLoading(true)
     try {
-      const [tenantRes, usageRes] = await Promise.all([
-        authedFetch(tenantUrl),
-        authedFetch(usageUrl),
-      ])
-      if (tenantRes.ok) setTenant(await tenantRes.json())
+      const usageRes = await authedFetch(usageUrl)
       if (usageRes.ok) setUsage(await usageRes.json())
     } catch {}
     finally { setLoading(false) }
-  }, [tenantUrl, usageUrl])
+  }, [usageUrl])
 
   useEffect(() => { fetchData() }, [fetchData])
 
