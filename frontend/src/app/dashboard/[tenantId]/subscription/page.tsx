@@ -9,7 +9,8 @@ import { LoadingState } from '../components/PageStates'
 import { statusBadgeClass } from '../lib/badges'
 
 import { authedFetch } from '@/lib/api'
-import { trackConversion, trackAdsConversion, ADS_SUBSCRIPTION_CONVERSION } from '@/lib/analytics'
+import { trackConversion } from '@/lib/analytics'
+import { trackPaidSubscriptionConversion } from '@/lib/adsConversion'
 import { PLANS as PLAN_CATALOG, type PlanId } from '@/lib/plans'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -776,8 +777,9 @@ function SubscriptionPage() {
                       value,
                       currency: 'CAD',
                     })
-                    // Google Ads conversion (for campaign bidding/ROAS).
-                    trackAdsConversion(ADS_SUBSCRIPTION_CONVERSION, { value, currency: 'CAD' })
+                    // Google Ads conversion (for campaign bidding/ROAS). A no-op
+                    // until the paid action's label is configured.
+                    trackPaidSubscriptionConversion(tenantId, value, 'CAD')
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
                     await fetchData()

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
 import { TrialBanner, type TrialInfo } from './TrialBanner'
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
+import { resolvePendingTrialConversion } from '@/lib/adsConversion'
 
 import { authedFetch, clearResponseCache } from '@/lib/api'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -74,7 +75,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       authedFetch(`${API}/leads/${tenantId}`),
       authedFetch(`${API}/calendar/appointments/${tenantId}`),
     ]).then(async ([tRes, lRes, aRes]) => {
-      if (tRes.ok) { const t = await tRes.json(); setTenant(t); setTrial(t.trial ?? null) }
+      if (tRes.ok) {
+        const t = await tRes.json()
+        setTenant(t)
+        setTrial(t.trial ?? null)
+        resolvePendingTrialConversion(tenantId, t.trial?.card_trial === true)
+      }
       if (lRes.ok) { const d = await lRes.json(); setLeads(Array.isArray(d) ? d.length : 0) }
       if (aRes.ok) { const d = await aRes.json(); setAppts(Array.isArray(d) ? d.length : 0) }
     }).catch(() => {})

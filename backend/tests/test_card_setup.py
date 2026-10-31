@@ -260,6 +260,7 @@ async def test_provision_starts_the_trial_after_the_tenant_exists():
     # Never charge for a line that failed to come up.
     assert calls == ["provision", "subscribe"]
     assert out["trial"]["trial_ends_at"] == "2026-08-16T00:00:00+00:00"
+    assert out["trial_activation"] == "card"
 
 
 @pytest.mark.asyncio
@@ -280,6 +281,24 @@ async def test_signup_survives_a_failed_trial_subscription():
 
     assert out["tenant_id"] == "t11"
     assert "trial" not in out
+    assert out["trial_activation"] == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_no_trial_activation_without_a_live_line():
+    prov_result = {"tenant_id": "t12", "phone_number": ""}
+    body = _provision_body(
+        card_setup_token=subscriptions.issue_card_setup_token("cus_ok"),
+        payment_method_id="pm_ok", plan="pro",
+    )
+    with patch("services.provisioning.provision_tenant", new=AsyncMock(return_value=prov_result)), \
+         patch("db.supabase.create_auth_user", new=AsyncMock(return_value="u1")), \
+         patch("db.supabase.update_tenant", new=AsyncMock()), \
+         patch("services.subscriptions.create_trial_subscription",
+               new=AsyncMock(return_value={"ok": False, "error": "stripe_error"})):
+        out = await onboarding.provision(None, body)
+
+    assert "trial_activation" not in out
 
 
 @pytest.mark.asyncio

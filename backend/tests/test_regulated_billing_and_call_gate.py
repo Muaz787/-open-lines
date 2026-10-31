@@ -72,6 +72,12 @@ async def _provision(plan="pro", *, token=True, customer=CUS):
 
 
 @pytest.mark.asyncio
+async def test_regulated_signup_reports_no_trial_activation():
+    out, _, _ = await _provision()
+    assert "trial_activation" not in out
+
+
+@pytest.mark.asyncio
 async def test_the_resolved_customer_is_persisted_before_the_regulated_exit():
     out, _, billing = await _provision()
     assert out["onboarding_state"] == "regulatory_required"

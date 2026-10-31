@@ -31,17 +31,6 @@ export function trackConversion(event: string, properties?: Record<string, unkno
   if (typeof window.gtag === 'function') window.gtag('event', event, properties ?? {})
 }
 
-// Google Ads conversion label for a completed subscription (from the Ads
-// conversion action AW-18323006317). Fired on activation for Ads bidding/ROAS.
-export const ADS_SUBSCRIPTION_CONVERSION = 'AW-18323006317/ZEN5CKaqnNEcEO3Gi6FE'
-
-// Fire a Google Ads conversion via gtag's required 'conversion' event + send_to.
-// Separate from GA4 analytics events; no-ops if gtag is blocked/not loaded.
-export function trackAdsConversion(sendTo: string, params?: Record<string, unknown>) {
-  if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
-  window.gtag('event', 'conversion', { send_to: sendTo, ...params })
-}
-
 // Fire an OpenAI/ChatGPT Ads pixel event (oaiq). No-ops if the pixel is blocked
 // or not yet loaded. The command is 'measure' (what the OpenAI Ads dashboard's
 // generated code uses — NOT 'track'), and `event` must be a documented oaiq
