@@ -1210,60 +1210,64 @@ footer {
 
 /* Scoped tokens for dashboard */
 .db-root {
-  /* ── Warm Studio: ivory canvas · forest green · brass gold ── */
-  --db-bg: #F1ECE1;          /* warm ivory canvas */
-  --db-card: #FFFDF8;        /* warm white surface */
-  --db-hover: #F6F1E7;
-  --db-subtle: #F3EEE3;
-  --db-border: #E5DDCD;
-  --db-border-lt: #EDE7D9;
-  --db-text: #1E1C16;        /* warm near-black */
-  --db-text-2: #4C483E;
-  --db-muted: #877F70;
-  --db-faint: #B5AD9B;
-  /* primary — forest green */
-  --db-accent: #2F6B4F;
-  --db-accent-hover: #285C43;
-  --db-accent-text: #2A6049;
-  --db-accent-bg: #E7EFE8;
-  --db-accent-border: #C6D9C9;
-  /* brass / gold — premium accent */
-  --db-gold: #B98F42;
-  --db-gold-2: #E6CE92;
-  --db-gold-grad: linear-gradient(135deg, #ECD8A0 0%, #CBA359 52%, #B0863C 100%);
-  --db-gold-text: #5E441A;
-  --db-gold-border: #D8BE7E;
-  /* forest sidebar */
-  --db-side: #1F2C24;
-  --db-side-2: #26342B;
-  --db-side-border: rgba(233,228,216,0.10);
-  --db-side-text: #ECE7DB;
-  --db-side-dim: #9AA79C;
-  --db-side-hover: rgba(233,228,216,0.07);
-  --db-side-active-bg: rgba(233,228,216,0.12);
+  /* Shares its navy, greys and blue with the marketing tokens in :root. The app is
+     light-only, so the values are set here and don't follow [data-theme]. Blue is
+     the action colour; green only ever means success. */
+  --db-bg: #F9F9F9;
+  --db-card: #FFFFFF;
+  --db-hover: #F2F2F2;
+  --db-subtle: #F2F2F2;
+  --db-border: rgba(0, 31, 63, 0.13);
+  --db-border-lt: rgba(0, 31, 63, 0.07);
+  --db-text: #001F3F;
+  --db-text-2: #3F5166;
+  --db-muted: #5A6A7A;
+  --db-faint: #5F6F80;
+  /* primary action */
+  --db-accent: #2563EB;
+  --db-accent-hover: #1D4FD8;
+  --db-accent-text: #1D4FD8;
+  --db-accent-bg: #EAF1FE;
+  --db-accent-border: #C7D9FB;
+  /* navy sidebar */
+  --db-side: #001F3F;
+  --db-side-2: #0A2C50;
+  --db-side-border: rgba(255, 255, 255, 0.10);
+  --db-side-text: #FFFFFF;
+  --db-side-dim: #B4C2D1;
+  --db-side-hover: rgba(255, 255, 255, 0.07);
+  --db-side-active-bg: rgba(59, 126, 246, 0.32);
   --db-side-active-text: #FFFFFF;
-  /* status (warm-tuned) */
-  --db-warn-bg: #FBF3E0;
-  --db-warn-text: #A8791F;
-  --db-danger: #C24631;
-  --db-danger-bg: #F8E8E2;
-  --db-danger-text: #AF3E29;
-  --db-info: #3F6E8C;
-  --db-info-bg: #E8EEF2;
-  /* warm layered shadows */
-  --db-shadow-xs: 0 1px 2px rgba(74, 58, 30, 0.05);
-  --db-shadow-sm: 0 1px 3px rgba(74, 58, 30, 0.06), 0 6px 20px rgba(74, 58, 30, 0.05);
-  --db-shadow-pop: 0 12px 38px rgba(58, 45, 22, 0.18);
-  /* larger, softer radii */
-  --db-r-sm: 9px;
-  --db-r-md: 14px;
-  --db-r-lg: 20px;
+  /* status */
+  --db-success: #116A33;
+  --db-success-bg: #E8F5EC;
+  --db-warn-bg: #FDF3DC;
+  --db-warn-text: #8A5A00;
+  --db-danger: #B42318;
+  --db-danger-bg: #FDECEA;
+  --db-danger-text: #B42318;
+  --db-info: #1D4FD8;
+  --db-info-bg: #EAF1FE;
+  --db-shadow-xs: 0 1px 2px rgba(0, 31, 63, 0.05);
+  --db-shadow-sm: 0 1px 4px rgba(0, 31, 63, 0.06), 0 6px 20px rgba(0, 31, 63, 0.04);
+  --db-shadow-pop: 0 8px 40px rgba(0, 31, 63, 0.14);
+  --db-r-sm: 8px;
+  --db-r-md: 12px;
+  --db-r-lg: 14px;
   --db-ring: 0 0 0 3px var(--db-accent-bg);
   display: flex;
   min-height: 100vh;
   background: var(--db-bg);
   font-family: var(--font-dm), 'DM Sans', sans-serif;
 }
+
+/* Keyboard focus, visible on the light canvas and the navy sidebar alike. */
+.db-root :focus-visible {
+  outline: 2px solid var(--db-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.db-sidebar :focus-visible, .db-mobile-topbar :focus-visible { outline-color: #FFFFFF; }
 
 /* ── Sidebar ── */
 .db-sidebar {
@@ -1344,18 +1348,18 @@ footer {
   font-family: var(--font-mono), 'DM Mono', monospace;
 }
 .db-badge-red   { background: var(--db-danger-bg); color: var(--db-danger-text); }
-.db-badge-green { background: var(--db-accent-bg); color: var(--db-accent-text); }
+.db-badge-green { background: var(--db-success-bg); color: var(--db-success); }
 .db-badge-amber { background: var(--db-warn-bg); color: var(--db-warn-text); }
 
 .db-upgrade-pill {
   margin: 0 4px 6px;
   background: linear-gradient(135deg, rgba(230,206,146,0.18), rgba(185,143,66,0.14));
-  border: 1px solid var(--db-gold-border);
+  border: 1px solid var(--db-side-border);
   border-radius: 11px; padding: 9px 11px;
   cursor: pointer; text-decoration: none; display: block;
   flex-shrink: 0;
 }
-.db-upgrade-label { font-size: 11px; font-weight: 600; color: var(--db-gold-2); }
+.db-upgrade-label { font-size: 11px; font-weight: 600; color: var(--db-side-text); }
 .db-upgrade-sub   { font-size: 10px; color: var(--db-side-dim); margin-top: 1px; }
 
 .db-sidebar-footer {
@@ -1375,9 +1379,9 @@ footer {
 .db-user-row > svg { color: var(--db-side-dim); flex-shrink: 0; }
 .db-user-av {
   width: 27px; height: 27px; border-radius: 50%;
-  background: var(--db-gold-grad);
+  background: var(--db-accent);
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; color: var(--db-gold-text); flex-shrink: 0;
+  font-size: 9px; font-weight: 700; color: #FFFFFF; flex-shrink: 0;
 }
 .db-user-info { flex: 1; min-width: 0; }
 .db-user-name  { font-size: 11px; color: var(--db-side-text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1477,9 +1481,8 @@ footer {
 .db-stat-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .db-stat-label { font-size: 11px; color: var(--db-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .db-stat-delta { font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono), monospace; }
-.db-delta-up  { background: var(--db-accent-bg); color: var(--db-accent-text); }
 .db-delta-neu { background: var(--db-bg); color: var(--db-muted); }
-.db-stat-num  { font-size: 27px; font-weight: 600; color: var(--db-text); letter-spacing: -0.5px; line-height: 1; margin-bottom: 8px; font-family: var(--font-mono), monospace; }
+.db-stat-num  { font-size: 27px; font-weight: 600; color: var(--db-text); letter-spacing: -0.5px; line-height: 1; margin-bottom: 8px; font-family: inherit; font-variant-numeric: tabular-nums; }
 .db-stat-unit { font-size: 12px; font-weight: 400; color: var(--db-faint); font-family: var(--font-dm), sans-serif; }
 /* Trend chart bleeds to the card's bottom + side edges for a modern look */
 .db-trendchart { display: block; width: calc(100% + 28px); height: 56px; margin: 6px -14px 0; }
@@ -1701,7 +1704,7 @@ footer {
   padding: 2px 7px; border-radius: 4px; white-space: nowrap;
   font-family: var(--font-mono), 'DM Mono', monospace;
 }
-.db-badge--success { background: var(--db-accent-bg); color: var(--db-accent-text); }
+.db-badge--success { background: var(--db-success-bg); color: var(--db-success); }
 .db-badge--warn    { background: var(--db-warn-bg); color: var(--db-warn-text); }
 .db-badge--danger  { background: var(--db-danger-bg); color: var(--db-danger-text); }
 .db-badge--info    { background: var(--db-info-bg); color: var(--db-info); }
@@ -1859,6 +1862,10 @@ footer {
 }
 
 @media (max-width: 768px) {
+  /* The row's badges and times take a line of their own on a phone. */
+  .db-lead-main { flex-wrap: wrap; }
+  .db-lead-info { flex: 1 1 calc(100% - 48px); }
+  .db-lead-phone-inline { display: block; }
   .db-two-col { grid-template-columns: 1fr; }
   .db-right-col { flex-direction: row; gap: 10px; }
   .db-stats-v2 { grid-template-columns: repeat(2,1fr); }
@@ -2143,7 +2150,7 @@ footer {
   .cap-title { font-size: 22px; }
 }
 
-/* ── Warm Studio: dashboard polish + hero ─────────────────────────── */
+/* ── Dashboard polish + hero ── */
 .db-content { padding: 24px 28px; }
 .db-topbar-title { font-size: 15px; letter-spacing: -0.01em; }
 
@@ -2163,27 +2170,6 @@ footer {
 }
 .db-hero-sub { font-size: 13px; color: var(--db-muted); margin-top: 7px; }
 
-.db-kpi {
-  background: var(--db-gold-grad); border-radius: var(--db-r-lg);
-  padding: 18px 24px; min-width: 260px;
-  display: flex; flex-direction: column; justify-content: center;
-  box-shadow: 0 10px 30px rgba(176, 134, 60, 0.28);
-  position: relative; overflow: hidden;
-}
-.db-kpi::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(120% 100% at 100% 0, rgba(255,255,255,0.38), transparent 55%);
-}
-.db-kpi-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--db-gold-text); opacity: 0.9; position: relative; z-index: 1;
-}
-.db-kpi-num {
-  font-family: var(--font-syne), sans-serif; font-size: 44px; font-weight: 700;
-  color: #38290C; line-height: 1; margin: 9px 0 5px; letter-spacing: -0.02em;
-  position: relative; z-index: 1;
-}
-.db-kpi-sub { font-size: 12px; color: var(--db-gold-text); font-weight: 500; position: relative; z-index: 1; }
 
 /* Soft round icon-chip button */
 .db-icon-chip {
@@ -2196,7 +2182,6 @@ footer {
 
 @media (max-width: 640px) {
   .db-content { padding: 18px 16px; }
-  .db-hero-kpi, .db-kpi { width: 100%; }
 }
 
 /* ── Landing "call the AI to try it" band ─────────────────────────── */

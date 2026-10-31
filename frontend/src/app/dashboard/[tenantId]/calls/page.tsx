@@ -251,7 +251,7 @@ export default function CallsPage() {
                         </span>
                       )}
                       <span className={urgBadgeClass(lead?.urgency)}>
-                        {lead?.urgency ? capitalize(lead.urgency) : 'New'}
+                        {lead?.urgency ? capitalize(lead.urgency) : 'Unrated'}
                       </span>
                       <span className="db-lead-time" style={{ minWidth: 64, textAlign: 'right' }}>
                         {formatDuration(call.duration_secs)}

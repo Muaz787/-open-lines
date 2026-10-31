@@ -808,7 +808,10 @@ function SubscriptionPage() {
         {!payingPlan && account.canChoosePlan && (
           <div style={{ marginBottom: 32 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
+              <div>
+                <div className="db-page-heading">{isActiveSub ? 'Change Plan' : 'Choose a Plan'}</div>
+                <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 4 }}>Prices in CAD, plus tax.</div>
+              </div>
               {/* Monthly / Annual toggle — only for new subscribers (plan changes keep current interval) */}
               {!isActiveSub && (
                 <div style={{ display: 'inline-flex', border: '1px solid var(--db-border)', borderRadius: 8, overflow: 'hidden' }}>
