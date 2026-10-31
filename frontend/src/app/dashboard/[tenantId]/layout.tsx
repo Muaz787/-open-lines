@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 import Sidebar, { LogoMark, type SidebarTenant } from './Sidebar'
 import { TrialBanner, type TrialInfo } from './TrialBanner'
 import { trackEvent, identifyUser, resetAnalytics } from '@/lib/analytics'
+import { AccountProvider } from './lib/AccountContext'
+import type { ProviderState } from './lib/accountState'
 import { resolvePendingTrialConversion } from '@/lib/adsConversion'
 
 import { authedFetch, clearResponseCache } from '@/lib/api'
@@ -36,6 +38,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [tenant, setTenant]       = useState<SidebarTenant | null>(null)
   const [trial, setTrial]         = useState<TrialInfo | null>(null)
+  const [provider, setProvider]   = useState<ProviderState | undefined>(undefined)
+  const [tenantFailed, setTenantFailed] = useState(false)
   const [leadsCount, setLeads]    = useState(0)
   const [apptsCount, setAppts]    = useState(0)
   const [userName, setUserName]   = useState('')
@@ -79,11 +83,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const t = await tRes.json()
         setTenant(t)
         setTrial(t.trial ?? null)
+        // Only a tenant claiming a live subscription needs Stripe's word on it.
+        if (t.account?.has_provider_subscription && t.account.subscription !== 'canceled') {
+          authedFetch(`${API}/billing/subscription-details/${tenantId}`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => setProvider(d?.provider_state ?? 'unavailable'))
+            .catch(() => setProvider('unavailable'))
+        }
         resolvePendingTrialConversion(tenantId, t.trial?.card_trial === true)
       }
+      else setTenantFailed(true)
       if (lRes.ok) { const d = await lRes.json(); setLeads(Array.isArray(d) ? d.length : 0) }
       if (aRes.ok) { const d = await aRes.json(); setAppts(Array.isArray(d) ? d.length : 0) }
-    }).catch(() => {})
+    }).catch(() => setTenantFailed(true))
   }, [tenantId])
 
   // Close the mobile menu whenever the route changes
@@ -107,6 +119,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (signedIn !== true) return null
 
   return (
+    <AccountProvider value={{ account: tenant?.account, status: tenant ? 'ready' : tenantFailed ? 'error' : 'loading', provider }}>
     <div className="db-root">
       {/* Persistent desktop sidebar */}
       <aside className="db-sidebar">
@@ -159,5 +172,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {children}
       </div>
     </div>
+    </AccountProvider>
   )
 }
