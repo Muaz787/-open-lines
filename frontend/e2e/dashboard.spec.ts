@@ -231,6 +231,38 @@ test('an allowed complimentary account sees plans and the access promise', async
   await expect(page.getByText('Choose a Plan')).toBeVisible()
 })
 
+test('lead search narrows the list, survives reload and says when nothing matches', async ({ page, context }) => {
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/leads`)
+  const search = page.getByRole('searchbox', { name: 'Search leads' })
+  await search.fill('zzzz')
+  await expect(page.getByText('No leads match your search.')).toBeVisible()
+  await expect(page).toHaveURL(/q=zzzz/)
+  await page.reload()
+  await expect(page.getByRole('searchbox', { name: 'Search leads' })).toHaveValue('zzzz')
+  await page.getByRole('searchbox', { name: 'Search leads' }).fill('')
+  await expect(page.getByText('No leads match your search.')).toHaveCount(0)
+})
+
+test('Usage says which period it covers and how minutes are counted', async ({ page, context }) => {
+  await signIn(page, context, mock({ account: { ...manualAccount, source: 'complimentary' }, provider: { has_subscription: false, provider_state: 'none' } }))
+  await page.goto(`${BASE}/usage`)
+  await expect(page.getByText(/doesn’t reset/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/rounded up/)).toBeVisible()
+})
+
+test('Settings marks unsaved edits and clears the mark after saving', async ({ page, context }) => {
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/settings`)
+  const phone = page.locator('input[type=tel]').last()
+  await phone.waitFor({ timeout: 20_000 })
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
+  await phone.fill('+14165550100')
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  await phone.locator('xpath=ancestor::section').getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0)
+})
+
 test('a complimentary account cannot buy a plan', async ({ page, context }) => {
   const m = mock({
     account: { ...manualAccount, source: 'complimentary' },

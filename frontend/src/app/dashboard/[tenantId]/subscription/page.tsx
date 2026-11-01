@@ -795,7 +795,7 @@ function SubscriptionPage() {
                     // until the paid action's label is configured.
                     trackPaidSubscriptionConversion(tenantId, value, 'CAD')
                     setPayingPlan(null)
-                    showToast('🎉 Subscription activated!')
+                    showToast('Subscription activated!')
                     // The plan labels come from the layout, which loads once.
                     if (shared.account?.paid_transition_open) { window.location.reload(); return }
                     await fetchData()

@@ -13,6 +13,7 @@ import { disclosureProps } from '../lib/disclosure'
 import { usePathname, useRouter } from 'next/navigation'
 
 import { authedFetch, peekJson } from '@/lib/api'
+import { Phone } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface CallLead {
@@ -202,7 +203,7 @@ export default function CallsPage() {
           <div className="db-section-card">
             <div className="db-section-hdr">
               <div className="db-section-title-row">
-                <div className="db-section-icon" style={{ background: '#f0fdf4' }}>📞</div>
+                <div className="db-section-icon" style={{ background: '#f0fdf4' }}><Phone size={14} aria-hidden /></div>
                 <span className="db-section-name">Call History</span>
                 <span className="db-section-hint">{filtered.length} calls</span>
               </div>

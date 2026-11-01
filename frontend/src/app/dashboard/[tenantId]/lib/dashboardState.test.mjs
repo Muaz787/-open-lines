@@ -5,6 +5,8 @@ import { presentAccount } from './accountState.ts'
 import { emptyCallsCopy } from './emptyStates.ts'
 import { parseChoice, withChoice } from './queryState.ts'
 import { routingReasonText } from './routingReason.ts'
+import { matchesLead } from './leadSearch.ts'
+import { usagePeriodText } from './usagePeriod.ts'
 
 const base = { plan: 'pro', feature_plan: 'pro', phone_line: 'on', has_provider_subscription: true, line_active: true, pending_activation: false }
 const account = over => ({ ...base, source: 'subscription', subscription: 'active', ...over })
@@ -206,4 +208,37 @@ describe('routingReasonText', () => {
   it('never shows a raw code it does not know', () => {
     assert.doesNotMatch(routingReasonText('some_new_reason'), /_/)
   })
+})
+
+describe('matchesLead', () => {
+  const lead = { name: 'Ricks Littlebaugh', phone: '+16477633632', summary: 'Asked about Square calendars' }
+
+  it('matches name and summary without regard to case', () => {
+    assert.equal(matchesLead(lead, 'ricks'), true)
+    assert.equal(matchesLead(lead, 'SQUARE'), true)
+  })
+
+  it('matches phone numbers on digits, however they are typed', () => {
+    assert.equal(matchesLead(lead, '(647) 763'), true)
+    assert.equal(matchesLead(lead, '416'), false)
+  })
+
+  it('treats an empty search as no filter, and survives missing fields', () => {
+    assert.equal(matchesLead(lead, '   '), true)
+    assert.equal(matchesLead({}, 'x'), false)
+    assert.equal(matchesLead({}, '12'), false)
+  })
+})
+
+describe('usagePeriodText', () => {
+  it('names the period only for a subscription', () => {
+    assert.match(usagePeriodText('subscription', '2026-10-15'), /since Oct 15, 2026/)
+    assert.equal(usagePeriodText('subscription', null), 'This billing period.')
+  })
+
+  for (const source of ['complimentary', 'manual', 'trial', undefined]) {
+    it(`says ${source} has no billing period`, () => {
+      assert.match(usagePeriodText(source, null), /doesn’t reset/)
+    })
+  }
 })

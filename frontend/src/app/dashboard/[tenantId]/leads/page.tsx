@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { timeAgo, capitalize } from '../lib/format'
 import { urgBadgeClass, statusBadgeClass } from '../lib/badges'
@@ -11,6 +11,8 @@ import { useQueryParam } from '../lib/useQueryParam'
 import { disclosureProps } from '../lib/disclosure'
 
 import { authedFetch, peekJson } from '@/lib/api'
+import { matchesLead } from '../lib/leadSearch'
+import { withChoice } from '../lib/queryState'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -40,6 +42,8 @@ function LeadsPage() {
   const [loading, setLoading]             = useState(() => peekJson(leadsUrl) === undefined)
   const [toast, setToast]                 = useState<string | null>(null)
   const [filter, setFilter] = useQueryParam<StatusFilter>('status', LEAD_FILTERS, 'all')
+  const searchParams = useSearchParams()
+  const [search, setSearch] = useState(() => searchParams.get('q') ?? '')
   const [failed, setFailed]               = useState(false)
   const [expanded, setExpanded]           = useState<string | null>(null)
   const [updating, setUpdating]           = useState<string | null>(null)
@@ -86,10 +90,13 @@ function LeadsPage() {
     }
   }
 
-  const filtered = leads.filter(l => {
-    if (filter === 'all') return true
-    return (l.status ?? 'new') === filter
-  })
+  const onSearch = (value: string) => {
+    setSearch(value)
+    // Replaced, not pushed, so Back doesn't step through every keystroke.
+    window.history.replaceState(null, '', `${window.location.pathname}${withChoice(window.location.search, 'q', value.trim(), '')}`)
+  }
+
+  const filtered = leads.filter(l => (filter === 'all' || (l.status ?? 'new') === filter) && matchesLead(l, search))
 
   const IconChevron = ({ open }: { open: boolean }) => (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4" width="12" height="12"
@@ -136,10 +143,18 @@ function LeadsPage() {
                 <span style={{ opacity: 0.7 }}>{statusCounts[f]}</span>
               </button>
             ))}
+            <input
+              type="search"
+              className="db-input"
+              aria-label="Search leads"
+              placeholder="Search name, phone or summary"
+              value={search}
+              onChange={e => onSearch(e.target.value)}
+              style={{ flex: '1 1 200px', maxWidth: 280, marginLeft: 'auto' }}
+            />
             <button
               className="db-btn db-btn--ghost db-btn--sm"
               onClick={loadLeads}
-              style={{ marginLeft: 'auto' }}
             >
               Refresh
             </button>
@@ -156,8 +171,8 @@ function LeadsPage() {
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                   </svg>
                 }
-                title={filter === 'all' ? 'No leads yet.' : `No ${filter} leads.`}
-                sub={filter === 'all' ? 'They appear here after calls.' : undefined}
+                title={search.trim() ? 'No leads match your search.' : filter === 'all' ? 'No leads yet.' : `No ${filter} leads.`}
+                sub={!search.trim() && filter === 'all' ? 'They appear here after calls.' : undefined}
               />
             </div>
           ) : (
