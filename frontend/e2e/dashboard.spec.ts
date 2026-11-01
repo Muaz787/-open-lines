@@ -95,7 +95,7 @@ async function signIn(page: Page, context: BrowserContext, m: Mock, auth: AuthSe
 }
 
 // What Supabase Auth does. `status` is its answer; 'down' means it can't be reached.
-interface AuthService { status: number | 'down'; tokenExpired?: boolean }
+interface AuthService { status: number | 'down'; code?: string; tokenExpired?: boolean }
 
 const AUTH_USER = { id: 'u1', aud: 'authenticated', email: 'owner@example.com', app_metadata: {}, user_metadata: {} }
 
@@ -103,7 +103,7 @@ function answerAuth(route: Route, auth: AuthService) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }
   if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
   if (auth.status === 'down') return route.abort()
-  if (auth.status !== 200) return route.fulfill({ status: auth.status, headers, json: { code: auth.status, msg: 'stubbed' } })
+  if (auth.status !== 200) return route.fulfill({ status: auth.status, headers: { ...headers, 'x-supabase-api-version': '2024-01-01', 'access-control-expose-headers': '*' }, json: { code: auth.code, message: 'stubbed' } })
   if (route.request().url().includes('/token')) {
     return route.fulfill({ headers, json: { access_token: 'stub', refresh_token: 'stub', token_type: 'bearer', expires_in: 3600, user: AUTH_USER } })
   }
@@ -444,11 +444,22 @@ for (const status of ['down', 429, 500, 503] as const) {
   })
 }
 
-for (const status of [401, 403]) {
-  test(`Settings goes to login when auth rejects the session with ${status}`, async ({ page, context }) => {
-    await signIn(page, context, mock(), { status })
+for (const [status, code] of [[403, 'bad_jwt'], [403, 'session_expired'], [401, 'no_authorization'], [403, 'session_not_found']] as const) {
+  test(`Settings goes to login when auth rejects the session with ${code}`, async ({ page, context }) => {
+    await signIn(page, context, mock(), { status, code })
     await page.goto(`${BASE}/settings`)
     await page.waitForURL('**/login', { timeout: 20_000 })
+    await expect(page.getByText('Call summary notifications')).toHaveCount(0)
+  })
+}
+
+for (const [status, code] of [[400, 'validation_failed'], [401, undefined], [403, undefined], [404, undefined]] as const) {
+  test(`an unrelated ${status} ${code ?? 'with no code'} from auth is not treated as signed out`, async ({ page, context }) => {
+    const auth: AuthService = { status, code }
+    await signIn(page, context, mock(), auth)
+    await page.goto(`${BASE}/settings`)
+    await expect(authError(page)).toBeVisible({ timeout: 20_000 })
+    expect(page.url()).toContain('/settings')
     await expect(page.getByText('Call summary notifications')).toHaveCount(0)
   })
 }
@@ -459,6 +470,7 @@ test('a retry that finds the session rejected goes to login', async ({ page, con
   await page.goto(`${BASE}/settings`)
   await expect(authError(page)).toBeVisible({ timeout: 20_000 })
   auth.status = 403
+  auth.code = 'bad_jwt'
   await page.getByRole('button', { name: 'Try again' }).click()
   await page.waitForURL('**/login', { timeout: 20_000 })
 })
@@ -467,7 +479,10 @@ test('a token that cannot be refreshed during an outage keeps the user on the pa
   const auth: AuthService = { status: 'down', tokenExpired: true }
   await signIn(page, context, mock(), auth)
   await page.goto(`${BASE}/settings`)
+  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.db-sidebar')).toHaveCount(0)
   await expect(authError(page)).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toHaveCount(0)
   expect(page.url()).toContain('/settings')
   await expect(page.locator('.db-sidebar')).toHaveCount(0)
 
@@ -477,10 +492,22 @@ test('a token that cannot be refreshed during an outage keeps the user on the pa
 })
 
 test('a refresh token the auth service rejects goes to login', async ({ page, context }) => {
-  await signIn(page, context, mock(), { status: 400, tokenExpired: true })
+  await signIn(page, context, mock(), { status: 400, code: 'refresh_token_not_found', tokenExpired: true })
   await page.goto(`${BASE}/settings`)
   await page.waitForURL('**/login', { timeout: 20_000 })
 })
+
+for (const [status, code] of [[500, 'unexpected_failure'], [429, 'over_request_rate_limit'], [400, 'validation_failed']] as const) {
+  test(`a ${status} ${code} during a refresh keeps the session and offers a retry`, async ({ page, context }) => {
+    const auth: AuthService = { status, code, tokenExpired: true }
+    await signIn(page, context, mock(), auth)
+    await page.goto(`${BASE}/settings`)
+    await expect(authError(page)).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible()
+    await expect(page.locator('.db-sidebar')).toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('sb-supabase-auth-token'))).toContain('refresh_token')
+  })
+}
 
 test('a token the backend rejects still goes to login', async ({ page, context }) => {
   await signIn(page, context, mock({ rejectToken: true }))

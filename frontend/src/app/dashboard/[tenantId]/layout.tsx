@@ -13,7 +13,9 @@ import { resolvePendingTrialConversion } from '@/lib/adsConversion'
 
 import { authedFetch, clearResponseCache } from '@/lib/api'
 import { classifyAuth } from '@/lib/authCheck'
-import { ErrorState } from './components/PageStates'
+import { ErrorState, LoadingState } from './components/PageStates'
+
+const AUTH_SLOW_MS = 1500
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 function mobileTitle(pathname: string, base: string): string {
@@ -52,6 +54,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // pricing — to a signed-out visitor for a moment before the redirect fired.
   const [signedIn, setSignedIn] = useState<boolean | null>(null)
   const [authUnavailable, setAuthUnavailable] = useState(false)
+  // Reading the session is instant unless a token needs refreshing while auth is
+  // struggling, when Supabase retries for up to 30 seconds or so.
+  const [authSlow, setAuthSlow] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAuthSlow(true), AUTH_SLOW_MS)
+    return () => clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     // getSession reads the stored session: no network round-trip, so the page
@@ -125,10 +135,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="db-root">
         <ErrorState title="We couldn’t confirm your sign-in." onRetry={() => window.location.reload()} />
+        <div style={{ textAlign: 'center', fontSize: 13 }}><a href="/login">Sign in again</a></div>
       </div>
     )
   }
-  if (signedIn !== true) return <div className="db-root" aria-busy="true" />
+  if (signedIn !== true) {
+    return (
+      <div className="db-root" aria-busy="true">
+        {authSlow && signedIn === null && (
+          <div role="status">
+            <LoadingState label="Reconnecting… This can take up to a minute. You don’t need to do anything." />
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <AccountProvider value={{ account: tenant?.account, status: tenant ? 'ready' : tenantFailed ? 'error' : 'loading', provider }}>

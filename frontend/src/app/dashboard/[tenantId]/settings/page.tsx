@@ -6,17 +6,17 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 import { authedFetch } from '@/lib/api'
-import { classifyAuth, type AuthCheck } from '@/lib/authCheck'
+import { classifyAuth, isWrongPassword, type AuthCheck } from '@/lib/authCheck'
 import { ErrorState, LoadingState } from '../components/PageStates'
 import NotificationPreferences from '@/components/NotificationPreferences'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
-const signInFailure = (error: { name?: string; status?: number }) =>
-  classifyAuth(false, error) === 'unavailable'
-    ? 'We couldn’t reach sign-in just now. Nothing was changed. Please try again.'
-    : 'Current password is incorrect.'
+const signInFailure = (error: { code?: string }) =>
+  isWrongPassword(error)
+    ? 'Current password is incorrect.'
+    : 'We couldn’t check your password just now. Nothing was changed. Please try again.'
 
 const TONE_OPTIONS = [
   'Warm and friendly',
@@ -208,7 +208,7 @@ function SettingsPage() {
         <div className="db-content">
           {authCheck === 'unavailable'
             ? <ErrorState title="We couldn’t confirm your sign-in." onRetry={retry} />
-            : <LoadingState />}
+            : <LoadingState label="Checking your sign-in…" />}
         </div>
       </>
     )
