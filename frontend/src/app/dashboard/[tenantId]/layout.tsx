@@ -12,6 +12,8 @@ import type { ProviderState } from './lib/accountState'
 import { resolvePendingTrialConversion } from '@/lib/adsConversion'
 
 import { authedFetch, clearResponseCache } from '@/lib/api'
+import { classifyAuth } from '@/lib/authCheck'
+import { ErrorState } from './components/PageStates'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 function mobileTitle(pathname: string, base: string): string {
@@ -49,14 +51,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // does painted the whole dashboard — including "Choose a plan" with real
   // pricing — to a signed-out visitor for a moment before the redirect fired.
   const [signedIn, setSignedIn] = useState<boolean | null>(null)
+  const [authUnavailable, setAuthUnavailable] = useState(false)
 
   useEffect(() => {
     // getSession reads the stored session: no network round-trip, so the page
     // under this layout starts fetching at once. It is enough for this gate,
     // which only decides what to paint — the backend verifies the token on
     // every request, and a rejected one sends the browser to /login.
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
       const user = data.session?.user
+      const check = classifyAuth(!!user, error)
+      if (check === 'unavailable') { setAuthUnavailable(true); return }
       if (!user) { setSignedIn(false); router.replace('/login'); return }
       setSignedIn(true)
       setUserEmail(user.email ?? '')
@@ -66,7 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         email: user.email,
         tenant_id: user.app_metadata?.tenant_id ?? user.user_metadata?.tenant_id,
       })
-    })
+    }).catch(() => setAuthUnavailable(true))
   }, [router])
 
   useEffect(() => {
@@ -116,6 +121,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Hold everything until we know. A brief blank beats flashing an authenticated
   // page at someone who is not.
+  if (authUnavailable) {
+    return (
+      <div className="db-root">
+        <ErrorState title="We couldn’t confirm your sign-in." onRetry={() => window.location.reload()} />
+      </div>
+    )
+  }
   if (signedIn !== true) return <div className="db-root" aria-busy="true" />
 
   return (

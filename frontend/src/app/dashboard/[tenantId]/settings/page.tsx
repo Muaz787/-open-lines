@@ -1,15 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import PasswordField from '@/components/PasswordField'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 import { authedFetch } from '@/lib/api'
+import { classifyAuth, type AuthCheck } from '@/lib/authCheck'
+import { ErrorState, LoadingState } from '../components/PageStates'
 import NotificationPreferences from '@/components/NotificationPreferences'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+
+const signInFailure = (error: { name?: string; status?: number }) =>
+  classifyAuth(false, error) === 'unavailable'
+    ? 'We couldn’t reach sign-in just now. Nothing was changed. Please try again.'
+    : 'Current password is incorrect.'
 
 const TONE_OPTIONS = [
   'Warm and friendly',
@@ -65,12 +72,18 @@ function SettingsPage() {
   const [behaviorState, setBehaviorState]     = useState<SaveState>('idle')
   const [behaviorMsg, setBehaviorMsg]         = useState('')
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) { router.replace('/login'); return }
+  // Nothing below renders until this is 'ok'.
+  const [authCheck, setAuthCheck] = useState<AuthCheck | null>(null)
+
+  const load = useCallback(() => {
+    supabase.auth.getUser().then(({ data, error }) => {
+      const check = classifyAuth(!!data.user, error)
+      setAuthCheck(check)
+      if (check === 'expired') { router.replace('/login'); return }
+      if (check === 'unavailable' || !data.user) return
       setEmail(data.user.email ?? '')
       setLoginEmail(data.user.email ?? '')
-    })
+    }).catch(() => setAuthCheck('unavailable'))
     authedFetch(`${API}/onboarding/status/${tenantId}`).then(async tRes => {
       if (tRes.ok) {
         const d = await tRes.json()
@@ -81,8 +94,12 @@ function SettingsPage() {
         if (d?.receptionist_tone) setTone(d.receptionist_tone)
         if (Array.isArray(d?.operating_priorities)) setPriorities(d.operating_priorities)
       }
-    })
+    }).catch(() => {})
   }, [tenantId, router])
+
+  useEffect(() => { load() }, [load])
+
+  const retry = () => { setAuthCheck(null); load() }
 
   const movePriority = (i: number, dir: -1 | 1) => {
     setPriorities(list => {
@@ -154,7 +171,7 @@ function SettingsPage() {
     // session from changing the account email. Supabase "Secure email change"
     // then requires confirmation from BOTH the old and new inbox.
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: loginEmail, password: emailPw })
-    if (signInError) return fail('Current password is incorrect.')
+    if (signInError) return fail(signInFailure(signInError))
 
     const { error } = await supabase.auth.updateUser({ email: newEmail })
     if (error) {
@@ -173,13 +190,28 @@ function SettingsPage() {
     if (newPw.length < 8) { setPwState('error'); setPwMsg('New password must be at least 8 characters.'); setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000); return }
     if (newPw !== confirmPw) { setPwState('error'); setPwMsg("New passwords don't match."); setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000); return }
     setPwState('saving'); setPwMsg('')
-    const { data: userData } = await supabase.auth.getUser()
+    const { data: userData, error: userError } = await supabase.auth.getUser()
+    const check = classifyAuth(!!userData.user, userError)
+    if (check !== 'ok') { setAuthCheck(check); setPwState('idle'); if (check === 'expired') router.replace('/login'); return }
     const { error: signInError } = await supabase.auth.signInWithPassword({ email: userData.user?.email ?? '', password: currentPw })
-    if (signInError) { setPwState('error'); setPwMsg('Current password is incorrect.'); setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000); return }
+    if (signInError) { setPwState('error'); setPwMsg(signInFailure(signInError)); setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000); return }
     const { error } = await supabase.auth.updateUser({ password: newPw })
     if (error) { setPwState('error'); setPwMsg(error.message) }
     else { setPwState('saved'); setPwMsg('Password updated.'); setCurrentPw(''); setNewPw(''); setConfirmPw('') }
     setTimeout(() => { setPwState('idle'); setPwMsg('') }, 4000)
+  }
+
+  if (authCheck !== 'ok') {
+    return (
+      <>
+        <div className="db-topbar"><span className="db-topbar-title">Settings</span></div>
+        <div className="db-content">
+          {authCheck === 'unavailable'
+            ? <ErrorState title="We couldn’t confirm your sign-in." onRetry={retry} />
+            : <LoadingState />}
+        </div>
+      </>
+    )
   }
 
   return (

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { classifyAuth } from '@/lib/authCheck'
 import { shareInflight, clearResponseCache } from '@/lib/requestCache'
 
 export { peekJson, clearResponseCache } from '@/lib/requestCache'
@@ -39,11 +40,14 @@ export async function authedFetch(
 
 async function send(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
   let token: string | undefined
+  let authUnavailable = false
   try {
-    const { data } = await supabase.auth.getSession()
+    const { data, error } = await supabase.auth.getSession()
     token = data.session?.access_token
+    authUnavailable = classifyAuth(!!token, error) === 'unavailable'
   } catch {
     token = undefined
+    authUnavailable = true
   }
 
   const headers = new Headers(init.headers ?? {})
@@ -51,8 +55,9 @@ async function send(input: RequestInfo | URL, init: RequestInit): Promise<Respon
 
   const res = await fetch(input, { ...init, headers })
 
-  // Session missing or expired — the backend rejected us. Send to login.
-  if (res.status === 401 && typeof window !== 'undefined') {
+  // Session missing or expired — the backend rejected us. Send to login. Not when
+  // we had no token to send because auth was down: the caller shows its own error.
+  if (res.status === 401 && !authUnavailable && typeof window !== 'undefined') {
     window.location.href = '/login'
   }
 
