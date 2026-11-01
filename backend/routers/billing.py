@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from db import supabase as db
 from services import analytics, subscriptions, trial
-from services.account_state import LIVE_STATUSES, account_state
+from services.account_state import LIVE_STATUSES, account_state, paid_transition_open
 from services.security import verify_tenant_owner
 
 load_dotenv()
@@ -384,6 +384,18 @@ async def stripe_webhook(request: Request):
         our_status = _our_status(stripe_status, {
             "incomplete": "incomplete", "paused": "paused",
         })
+
+        # Payment is what ends comp or manual access. Failing here must reach Stripe
+        # so it retries: the tenant has paid and nothing else will catch this up.
+        if stripe_status == "active":
+            try:
+                pending_tenant = await db.get_tenant_by_stripe_customer(customer_id)
+                if pending_tenant and pending_tenant.get("paid_transition_subscription_id") == sub_id:
+                    await _finish_paid_transition(pending_tenant, stripe.Subscription.retrieve(sub_id))
+                    return {"status": "ok"}
+            except Exception as e:
+                logger.error("Could not finish paid transition for customer %s: %s", customer_id, e)
+                raise HTTPException(status_code=500, detail="Paid transition failed")
 
         try:
             tenant = await db.get_tenant_by_stripe_customer(customer_id)
@@ -774,6 +786,144 @@ async def create_subscription(body: dict, authorization: Annotated[str | None, H
     return {"needs_payment": True, "client_secret": client_secret, "subscription_id": sub.id, **_invoice_breakdown(invoice)}
 
 
+async def _finish_paid_transition(tenant: dict, sub) -> bool:
+    """Move a complimentary or manual account onto the subscription it just paid for.
+
+    The only place that ends comp or manual access, and it does so in one write, so
+    the account is never between the two. Safe to repeat: the webhook and the browser
+    can both arrive here.
+    """
+    if getattr(sub, "status", "") != "active":
+        return False
+    base_price = getattr(getattr(_base_item(sub), "price", None), "id", "") or ""
+    plan = _plan_from_price(base_price)
+    if not plan:
+        logger.error("Paid transition: %s has no known plan price for tenant %s", sub.id, tenant.get("id"))
+        return False
+    updates: dict = {
+        "stripe_subscription_id":          sub.id,
+        "subscription_plan":               plan,
+        "subscription_status":             "active",
+        "billing_exempt":                  False,
+        "paid_transition_expires_at":      None,
+        "paid_transition_subscription_id": None,
+        # The paid period starts clean, as it does when a trial converts.
+        "minutes_used_this_period":        0,
+        "overage_minutes_reported":        0,
+    }
+    period_start = getattr(sub, "current_period_start", None)
+    if period_start:
+        updates["billing_period_anchor"] = datetime.fromtimestamp(
+            int(period_start), tz=_dt_timezone.utc
+        ).strftime("%Y-%m-%d")
+    await db.update_tenant(tenant["id"], updates)
+    logger.info("Tenant %s moved to paid plan %s on %s", tenant["id"], plan, sub.id)
+    return True
+
+
+@router.post("/paid-transition")
+async def start_paid_transition(body: dict, authorization: Annotated[str | None, Header()] = None):
+    """Let a complimentary or manual account buy a plan, once an admin has allowed it.
+
+    Until Stripe confirms payment the tenant keeps everything it has: plan, status,
+    comp flag and line. A failed or abandoned payment leaves it exactly as it was.
+    """
+    tenant_id: str = body.get("tenant_id", "")
+    plan: str      = body.get("plan", "").lower()
+    interval: str  = _norm_interval(body.get("interval"))
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id is required")
+    await verify_tenant_owner(tenant_id, authorization)
+    if plan not in PRICE_IDS:
+        raise HTTPException(status_code=400, detail="plan must be starter, pro, or business")
+    price_id = _resolve_price(plan, interval)
+    if not price_id:
+        raise HTTPException(status_code=500, detail="Plan price not configured on server")
+
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if not paid_transition_open(tenant):
+        raise HTTPException(status_code=409, detail="Moving this account to a paid plan is set up with support. Email support@openlines.ai.")
+
+    # A second attempt resumes the first, so one account can't start two subscriptions.
+    pending_id = str(tenant.get("paid_transition_subscription_id") or "")
+    if pending_id:
+        try:
+            pending = stripe.Subscription.retrieve(pending_id, expand=["latest_invoice.payment_intent"])
+        except stripe.InvalidRequestError:
+            pending = None
+        except stripe.StripeError as e:
+            logger.error("Could not check pending sub %s for tenant %s: %s", pending_id, tenant_id, e)
+            raise HTTPException(status_code=503, detail="We couldn't check your payment just now. Nothing was changed. Please try again in a moment.")
+        if pending is not None:
+            if pending.status == "active":
+                await _finish_paid_transition(tenant, pending)
+                return {"needs_payment": False, "subscription_id": pending_id}
+            if pending.status == "incomplete":
+                same_plan = (pending.get("metadata") or {}).get("plan") == plan and _sub_interval(pending) == interval
+                secret = _extract_pi_secret(pending.latest_invoice) if same_plan else None
+                if secret:
+                    return {"needs_payment": True, "client_secret": secret, "subscription_id": pending_id,
+                            **_invoice_breakdown(pending.latest_invoice)}
+                try:
+                    stripe.Subscription.cancel(pending_id)
+                except stripe.StripeError as e:
+                    logger.error("Could not cancel pending sub %s for tenant %s: %s", pending_id, tenant_id, e)
+                    raise HTTPException(status_code=503, detail="We couldn't update your payment just now. Nothing was changed. Please try again in a moment.")
+
+    address: dict | None = _clean_address(body.get("address"))
+    billing_name: str    = str(body.get("name") or "").strip()
+    customer_id: str     = tenant.get("stripe_customer_id", "") or ""
+    try:
+        if customer_id:
+            try:
+                if getattr(stripe.Customer.retrieve(customer_id), "deleted", False):
+                    customer_id = ""
+            except stripe.InvalidRequestError:
+                customer_id = ""
+        if not customer_id:
+            params: dict = {"metadata": {"tenant_id": tenant_id}}
+            if tenant.get("email"):
+                params["email"] = tenant["email"]
+            if billing_name or tenant.get("business_name"):
+                params["name"] = billing_name or tenant["business_name"]
+            if address:
+                params["address"] = address
+            customer_id = stripe.Customer.create(**params).id
+            await db.update_tenant(tenant_id, {"stripe_customer_id": customer_id})
+        elif address:
+            stripe.Customer.modify(customer_id, address=address, **({"name": billing_name} if billing_name else {}))
+
+        items: list = [{"price": price_id}]
+        if STRIPE_OVERAGE_PRICE_ID and interval == "month":
+            items.append({"price": STRIPE_OVERAGE_PRICE_ID})
+        sub = stripe.Subscription.create(
+            customer=customer_id,
+            items=items,
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+            automatic_tax={"enabled": True},
+            expand=["latest_invoice.payment_intent"],
+            metadata={"tenant_id": tenant_id, "plan": plan, "paid_transition": "true"},
+            idempotency_key=f"paid-transition-{tenant_id}-{plan}-{interval}-{tenant['paid_transition_expires_at']}",
+        )
+    except stripe.StripeError as e:
+        logger.error("Paid transition failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(status_code=502, detail="We couldn't start your plan just now. Your account hasn't changed. Please try again in a moment.")
+
+    if await _finish_paid_transition(tenant, sub):
+        return {"needs_payment": False, "subscription_id": sub.id}
+
+    await db.update_tenant(tenant_id, {"paid_transition_subscription_id": sub.id})
+    client_secret = _extract_pi_secret(sub.latest_invoice)
+    if not client_secret:
+        logger.error("No client_secret for transition sub %s tenant %s", sub.id, tenant_id)
+        raise HTTPException(status_code=500, detail="Could not initialise payment. Please try again.")
+    return {"needs_payment": True, "client_secret": client_secret, "subscription_id": sub.id,
+            **_invoice_breakdown(sub.latest_invoice)}
+
+
 @router.post("/confirm-payment")
 async def confirm_payment(body: dict, authorization: Annotated[str | None, Header()] = None):
     """Called by the frontend after Payment Element confirms — syncs subscription status to DB.
@@ -813,6 +963,11 @@ async def confirm_payment(body: dict, authorization: Annotated[str | None, Heade
 
     stripe_status: str = sub.status or ""
     our_status = _our_status(stripe_status)
+
+    if subscription_id == tenant.get("paid_transition_subscription_id"):
+        # Nothing on the tenant moves until this subscription is paid.
+        finished = await _finish_paid_transition(tenant, sub)
+        return {"status": our_status if finished else "pending", "plan": tenant.get("subscription_plan")}
 
     base_price = getattr(getattr(_base_item(sub), "price", None), "id", "") or ""
     plan = _plan_from_price(base_price)
@@ -867,6 +1022,10 @@ async def sync_subscription(tenant_id: str, authorization: Annotated[str | None,
             sub = stripe.Subscription.retrieve(sub_id)
         if sub is None:
             raise HTTPException(status_code=404, detail="No Stripe subscription found for this customer")
+
+        if sub.id == tenant.get("paid_transition_subscription_id"):
+            await _finish_paid_transition(tenant, sub)
+            return {"status": "synced", "plan": tenant.get("subscription_plan"), "subscription_status": tenant.get("subscription_status")}
 
         stripe_status = str(getattr(sub, "status", "") or "")
         our_status = _our_status(stripe_status)

@@ -227,6 +227,26 @@ export default function TenantDetailPage() {
     setTimeout(() => setActionMsg(''), 5000)
   }
 
+  async function setPaidTransition(allow: boolean) {
+    if (actionLoading) return
+    setActionLoading(true); setActionMsg('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/tenants/${id}/paid-transition`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setBillingCheck(c => c ? { ...c, account: { ...c.account, paid_transition_open: allow } } : c)
+        setActionMsg(allow ? 'They can buy a plan for 7 days. Their access stays as it is until payment succeeds.' : 'Paid plan window closed')
+      } else setActionMsg(`Failed: ${json.error ?? res.statusText}`)
+    } catch { setActionMsg('Network error — check backend is reachable') }
+    setActionLoading(false)
+    setTimeout(() => setActionMsg(''), 5000)
+  }
+
   async function setPlan(plan: string | null) {
     if (actionLoading) return
     setActionLoading(true); setActionMsg('')
@@ -430,6 +450,19 @@ export default function TenantDetailPage() {
           <div style={{ fontSize: 11, color: 'var(--db-muted)', margin: '6px 0 14px' }}>
             Comp keeps the line live with no trial expiry or subscription — and is excluded from revenue metrics.
           </div>
+
+          {billingCheck && ['complimentary', 'manual'].includes(billingCheck.account.source) && !tenant.stripe_subscription_id && (
+            <>
+              <div className="adm-btn-group">
+                <button className="adm-btn" onClick={() => setPaidTransition(!billingCheck.account.paid_transition_open)} disabled={actionLoading}>
+                  {billingCheck.account.paid_transition_open ? 'Close paid plan window' : 'Allow paid plan (7 days)'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--db-muted)', margin: '6px 0 14px' }}>
+                Shows this account the plan picker. Comp or manual access continues until Stripe confirms payment; a failed or abandoned payment changes nothing.
+              </div>
+            </>
+          )}
 
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
             Set plan (comp grant · current: {tenant.subscription_plan ?? 'none'})

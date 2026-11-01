@@ -194,7 +194,9 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
     overage_total  = max(0, new_total - allocation)
     new_overage    = max(0, overage_total - overage_reported)
 
-    if new_overage > 0 and customer_id and _stripe_key and _overage_price_id:
+    # Only a subscription has a billing period. Without one the counter never resets,
+    # so it can't mean overage, and a customer record alone must not be billed for it.
+    if new_overage > 0 and customer_id and tenant.get("stripe_subscription_id") and _stripe_key and _overage_price_id:
         try:
             stripe.api_key = _stripe_key
             stripe.billing.MeterEvent.create(

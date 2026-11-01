@@ -456,6 +456,9 @@ export interface PaymentFormProps {
   plan: string
   planLabel: string
   interval?: 'month' | 'year'
+  // Where the subscription is started. A complimentary or manual account uses its own
+  // route, which leaves its access alone until payment succeeds.
+  startPath?: string
   onSuccess: () => void
   onCancel: () => void
 }
@@ -544,7 +547,7 @@ function AddressStep({
   )
 }
 
-export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onSuccess, onCancel }: PaymentFormProps) {
+export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', startPath = '/billing/create-subscription', onSuccess, onCancel }: PaymentFormProps) {
   const [clientSecret, setClientSecret]     = useState<string | null>(null)
   const [subscriptionId, setSubscriptionId] = useState<string>('')
   const [breakdown, setBreakdown]           = useState<Breakdown | null>(null)
@@ -557,7 +560,7 @@ export function PaymentForm({ tenantId, plan, planLabel, interval = 'month', onS
     setSubmitting(true)
     setLoadError(null)
     try {
-      const res = await authedFetch(`${API}/billing/create-subscription`, {
+      const res = await authedFetch(`${API}${startPath}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId, plan, interval, address, name }),
