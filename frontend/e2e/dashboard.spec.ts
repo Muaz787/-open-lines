@@ -26,6 +26,7 @@ interface Mock {
   provider: object
   failCalls?: boolean
   failStats?: boolean
+  rejectToken?: boolean
   failProvider?: boolean
   holdProvider?: boolean
   releaseProvider?: () => void
@@ -47,6 +48,7 @@ async function answer(route: Route, m: Mock) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }
   const json = (body: unknown, status = 200) => route.fulfill({ status, headers, json: body })
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+  if (m.rejectToken) return json({ detail: 'Invalid or expired token' }, 401)
   if (request.method() !== 'GET') { m.mutations.push(url); return json({}) }
   if (url.includes('/onboarding/status/')) {
     return json({ id: TENANT, business_name: 'Sample Salon', subscription_plan: 'pro', subscription_status: 'active', account: m.account, trial: null })
@@ -76,19 +78,36 @@ async function answer(route: Route, m: Mock) {
   return json([], 200)
 }
 
-async function signIn(page: Page, context: BrowserContext, m: Mock) {
+async function signIn(page: Page, context: BrowserContext, m: Mock, auth: AuthService = { status: 200 }) {
   await context.route('**/*', route => {
     const url = route.request().url()
     if (url.startsWith('http://localhost')) return route.continue()
     if (url.startsWith(API)) return answer(route, m)
+    if (url.startsWith('http://supabase.test')) return answerAuth(route, auth)
     if (url.includes('js.stripe.com')) return route.fulfill({ contentType: 'text/javascript', body: STRIPE_STUB })
     return route.abort()
   })
-  await context.addInitScript(() => localStorage.setItem('sb-supabase-auth-token', JSON.stringify({
+  await context.addInitScript(([expiresIn]) => localStorage.setItem('sb-supabase-auth-token', JSON.stringify({
     access_token: 'stub', refresh_token: 'stub', token_type: 'bearer',
-    expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + expiresIn, expires_in: 3600,
     user: { id: 'u1', aud: 'authenticated', email: 'owner@example.com', app_metadata: {}, user_metadata: {} },
-  })))
+  })), [auth.tokenExpired ? -60 : 3600])
+}
+
+// What Supabase Auth does. `status` is its answer; 'down' means it can't be reached.
+interface AuthService { status: number | 'down'; code?: string; tokenExpired?: boolean }
+
+const AUTH_USER = { id: 'u1', aud: 'authenticated', email: 'owner@example.com', app_metadata: {}, user_metadata: {} }
+
+function answerAuth(route: Route, auth: AuthService) {
+  const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' }
+  if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+  if (auth.status === 'down') return route.abort()
+  if (auth.status !== 200) return route.fulfill({ status: auth.status, headers: { ...headers, 'x-supabase-api-version': '2024-01-01', 'access-control-expose-headers': '*' }, json: { code: auth.code, message: 'stubbed' } })
+  if (route.request().url().includes('/token')) {
+    return route.fulfill({ headers, json: { access_token: 'stub', refresh_token: 'stub', token_type: 'bearer', expires_in: 3600, user: AUTH_USER } })
+  }
+  return route.fulfill({ headers, json: AUTH_USER })
 }
 
 const ROUTES = ['', '/leads', '/calls', '/knowledge-base', '/call-handling', '/calendar', '/integrations', '/payments', '/settings', '/subscription', '/usage']
@@ -406,3 +425,111 @@ if (process.env.DASHBOARD_SHOTS) {
     })
   }
 }
+
+const authError = (page: Page) => page.getByRole('alert').filter({ hasText: 'We couldn’t confirm your sign-in.' })
+
+for (const status of ['down', 429, 500, 503] as const) {
+  test(`Settings offers a retry when auth answers ${status}, and shows no account content`, async ({ page, context }) => {
+    const auth: AuthService = { status }
+    await signIn(page, context, mock(), auth)
+    await page.goto(`${BASE}/settings`)
+    await expect(authError(page)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('Call summary notifications')).toHaveCount(0)
+    expect(page.url()).toContain('/settings')
+
+    auth.status = 200
+    await page.getByRole('button', { name: 'Try again' }).click()
+    await expect(page.getByText('Call summary notifications')).toBeVisible()
+    await expect(authError(page)).toHaveCount(0)
+  })
+}
+
+for (const [status, code] of [[403, 'bad_jwt'], [403, 'session_expired'], [401, 'no_authorization'], [403, 'session_not_found']] as const) {
+  test(`Settings goes to login when auth rejects the session with ${code}`, async ({ page, context }) => {
+    await signIn(page, context, mock(), { status, code })
+    await page.goto(`${BASE}/settings`)
+    await page.waitForURL('**/login', { timeout: 20_000 })
+    await expect(page.getByText('Call summary notifications')).toHaveCount(0)
+  })
+}
+
+for (const [status, code] of [[400, 'validation_failed'], [401, undefined], [403, undefined], [404, undefined]] as const) {
+  test(`an unrelated ${status} ${code ?? 'with no code'} from auth is not treated as signed out`, async ({ page, context }) => {
+    const auth: AuthService = { status, code }
+    await signIn(page, context, mock(), auth)
+    await page.goto(`${BASE}/settings`)
+    await expect(authError(page)).toBeVisible({ timeout: 20_000 })
+    expect(page.url()).toContain('/settings')
+    await expect(page.getByText('Call summary notifications')).toHaveCount(0)
+  })
+}
+
+test('a retry that finds the session rejected goes to login', async ({ page, context }) => {
+  const auth: AuthService = { status: 'down' }
+  await signIn(page, context, mock(), auth)
+  await page.goto(`${BASE}/settings`)
+  await expect(authError(page)).toBeVisible({ timeout: 20_000 })
+  auth.status = 403
+  auth.code = 'bad_jwt'
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await page.waitForURL('**/login', { timeout: 20_000 })
+})
+
+test('a token that cannot be refreshed during an outage keeps the user on the page', async ({ page, context }) => {
+  const auth: AuthService = { status: 'down', tokenExpired: true }
+  await signIn(page, context, mock(), auth)
+  await page.goto(`${BASE}/settings`)
+  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.db-sidebar')).toHaveCount(0)
+  await expect(authError(page)).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting' })).toHaveCount(0)
+  expect(page.url()).toContain('/settings')
+  await expect(page.locator('.db-sidebar')).toHaveCount(0)
+
+  auth.status = 200
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByText('Call summary notifications')).toBeVisible({ timeout: 20_000 })
+})
+
+test('a refresh token the auth service rejects goes to login', async ({ page, context }) => {
+  await signIn(page, context, mock(), { status: 400, code: 'refresh_token_not_found', tokenExpired: true })
+  await page.goto(`${BASE}/settings`)
+  await page.waitForURL('**/login', { timeout: 20_000 })
+})
+
+for (const [status, code] of [[500, 'unexpected_failure'], [429, 'over_request_rate_limit'], [400, 'validation_failed']] as const) {
+  test(`a ${status} ${code} during a refresh keeps the session and offers a retry`, async ({ page, context }) => {
+    const auth: AuthService = { status, code, tokenExpired: true }
+    await signIn(page, context, mock(), auth)
+    await page.goto(`${BASE}/settings`)
+    await expect(authError(page)).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible()
+    await expect(page.locator('.db-sidebar')).toHaveCount(0)
+    expect(await page.evaluate(() => localStorage.getItem('sb-supabase-auth-token'))).toContain('refresh_token')
+  })
+}
+
+test('a token the backend rejects still goes to login', async ({ page, context }) => {
+  await signIn(page, context, mock({ rejectToken: true }))
+  await page.goto(`${BASE}/settings`).catch(() => {}) // redirected while still loading
+  // Each rejected request redirects, and those navigations cancel one another.
+  await expect(page).toHaveURL(/\/login$/, { timeout: 20_000 })
+  await expect(page.getByText('Call summary notifications')).toHaveCount(0)
+})
+
+test('a password change during an auth outage says so and changes nothing', async ({ page, context }) => {
+  const auth: AuthService = { status: 200 }
+  const m = mock()
+  await signIn(page, context, m, auth)
+  await page.goto(`${BASE}/settings`)
+  await expect(page.getByText('Call summary notifications')).toBeVisible({ timeout: 20_000 })
+  auth.status = 'down'
+  const fields = page.locator('input[type=password]')
+  const count = await fields.count()
+  await fields.nth(count - 3).fill('current-password')
+  await fields.nth(count - 2).fill('new-password')
+  await fields.nth(count - 1).fill('new-password')
+  await page.getByRole('button', { name: 'Update password' }).click()
+  await expect(authError(page)).toBeVisible({ timeout: 20_000 })
+  expect(m.mutations).toEqual([])
+})

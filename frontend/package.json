@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/lib/adsConversion.test.mjs 'src/app/dashboard/[[]tenantId]/lib/dashboardState.test.mjs'",
+    "test": "node --test src/lib/adsConversion.test.mjs src/lib/authCheck.test.mjs 'src/app/dashboard/[[]tenantId]/lib/dashboardState.test.mjs'",
     "test:e2e": "playwright test"
   },
   "dependencies": {
