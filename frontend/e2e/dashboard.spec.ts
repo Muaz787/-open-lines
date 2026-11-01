@@ -221,6 +221,16 @@ test('a paying account can still reach plan changes from Usage', async ({ page, 
   await expect(page.getByText('$199 CAD/mo + tax')).toBeVisible()
 })
 
+test('an allowed complimentary account sees plans and the access promise', async ({ page, context }) => {
+  await signIn(page, context, mock({
+    account: { ...manualAccount, source: 'complimentary', paid_transition_open: true },
+    provider: { has_subscription: false, provider_state: 'none' },
+  }))
+  await page.goto(`${BASE}/subscription`)
+  await expect(page.getByText('You can now choose a paid plan')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Choose a Plan')).toBeVisible()
+})
+
 test('a complimentary account cannot buy a plan', async ({ page, context }) => {
   const m = mock({
     account: { ...manualAccount, source: 'complimentary' },

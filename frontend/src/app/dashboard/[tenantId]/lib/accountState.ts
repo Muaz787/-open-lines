@@ -12,6 +12,7 @@ export interface Account {
   has_provider_subscription: boolean
   line_active: boolean
   pending_activation: boolean
+  paid_transition_open?: boolean
 }
 
 // What /billing/subscription-details found at Stripe. Undefined means not asked yet.
@@ -75,6 +76,12 @@ const LOADING: AccountView = {
   billingNotice: null,
 }
 
+// An admin has allowed this complimentary or manual account to buy a plan.
+const TRANSITION_NOTICE = {
+  title: 'You can now choose a paid plan',
+  body: 'Your current access stays exactly as it is until your payment goes through. If it doesn’t, nothing changes.',
+}
+
 function subscriptionView(account: Account, provider?: ProviderState): Pick<AccountView, 'planLabel' | 'subscription' | 'needsPlan' | 'canChoosePlan' | 'billingNotice'> {
   const plan = account.plan ? capitalize(account.plan) : null
   const planName = plan ? `${plan} plan` : 'Plan'
@@ -85,8 +92,8 @@ function subscriptionView(account: Account, provider?: ProviderState): Pick<Acco
       planLabel: plan ? `${plan} (complimentary)` : 'Complimentary',
       subscription: NEUTRAL('Complimentary'),
       needsPlan: false,
-      canChoosePlan: false,
-      billingNotice: {
+      canChoosePlan: !!account.paid_transition_open,
+      billingNotice: account.paid_transition_open ? TRANSITION_NOTICE : {
         title: 'Complimentary account',
         body: 'Open Lines provides this account at no charge, so there’s no paid subscription to manage and no plan to choose. To talk about a paid plan, email support@openlines.ai.',
       },
@@ -98,8 +105,8 @@ function subscriptionView(account: Account, provider?: ProviderState): Pick<Acco
       planLabel: plan ? `${plan} (manual access)` : 'Manual access',
       subscription: NEUTRAL('Manual'),
       needsPlan: false,
-      canChoosePlan: false,
-      billingNotice: {
+      canChoosePlan: !!account.paid_transition_open,
+      billingNotice: account.paid_transition_open ? TRANSITION_NOTICE : {
         title: 'No paid subscription',
         body: `${plan ? `${plan} features were` : 'Access was'} set up on this account by Open Lines, so there’s no paid subscription to manage. To move to a paid plan, email support@openlines.ai.`,
       },

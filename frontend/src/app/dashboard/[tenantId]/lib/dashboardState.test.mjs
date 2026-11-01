@@ -50,6 +50,16 @@ describe('presentAccount', () => {
     assert.match(v.billingNotice.body, /support@openlines\.ai/)
   })
 
+  for (const source of ['complimentary', 'manual']) {
+    it(`offers a ${source} account plans only while an admin allows it`, () => {
+      const closed = presentAccount(account({ source, has_provider_subscription: false }), 'ready', 'none')
+      assert.equal(closed.canChoosePlan, false)
+      const open = presentAccount(account({ source, has_provider_subscription: false, paid_transition_open: true }), 'ready', 'none')
+      assert.equal(open.canChoosePlan, true)
+      assert.match(open.billingNotice.body, /until your payment goes through/)
+    })
+  }
+
   it('offers plans when there is no subscription', () => {
     const v = presentAccount(account({ source: 'none', subscription: 'none', plan: null, feature_plan: null }), 'ready', 'none')
     assert.equal(v.planLabel, 'No active plan')

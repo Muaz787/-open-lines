@@ -776,6 +776,7 @@ function SubscriptionPage() {
                   tenantId={tenantId}
                   plan={payingPlan.id}
                   interval={billingInterval}
+                  startPath={shared.account?.paid_transition_open ? '/billing/paid-transition' : undefined}
                   planLabel={`${payingPlan.label} · ${billingInterval === 'year' ? payingPlan.priceYear + '/yr' : payingPlan.price + '/mo'}`}
                   onSuccess={async () => {
                     // Conversion → GA4 + Google Ads (and PostHog). Fires only on a
@@ -795,6 +796,8 @@ function SubscriptionPage() {
                     trackPaidSubscriptionConversion(tenantId, value, 'CAD')
                     setPayingPlan(null)
                     showToast('🎉 Subscription activated!')
+                    // The plan labels come from the layout, which loads once.
+                    if (shared.account?.paid_transition_open) { window.location.reload(); return }
                     await fetchData()
                   }}
                   onCancel={() => setPayingPlan(null)}

@@ -53,6 +53,16 @@ While loading, labels are empty and no plan is offered. After a failed request, 
 
 Tests: `tests/test_account_state.py`, `lib/dashboardState.test.mjs`, `e2e/dashboard.spec.ts`.
 
+## Complimentary or manual to paid
+
+Requires migration `040_paid_transition.sql`. Until it's applied, the admin button fails and nothing else changes.
+
+1. An admin clicks **Allow paid plan (7 days)** on the tenant page. This sets `paid_transition_expires_at` and nothing else.
+2. The customer sees the plan picker and pays through `/billing/paid-transition`. The new subscription ID goes in `paid_transition_subscription_id`, away from `stripe_subscription_id`, so webhooks and `/billing/sync` leave the tenant alone.
+3. Once Stripe reports the subscription `active`, `_finish_paid_transition` sets the subscription, plan and status, clears `billing_exempt`, and resets the usage counters, all in one write. `/billing/confirm-payment` and the `customer.subscription.updated` webhook both call it, and repeating it is safe.
+
+A failed or abandoned payment changes nothing, and Stripe expires the incomplete subscription. A tenant comped through `BILLING_EXEMPT_TENANT_IDS` is refused until it's removed from that variable.
+
 ## Periods
 
 `services/date_ranges.py` is the only definition.

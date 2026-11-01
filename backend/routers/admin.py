@@ -95,6 +95,29 @@ async def billing_check(tenant_id: str, x_admin_key: str | None = Header(None)):
     return {"account": account_state(tenant), **provider_check(tenant)}
 
 
+@router.patch("/tenants/{tenant_id}/paid-transition")
+async def set_paid_transition(tenant_id: str, body: dict, x_admin_key: str | None = Header(None)):
+    """Open or close a window for a complimentary or manual account to buy a plan.
+    This changes no access and touches nothing in Stripe; the customer has to pay."""
+    _check_admin_key(x_admin_key)
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    from services.account_state import transition_eligible
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if not body.get("allow"):
+        await db.update_tenant(tenant_id, {"paid_transition_expires_at": None})
+        return {"id": tenant_id, "paid_transition_expires_at": None}
+    if not transition_eligible(tenant):
+        raise HTTPException(status_code=409, detail="Only a complimentary or manual account with no subscription on record can do this")
+    if tenant_id in os.getenv("BILLING_EXEMPT_TENANT_IDS", ""):
+        raise HTTPException(status_code=409, detail="This tenant is comped by BILLING_EXEMPT_TENANT_IDS. Remove it there first")
+    expires = (_dt.now(_tz.utc) + _td(days=7)).isoformat()
+    await db.update_tenant(tenant_id, {"paid_transition_expires_at": expires})
+    logger.info("Paid transition allowed for tenant %s until %s", tenant_id, expires)
+    return {"id": tenant_id, "paid_transition_expires_at": expires}
+
+
 @router.patch("/tenants/{tenant_id}/comp")
 async def set_tenant_comp(tenant_id: str, body: dict, x_admin_key: str | None = Header(None)):
     """Comp a tenant (billing_exempt): line stays live with no trial expiry or
