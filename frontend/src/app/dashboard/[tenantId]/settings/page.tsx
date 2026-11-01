@@ -9,6 +9,7 @@ import { authedFetch } from '@/lib/api'
 import { classifyAuth, isWrongPassword, type AuthCheck } from '@/lib/authCheck'
 import { ErrorState, LoadingState } from '../components/PageStates'
 import NotificationPreferences from '@/components/NotificationPreferences'
+import { useUnsavedChanges } from '../lib/useUnsavedChanges'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -75,6 +76,14 @@ function SettingsPage() {
   // Nothing below renders until this is 'ok'.
   const [authCheck, setAuthCheck] = useState<AuthCheck | null>(null)
 
+  // What the server last accepted, to tell an edit from a value that was just loaded.
+  const [savedBehavior, setSavedBehavior] = useState<string | null>(null)
+  const [savedPhone, setSavedPhone]       = useState<string | null>(null)
+  const behaviorNow = JSON.stringify([bizInstructions, subtype, tone, priorities])
+  const behaviorDirty = savedBehavior !== null && behaviorNow !== savedBehavior
+  const phoneDirty = savedPhone !== null && bizPhone !== savedPhone
+  useUnsavedChanges(behaviorDirty || phoneDirty)
+
   const load = useCallback(() => {
     supabase.auth.getUser().then(({ data, error }) => {
       const check = classifyAuth(!!data.user, error)
@@ -93,6 +102,11 @@ function SettingsPage() {
         if (d?.business_subtype) setSubtype(d.business_subtype)
         if (d?.receptionist_tone) setTone(d.receptionist_tone)
         if (Array.isArray(d?.operating_priorities)) setPriorities(d.operating_priorities)
+        setSavedBehavior(JSON.stringify([
+          d?.extra_instructions ?? '', d?.business_subtype ?? '', d?.receptionist_tone ?? '',
+          Array.isArray(d?.operating_priorities) ? d.operating_priorities : [],
+        ]))
+        setSavedPhone(d?.business_phone ?? '')
       }
     }).catch(() => {})
   }, [tenantId, router])
@@ -129,7 +143,7 @@ function SettingsPage() {
           operating_priorities: priorities,
         }),
       })
-      if (res.ok) { setBehaviorState('saved'); setTimeout(() => setBehaviorState('idle'), 2500) }
+      if (res.ok) { setSavedBehavior(behaviorNow); setBehaviorState('saved'); setTimeout(() => setBehaviorState('idle'), 2500) }
       else {
         const d = await res.json().catch(() => ({}))
         setBehaviorState('error'); setBehaviorMsg(d?.detail || 'Save failed — try again')
@@ -146,6 +160,7 @@ function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ business_phone: bizPhone.trim() }),
       })
+      if (res.ok) setSavedPhone(bizPhone)
       setBizPhoneState(res.ok ? 'saved' : 'error')
       setTimeout(() => setBizPhoneState('idle'), 3000)
     } catch {
@@ -321,6 +336,7 @@ function SettingsPage() {
                 <button className="db-btn db-btn--accent-ghost" onClick={saveBehavior} disabled={behaviorState === 'saving'}>
                   {behaviorState === 'saving' ? 'Saving…' : 'Save'}
                 </button>
+                {behaviorDirty && behaviorState === 'idle' && <span style={{ fontSize: 12, color: 'var(--db-muted)' }}>Unsaved changes</span>}
                 {behaviorState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved — your AI is updating</span>}
                 {behaviorState === 'error' && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>{behaviorMsg || 'Save failed — try again'}</span>}
               </div>
@@ -383,6 +399,7 @@ function SettingsPage() {
                 <button className="db-btn db-btn--accent-ghost" onClick={saveBizPhone} disabled={bizPhoneState === 'saving'}>
                   {bizPhoneState === 'saving' ? 'Saving…' : 'Save'}
                 </button>
+                {phoneDirty && bizPhoneState === 'idle' && <span style={{ fontSize: 12, color: 'var(--db-muted)' }}>Unsaved changes</span>}
                 {bizPhoneState === 'saved' && <span style={{ fontSize: 12, color: 'var(--db-accent-text)' }}>✓ Saved</span>}
                 {bizPhoneState === 'error' && <span style={{ fontSize: 12, color: 'var(--db-danger-text)' }}>Enter a valid phone number</span>}
               </div>

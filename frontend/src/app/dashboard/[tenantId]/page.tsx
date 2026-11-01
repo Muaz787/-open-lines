@@ -19,6 +19,7 @@ import { useQueryParam } from './lib/useQueryParam'
 import { disclosureProps } from './lib/disclosure'
 
 import { authedFetch, peekJson } from '@/lib/api'
+import { Calendar, Zap } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Lead {
@@ -229,7 +230,7 @@ function DashboardPage() {
       setCalToast('Calendar connection failed. Please try again.')
       setTimeout(() => setCalToast(null), 5000)
     } else if (billingParam === 'success') {
-      setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
+      setCalToast('Subscription activated! Welcome to Open Lines.')
       setTimeout(() => setCalToast(null), 6000)
       const pollTenant = (attemptsLeft: number) => {
         authedFetch(`${API}/onboarding/status/${tenantId}`)
@@ -276,7 +277,7 @@ function DashboardPage() {
 
   const handlePaymentSuccess = async () => {
     setPayingPlan(null)
-    setCalToast('🎉 Subscription activated! Welcome to Open Lines.')
+    setCalToast('Subscription activated! Welcome to Open Lines.')
     setTimeout(() => setCalToast(null), 6000)
     try {
       const res = await authedFetch(`${API}/onboarding/status/${tenantId}`)
@@ -534,7 +535,7 @@ function DashboardPage() {
               <div className="db-section-card">
               <div className="db-section-hdr">
                 <div className="db-section-title-row">
-                  <div className="db-section-icon" style={{ background: '#fff5f0' }}>⚡</div>
+                  <div className="db-section-icon" style={{ background: '#fff5f0' }}><Zap size={14} aria-hidden /></div>
                   <span className="db-section-name">Lead Queue</span>
                   <span className="db-section-hint">Latest leads, all time</span>
                 </div>
@@ -697,7 +698,7 @@ function DashboardPage() {
                 <div className="db-section-card">
                   <div className="db-section-hdr">
                     <div className="db-section-title-row">
-                      <div className="db-section-icon" style={{ background: '#f0fdf4' }}>📅</div>
+                      <div className="db-section-icon" style={{ background: '#f0fdf4' }}><Calendar size={14} aria-hidden /></div>
                       <span className="db-section-name">Upcoming</span>
                     </div>
                     {calStatus?.connected && (

@@ -7,6 +7,7 @@ import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
 import { authedFetch } from '@/lib/api'
+import { AlertTriangle, CreditCard } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 interface Settings {
@@ -409,7 +410,7 @@ export default function PaymentsPage() {
                 </>
               ) : stripeStatus?.connected && !stripeStatus.charges_enabled ? (
                 <>
-                  <div style={{ fontSize: 13, color: '#f59e0b' }}>⚠ Onboarding incomplete — finish setting up your Stripe account</div>
+                  <div style={{ fontSize: 13, color: '#f59e0b' }}><AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px' }} /> Onboarding incomplete — finish setting up your Stripe account</div>
                   <button className="db-btn db-btn--dark" style={{ fontSize: 12 }} onClick={handleConnect} disabled={connecting || !isEligible}>
                     {connecting ? 'Opening…' : 'Continue setup'}
                   </button>
@@ -689,7 +690,7 @@ export default function PaymentsPage() {
           {/* Payment history */}
           {payments.length === 0 ? (
             <div className="db-card db-form-wide" style={{ padding: '32px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>💳</div>
+              <div style={{ marginBottom: 10 }}><CreditCard size={28} aria-hidden /></div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--db-text)', marginBottom: 6 }}>No deposits yet</div>
               <div style={{ fontSize: 13, color: 'var(--db-muted)', lineHeight: 1.6 }}>
                 Deposits will appear here after your first booking with payment enabled.

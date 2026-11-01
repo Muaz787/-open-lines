@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { authedFetch } from '@/lib/api'
+import { Sparkles } from 'lucide-react'
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -156,7 +157,7 @@ export default function AiInsights({ tenantId, businessName }: { tenantId: strin
     <div className="db-section-card" style={{ marginTop: 14 }}>
       <div className="db-section-hdr">
         <div className="db-section-title-row">
-          <div className="db-section-icon" style={{ background: '#f5f0fe' }}>✦</div>
+          <div className="db-section-icon" style={{ background: '#f5f0fe' }}><Sparkles size={14} aria-hidden /></div>
           <span className="db-section-name">AI Insights</span>
           {data?.window_label && hasContent && (
             <span style={{ fontSize: 11, color: 'var(--db-faint)', marginLeft: 4 }}>· {data.window_label}</span>
@@ -194,7 +195,7 @@ export default function AiInsights({ tenantId, businessName }: { tenantId: strin
             Your AI receptionist analyzes every conversation. Generate a consultant-style review
             of performance, patterns, action items, and knowledge gaps.
           </div>
-          <button className="db-btn db-btn--dark" onClick={() => load(true)}>✦ Generate insights</button>
+          <button className="db-btn db-btn--dark" onClick={() => load(true)}><Sparkles size={13} aria-hidden /> Generate insights</button>
         </div>
       )}
 

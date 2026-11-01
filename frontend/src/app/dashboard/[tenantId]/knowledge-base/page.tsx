@@ -9,6 +9,7 @@ import { Toast } from '../components/Toast'
 import { LoadingState } from '../components/PageStates'
 
 import { authedFetch } from '@/lib/api'
+import { AlertTriangle, Sparkles } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -289,7 +290,7 @@ function KnowledgeBasePage() {
           <span className="db-topbar-title">Knowledge Base</span>
           <div className="db-topbar-right">
             <button className="kb-update-btn" onClick={repairPrompt} disabled={repairLoading}>
-              <span style={{ fontSize: 13 }}>✦</span>
+              <Sparkles size={13} aria-hidden />
               {repairLoading ? 'Updating…' : 'Update AI Prompt'}
             </button>
           </div>
@@ -389,7 +390,7 @@ function KnowledgeBasePage() {
                 <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <div style={{ fontSize: 12, color: 'var(--db-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     {tenant?.last_crawl_status === 'error' ? (
-                      <span style={{ color: 'var(--db-warn-text, #c2410c)', fontWeight: 600 }}>⚠ Last sync failed</span>
+                      <span style={{ color: 'var(--db-warn-text, #c2410c)', fontWeight: 600 }}><AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> Last sync failed</span>
                     ) : tenant?.last_crawl_at ? (
                       <span style={{ color: 'var(--db-accent-text)' }}>✓ Synced {timeAgo(tenant.last_crawl_at)}</span>
                     ) : (

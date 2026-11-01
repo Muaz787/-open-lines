@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 
 import { authedFetch } from '@/lib/api'
+import { FileText, Globe, Paperclip, PenLine } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -35,7 +36,12 @@ interface Props {
   onClose: () => void
 }
 
-const TYPE_ICON: Record<string, string> = { file: '📄', text: '📝', website: '🌐' }
+const TYPE_ICON: Record<string, typeof FileText> = { file: FileText, text: PenLine, website: Globe }
+
+function EntryIcon({ type }: { type: string }) {
+  const Icon = TYPE_ICON[type] ?? FileText
+  return <Icon size={14} aria-hidden style={{ flexShrink: 0 }} />
+}
 
 function timeAgoShort(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -277,7 +283,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
                     borderTop: i > 0 ? '1px solid var(--border)' : 'none',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={{ fontSize: 14, flexShrink: 0 }}>{TYPE_ICON[e.type] ?? '📄'}</span>
+                      <EntryIcon type={e.type} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{
                           fontSize: 12, color: 'var(--text)', fontWeight: 500,
@@ -382,7 +388,7 @@ export function KnowledgeDrawer({ tenantId, websiteUrl, lastCrawlAt, onClose }: 
                 style={{ display: 'none' }}
                 onChange={e => e.target.files && handleFiles(e.target.files)}
               />
-              <div style={{ fontSize: 24, marginBottom: 8 }}>📎</div>
+              <div style={{ marginBottom: 8 }}><Paperclip size={24} aria-hidden /></div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
                 {uploadLoading ? 'Uploading…' : 'Drop files or click to browse'}
               </div>
