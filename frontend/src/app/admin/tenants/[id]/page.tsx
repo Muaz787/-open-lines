@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { billingStatus } from '@/lib/billing'
+import { presentAccount, type Account, type ProviderState } from '@/app/dashboard/[tenantId]/lib/accountState'
 
 
 interface TenantDetail {
@@ -73,6 +74,8 @@ export default function TenantDetailPage() {
   // you type the number rather than firing on a single click.
   const [releasing, setReleasing] = useState(false)
   const [releaseConfirm, setReleaseConfirm] = useState('')
+  const [billingCheck, setBillingCheck] = useState<{ account: Account; provider_state: ProviderState; stripe_status: string | null } | null>(null)
+  const [billingCheckFailed, setBillingCheckFailed] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -82,6 +85,9 @@ export default function TenantDetailPage() {
       if (!res.ok) { router.replace('/admin/tenants'); return }
       setData(await res.json())
       setLoading(false)
+      const check = await fetch(`/api/admin/tenants/${id}/billing-check`, { headers: { Authorization: `Bearer ${session.access_token}` } }).catch(() => null)
+      if (check?.ok) setBillingCheck(await check.json())
+      else setBillingCheckFailed(true)
     })
   }, [id, router])
 
@@ -404,6 +410,12 @@ export default function TenantDetailPage() {
 
         {/* Billing & comp */}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--db-border)' }}>
+          <div style={{ fontSize: 12, marginBottom: 14 }} data-testid="billing-check">
+            <span style={{ fontWeight: 600, color: 'var(--db-text-2)' }}>Customer sees: </span>
+            {billingCheck
+              ? `Subscription: ${presentAccount(billingCheck.account, 'ready', billingCheck.provider_state).subscription.label} · Stripe: ${billingCheck.stripe_status ?? billingCheck.provider_state}`
+              : billingCheckFailed ? 'Couldn’t check Stripe' : 'Checking Stripe…'}
+          </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 8 }}>
             Billing &amp; comp
             {tenant.billing_exempt && <span className="adm-badge adm-badge-green" style={{ marginLeft: 8 }}>Comped</span>}
