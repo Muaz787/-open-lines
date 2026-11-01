@@ -82,6 +82,19 @@ async def toggle_tenant(tenant_id: str, x_admin_key: str | None = Header(None)):
         raise HTTPException(status_code=500, detail="Failed to update tenant")
 
 
+@router.get("/tenants/{tenant_id}/billing-check")
+async def billing_check(tenant_id: str, x_admin_key: str | None = Header(None)):
+    """The account state and live Stripe result behind a tenant's billing labels.
+    Read-only: the customer's dashboard is built from these same two values."""
+    _check_admin_key(x_admin_key)
+    tenant = await db.get_tenant_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    from routers.billing import provider_check
+    from services.account_state import account_state
+    return {"account": account_state(tenant), **provider_check(tenant)}
+
+
 @router.patch("/tenants/{tenant_id}/comp")
 async def set_tenant_comp(tenant_id: str, body: dict, x_admin_key: str | None = Header(None)):
     """Comp a tenant (billing_exempt): line stays live with no trial expiry or

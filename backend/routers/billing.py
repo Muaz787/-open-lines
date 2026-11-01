@@ -167,6 +167,21 @@ def _guard_plan_purchase(tenant: dict, allowed_sub_statuses: frozenset | None = 
         raise HTTPException(status_code=409, detail="This account already has a subscription. Manage it on the Billing page, or email support@openlines.ai.")
 
 
+def provider_check(tenant: dict) -> dict:
+    """What Stripe says about the tenant's stored subscription. Read-only."""
+    sub_id = str(tenant.get("stripe_subscription_id") or "").strip()
+    if not sub_id:
+        return {"provider_state": "none", "stripe_status": None}
+    try:
+        sub = stripe.Subscription.retrieve(sub_id)
+    except stripe.InvalidRequestError:
+        return {"provider_state": "missing", "stripe_status": None}
+    except stripe.StripeError as e:
+        logger.error("Stripe check failed for tenant %s: %s", tenant.get("id"), e)
+        return {"provider_state": "unavailable", "stripe_status": None}
+    return {"provider_state": "ok", "stripe_status": sub.status}
+
+
 @router.post("/create-checkout")
 async def create_checkout(body: dict, authorization: Annotated[str | None, Header()] = None):
     tenant_id: str = body.get("tenant_id", "")

@@ -201,6 +201,26 @@ test('a tenant with no number reads apart from its subscription', async ({ page,
   await expect(status(page)).toContainText('Active')
 })
 
+for (const [name, account] of [['complimentary', { ...manualAccount, source: 'complimentary' }], ['manual', manualAccount]] as const) {
+  test(`Usage offers a ${name} account no price or plan change`, async ({ page, context }) => {
+    await signIn(page, context, mock({ account, provider: { has_subscription: false, provider_state: 'none' } }))
+    await page.goto(`${BASE}/usage`)
+    await expect(status(page)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('of allowance used')).toBeVisible()
+    await expect(page.getByText('Manage plan')).toHaveCount(0)
+    await expect(page.getByText('Switch →')).toHaveCount(0)
+    await expect(page.getByText(/\$\d+/)).toHaveCount(0)
+  })
+}
+
+test('a paying account can still reach plan changes from Usage', async ({ page, context }) => {
+  await signIn(page, context, mock())
+  await page.goto(`${BASE}/usage`)
+  await expect(page.getByText('Manage plan')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Switch →').first()).toBeVisible()
+  await expect(page.getByText('$199 CAD/mo + tax')).toBeVisible()
+})
+
 test('a complimentary account cannot buy a plan', async ({ page, context }) => {
   const m = mock({
     account: { ...manualAccount, source: 'complimentary' },

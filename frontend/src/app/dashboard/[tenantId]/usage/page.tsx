@@ -93,14 +93,16 @@ export default function UsagePage() {
       {/* Desktop topbar */}
       <div className="db-topbar">
         <span className="db-topbar-title">Usage</span>
-        <div className="db-topbar-right">
-          <Link
-            href={`/dashboard/${tenantId}/subscription`}
-            className="db-btn db-btn--accent-ghost db-btn--sm"
-          >
-            Manage plan →
-          </Link>
-        </div>
+        {account.canChoosePlan && (
+          <div className="db-topbar-right">
+            <Link
+              href={`/dashboard/${tenantId}/subscription`}
+              className="db-btn db-btn--accent-ghost db-btn--sm"
+            >
+              Manage plan →
+            </Link>
+          </div>
+        )}
       </div>
 
       <div className="db-content">
@@ -123,7 +125,7 @@ export default function UsagePage() {
                         {capitalize(usage.plan)}
                       </span>
                       <span style={{ fontSize: 11, color: 'var(--db-muted)' }}>
-                        {PLAN_PRICE[usage.plan] ?? ''}
+                        {account.canChoosePlan ? PLAN_PRICE[usage.plan] ?? '' : ''}
                       </span>
                     </div>
                     <div style={{ marginTop: 8 }}><AccountStatus view={account} /></div>
@@ -225,56 +227,58 @@ export default function UsagePage() {
             )}
 
             {/* ── Plan comparison ── */}
-            <div className="db-section-card">
-              <div className="db-section-hdr">
-                <div className="db-section-title-row">
-                  <div className="db-section-icon" style={{ background: '#f4f3f0' }}>📊</div>
-                  <span className="db-section-name">Plan Allowances</span>
+            {account.canChoosePlan && (
+              <div className="db-section-card">
+                <div className="db-section-hdr">
+                  <div className="db-section-title-row">
+                    <div className="db-section-icon" style={{ background: '#f4f3f0' }}>📊</div>
+                    <span className="db-section-name">Plan Allowances</span>
+                  </div>
+                </div>
+                <div>
+                  {([
+                    { id: 'starter',  label: 'Starter',  price: '$99/mo',  note: '+$0.69/min overage' },
+                    { id: 'pro',      label: 'Pro',       price: '$199/mo', note: '+$0.69/min overage' },
+                    { id: 'business', label: 'Business',  price: '$379/mo', note: '+$0.69/min overage' },
+                  ] as const).map(({ id, label, price, note }, i, arr) => {
+                    const mins = PLAN_ALLOCATIONS[id] ?? 0
+                    const isCurrent = usage.plan === id
+                    return (
+                      <div key={id} style={{
+                        display: 'flex', alignItems: 'center', padding: '12px 18px',
+                        borderBottom: i < arr.length - 1 ? '1px solid var(--db-border-lt)' : 'none',
+                        background: isCurrent ? 'var(--db-accent-bg)' : 'transparent',
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <span style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500, color: 'var(--db-text)' }}>{label}</span>
+                            {isCurrent && (
+                              <span className="db-badge db-badge--success">Current</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 2 }}>{note}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', fontFamily: 'var(--font-mono), monospace' }}>
+                            {mins.toLocaleString()} min
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--db-muted)' }}>{price}</div>
+                        </div>
+                        {!isCurrent && usage.plan !== 'business' && (
+                          <Link
+                            href={`/dashboard/${tenantId}/subscription`}
+                            className="db-btn db-btn--accent-ghost db-btn--sm"
+                            style={{ marginLeft: 14 }}
+                          >
+                            Switch →
+                          </Link>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-              <div>
-                {([
-                  { id: 'starter',  label: 'Starter',  price: '$99/mo',  note: '+$0.69/min overage' },
-                  { id: 'pro',      label: 'Pro',       price: '$199/mo', note: '+$0.69/min overage' },
-                  { id: 'business', label: 'Business',  price: '$379/mo', note: '+$0.69/min overage' },
-                ] as const).map(({ id, label, price, note }, i, arr) => {
-                  const mins = PLAN_ALLOCATIONS[id] ?? 0
-                  const isCurrent = usage.plan === id
-                  return (
-                    <div key={id} style={{
-                      display: 'flex', alignItems: 'center', padding: '12px 18px',
-                      borderBottom: i < arr.length - 1 ? '1px solid var(--db-border-lt)' : 'none',
-                      background: isCurrent ? 'var(--db-accent-bg)' : 'transparent',
-                    }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                          <span style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500, color: 'var(--db-text)' }}>{label}</span>
-                          {isCurrent && (
-                            <span className="db-badge db-badge--success">Current</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--db-faint)', marginTop: 2 }}>{note}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-text)', fontFamily: 'var(--font-mono), monospace' }}>
-                          {mins.toLocaleString()} min
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--db-muted)' }}>{price}</div>
-                      </div>
-                      {!isCurrent && usage.plan !== 'business' && (
-                        <Link
-                          href={`/dashboard/${tenantId}/subscription`}
-                          className="db-btn db-btn--accent-ghost db-btn--sm"
-                          style={{ marginLeft: 14 }}
-                        >
-                          Switch →
-                        </Link>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            )}
           </>
         )}
       </div>
