@@ -794,7 +794,7 @@ function SubscriptionPage() {
                     // until the paid action's label is configured.
                     trackPaidSubscriptionConversion(tenantId, value, 'CAD')
                     setPayingPlan(null)
-                    showToast('🎉 Subscription activated!')
+                    showToast('Subscription activated!')
                     await fetchData()
                   }}
                   onCancel={() => setPayingPlan(null)}

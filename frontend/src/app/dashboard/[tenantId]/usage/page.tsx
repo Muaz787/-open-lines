@@ -6,7 +6,9 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { capitalize } from '../lib/format'
 import { LoadingState, EmptyState } from '../components/PageStates'
-import { useAccountView } from '../lib/AccountContext'
+import { useAccountState, useAccountView } from '../lib/AccountContext'
+import { BarChart3 } from 'lucide-react'
+import { usagePeriodText } from '../lib/usagePeriod'
 import { AccountStatus } from '../components/AccountStatus'
 
 import { authedFetch, peekJson } from '@/lib/api'
@@ -85,6 +87,7 @@ export default function UsagePage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const account = useAccountView()
+  const { account: rawAccount } = useAccountState()
   const pct = usage?.usage_pct ?? 0
   const barColor = pct >= 100 ? 'var(--db-danger)' : pct >= 80 ? 'var(--db-warn-text)' : 'var(--db-accent)'
 
@@ -112,6 +115,10 @@ export default function UsagePage() {
           <EmptyState title="Could not load usage data." />
         ) : (
           <>
+            <p style={{ fontSize: 12, color: 'var(--db-muted)', margin: '0 0 12px' }}>
+              {usagePeriodText(rawAccount?.source, usage.billing_period_anchor)} Each call counts as whole minutes, rounded up, so this can be higher than the time on your dashboard.
+            </p>
+
             {/* ── Main usage card ── */}
             <div className="db-section-card" style={{ marginBottom: 14 }}>
               <div style={{ padding: '18px 18px 0' }}>
@@ -231,7 +238,7 @@ export default function UsagePage() {
               <div className="db-section-card">
                 <div className="db-section-hdr">
                   <div className="db-section-title-row">
-                    <div className="db-section-icon" style={{ background: '#f4f3f0' }}>📊</div>
+                    <div className="db-section-icon" style={{ background: '#f4f3f0' }}><BarChart3 size={14} aria-hidden /></div>
                     <span className="db-section-name">Plan Allowances</span>
                   </div>
                 </div>
