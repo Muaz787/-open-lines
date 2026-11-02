@@ -249,17 +249,24 @@ async def test_a_retry_stripe_already_has_settles_without_billing_again():
     # Stripe's real answer in test mode: HTTP 400, no error code.
     row = tenant(minutes_used_this_period=400, overage_minutes_reported=0)
     await call(row, "c1", "2026-01-15T00:00:00", secs=300, meter=MagicMock(side_effect=stripe.APIConnectionError("down")))
-    duplicate = stripe.InvalidRequestError("An event already exists with identifier ol-usage-x.", "identifier")
+    identifier = usage._meter_identifier("t1", "c1")
+    duplicate = stripe.InvalidRequestError(f"An event already exists with identifier {identifier}.", "identifier", http_status=400)
     result = await retry_once(row, MagicMock(side_effect=duplicate))
     assert result["reported"] == 1
     assert row["_events"]["c1"]["state"] == "reported"
 
 
 @pytest.mark.asyncio
-async def test_any_other_stripe_refusal_stays_pending():
+@pytest.mark.parametrize("refusal", [
+    lambda _i: stripe.InvalidRequestError("No such customer", "customer", http_status=400),
+    lambda _i: stripe.InvalidRequestError("An event already exists with identifier ol-usage-someone-else.", "identifier", http_status=400),
+    lambda i: stripe.InvalidRequestError(f"An event already exists with identifier {i}.", "identifier", http_status=409),
+    lambda i: stripe.InvalidRequestError(f"Could not check whether an event already exists with identifier {i}.", "identifier", http_status=400),
+], ids=["other error", "another identifier", "other status", "similar wording"])
+async def test_any_other_stripe_refusal_stays_pending(refusal):
     row = tenant(minutes_used_this_period=400, overage_minutes_reported=0)
     await call(row, "c1", "2026-01-15T00:00:00", secs=300, meter=MagicMock(side_effect=stripe.APIConnectionError("down")))
-    result = await retry_once(row, MagicMock(side_effect=stripe.InvalidRequestError("No such customer", "customer")))
+    result = await retry_once(row, MagicMock(side_effect=refusal(usage._meter_identifier("t1", "c1"))))
     assert result["failed"] == 1
     assert row["_events"]["c1"]["state"] == "pending"
 
@@ -287,3 +294,64 @@ async def test_a_trial_conversion_keeps_only_calls_after_it():
         result = await db.usage_roll_period("t1", iso(FEB), start_paid=True)
     assert result["rolled"] is True
     assert row["minutes_used_this_period"] == 0
+
+
+async def quarantine_call(row, call_id, ended="2026-01-15T00:00:00", meter=None):
+    calls = []
+
+    async def hold(tenant_id, reason, minutes, ended_at):
+        calls.append((reason, minutes, ended_at))
+
+    record, roll, reported = UsageRow(row).patches()
+    with patch.object(usage.db, "get_tenant_by_id", AsyncMock(side_effect=lambda _i: dict(row))), record, roll, reported, \
+            patch.object(usage.db, "usage_quarantine_call", hold), patch.object(usage, "_stripe_key", "sk"), \
+            patch.object(usage, "_overage_price_id", "price"), \
+            patch.object(usage.stripe.billing.MeterEvent, "create", meter or MagicMock()):
+        await usage.record_call_minutes("t1", 300, call_id=call_id, ended_at=iso(ended))
+    return calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_id", ["", None, "   "], ids=["empty", "none", "blank"])
+async def test_a_call_with_no_id_never_reaches_usage_or_billing(call_id):
+    row, meter = tenant(minutes_used_this_period=400, overage_minutes_reported=0), MagicMock()
+    for _ in range(3):  # a retry looks identical
+        calls = await quarantine_call(row, call_id, meter=meter)
+        assert calls[0][:2] == ("missing_call_id", 5)
+    assert row["minutes_used_this_period"] == 400
+    assert not row.get("_events")
+    meter.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ended", [None, "", "not a time", "2026-01-15T00:00:00"], ids=["none", "empty", "garbled", "no timezone"])
+async def test_a_call_with_no_usable_end_time_is_recorded_and_flagged(ended):
+    row = tenant()
+    record, roll, reported = UsageRow(row).patches()
+    with patch.object(usage.db, "get_tenant_by_id", AsyncMock(side_effect=lambda _i: dict(row))), record, roll, reported, \
+            patch.object(usage, "_current_period_start", AsyncMock(return_value=None)):
+        await usage.record_call_minutes("t1", 60, call_id="c1", ended_at=ended)
+    assert row["_events"]["c1"]["estimated"] is True
+    assert row["minutes_used_this_period"] == 121
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("counts,status,text", [
+    ({"review": 2, "pending": 0, "quarantined": 0, "uncounted": 0}, "error", "never resend"),
+    ({"review": 0, "pending": 0, "quarantined": 1, "uncounted": 0}, "error", "quarantined"),
+    ({"review": 0, "pending": 3, "quarantined": 0, "uncounted": 1}, "warning", "3 overage pending"),
+    ({"review": 0, "pending": 0, "quarantined": 0, "uncounted": 4}, "ok", "4 delayed"),
+], ids=["stopped retrying", "quarantined", "pending", "clear"])
+async def test_the_admin_warning(counts, status, text):
+    with patch.object(usage.db, "usage_ledger_counts", AsyncMock(return_value=counts)):
+        got, message = await usage.ledger_health()
+    assert got == status and text in message
+
+
+@pytest.mark.asyncio
+async def test_a_delayed_call_never_creates_overage():
+    row, meter = await deliver(tenant(minutes_used_this_period=0), event_at(FEB)), MagicMock()
+    row["minutes_used_this_period"] = 400
+    await call(row, "late", "2026-01-31T23:50:00", secs=600, meter=meter)
+    meter.assert_not_called()
+    assert row["_events"]["late"]["overage"] == 0

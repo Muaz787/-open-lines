@@ -326,7 +326,7 @@ async def test_customer_with_no_subscription_is_not_metered():
             patch.object(usage.db, "usage_record_call", AsyncMock(return_value=total)), \
             patch.object(usage, "_stripe_key", "sk"), patch.object(usage, "_overage_price_id", "price"), \
             patch.object(usage.stripe.billing.MeterEvent, "create", MagicMock()) as meter:
-        await usage.record_call_minutes(TENANT, 120)
+        await usage.record_call_minutes(TENANT, 120, call_id="c1")
     meter.assert_not_called()
 
 

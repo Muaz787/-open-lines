@@ -267,11 +267,13 @@ async def insert_tenant(data: dict) -> dict:
 
 
 async def usage_record_call(tenant_id: str, call_id: str, minutes: int, ended_at: str,
-                            period_start: str | None, allowance: int | None) -> dict | None:
+                            period_start: str | None, allowance: int | None,
+                            ended_at_estimated: bool = False) -> dict | None:
     """Record a call once, in one locked step. See migration 042."""
     res = await run_query(get_client().rpc("usage_record_call", {
         "p_tenant_id": tenant_id, "p_call_id": call_id, "p_minutes": minutes, "p_ended_at": ended_at,
         "p_period_start": period_start, "p_allowance": allowance,
+        "p_ended_at_estimated": ended_at_estimated,
     }))
     return res.data[0] if res.data else None
 
@@ -293,6 +295,27 @@ async def usage_pending_overage(limit: int = 200) -> list:
                           .select("tenant_id, call_id, overage_minutes, ended_at, created_at")
                           .eq("overage_state", "pending").order("created_at").limit(limit))
     return res.data or []
+
+
+async def usage_quarantine_call(tenant_id: str, reason: str, minutes: int, ended_at: str | None) -> None:
+    await run_query(get_client().table("usage_quarantine").insert({
+        "tenant_id": tenant_id, "reason": reason, "minutes": minutes, "ended_at": ended_at,
+    }))
+
+
+async def usage_ledger_counts() -> dict:
+    """How many ledger rows need a person, for the admin System Health page."""
+    client = get_client()
+
+    async def count(query):
+        return (await run_query(query)).count or 0
+
+    return {
+        "review": await count(client.table("usage_events").select("id", count="exact").eq("overage_state", "review").limit(1)),
+        "pending": await count(client.table("usage_events").select("id", count="exact").eq("overage_state", "pending").limit(1)),
+        "quarantined": await count(client.table("usage_quarantine").select("id", count="exact").is_("resolved_at", "null").limit(1)),
+        "uncounted": await count(client.table("usage_events").select("id", count="exact").eq("counted", False).limit(1)),
+    }
 
 
 async def usage_overage_needs_review(tenant_id: str, call_id: str) -> None:

@@ -44,7 +44,7 @@ class UsageRow:
         row["billing_period_anchor"] = begin.date().isoformat()
         return cleared - row["minutes_used_this_period"]
 
-    async def record(self, _tenant_id, call_id, minutes, ended_at, period_start, allowance):
+    async def record(self, _tenant_id, call_id, minutes, ended_at, period_start, allowance, estimated=False):
         row = self.row
         if call_id in self.events:
             return {"minutes_used": row.get("minutes_used_this_period") or 0, "overage_minutes": 0,
@@ -64,7 +64,7 @@ class UsageRow:
         overage = 0
         if counted and allowance is not None:
             overage = max(0, total - allowance) - max(0, previous - allowance)
-        self.events[call_id] = {"minutes": minutes, "ended_at": ended_at, "counted": counted, "overage": overage,
+        self.events[call_id] = {"minutes": minutes, "ended_at": ended_at, "estimated": estimated, "counted": counted, "overage": overage,
                                 "state": "pending" if overage > 0 else "none"}
         row["minutes_used_this_period"] = total
         return {"minutes_used": total, "overage_minutes": overage, "duplicate": False, "counted": counted, "rolled": rolled}

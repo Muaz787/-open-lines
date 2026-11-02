@@ -18,7 +18,6 @@ import hashlib
 import logging
 import os
 import stripe
-import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from db import supabase as db
@@ -145,28 +144,55 @@ async def _current_period_start(tenant: dict) -> str | None:
         return None
 
 
+def _usable_time(value: str | None) -> bool:
+    try:
+        return bool(value) and datetime.fromisoformat(str(value).replace("Z", "+00:00")).tzinfo is not None
+    except ValueError:
+        return False
+
+
 def _meter_identifier(tenant_id: str, call_id: str) -> str:
     return "ol-usage-" + hashlib.sha256(f"{tenant_id}:{call_id}".encode()).hexdigest()[:40]
+
+
+def _stripe_already_has(error: stripe.InvalidRequestError, identifier: str) -> bool:
+    """Stripe's answer when this exact identifier was accepted before: HTTP 400, no error
+    code, and this message, confirmed in test mode. Anything else stays pending."""
+    return (error.http_status == 400
+            and error.user_message == f"An event already exists with identifier {identifier}.")
 
 
 async def _report_overage(tenant_id: str, customer_id: str, call_id: str, minutes: int, ended_at: str) -> None:
     """Report one call's overage. Safe to repeat: Stripe drops a repeated identifier, so
     a crash between Stripe accepting this and the write below can be retried."""
     stripe.api_key = _stripe_key
+    identifier = _meter_identifier(tenant_id, call_id)
     try:
         stripe.billing.MeterEvent.create(
             event_name="call_minutes",
-            identifier=_meter_identifier(tenant_id, call_id),
+            identifier=identifier,
             timestamp=int(datetime.fromisoformat(ended_at.replace("Z", "+00:00")).timestamp()),
             payload={"value": str(minutes), "stripe_customer_id": customer_id},
         )
     except stripe.InvalidRequestError as e:
-        # Stripe gives this no error code. It means Stripe already has this event, which
-        # is what a retry after a crash expects. Any other 400 stays pending.
-        if "already exists with identifier" not in str(e):
+        if not _stripe_already_has(e, identifier):
             raise
     await db.usage_overage_reported(tenant_id, call_id)
     logger.info("Reported %d overage minutes to Stripe for tenant %s", minutes, tenant_id)
+
+
+async def ledger_health() -> tuple[str, str]:
+    """(status, message) for the admin System Health page."""
+    counts = await db.usage_ledger_counts()
+    problems = []
+    if counts["review"]:
+        problems.append(f"{counts['review']} overage row(s) stopped retrying: reconcile with Stripe, never resend")
+    if counts["quarantined"]:
+        problems.append(f"{counts['quarantined']} call(s) quarantined with no id")
+    if problems:
+        return "error", "; ".join(problems) + ". See docs/usage-ledger.md."
+    note = f"{counts['pending']} overage pending, {counts['uncounted']} delayed call(s) not counted"
+    return ("warning" if counts["pending"] else "ok"), note
 
 
 async def retry_pending_overage() -> dict:
@@ -202,10 +228,24 @@ async def record_call_minutes(tenant_id: str, duration_secs: int, call_id: str =
     same call_id changes nothing."""
     if duration_secs <= 0:
         return
-    call_id  = call_id or f"no-call-id-{uuid.uuid4()}"
-    ended_at = ended_at or datetime.now(timezone.utc).isoformat()
-
     minutes = _ceil_minutes(duration_secs)
+
+    # With no end time, the call is recorded when it was processed, and flagged.
+    estimated = not _usable_time(ended_at)
+    if estimated:
+        ended_at = datetime.now(timezone.utc).isoformat()
+
+    # With no id, a retry looks like a new call. It waits for a person instead of
+    # risking billing the same call twice.
+    call_id = str(call_id or "").strip()
+    if not call_id:
+        logger.error("Quarantined a call with no id for tenant %s (%d minutes)", tenant_id, minutes)
+        try:
+            await db.usage_quarantine_call(tenant_id, "missing_call_id", int(minutes),
+                                           None if estimated else ended_at)
+        except Exception as e:
+            logger.error("Failed to quarantine usage for tenant %s: %s", tenant_id, e)
+        return
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
@@ -227,7 +267,7 @@ async def record_call_minutes(tenant_id: str, duration_secs: int, call_id: str =
     # can't overwrite each other.
     try:
         row = await db.usage_record_call(tenant_id, call_id, int(minutes), ended_at, period_start,
-                                         allocation if metered else None)
+                                         allocation if metered else None, estimated)
     except Exception as e:
         logger.error("Failed to persist usage for tenant %s: %s", tenant_id, e)
         return

@@ -34,7 +34,7 @@ async def _record(tenant, prior_minutes, duration_secs, calls=None):
             calls.append(("convert", reason))
         return {"converted": True, "already": False, "reason": reason, "status": "active"}
 
-    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance):
+    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance, estimated=False):
         total = prior_minutes + minutes
         if calls is not None:
             calls.append(("usage_write", total))
@@ -44,7 +44,7 @@ async def _record(tenant, prior_minutes, duration_secs, calls=None):
          patch("db.supabase.usage_record_call", new=_add), \
          patch("services.usage._current_period_start", new=AsyncMock(return_value=None)), \
          patch("services.trial.convert_card_trial", side_effect=_convert) as conv:
-        await usage.record_call_minutes(tenant["id"], duration_secs)
+        await usage.record_call_minutes(tenant["id"], duration_secs, call_id="c1")
     return conv
 
 
@@ -93,7 +93,7 @@ async def test_conversion_failure_never_breaks_call_recording():
     would be worse than a trial that converts late."""
     calls = []
 
-    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance):
+    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance, estimated=False):
         calls.append(58 + minutes)
         return {"minutes_used": 58 + minutes, "overage_minutes": 0, "duplicate": False, "counted": True, "rolled": False}
 
@@ -102,7 +102,7 @@ async def test_conversion_failure_never_breaks_call_recording():
          patch("services.usage._current_period_start", new=AsyncMock(return_value=None)), \
          patch("services.trial.convert_card_trial",
                new=AsyncMock(side_effect=RuntimeError("stripe down"))):
-        await usage.record_call_minutes("t_usage", 300)  # +5 -> 63
+        await usage.record_call_minutes("t_usage", 300, call_id="c1")  # +5 -> 63
 
     assert calls == [63]
 

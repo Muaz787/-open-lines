@@ -74,6 +74,10 @@ def worker_crash(tenant, call_id, ended_at, secs, where):
     asyncio.run(usage.record_call_minutes(tenant, secs, call_id=call_id, ended_at=ended_at))
 
 
+def worker_no_id(tenant, ended_at):
+    asyncio.run(usage.record_call_minutes(tenant, 60, call_id="", ended_at=ended_at))
+
+
 def worker_retry():
     usage.OVERAGE_RETRY_AFTER = timedelta(0)
     print(json.dumps(asyncio.run(usage.retry_pending_overage())))
@@ -93,6 +97,7 @@ def tenant_row(tid):
 
 def reset(tid, **fields):
     client.table("usage_events").delete().eq("tenant_id", tid).execute()
+    client.table("usage_quarantine").delete().eq("tenant_id", tid).execute()
     client.table("tenants").update({
         "minutes_used_this_period": 0, "overage_minutes_reported": 0, "billing_exempt": False,
         "subscription_status": "active", "subscription_plan": "starter", "stripe_subscription_id": None,
@@ -160,6 +165,44 @@ def rollover_race(tid, run):
     resets = sum(1 for r in results if r["rolled"])
     expect(f"rollover race {run}", row["minutes_used_this_period"] == 100 and resets == 1,
            f"new-period minutes {row['minutes_used_this_period']} of 100, resets {resets}")
+
+
+def missing_call_id(tid):
+    reset(tid)
+    ended = iso(datetime.now(timezone.utc))
+    procs = [spawn("noid", tid, ended) for _ in range(3)]
+    [p.wait() for p in procs]
+    held = client.table("usage_quarantine").select("minutes, reason").eq("tenant_id", tid).execute().data
+    row = tenant_row(tid)
+    expect("3 processes, same call with no id", row["minutes_used_this_period"] == 0 and not events(tid) and len(held) == 3,
+           f"counter {row['minutes_used_this_period']}, ledger {len(events(tid))}, quarantined {len(held)}")
+
+
+def missing_end_time(tid):
+    reset(tid)
+    asyncio.run(usage.record_call_minutes(tid, 60, call_id="no-end", ended_at=None))
+    rows = events(tid)
+    expect("no end time", rows[0]["ended_at_estimated"] and tenant_row(tid)["minutes_used_this_period"] == 1, "recorded at processing time and flagged")
+
+
+def duplicate_response():
+    """Stripe's real errors, not a copy of them."""
+    customer = stripe.Customer.create(name="Duplicate probe", email="race@openlines-test.example")
+    identifier = f"ol-probe-{uuid.uuid4().hex}"
+    event = dict(event_name="call_minutes", identifier=identifier, timestamp=int(time.time()),
+                 payload={"value": "1", "stripe_customer_id": customer.id})
+    stripe.billing.MeterEvent.create(**event)
+    try:
+        stripe.billing.MeterEvent.create(**event)
+        expect("Stripe refuses a repeat", False, "no error raised")
+    except stripe.InvalidRequestError as e:
+        expect("Stripe's duplicate matches", usage._stripe_already_has(e, identifier), f"HTTP {e.http_status}, code {e.code}")
+        expect("Same error, another identifier", not usage._stripe_already_has(e, identifier + "x"), "not treated as ours")
+    try:
+        stripe.billing.MeterEvent.create(event_name="", identifier=f"ol-probe-{uuid.uuid4().hex}", payload={"value": "1"})
+    except stripe.InvalidRequestError as e:
+        expect("Unrelated Stripe 400", not usage._stripe_already_has(e, identifier), f"HTTP {e.http_status}: stays pending")
+    stripe.Customer.delete(customer.id)
 
 
 def delayed_call(tid):
@@ -255,6 +298,9 @@ def main():
         rollover_race(a, run)
     delayed_call(a)
     start_paid(a)
+    missing_call_id(a)
+    missing_end_time(a)
+    duplicate_response()
     overage_crash(b)
     reset(a)
     return 1 if FAILED else 0
@@ -267,6 +313,8 @@ if __name__ == "__main__":
             worker_calls(rest[0], rest[1], int(rest[2]), rest[3], int(rest[4]), float(rest[5]))
         elif kind == "crash":
             worker_crash(rest[0], rest[1], rest[2], int(rest[3]), rest[4])
+        elif kind == "noid":
+            worker_no_id(rest[0], rest[1])
         elif kind == "retry":
             worker_retry()
     else:

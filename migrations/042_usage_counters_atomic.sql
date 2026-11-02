@@ -13,6 +13,10 @@
 --   * A retried call changes nothing, because each call is recorded once.
 --   * Overage is reported from the ledger, so a crash after Stripe accepts it can be
 --     retried with the same identifier.
+--   * A call with no usable id can't be told apart from its own retry, so it goes to
+--     usage_quarantine for review and never reaches the counters or billing.
+--   * A call with no usable end time is recorded at the time it was processed, and
+--     flagged with ended_at_estimated.
 --
 -- Each function takes the tenant's row lock. A period only moves forward.
 --
@@ -32,6 +36,7 @@ create table if not exists public.usage_events (
     call_id         text not null,
     minutes         integer not null check (minutes > 0),
     ended_at        timestamptz not null,
+    ended_at_estimated boolean not null default false,
     counted         boolean not null,
     overage_minutes integer not null default 0,
     overage_state   text not null default 'none'
@@ -47,6 +52,24 @@ create index if not exists usage_events_overage_pending on public.usage_events (
 alter table public.usage_events enable row level security;
 revoke all on table public.usage_events from public, anon, authenticated;
 grant select, insert, update, delete on table public.usage_events to service_role;
+
+create table if not exists public.usage_quarantine (
+    id          uuid primary key default gen_random_uuid(),
+    tenant_id   uuid not null references public.tenants(id) on delete cascade,
+    reason      text not null check (reason in ('missing_call_id')),
+    minutes     integer not null,
+    ended_at    timestamptz,
+    received_at timestamptz not null default now(),
+    resolved_at timestamptz,
+    resolution  text
+);
+
+create index if not exists usage_quarantine_open on public.usage_quarantine (received_at)
+    where resolved_at is null;
+
+alter table public.usage_quarantine enable row level security;
+revoke all on table public.usage_quarantine from public, anon, authenticated;
+grant select, insert, update, delete on table public.usage_quarantine to service_role;
 
 -- A stored date has no time of day, so it can only show a later date as newer.
 create or replace function public.usage_period_moved(
@@ -111,7 +134,8 @@ create or replace function public.usage_record_call(
     p_minutes      integer,
     p_ended_at     timestamptz,
     p_period_start timestamptz default null,
-    p_allowance    integer default null
+    p_allowance    integer default null,
+    p_ended_at_estimated boolean default false
 )
 returns table (
     minutes_used integer, overage_minutes integer, duplicate boolean,
@@ -164,8 +188,8 @@ begin
         v_overage := greatest(0, v_total - p_allowance) - greatest(0, v_prev - p_allowance);
     end if;
 
-    insert into public.usage_events (tenant_id, call_id, minutes, ended_at, counted, overage_minutes, overage_state)
-    values (p_tenant_id, p_call_id, p_minutes, p_ended_at, v_counted, v_overage,
+    insert into public.usage_events (tenant_id, call_id, minutes, ended_at, ended_at_estimated, counted, overage_minutes, overage_state)
+    values (p_tenant_id, p_call_id, p_minutes, p_ended_at, p_ended_at_estimated, v_counted, v_overage,
             case when v_overage > 0 then 'pending' else 'none' end);
 
     update public.tenants t set minutes_used_this_period = v_total where t.id = p_tenant_id;
@@ -246,7 +270,7 @@ begin
     foreach f in array array[
         'public.usage_period_moved(timestamptz, date, timestamptz)',
         'public.usage_enter_period(uuid, timestamptz)',
-        'public.usage_record_call(uuid, text, integer, timestamptz, timestamptz, integer)',
+        'public.usage_record_call(uuid, text, integer, timestamptz, timestamptz, integer, boolean)',
         'public.usage_roll_period(uuid, timestamptz, boolean)',
         'public.usage_overage_reported(uuid, text)'
     ] loop
