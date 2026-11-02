@@ -294,9 +294,13 @@ async def create_event(
     duration_minutes: int,
     timezone: str,
     description: str = "",
+    transaction_id: str | None = None,
 ) -> dict:
+    """Create an Outlook event. With transaction_id, Graph drops a repeated create
+    and returns the event the first one made."""
     end_dt = start_dt + timedelta(minutes=duration_minutes)
     access = await _access_token(refresh_token)
+    extra = {"transactionId": transaction_id} if transaction_id else {}
 
     async with httpx.AsyncClient() as http:
         res = await http.post(
@@ -306,6 +310,7 @@ async def create_event(
                 "Content-Type":  "application/json",
             },
             json={
+                **extra,
                 "subject": title,
                 "body":    {"contentType": "text", "content": description},
                 "start":   {

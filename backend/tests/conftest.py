@@ -111,3 +111,72 @@ from datetime import datetime as _dt, timezone as _tz
 def _pinned_call_clock(monkeypatch):
     from services import relative_dates
     monkeypatch.setattr(relative_dates, "_utcnow", lambda: _dt(2026, 9, 1, 12, tzinfo=_tz.utc))
+
+
+# ── per-call booking claims (migration 045), in memory ───────────────────────
+# Same rules as the table: one row per (tenant, call, slot), one pending row per
+# call, and compare-and-swap updates on state + updated_at.
+import asyncio as _asyncio
+import itertools as _itertools
+
+
+class FakeBookingClaims:
+    def __init__(self):
+        self.rows: dict[tuple, dict] = {}
+        self.lock = _asyncio.Lock()
+        self.fail = False
+        self._tick = _itertools.count(1)
+
+    def _stamp(self):
+        # Real time from the service's clock (tests move it to age a claim), with a
+        # microsecond tick so two writes never share a stamp.
+        from datetime import timedelta as _td
+        from services import booking_claims as _bc
+        return (_bc._now() + _td(microseconds=next(self._tick))).isoformat()
+
+    async def insert_pending(self, row):
+        if self.fail:
+            raise RuntimeError("claim store down")
+        async with self.lock:
+            key = (row["tenant_id"], row["vapi_call_id"], row["slot_start"])
+            if key in self.rows:
+                return False
+            if any(r["state"] == "pending" and (r["tenant_id"], r["vapi_call_id"]) == key[:2]
+                   for r in self.rows.values()):
+                return False
+            stamp = self._stamp()
+            self.rows[key] = {**row, "state": "pending", "provider_event_id": None,
+                              "appointment_id": None, "created_at": stamp, "updated_at": stamp}
+            return True
+
+    async def get(self, tenant_id, call_id, slot):
+        if self.fail:
+            raise RuntimeError("claim store down")
+        r = self.rows.get((tenant_id, call_id, slot))
+        return dict(r) if r else None
+
+    async def transition(self, claim, patch):
+        if self.fail:
+            raise RuntimeError("claim store down")
+        async with self.lock:
+            key = (claim["tenant_id"], claim["vapi_call_id"], claim["slot_start"])
+            r = self.rows.get(key)
+            if not r or r["state"] != claim["state"] or r["updated_at"] != claim["updated_at"]:
+                return None
+            if patch.get("state") == "pending" and r["state"] != "pending" and any(
+                    o["state"] == "pending" and (o["tenant_id"], o["vapi_call_id"]) == key[:2]
+                    for k, o in self.rows.items() if k != key):
+                return None
+            r.update(patch)
+            r["updated_at"] = self._stamp()
+            return dict(r)
+
+
+@_pytest.fixture(autouse=True)
+def booking_claims_store(monkeypatch):
+    store = FakeBookingClaims()
+    from db import booking_claims as _db_bc
+    monkeypatch.setattr(_db_bc, "insert_pending", store.insert_pending)
+    monkeypatch.setattr(_db_bc, "get", store.get)
+    monkeypatch.setattr(_db_bc, "transition", store.transition)
+    return store

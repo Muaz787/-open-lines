@@ -9,6 +9,8 @@ response that the AI uses to continue the conversation.
 import difflib
 import json
 import logging
+
+import httpx
 from datetime import date as date_type, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -28,6 +30,7 @@ from services import ms_calendar as ms_cal_svc
 from services.ms_calendar import MsCalendarTokenExpiredError
 from services import square_booking
 from services import call_location, location_resolver, location_scope, slot_offers
+from services import booking_claims
 from services import relative_dates
 from services import telephony
 from services.ratelimit import limiter, tenant_key
@@ -1339,6 +1342,50 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
 
 _NOT_BOOKED = {"booked": False}
 
+_UNCERTAIN_BOOKING_MSG = (
+    "I couldn't confirm whether that booking went through. Do NOT book it again. Tell the "
+    "caller you're checking, take their details, and let them know the team will confirm.")
+
+
+async def _settle_create_failure(e: Exception, provider: str, refresh_token: str,
+                                 ev_id: str | None) -> str:
+    """'created', 'failed' (the calendar definitely has no event) or 'unknown'."""
+    if isinstance(e, cal_svc.EventIdRetiredError):
+        return "failed"
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code
+        if 400 <= code < 500 and code not in (408, 409, 429):
+            return "failed"
+    if provider == "google" and ev_id:
+        try:
+            found = await cal_svc.get_event(refresh_token, ev_id)
+        except Exception:
+            return "unknown"
+        if found and found.get("status") != "cancelled":
+            return "created"
+        return "failed"
+    return "unknown"
+
+
+async def _already_booked(tc_id: str, claim: dict, tenant: dict):
+    """The tool result for a slot this call already booked, or None when that
+    appointment no longer stands and the slot may be booked again."""
+    appt = None
+    if claim.get("appointment_id"):
+        try:
+            appt = await db.get_appointment_by_id(claim["appointment_id"])
+        except Exception as e:
+            logger.error("tools/book: could not re-read appointment %s: %s", claim["appointment_id"], e)
+            return _result(tc_id, _UNCERTAIN_BOOKING_MSG), _NOT_BOOKED
+    if not appt or (appt.get("status") or "") not in ("confirmed", "pending_payment"):
+        return None
+    when = _spoken_when(_start(appt, relative_dates.tenant_tz(tenant)))
+    return (_result(tc_id, f"Already booked: the {appt.get('service') or 'appointment'} on {when} "
+                    "was booked earlier in this call. Nothing new was booked. Confirm it once; "
+                    "don't book it again or mention a new text."),
+            {"booked": True, "appt_id": appt["id"], "event_id": appt.get("google_event_id", ""),
+             "friendly": when, "sms": "already"})
+
 
 def _sms_clause(sms_status: str) -> str:
     """What the caller may be told about the confirmation text, and nothing more."""
@@ -1475,6 +1522,31 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
     except Exception as e:
         logger.warning("tools/book: capacity/staff check failed for tenant %s (allowing booking): %s", tenant_id, e)
 
+    # Durable ownership of this slot in this call (migration 045). Decides whether
+    # this request may create the event, and the event's deterministic id.
+    claim = None
+    if call_id:
+        claimed, claim = await booking_claims.acquire(tenant_id, call_id, caller_phone, start_dt)
+        if claimed == booking_claims.BOOKED:
+            earlier = await _already_booked(tc_id, claim, tenant)
+            if earlier:
+                return earlier
+            claimed, claim = await booking_claims.restart(claim)
+        if claimed == booking_claims.IN_PROGRESS:
+            return _result(tc_id, "That booking is already being made right now. Nothing new "
+                           "has been booked. Give it a moment and confirm it with the caller; "
+                           "don't book it again."), _NOT_BOOKED
+        if claimed == booking_claims.CALL_BUSY:
+            return _result(tc_id, "Another booking for this caller is being made on this call "
+                           "right now, so nothing has been booked. Finish that one, then ask "
+                           "whether they still want this time too."), _NOT_BOOKED
+        if claimed != booking_claims.ACQUIRED or claim is None:
+            return _result(tc_id, "I couldn't safely check for a duplicate booking just now, so "
+                           "nothing has been booked. Try once more; if it happens again, take "
+                           "the caller's details for the team."), _NOT_BOOKED
+    ev_id = booking_claims.event_id(claim) if claim else None
+
+    event = None
     try:
         _staff_line = f"\nTeam member: {chosen_staff['name']}" if chosen_staff else ""
         description = (
@@ -1496,18 +1568,9 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
             description=description,
         )
         if cal_provider == "microsoft":
-            event = await ms_cal_svc.create_event(**_event_kwargs)
+            event = await ms_cal_svc.create_event(**_event_kwargs, transaction_id=ev_id)
         else:
-            event = await cal_svc.create_event(**_event_kwargs)
-        logger.info(
-            "Booked appointment for tenant %s: %s on %s at %s (event %s, provider %s)",
-            tenant_id, service, date_str, time_str, event.get("id"), cal_provider,
-        )
-        analytics.capture(
-            analytics.distinct_id_for(tenant, tenant_id),
-            "calendar_event_created",
-            {"tenant_id": tenant_id, "provider": cal_provider},
-        )
+            event = await cal_svc.create_event(**_event_kwargs, event_id=ev_id)
     except (CalendarTokenExpiredError, MsCalendarTokenExpiredError):
         logger.error("tools/book: calendar token expired for tenant %s — auto-disconnecting", tenant_id)
         clear_field = "microsoft_refresh_token" if cal_provider == "microsoft" else "google_refresh_token"
@@ -1515,10 +1578,35 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
             await db.update_tenant(tenant_id, {clear_field: None})
         except Exception:
             pass
+        if claim:
+            await booking_claims.mark_failed(claim)
         return _result(tc_id, _CALENDAR_ERROR_MSG), _NOT_BOOKED
     except Exception as e:
-        logger.error("tools/book: calendar event creation failed for tenant %s: %s", tenant_id, e)
-        return _result(tc_id, _CALENDAR_ERROR_MSG), _NOT_BOOKED
+        settled = await _settle_create_failure(e, cal_provider, refresh_token, ev_id)
+        logger.error("tools/book: calendar event creation failed for tenant %s (%s): %s",
+                     tenant_id, settled, e)
+        if settled == "created":
+            event = {"id": ev_id}
+        elif settled == "failed":
+            if claim:
+                await booking_claims.mark_failed(claim)
+            return _result(tc_id, _CALENDAR_ERROR_MSG), _NOT_BOOKED
+        else:
+            # The calendar may have it. The claim stays pending, so nothing books
+            # this slot again until it is settled; a later attempt re-sends the same
+            # event id and finds the event if it exists.
+            return _result(tc_id, _UNCERTAIN_BOOKING_MSG), _NOT_BOOKED
+    logger.info(
+        "Booked appointment for tenant %s: %s on %s at %s (event %s, provider %s)",
+        tenant_id, service, date_str, time_str, event.get("id"), cal_provider,
+    )
+    analytics.capture(
+        analytics.distinct_id_for(tenant, tenant_id),
+        "calendar_event_created",
+        {"tenant_id": tenant_id, "provider": cal_provider},
+    )
+    if claim:
+        claim = await booking_claims.note_event(claim, event.get("id", ""))
 
     from routers.payments import _deposit_provider
     _dep_provider = _deposit_provider(tenant)
@@ -1566,9 +1654,14 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
         if replaces:
             appt_data["rescheduled_from_appointment_id"] = replaces["id"]
         # Always an insert. Updating an existing row in place is what made an
-        # ordinary booking overwrite an appointment the caller still wanted.
-        _inserted = await db.insert_appointment(appt_data)
+        # ordinary booking overwrite an appointment the caller still wanted. The one
+        # exception is recovery: a row this event already has is reused, not doubled.
+        _existing = (await db.get_appointment_by_event_id(tenant_id, event.get("id", ""))
+                     if claim and claim.get("recovered") else None)
+        _inserted = _existing or await db.insert_appointment(appt_data)
         appt_id = (_inserted or {}).get("id")
+        if claim and appt_id:
+            await booking_claims.mark_booked(claim, appt_id)
         # PRIVACY: no caller name/phone/datetime — service type + duration only
         analytics.capture(
             analytics.distinct_id_for(tenant, tenant_id),
@@ -1756,8 +1849,11 @@ async def _same_call_booking_guard(call_id, tenant, tenant_id, caller_phone,
     try:
         earlier = await _bookings_from_this_call(tenant_id, caller_phone, call_id)
     except Exception as e:
-        logger.warning("tools/book: same-call lookup failed for tenant %s: %s", tenant_id, e)
-        return None
+        # Not knowing what this call already booked is not permission to book again.
+        logger.error("tools/book: same-call lookup failed for tenant %s: %s", tenant_id, e)
+        return ("I couldn't check what's already booked on this call, so nothing has been "
+                "booked. Try once more; if it happens again, take the caller's details for "
+                "the team.")
     if not earlier:
         return None
     tz = relative_dates.tenant_tz(tenant)
@@ -1856,12 +1952,13 @@ async def replace_booking(request: Request, tenant_id: str, body: dict):
                        + " Take the caller's details and let them know the team will sort it out.")
 
     at_target = [a for a in earlier if _start(a, tz).strftime("%Y-%m-%d %H:%M") == target]
+    replacement = next((a for a in at_target if a.get("rescheduled_from_appointment_id")), None)
+    if replacement:
+        # A replacement exists. That proves the swap was started, not that the
+        # earlier booking was cancelled: re-read it and finish or report.
+        return await _finish_replacement(tc_id, tenant, tenant_id, caller_phone, call_id,
+                                         replacement)
     if at_target:
-        if any(a.get("rescheduled_from_appointment_id") for a in at_target):
-            return _result(tc_id, "Already done: the booking was changed to "
-                           f"{_spoken_when(_start(at_target[0], tz))} and the earlier one "
-                           "cancelled. Don't change it again."
-                           + await _remaining_clause(tenant, tenant_id, caller_phone))
         return _result(tc_id, f"The caller is already booked for {_spoken_when(_start(at_target[0], tz))}"
                        " from earlier in this call, so there's nothing to replace." + _NOTHING_CHANGED
                        + await _remaining_clause(tenant, tenant_id, caller_phone))
@@ -1917,7 +2014,63 @@ async def replace_booking(request: Request, tenant_id: str, body: dict):
                        f"{old_when} is still in place and nothing has changed. The booking "
                        f"system said: {said}")
 
-    new_when = outcome["friendly"]
+    logger.info("tools/replace: tenant %s booked %s to replace appointment %s", tenant_id,
+                outcome.get("appt_id"), current["id"])
+    return await _cancel_replaced(tc_id, tenant, tenant_id, caller_phone, current, claim,
+                                  service=service, new_when=outcome["friendly"],
+                                  caller_name=caller_name)
+
+
+async def _finish_replacement(tc_id, tenant, tenant_id, caller_phone, call_id, replacement):
+    """A retried replace_booking. Report what both bookings really are, and finish
+    cancelling the earlier one if that is what is missing."""
+    tz = relative_dates.tenant_tz(tenant)
+    service = replacement.get("service") or "Appointment"
+    new_when = _spoken_when(_start(replacement, tz))
+    try:
+        original = await db.get_appointment_by_id(replacement["rescheduled_from_appointment_id"])
+    except Exception as e:
+        logger.error("tools/replace: could not re-read original %s: %s",
+                     replacement["rescheduled_from_appointment_id"], e)
+        original = None
+    if not original:
+        return _result(tc_id, f"The new {service} on {new_when} is booked. I couldn't re-read the "
+                       "earlier booking, so don't say whether it was cancelled. Tell the caller "
+                       "the team will confirm.")
+    old_when = _spoken_when(_start(original, tz))
+    if (original.get("status") or "") == "cancelled":
+        return _result(tc_id, f"Already done, re-read just now: the {service} on {new_when} is "
+                       f"booked and the earlier one on {old_when} is cancelled. Don't change it "
+                       "again." + await _remaining_clause(tenant, tenant_id, caller_phone))
+
+    # The earlier booking still stands in our record.
+    own_status, claim = await mutation_ownership.acquire_for_cancel(original["id"], tenant_id)
+    if own_status != mutation_ownership.ACQUIRED or claim is None:
+        # Held for reconciliation (the calendar cancel may have landed while our
+        # record didn't), or being changed by something else. Either way: unknown.
+        return _result(tc_id, f"The new {service} on {new_when} is booked. Whether the earlier one "
+                       f"on {old_when} is cancelled isn't confirmed yet, so don't tell the caller "
+                       "it is, and don't try again. Say the team will confirm it.")
+    current = await db.get_appointment_by_id(original["id"])
+    if (not current or (current.get("status") or "") not in ("confirmed", "pending_payment")
+            or str(current.get("caller_phone") or "") != caller_phone
+            or str(current.get("vapi_call_id") or "") != call_id
+            or not current.get("google_event_id")):
+        await mutation_ownership.release(claim)
+        return _result(tc_id, f"The new {service} on {new_when} is booked. I couldn't verify the "
+                       f"earlier one on {old_when}, so don't say whether it's cancelled. The team "
+                       "will confirm.")
+    caller_name = await _trusted_caller_name(tenant_id, current.get("caller_name", ""), caller_phone)
+    return await _cancel_replaced(tc_id, tenant, tenant_id, caller_phone, current, claim,
+                                  service=service, new_when=new_when, caller_name=caller_name)
+
+
+async def _cancel_replaced(tc_id, tenant, tenant_id, caller_phone, current, claim, *,
+                           service, new_when, caller_name):
+    """Cancel the booking being replaced, under its ownership claim, and say exactly
+    what happened. The new booking is already confirmed when this runs."""
+    tz = relative_dates.tenant_tz(tenant)
+    old_when = _spoken_when(_start(current, tz))
     refresh_token, cal_provider = _calendar_provider(tenant)
     try:
         if cal_provider == "microsoft":
@@ -1937,20 +2090,27 @@ async def replace_booking(request: Request, tenant_id: str, body: dict):
         await db.update_appointment(current["id"], {"status": "cancelled"})
         await mutation_ownership.release(claim)
     except Exception as e:
+        # The calendar has cancelled it; our record still says booked. Ownership is
+        # kept for reconciliation, so nothing else acts on the row meanwhile.
         await mutation_ownership.to_reconcile(claim, db_mc.REASON_LOCAL_WRITE_FAILED)
         logger.error("tools/replace: RECONCILIATION REQUIRED — event %s cancelled but appointment "
                      "%s not updated (tenant %s): %s", current["google_event_id"], current["id"],
                      tenant_id, e)
+        return _result(tc_id, f"The new {service} on {new_when} is booked, and the earlier one on "
+                       f"{old_when} was cancelled in the business's calendar, but our own record "
+                       "of it couldn't be updated. Tell the caller the new time is confirmed and "
+                       "the team will double-check the earlier one. No confirmation text was "
+                       "sent, so don't promise one.")
 
     greeting = f"Hi {caller_name}! " if caller_name else ""
     sms = await _send_text(tenant, tenant_id, caller_phone,
                            f"{greeting}Your {service} at {tenant.get('business_name', '')} has been "
                            f"changed to {new_when}. Your earlier booking for {old_when} is cancelled.")
-    logger.info("tools/replace: tenant %s replaced appointment %s with %s", tenant_id,
-                current["id"], outcome.get("appt_id"))
+    logger.info("tools/replace: tenant %s cancelled replaced appointment %s", tenant_id, current["id"])
     return _result(tc_id, f"Done — the {service} is now {new_when}, and the earlier booking on "
                    f"{old_when} is cancelled." + _sms_clause(sms)
                    + await _remaining_clause(tenant, tenant_id, caller_phone))
+
 
 # ---------------------------------------------------------------------------
 # POST /tools/{tenant_id}/request-deposit

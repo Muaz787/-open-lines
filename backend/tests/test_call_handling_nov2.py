@@ -17,6 +17,7 @@ Each test below pins one of those down:
   * the wording matches what the assistant can actually do;
   * a text is mentioned only when one was sent.
 """
+import asyncio
 import inspect
 import json
 from datetime import date, datetime, timedelta, timezone
@@ -56,6 +57,15 @@ class Cal:
         self.sms_ok, self.create_fails, self.cancel_fails = sms_ok, create_fails, cancel_fails
         self.deposit = deposit
         self.created, self.cancelled, self.sms, self.slot_dates = [], [], [], []
+        self.events: dict[str, dict] = {}        # the calendar, by event id
+        self.create_error = None                 # raised by the next create, after or before it lands
+        self.create_lands = False                # whether that failing create made the event anyway
+        self.get_event_fails = False
+        self.update_fails_for = set()            # appointment ids whose status write fails
+        self.insert_fails = 0                    # how many inserts fail before one succeeds
+        self.held = set()                        # appointments held for reconciliation
+        self.lookup_fails = False
+        self.create_delay = 0
         token = "microsoft_refresh_token" if provider == "microsoft" else "google_refresh_token"
         self.tenant = {"id": TID, "business_name": "Open Lines", token: "rt",
                        "calendar_timezone": tz, "appointment_duration_minutes": 60,
@@ -67,28 +77,63 @@ class Cal:
                                twilio_phone_number="+14385550000")
 
     def active(self, *_):
+        if self.lookup_fails:
+            raise RuntimeError("database unavailable")
         return [dict(a) for a in self.appts.values()
                 if a["status"] in ("confirmed", "pending_payment") and a["caller_phone"] == PHONE]
 
     async def _insert(self, data):
+        if self.insert_fails:
+            self.insert_fails -= 1
+            raise RuntimeError("insert lost")
         aid = f"new-{len(self.appts)}"
         self.appts[aid] = {"id": aid, **data}
         return {"id": aid}
 
     async def _update(self, aid, data):
+        if aid in self.update_fails_for:
+            raise RuntimeError("write lost")
         self.appts[aid] = {**self.appts[aid], **data}
         return {}
 
     async def _create(self, **kw):
+        if self.create_delay:
+            await asyncio.sleep(self.create_delay)
         if self.create_fails:
             raise RuntimeError("calendar down")
+        eid = kw.get("event_id") or kw.get("transaction_id") or f"EV-NEW{len(self.created) + 1}"
+        if eid in self.events:                   # Google's 409 / Graph's transactionId
+            return {"id": eid}
+        if self.create_error is not None:
+            err, self.create_error = self.create_error, None
+            if self.create_lands:
+                self.events[eid] = {"status": "confirmed"}
+                self.created.append(kw)
+            raise err
+        self.events[eid] = {"status": "confirmed"}
         self.created.append(kw)
-        return {"id": f"EV-NEW{len(self.created)}"}
+        return {"id": eid}
+
+    async def _get_event(self, rt, eid):
+        if self.get_event_fails:
+            raise RuntimeError("calendar unreachable")
+        return self.events.get(eid)
+
+    async def _acquire(self, aid, tid):
+        if aid in self.held:
+            return mutation_ownership.BUSY, None
+        return mutation_ownership.ACQUIRED, {"appointment_id": aid}
+
+    async def _to_reconcile(self, claim, reason):
+        self.held.add(claim["appointment_id"])
+        return True
 
     async def _cancel(self, rt, event_id):
         if self.cancel_fails:
             raise RuntimeError("calendar down")
         self.cancelled.append(event_id)
+        if event_id in self.events:
+            self.events[event_id]["status"] = "cancelled"
 
     async def _slots(self, **kw):
         self.slot_dates.append(kw["date_str"])
@@ -122,10 +167,13 @@ class Cal:
             patch("services.zapier.emit", new=AsyncMock()),
             patch("routers.payments._deposit_provider", new=lambda t: self.deposit),
             patch("routers.tools._trusted_caller_name", new=AsyncMock(return_value="Sam")),
-            patch("services.mutation_ownership.acquire_for_cancel",
-                  new=AsyncMock(return_value=(mutation_ownership.ACQUIRED, object()))),
+            patch("services.mutation_ownership.acquire_for_cancel", new=AsyncMock(side_effect=self._acquire)),
             patch("services.mutation_ownership.release", new=AsyncMock(return_value=True)),
-            patch("services.mutation_ownership.to_reconcile", new=AsyncMock(return_value=True)),
+            patch("services.mutation_ownership.to_reconcile", new=AsyncMock(side_effect=self._to_reconcile)),
+            patch("services.calendar.get_event", new=AsyncMock(side_effect=self._get_event)),
+            patch("db.supabase.get_appointment_by_event_id", new=AsyncMock(
+                side_effect=lambda tid, eid: next((dict(a) for a in self.appts.values()
+                                                   if a.get("google_event_id") == eid), None))),
             patch("services.refunds.sms_caller_cancelled", new=AsyncMock()),
             patch("services.refunds.notify_business", new=AsyncMock()),
         ]
@@ -519,3 +567,148 @@ def test_upcoming_appointment_for_the_prompt_ignores_cancelled_ones():
     from db import supabase
     src = inspect.getsource(supabase.get_upcoming_appointment_by_phone)
     assert '.in_("status", ["confirmed", "pending_payment"])' in src
+
+
+# ── 10. retries of replace_booking report what is really true ─────────────────
+
+async def test_a_failed_cancel_then_a_retry_is_never_reported_as_already_done():
+    with Cal([NOV5_THIS_CALL], cancel_fails=True) as c:
+        first = await c.replace("2026-11-04")
+        again = await c.replace("2026-11-04")
+    assert "both are booked right now" in first
+    assert not again.startswith("Already done")
+    assert "both are booked right now" in again
+    assert c.status("a-nov5") == "confirmed" and len(c.created) == 1
+
+
+async def test_a_retry_after_a_failed_cancel_finishes_the_cancel():
+    with Cal([NOV5_THIS_CALL], cancel_fails=True) as c:
+        await c.replace("2026-11-04")
+        c.cancel_fails = False
+        said = await c.replace("2026-11-04")
+    assert len(c.created) == 1, "the replacement is not booked twice"
+    assert c.cancelled == ["EV-a-nov5"] and c.status("a-nov5") == "cancelled"
+    assert said.startswith("Done") and "(1 in total)" in said
+
+
+async def test_provider_cancel_succeeds_but_our_record_does_not():
+    with Cal([NOV5_THIS_CALL]) as c:
+        c.update_fails_for.add("a-nov5")
+        first = await c.replace("2026-11-04")
+        again = await c.replace("2026-11-04")
+    assert c.cancelled == ["EV-a-nov5"], "the calendar cancel happened once"
+    assert "a-nov5" in c.held, "ownership kept for reconciliation"
+    assert "our own record of it couldn't be updated" in first
+    assert "don't promise one" in first and c.sms == []
+    assert not again.startswith("Already done")
+    assert "isn't confirmed yet" in again and "don't try again" in again
+    assert c.cancelled == ["EV-a-nov5"], "the retry did not cancel again"
+
+
+async def test_already_done_only_after_re_reading_both_bookings():
+    with Cal([NOV5_THIS_CALL]) as c:
+        await c.replace("2026-11-04")
+        said = await c.replace("2026-11-04")
+    assert said.startswith("Already done, re-read just now")
+    assert "earlier one on Thursday, November 5 at 9:00 AM is cancelled" in said
+
+
+# ── 11. duplicate protection holds under concurrency, failure and crashes ─────
+
+async def test_simultaneous_requests_for_the_same_slot_create_one_event(booking_claims_store):
+    with Cal() as c:
+        c.create_delay = 0.01
+        results = await asyncio.gather(*(c.book("2026-11-04") for _ in range(5)))
+    assert len(c.created) == 1
+    assert len(c.bookings_from_this_call()) == 1
+    assert sum(r.startswith("Done!") for r in results) == 1
+    assert all("Nothing new has been booked" in r or r.startswith("Done!") for r in results)
+
+
+async def test_simultaneous_requests_for_different_slots_book_one(booking_claims_store):
+    """The correction racing the original: only one may be in flight per call."""
+    with Cal() as c:
+        c.create_delay = 0.01
+        a, b = await asyncio.gather(c.book("2026-11-04"), c.book("2026-11-05"))
+    assert len(c.created) == 1 and len(c.bookings_from_this_call()) == 1
+    assert "Another booking for this caller is being made" in (a + b)
+
+
+async def test_a_failed_lookup_books_nothing():
+    with Cal() as c:
+        c.lookup_fails = True
+        said = await c.book("2026-11-04")
+    assert c.created == []
+    assert "couldn't check what's already booked" in said
+
+
+async def test_a_failed_claim_store_books_nothing(booking_claims_store):
+    booking_claims_store.fail = True
+    with Cal() as c:
+        said = await c.book("2026-11-04")
+    assert c.created == []
+    assert "nothing has been booked" in said
+
+
+async def test_an_uncertain_create_holds_the_slot_and_books_nothing_twice():
+    import httpx
+    with Cal() as c:
+        c.create_error, c.create_lands = httpx.ReadTimeout("timed out"), True
+        c.get_event_fails = True
+        first = await c.book("2026-11-04")
+        again = await c.book("2026-11-04")
+    assert "Do NOT book it again" in first
+    assert "already being made" in again
+    assert len(c.created) == 1, "the event that may exist is not made again"
+    assert c.bookings_from_this_call() == []
+
+
+async def test_an_uncertain_create_that_landed_is_recognised():
+    import httpx
+    with Cal() as c:
+        c.create_error, c.create_lands = httpx.ReadTimeout("timed out"), True
+        said = await c.book("2026-11-04")
+    assert said.startswith("Done!")
+    assert len(c.created) == 1 and len(c.bookings_from_this_call()) == 1
+
+
+async def test_a_crash_after_creating_the_event_is_recovered_without_a_second_event(
+        booking_claims_store):
+    from services import booking_claims
+    with Cal() as c:
+        c.insert_fails = 1                         # the process "dies" before the row lands
+        await c.book("2026-11-04")
+        assert c.bookings_from_this_call() == [] and len(c.created) == 1
+        soon = await c.book("2026-11-04")
+        assert "already being made" in soon       # inside the window: hands off
+        later = booking_claims._now() + timedelta(seconds=booking_claims.STALE_SECONDS + 5)
+        with patch.object(booking_claims, "_now", lambda: later):
+            recovered = await c.book("2026-11-04")
+        third = await c.book("2026-11-04")
+    assert len(c.created) == 1, "recovery re-sent the same event id"
+    assert len(c.bookings_from_this_call()) == 1, "exactly one appointment row"
+    assert recovered.startswith("Done!")
+    assert third.startswith("Already booked")
+
+
+async def test_a_definite_failure_frees_the_slot_for_a_new_attempt(booking_claims_store):
+    import httpx
+    req = httpx.Request("POST", "https://example.test")
+    with Cal() as c:
+        c.create_error = httpx.HTTPStatusError("bad", request=req,
+                                               response=httpx.Response(400, request=req))
+        first = await c.book("2026-11-04")
+        second = await c.book("2026-11-04")
+    assert "Done!" not in first and second.startswith("Done!")
+    claim = next(iter(booking_claims_store.rows.values()))
+    assert claim["attempt"] == 2 and claim["state"] == "booked"
+
+
+def test_event_ids_are_deterministic_and_valid_for_google():
+    from services import booking_claims
+    claim = {"tenant_id": TID, "vapi_call_id": CALL, "slot_start": "2026-11-04T14:00:00+00:00",
+             "attempt": 1}
+    a, b = booking_claims.event_id(claim), booking_claims.event_id(dict(claim))
+    assert a == b and 5 <= len(a) <= 1024
+    assert set(a) <= set("0123456789abcdefghijklmnopqrstuv")
+    assert booking_claims.event_id({**claim, "attempt": 2}) != a
