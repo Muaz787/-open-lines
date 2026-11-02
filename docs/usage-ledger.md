@@ -42,13 +42,16 @@ retrying or a call is quarantined, and a warning while overage is pending.
 identifier window a resend could bill twice.
 
 1. List the rows: `select * from usage_events where overage_state = 'review'`.
-2. Find the customer in Stripe, and open Billing → Meters → `call_minutes`.
-3. Look for an event with identifier `ol-usage-` plus the first 40 hex characters of
-   `sha256("<tenant_id>:<call_id>")`, at the row's `ended_at`.
-4. **If Stripe has it:** set the row to `reported`, and add its minutes to
-   `overage_minutes_reported` if it's in the current period.
-5. **If Stripe doesn't have it:** the customer wasn't billed. Decide deliberately whether
-   to bill it, and record the decision. Set the row to `none` if you don't.
+2. For each tenant, read Stripe's meter total for its customer over the billing period,
+   using the `call_minutes` meter's event summaries. Summaries lag behind events, so read
+   twice, at least 2 minutes apart, and use them only when both reads agree.
+3. Compare Stripe's total with the ledger: `reported` rows plus the row in review.
+4. **If Stripe's total includes the row:** set it to `reported`, and make
+   `overage_minutes_reported` equal Stripe's total for the current period.
+5. **If it doesn't:** the customer wasn't billed for it. Decide deliberately whether to
+   bill it, and record the decision. If you don't, set the row to `none`.
+
+Each step that changes a row or a tenant needs approval at the time.
 
 ## Reviewing quarantined calls
 
@@ -91,13 +94,57 @@ requirements.
 - Rows hold a call ID, minutes and times, with no caller name, number or transcript.
 - A periodic purge for active accounts isn't proposed. No new automatic deletion is added.
 
-## Rollback
+## Release and rollback
 
-Reverting the code leaves the tables and column in place, unused.
+The operational SQL is in `ops/usage-ledger-release/`. Each script states what it does.
 
-**Before reverting, check for pending overage.** The old code works out overage from
-`overage_minutes_reported`, which a pending row hasn't updated, so it could resend those
-minutes with a new identifier and bill them twice. Let the retry finish, or reconcile the
-rows by hand, until `pending` is zero.
+### Why a hold is needed
 
-Rows left behind stay valid. Re-deploying resumes retrying them, and old ones go to review.
+`claim_pending_webhook_events` reads pending events without locking or marking them. If
+an old and a new backend run at once, both can process the same call. A quiet period
+doesn't prevent that.
+
+`hold-on.sql` stores new end-of-call events as `held:usage-042`, which no backend
+reads. Call intake keeps working. It only changes events that arrive as `pending`, and it
+refuses to start if any event already has a status other than `pending`, `done` or
+`failed`. `hold-off.sql` releases only `held:usage-042` events, in order, and prints each
+ID. `handover-status.sql` shows the hold, the held IDs, and events still being processed.
+
+### How Railway ends the old deployment
+
+Railway sends the old deployment SIGTERM once the new one is active, then SIGKILL after the
+draining period, which defaults to 0 seconds. With no health check, a deployment is
+active as soon as its container starts. The overlap default isn't documented, so it isn't
+assumed. Before either step below, read Railway's deployment list until the previous
+deployment shows **Removed**. `/health` reporting the new commit isn't enough on its own.
+
+### Release
+
+1. Apply migration 042, and verify it.
+2. Run `hold-on.sql`, then wait for `handover-status.sql` to show `in_flight = 0`.
+3. Merge the code, and wait for `/health` to report the merge commit and for the previous
+   web and cron deployments to show Removed.
+4. Run `hold-off.sql`, and check the released IDs match the held IDs.
+
+If the deploy fails while held, the old code is still running: run `hold-off.sql`.
+
+### Rollback
+
+The old code sends Stripe the gap between usage over the allowance and
+`overage_minutes_reported`, under a new identifier. That gap includes a report Stripe
+accepted just before a crash, and any row in review. **`pending = 0` isn't enough.** In a
+test, the old code billed 15 minutes instead of 8 with `pending = 0`.
+
+1. Run `hold-on.sql`, and wait for `in_flight = 0`. No new call can report overage.
+2. Run `rollback-pause.sql`, and keep the rows it prints. Retries stop.
+3. Deploy the revert, and wait until the previous deployment shows **Removed**. Only now
+   can no request to Stripe still be under way. This replaces a timed wait.
+4. The old code runs from here, but can't report anything: its only meter call is in call
+   recording, and the hold keeps calls from being processed.
+5. Reconcile every row from step 2 against Stripe, as above.
+6. Run `rollback-gate.sql`. Every value must be 0, including `resend_exposure_minutes`.
+7. Run `hold-off.sql`.
+
+If the gate can't reach 0, keep the hold on and redeploy the new code instead. Releasing
+the hold onto the old code would bill the exposure again. Rows left in the ledger stay
+valid if the new code returns.
