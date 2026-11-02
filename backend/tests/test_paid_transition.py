@@ -177,6 +177,31 @@ async def test_choosing_another_plan_replaces_the_unpaid_attempt():
     w.create.assert_called_once()
 
 
+def _key(world):
+    return world.create.call_args.kwargs["idempotency_key"]
+
+
+@pytest.mark.asyncio
+async def test_going_back_to_an_earlier_plan_gets_a_new_stripe_request():
+    # Stripe replays a reused key. Plan A, then B, then A again would hand back the
+    # canceled first subscription and leave the customer unable to pay for a day.
+    with World(COMPED) as first:
+        await billing.start_paid_transition(BODY, "Bearer t")
+    with World({**COMPED, "paid_transition_subscription_id": "sub_b"}, retrieved=Sub("canceled")) as third:
+        await billing.start_paid_transition(BODY, "Bearer t")
+    assert _key(first) != _key(third)
+
+
+@pytest.mark.asyncio
+async def test_a_double_click_uses_one_stripe_request():
+    # Both requests read the tenant before either has saved the pending id.
+    with World(COMPED) as one:
+        await billing.start_paid_transition(BODY, "Bearer t")
+    with World(COMPED) as two:
+        await billing.start_paid_transition(BODY, "Bearer t")
+    assert _key(one) == _key(two)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stripe_says", [Sub("incomplete_expired"), stripe.InvalidRequestError("gone", "id")])
 async def test_an_abandoned_attempt_can_start_over(stripe_says):
@@ -330,3 +355,18 @@ async def test_the_admin_key_is_required(admin_key):
     result, update = await set_window(COMPED, {"allow": True}, key="wrong")
     assert isinstance(result, HTTPException) and result.status_code == 403
     update.assert_not_called()
+
+
+@pytest.mark.parametrize("contents", ["sk_live_abc", "rk_live_abc", "rk_test_abc", "", "sb_secret_abc"])
+def test_the_stripe_test_runner_refuses_anything_but_a_test_key(tmp_path, contents):
+    from scripts.paid_transition_stripe_test import load_test_key
+    key = tmp_path / "key"
+    key.write_text(contents)
+    with pytest.raises(SystemExit):
+        load_test_key(key)
+
+
+def test_the_stripe_test_runner_refuses_a_missing_key(tmp_path):
+    from scripts.paid_transition_stripe_test import load_test_key
+    with pytest.raises(SystemExit):
+        load_test_key(tmp_path / "absent")

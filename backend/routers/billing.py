@@ -906,7 +906,9 @@ async def start_paid_transition(body: dict, authorization: Annotated[str | None,
             automatic_tax={"enabled": True},
             expand=["latest_invoice.payment_intent"],
             metadata={"tenant_id": tenant_id, "plan": plan, "paid_transition": "true"},
-            idempotency_key=f"paid-transition-{tenant_id}-{plan}-{interval}-{tenant['paid_transition_expires_at']}",
+            # Tied to the attempt this replaces: a double click shares one request, and
+            # a later attempt is new, because Stripe would replay a reused key.
+            idempotency_key=f"paid-transition-{tenant_id}-{plan}-{interval}-{pending_id or tenant['paid_transition_expires_at']}",
         )
     except stripe.StripeError as e:
         logger.error("Paid transition failed for tenant %s: %s", tenant_id, e)
