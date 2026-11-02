@@ -452,11 +452,14 @@ async def stripe_webhook(request: Request):
                 # Stripe moves current_period_start to the conversion date, so the
                 # 60 trial minutes are zeroed and the tenant starts their paid month
                 # on their full plan allocation.
-                new_period_start = sub.get("current_period_start")
+                new_period_start = subscriptions.period_start(sub)
                 if new_period_start:
-                    new_anchor = datetime.fromtimestamp(int(new_period_start), tz=_dt_timezone.utc).strftime("%Y-%m-%d")
+                    new_anchor = datetime.fromtimestamp(new_period_start, tz=_dt_timezone.utc).strftime("%Y-%m-%d")
                     stored_anchor = str(tenant.get("billing_period_anchor") or "")
-                    if stored_anchor and stored_anchor != new_anchor:
+                    if not stored_anchor:
+                        updates["billing_period_anchor"] = new_anchor
+                    # Only forward: a redelivered old event must not reset a later period.
+                    elif new_anchor > stored_anchor:
                         updates.update({
                             "minutes_used_this_period": 0,
                             "overage_minutes_reported": 0,

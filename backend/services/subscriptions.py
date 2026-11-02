@@ -112,6 +112,17 @@ def resolve_price(plan: str, interval: str | None = "month") -> str:
     return PRICE_IDS.get(plan, {}).get(norm_interval(interval), "")
 
 
+def period_start(sub) -> int | None:
+    """The current period's start, in seconds. Older API versions put it on the
+    subscription; newer ones, including the live webhook's, put it on each item."""
+    start = sub.get("current_period_start")
+    if start:
+        return int(start)
+    items = ((sub.get("items") or {}).get("data")) or []
+    starts = [int(i["current_period_start"]) for i in items if i.get("current_period_start")]
+    return max(starts) if starts else None
+
+
 def plan_from_price(price_id: str) -> str | None:
     """Reverse-lookup the plan name from any of its price IDs."""
     for plan, intervals in PRICE_IDS.items():

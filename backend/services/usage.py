@@ -141,7 +141,7 @@ async def _check_and_reset_period(tenant: dict) -> tuple[int, int, str]:
             int(sub.current_period_start), tz=timezone.utc
         ).strftime("%Y-%m-%d")
 
-        if stored_anchor and stored_anchor != new_anchor:
+        if stored_anchor and new_anchor > stored_anchor:
             minutes_used     = 0
             overage_reported = 0
             await db.update_tenant(tenant_id, {
@@ -151,7 +151,7 @@ async def _check_and_reset_period(tenant: dict) -> tuple[int, int, str]:
             })
             logger.info("Billing period reset for tenant %s → %s", tenant_id, new_anchor)
 
-        return minutes_used, overage_reported, new_anchor
+        return minutes_used, overage_reported, new_anchor if new_anchor > stored_anchor else stored_anchor
 
     except Exception as e:
         logger.warning("usage: period check failed for tenant %s: %s", tenant_id, e)
@@ -220,18 +220,9 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
             "minutes_used_this_period": int(new_total),
             "overage_minutes_reported": int(overage_reported),
         }
-        # Initialise anchor on first call if not yet set
-        if not anchor and customer_id and _stripe_key:
-            sub_id = tenant.get("stripe_subscription_id") or ""
-            if sub_id:
-                try:
-                    stripe.api_key = _stripe_key
-                    sub = stripe.Subscription.retrieve(sub_id)
-                    updates["billing_period_anchor"] = datetime.fromtimestamp(
-                        int(sub.current_period_start), tz=timezone.utc
-                    ).strftime("%Y-%m-%d")
-                except Exception:
-                    pass
+        # Without an anchor the period can never roll over, so keep the one Stripe gave.
+        if anchor and not tenant.get("billing_period_anchor"):
+            updates["billing_period_anchor"] = anchor
         await db.update_tenant(tenant_id, updates)
     except Exception as e:
         logger.error("Failed to persist usage for tenant %s: %s", tenant_id, e)
