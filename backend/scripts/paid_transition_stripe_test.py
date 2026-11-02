@@ -94,7 +94,8 @@ async def run() -> int:
                 patch.object(billing, "_sub_interval", lambda s: "month"), \
                 patch.object(billing, "PRICE_IDS", {p: {} for p in prices}), \
                 patch.object(billing.db, "get_tenant_by_id", AsyncMock(side_effect=lambda _i: dict(row))), \
-                patch.object(billing.db, "update_tenant", AsyncMock(side_effect=update)):
+                patch.object(billing.db, "update_tenant", AsyncMock(side_effect=update)), \
+                patch.object(billing.db, "usage_roll_period", AsyncMock()):
             try:
                 await fn(row, before, start, confirm, checks)
             except (AssertionError, HTTPException, stripe.StripeError) as e:

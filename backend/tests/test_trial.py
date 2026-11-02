@@ -252,6 +252,7 @@ def _stripe_sub(status="active", period_start=1_760_000_000):
 async def test_convert_charges_and_resets_counters():
     t = _card_trial(minutes=60, plan="starter", id="t1", stripe_subscription_id="sub_1")
     with patch("stripe.Subscription.modify", return_value=_stripe_sub("active")) as modify, \
+         patch("db.supabase.usage_roll_period", new=AsyncMock()) as roll, \
          patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
         res = await trial.convert_card_trial(t, reason="minutes")
 
@@ -266,9 +267,7 @@ async def test_convert_charges_and_resets_counters():
     assert wrote["trial_converted_reason"] == "minutes"
     assert wrote["stripe_trial_ends_at"] is None
     # The paid month starts clean — trial minutes are not billed against it.
-    assert wrote["minutes_used_this_period"] == 0
-    assert wrote["overage_minutes_reported"] == 0
-    assert wrote["billing_period_anchor"]
+    assert roll.await_args.kwargs["start_paid"] is True
     # Cleared only by the first paid invoice.
     assert wrote["trial_conversion_unpaid"] is True
 

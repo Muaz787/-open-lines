@@ -867,6 +867,17 @@ async def system_health(x_admin_key: str | None = Header(None)):
         _chk_openai(), _chk_vapi(), _chk_square(),
     )
     checks = [{"name": n, "status": s, "message": m} for (n, s, m) in pinged]
+    async def _chk_usage_ledger() -> tuple[str, str, str]:
+        try:
+            from services import usage
+            status, message = await usage.ledger_health()
+            return ("Usage ledger", status, message)
+        except Exception as e:
+            logger.error("usage ledger check failed: %s", type(e).__name__)
+            return ("Usage ledger", "warning", "Could not read the usage ledger")
+
+    checks.append(dict(zip(("name", "status", "message"), await _chk_usage_ledger())))
+
     for n, s, m in [
         # Firecrawl keeps an env check: its only endpoints cost credits to call,
         # and the crawl check above already proves it works end to end.

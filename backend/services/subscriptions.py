@@ -13,6 +13,8 @@ rather than keeping a second copy.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import json
 import logging
 import os
@@ -110,6 +112,27 @@ def norm_interval(interval: str | None) -> str:
 def resolve_price(plan: str, interval: str | None = "month") -> str:
     """Resolve the Stripe price ID for a plan + billing interval."""
     return PRICE_IDS.get(plan, {}).get(norm_interval(interval), "")
+
+
+def _field(obj, name):
+    value = obj.get(name) if hasattr(obj, "get") else None
+    return value if value is not None else getattr(obj, name, None)
+
+
+def period_start(sub) -> int | None:
+    """The current period's start, in seconds. Older API versions put it on the
+    subscription; newer ones, including the live webhook's, put it on each item."""
+    start = _field(sub, "current_period_start")
+    if start:
+        return int(start)
+    items = _field(_field(sub, "items") or {}, "data") or []
+    starts = [int(s) for s in (_field(i, "current_period_start") for i in items) if s]
+    return max(starts) if starts else None
+
+
+def period_start_iso(sub) -> str | None:
+    start = period_start(sub)
+    return datetime.fromtimestamp(start, tz=timezone.utc).isoformat() if start else None
 
 
 def plan_from_price(price_id: str) -> str | None:

@@ -345,7 +345,7 @@ async def process_end_of_call(payload: dict) -> None:
         if not free_test:
             try:
                 from services.usage import record_call_minutes
-                await record_call_minutes(tenant_id, int(duration))
+                await record_call_minutes(tenant_id, int(duration), call_id=call_id, ended_at=ended_at)
             except Exception as e:
                 logger.error("usage.record_call_minutes failed for tenant %s call %s: %s", tenant_id, call_id, e)
 
@@ -450,6 +450,23 @@ async def _maybe_reconcile_cancellations() -> None:
         logger.error("reschedule recovery pass failed: %s", e)
 
 
+_OVERAGE_RETRY_SECONDS = 600
+_last_overage_retry = 0.0
+
+
+async def _maybe_retry_overage() -> None:
+    global _last_overage_retry
+    now = _time.monotonic()
+    if now - _last_overage_retry < _OVERAGE_RETRY_SECONDS:
+        return
+    _last_overage_retry = now
+    try:
+        from services.usage import retry_pending_overage
+        await retry_pending_overage()
+    except Exception as e:
+        logger.error("Overage retry failed: %s", e)
+
+
 async def _processor_loop() -> None:
     logger.info("Webhook processor loop started")
     interval = _POLL_INTERVAL_MIN
@@ -463,6 +480,7 @@ async def _processor_loop() -> None:
             events = None
 
         await _maybe_reconcile_cancellations()
+        await _maybe_retry_overage()
 
         if events and len(events) >= _BATCH_LIMIT:
             # Full batch — more is likely queued; drain immediately without sleeping.

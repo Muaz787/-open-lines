@@ -50,6 +50,9 @@ def _tenant(**over):
     }
 
 
+_ROLL = AsyncMock(return_value={"rolled": False, "cleared_minutes": 0})
+
+
 async def _fire(event: dict, tenant: dict | None):
     """Run the webhook and return the dict written to update_tenant (or None)."""
     with patch.dict("os.environ", {"STRIPE_WEBHOOK_SECRET": "whsec_test"}), \
@@ -58,7 +61,9 @@ async def _fire(event: dict, tenant: dict | None):
          patch("services.analytics.capture", MagicMock()), \
          patch("services.email.send_card_trial_email", new=AsyncMock(return_value=True)), \
          patch("db.supabase.get_tenant_by_stripe_customer", new=AsyncMock(return_value=tenant)), \
+         patch("db.supabase.usage_roll_period", new=_ROLL), \
          patch("db.supabase.update_tenant", new=AsyncMock()) as upd:
+        _ROLL.reset_mock()
         res = await billing.stripe_webhook(_Request(event))
 
     assert res == {"status": "ok"}
@@ -85,9 +90,8 @@ async def test_natural_conversion_resets_the_minute_counter():
     writes = await _fire(_sub_updated(), _tenant())
     merged = {k: v for w in writes for k, v in w.items()}
 
-    assert merged["minutes_used_this_period"] == 0
-    assert merged["overage_minutes_reported"] == 0
-    assert merged["billing_period_anchor"] == _anchor(TRIAL_END)
+    assert _ROLL.await_args.args[1].startswith(_anchor(TRIAL_END))
+    assert "minutes_used_this_period" not in merged
     assert merged["subscription_status"] == "active"
 
 
