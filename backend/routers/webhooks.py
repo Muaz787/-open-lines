@@ -13,6 +13,7 @@ from db import routing as rdb
 from services.security import verify_tenant_owner, verify_vapi_server_secret
 from services import analytics, knowledge, vapi as vapi_svc
 from services import entitlements, transfer as transfer_svc, routing_destinations as rd
+from services import relative_dates
 from services.vapi import (_CALLER_LOOKUP_NOTE, build_caller_lookup_tool, build_calendar_tools,
                            caller_lookup_note, ensure_safety_preamble, supports_safe_reschedule)
 from routers.calendar import _CALENDAR_NOTE
@@ -213,17 +214,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
             )
             return {"assistantId": assistant_id}
 
-    # Today's date in tenant timezone
+    # Today's date in tenant timezone, with the next two weeks already resolved:
+    # asked to count, the model once turned "the day after tomorrow" into +3 days.
     tz_str: str = tenant.get("calendar_timezone") or "America/Toronto"
-    today = datetime.now(ZoneInfo(tz_str))
-    date_note = (
-        f"\n\nTODAY'S DATE: {today.strftime('%A, %B %d, %Y')} ({today.strftime('%Y-%m-%d')}). "
-        f"The current year is {today.year}. "
-        "Resolve ALL date references to a full YYYY-MM-DD date before passing to any tool: "
-        "• 'today' / 'tomorrow' / 'next Monday' → count forward from today. "
-        f"• Month + day with NO year (e.g. 'May 29th', 'June 3rd') → ALWAYS use {today.year}. "
-        "NEVER use a past year. NEVER guess — derive the date from what the caller actually said."
-    )
+    date_note = relative_dates.prompt_block(tenant)
 
     # Operating schedule note — gives the AI the business's days, hours, break,
     # and any free-text booking rules so it guides callers correctly.
@@ -298,6 +292,9 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # model to call a tool it has not been given is how a caller reaches a dead end
     # after being promised their appointment would be moved.
     can_reschedule = await supports_safe_reschedule(tenant)
+    # A booking made earlier in THIS call can be swapped for a corrected one on the
+    # Google and Outlook paths, which create and cancel calendar events directly.
+    can_replace = vapi_svc.supports_same_call_replace(tenant)
 
     # Assemble system prompt — always include the caller-lookup note so
     # returning-caller instructions are present even when the static Vapi config
@@ -308,7 +305,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
     else:
         # No calendar connected — stop the AI confirming appointments it can't book.
         system_prompt += _NO_BOOKING_NOTE
-    system_prompt += caller_lookup_note(supports_reschedule=can_reschedule)
+    system_prompt += caller_lookup_note(supports_reschedule=can_reschedule,
+                                        supports_same_call_replace=can_replace)
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
     # even if this tenant's stored prompt predates it. The receptionist voice/manner
     # guidance is applied on every call so ALL tenants (incl. pre-existing) get it.
@@ -334,7 +332,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
     system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
-    tools = (build_calendar_tools(tenant_id, supports_reschedule=can_reschedule)
+    tools = (build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,
+                                  supports_same_call_replace=can_replace)
              if has_calendar else [build_caller_lookup_tool(tenant_id)])
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
 

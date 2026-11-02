@@ -97,3 +97,17 @@ _slowapi.errors = _slowapi_errors  # type: ignore[attr-defined]
 sys.modules["slowapi"] = _slowapi
 sys.modules["slowapi.util"] = _slowapi_util
 sys.modules["slowapi.errors"] = _slowapi_errors
+
+
+# ── the call clock ───────────────────────────────────────────────────────────
+# Tool calls now refuse dates before the call date, worked out from
+# services.relative_dates._utcnow. Many fixtures book fixed dates in September and
+# October 2026, so "now" is pinned before them. Tests about the clock set their own.
+import pytest as _pytest
+from datetime import datetime as _dt, timezone as _tz
+
+
+@_pytest.fixture(autouse=True)
+def _pinned_call_clock(monkeypatch):
+    from services import relative_dates
+    monkeypatch.setattr(relative_dates, "_utcnow", lambda: _dt(2026, 9, 1, 12, tzinfo=_tz.utc))

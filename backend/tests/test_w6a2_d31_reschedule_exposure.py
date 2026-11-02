@@ -151,7 +151,8 @@ def test_the_only_difference_between_the_two_tool_sets_is_the_reschedule_tool():
 def test_E_no_calendar_tenant_is_unaffected():
     """A tenant with no calendar never reaches build_calendar_tools at all."""
     src = inspect.getsource(__import__("routers.webhooks", fromlist=["x"]))
-    assert "build_calendar_tools(tenant_id, supports_reschedule=can_reschedule)" in src
+    assert ("build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,\n"
+            "                                  supports_same_call_replace=can_replace)") in src
     assert "else [build_caller_lookup_tool(tenant_id)]" in src
 
 
@@ -213,8 +214,12 @@ def test_H_the_live_call_path_gates_tools_and_prompt_on_the_same_predicate():
     from routers import webhooks
     src = inspect.getsource(webhooks)
     assert "can_reschedule = await supports_safe_reschedule(tenant)" in src
-    assert "caller_lookup_note(supports_reschedule=can_reschedule)" in src
-    assert "build_calendar_tools(tenant_id, supports_reschedule=can_reschedule)" in src
+    # Same rule for replace_booking: one predicate decides the tool and the prompt.
+    assert "can_replace = vapi_svc.supports_same_call_replace(tenant)" in src
+    assert ("caller_lookup_note(supports_reschedule=can_reschedule,\n"
+            "                                        supports_same_call_replace=can_replace)") in src
+    assert ("build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,\n"
+            "                                  supports_same_call_replace=can_replace)") in src
     # the old unconditional forms are gone
     assert "system_prompt += _CALLER_LOOKUP_NOTE" not in src
     assert "build_calendar_tools(tenant_id) if has_calendar" not in src

@@ -38,13 +38,10 @@ When booking:
 3. If neither works, offer the next two slots. Never read out all slots at once.
 4. Once the caller picks a slot, confirm: "Perfect — just to confirm, [service] on [date] at [time]?"
 5. After they say yes, call book_appointment immediately.
-6. Tell the caller the booking is confirmed and they'll get a text shortly.
+6. Tell the caller the booking is confirmed. Mention a confirmation text only if the tool result says one was sent.
 Do NOT say "our team will confirm with you" — you are confirming it now.
 
-When cancelling:
-1. Confirm: "Just to confirm, you'd like to cancel your upcoming appointment?"
-2. After they say yes, call cancel_appointment immediately.
-3. Tell the caller the appointment has been cancelled."""
+To cancel, follow the CANCELLING steps below."""
 
 
 class CalendarSettingsRequest(BaseModel):

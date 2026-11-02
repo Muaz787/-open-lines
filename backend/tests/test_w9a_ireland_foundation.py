@@ -214,7 +214,9 @@ def test_22_the_multi_location_confirmation_promises_no_CHANNEL():
 
 def test_23_non_square_providers_retain_their_existing_SMS_behaviour():
     from routers import tools
-    assert "send_sms" in _src(tools.book_appointment)
+    # The Google/Outlook booking body moved into _calendar_book, unchanged in this respect.
+    assert "_calendar_book(" in _src(tools.book_appointment)
+    assert "send_sms" in _src(tools._calendar_book)
     assert "send_sms" in _src(tools._square_book_appointment)
 
 
