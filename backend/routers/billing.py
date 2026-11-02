@@ -452,12 +452,11 @@ async def stripe_webhook(request: Request):
                 # Stripe moves current_period_start to the conversion date, so the
                 # 60 trial minutes are zeroed and the tenant starts their paid month
                 # on their full plan allocation.
-                new_period_start = subscriptions.period_start(sub)
+                new_period_start = subscriptions.period_start_iso(sub)
                 if new_period_start:
-                    new_anchor = datetime.fromtimestamp(new_period_start, tz=_dt_timezone.utc).strftime("%Y-%m-%d")
-                    rolled = await db.usage_roll_period(tenant["id"], new_anchor)
+                    rolled = await db.usage_roll_period(tenant["id"], new_period_start)
                     if rolled and rolled.get("rolled"):
-                        logger.info("Usage counters reset for new billing period %s (tenant %s)", new_anchor, tenant["id"])
+                        logger.info("Usage period moved to %s for tenant %s", new_period_start, tenant["id"])
 
                 await db.update_tenant(tenant["id"], updates)
                 logger.info("Subscription status updated to %s for customer %s sub %s", our_status, customer_id, sub_id)
@@ -794,6 +793,11 @@ async def _finish_paid_transition(tenant: dict, sub) -> bool:
     if not plan:
         logger.error("Paid transition: %s has no known plan price for tenant %s", sub.id, tenant.get("id"))
         return False
+    # First, because a repeat of this is harmless. The paid period starts clean, as it
+    # does when a trial converts.
+    period_start = subscriptions.period_start_iso(sub)
+    if period_start:
+        await db.usage_roll_period(tenant["id"], period_start, start_paid=True)
     updates: dict = {
         "stripe_subscription_id":          sub.id,
         "subscription_plan":               plan,
@@ -801,15 +805,7 @@ async def _finish_paid_transition(tenant: dict, sub) -> bool:
         "billing_exempt":                  False,
         "paid_transition_expires_at":      None,
         "paid_transition_subscription_id": None,
-        # The paid period starts clean, as it does when a trial converts.
-        "minutes_used_this_period":        0,
-        "overage_minutes_reported":        0,
     }
-    period_start = getattr(sub, "current_period_start", None)
-    if period_start:
-        updates["billing_period_anchor"] = datetime.fromtimestamp(
-            int(period_start), tz=_dt_timezone.utc
-        ).strftime("%Y-%m-%d")
     await db.update_tenant(tenant["id"], updates)
     logger.info("Tenant %s moved to paid plan %s on %s", tenant["id"], plan, sub.id)
     return True

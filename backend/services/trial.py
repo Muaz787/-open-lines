@@ -344,6 +344,7 @@ async def convert_card_trial(tenant: dict, reason: str) -> dict:
     """
     import stripe as _stripe
     from db import supabase as db
+    from services import subscriptions
 
     tenant_id = str(tenant.get("id") or "")
     sub_id    = str(tenant.get("stripe_subscription_id") or "")
@@ -388,18 +389,14 @@ async def convert_card_trial(tenant: dict, reason: str) -> dict:
         # Cleared by the first invoice.payment_succeeded. Until then a past_due
         # line is gated — they have used the trial and paid nothing.
         "trial_conversion_unpaid": True,
-        # The paid period starts clean: trial minutes are not deducted from the
-        # plan allocation the tenant is now paying for.
-        "minutes_used_this_period": 0,
-        "overage_minutes_reported": 0,
     }
-    period_start = getattr(sub, "current_period_start", None)
-    if period_start:
-        updates["billing_period_anchor"] = datetime.fromtimestamp(
-            int(period_start), tz=timezone.utc
-        ).strftime("%Y-%m-%d")
 
     try:
+        # The paid period starts clean: trial minutes are not deducted from the
+        # plan allocation the tenant is now paying for.
+        period_start = subscriptions.period_start_iso(sub)
+        if period_start:
+            await db.usage_roll_period(tenant_id, period_start, start_paid=True)
         await db.update_tenant(tenant_id, updates)
     except Exception as e:
         # Stripe has already charged. Losing this write leaves the tenant looking

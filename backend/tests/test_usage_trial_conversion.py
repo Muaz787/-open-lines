@@ -34,15 +34,15 @@ async def _record(tenant, prior_minutes, duration_secs, calls=None):
             calls.append(("convert", reason))
         return {"converted": True, "already": False, "reason": reason, "status": "active"}
 
-    async def _add(tenant_id, minutes, anchor):
+    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance):
         total = prior_minutes + minutes
         if calls is not None:
             calls.append(("usage_write", total))
-        return {"minutes_used": total, "overage_reported": 0, "period_anchor": "2026-08-01", "rolled": False}
+        return {"minutes_used": total, "overage_minutes": 0, "duplicate": False, "counted": True, "rolled": False}
 
     with patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=tenant)), \
-         patch("db.supabase.usage_add_minutes", new=_add), \
-         patch("services.usage._current_period_anchor", new=AsyncMock(return_value=None)), \
+         patch("db.supabase.usage_record_call", new=_add), \
+         patch("services.usage._current_period_start", new=AsyncMock(return_value=None)), \
          patch("services.trial.convert_card_trial", side_effect=_convert) as conv:
         await usage.record_call_minutes(tenant["id"], duration_secs)
     return conv
@@ -93,13 +93,13 @@ async def test_conversion_failure_never_breaks_call_recording():
     would be worse than a trial that converts late."""
     calls = []
 
-    async def _add(tenant_id, minutes, anchor):
+    async def _add(tenant_id, call_id, minutes, ended_at, period_start, allowance):
         calls.append(58 + minutes)
-        return {"minutes_used": 58 + minutes, "overage_reported": 0, "period_anchor": "2026-08-01", "rolled": False}
+        return {"minutes_used": 58 + minutes, "overage_minutes": 0, "duplicate": False, "counted": True, "rolled": False}
 
     with patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=_tenant(58))), \
-         patch("db.supabase.usage_add_minutes", new=_add), \
-         patch("services.usage._current_period_anchor", new=AsyncMock(return_value=None)), \
+         patch("db.supabase.usage_record_call", new=_add), \
+         patch("services.usage._current_period_start", new=AsyncMock(return_value=None)), \
          patch("services.trial.convert_card_trial",
                new=AsyncMock(side_effect=RuntimeError("stripe down"))):
         await usage.record_call_minutes("t_usage", 300)  # +5 -> 63

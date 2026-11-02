@@ -50,7 +50,7 @@ def _tenant(**over):
     }
 
 
-_ROLL = AsyncMock(return_value={"rolled": False, "anchored": False, "cleared_minutes": 0})
+_ROLL = AsyncMock(return_value={"rolled": False, "cleared_minutes": 0})
 
 
 async def _fire(event: dict, tenant: dict | None):
@@ -90,7 +90,7 @@ async def test_natural_conversion_resets_the_minute_counter():
     writes = await _fire(_sub_updated(), _tenant())
     merged = {k: v for w in writes for k, v in w.items()}
 
-    _ROLL.assert_awaited_once_with("t1", _anchor(TRIAL_END))
+    assert _ROLL.await_args.args[1].startswith(_anchor(TRIAL_END))
     assert "minutes_used_this_period" not in merged
     assert merged["subscription_status"] == "active"
 

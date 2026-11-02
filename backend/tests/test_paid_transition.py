@@ -48,6 +48,11 @@ class World:
             else MagicMock(return_value=retrieved)
         self.cancel = MagicMock()
 
+    async def roll(self, _id, period_start, start_paid=False):
+        self.rolled_with = (period_start, start_paid)
+        self.row["minutes_used_this_period"] = 0
+        return {"rolled": True, "cleared_minutes": 0}
+
     def access(self):
         return tuple(self.row.get(f) for f in ACCESS_FIELDS)
 
@@ -61,6 +66,7 @@ class World:
             patch.object(billing.db, "get_tenant_by_id", AsyncMock(side_effect=lambda _id: dict(self.row))),
             patch.object(billing.db, "get_tenant_by_stripe_customer", AsyncMock(side_effect=lambda _c: dict(self.row))),
             patch.object(billing.db, "update_tenant", self.update),
+            patch.object(billing.db, "usage_roll_period", AsyncMock(side_effect=self.roll)),
             patch.object(billing.stripe.Customer, "retrieve", MagicMock(return_value=SimpleNamespace(deleted=False))),
             patch.object(billing.stripe.Customer, "modify", MagicMock()),
             patch.object(billing.stripe.Customer, "create", MagicMock(return_value=SimpleNamespace(id="cus_new"))),
@@ -315,9 +321,9 @@ async def test_sync_does_not_copy_an_unpaid_transition_onto_the_tenant():
 @pytest.mark.asyncio
 async def test_customer_with_no_subscription_is_not_metered():
     row = {"id": TENANT, "stripe_customer_id": "cus_1", "subscription_plan": "pro", "minutes_used_this_period": 500}
-    total = {"minutes_used": 502, "overage_reported": 0, "period_anchor": None, "rolled": False}
+    total = {"minutes_used": 502, "overage_minutes": 0, "duplicate": False, "counted": True, "rolled": False}
     with patch.object(usage.db, "get_tenant_by_id", AsyncMock(return_value=row)), \
-            patch.object(usage.db, "usage_add_minutes", AsyncMock(return_value=total)), \
+            patch.object(usage.db, "usage_record_call", AsyncMock(return_value=total)), \
             patch.object(usage, "_stripe_key", "sk"), patch.object(usage, "_overage_price_id", "price"), \
             patch.object(usage.stripe.billing.MeterEvent, "create", MagicMock()) as meter:
         await usage.record_call_minutes(TENANT, 120)

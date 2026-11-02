@@ -266,27 +266,38 @@ async def insert_tenant(data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
-async def usage_add_minutes(tenant_id: str, minutes: int, period_anchor: str | None) -> dict | None:
-    """Add a call's minutes in one locked step. Rolls the period first if period_anchor
-    is newer than the stored one. Returns the row's new counters."""
-    res = await run_query(get_client().rpc("usage_add_minutes", {
-        "p_tenant_id": tenant_id, "p_minutes": minutes, "p_period_anchor": period_anchor,
+async def usage_record_call(tenant_id: str, call_id: str, minutes: int, ended_at: str,
+                            period_start: str | None, allowance: int | None) -> dict | None:
+    """Record a call once, in one locked step. See migration 042."""
+    res = await run_query(get_client().rpc("usage_record_call", {
+        "p_tenant_id": tenant_id, "p_call_id": call_id, "p_minutes": minutes, "p_ended_at": ended_at,
+        "p_period_start": period_start, "p_allowance": allowance,
     }))
     return res.data[0] if res.data else None
 
 
-async def usage_roll_period(tenant_id: str, period_anchor: str) -> dict | None:
+async def usage_roll_period(tenant_id: str, period_start: str, start_paid: bool = False) -> dict | None:
     """Move a tenant to a newer billing period. A stale or repeated period does nothing."""
     res = await run_query(get_client().rpc("usage_roll_period", {
-        "p_tenant_id": tenant_id, "p_period_anchor": period_anchor,
+        "p_tenant_id": tenant_id, "p_period_start": period_start, "p_start_paid": start_paid,
     }))
     return res.data[0] if res.data else None
 
 
-async def usage_add_overage_reported(tenant_id: str, minutes: int, period_anchor: str | None) -> None:
-    await run_query(get_client().rpc("usage_add_overage_reported", {
-        "p_tenant_id": tenant_id, "p_minutes": minutes, "p_period_anchor": period_anchor,
-    }))
+async def usage_overage_reported(tenant_id: str, call_id: str) -> None:
+    await run_query(get_client().rpc("usage_overage_reported", {"p_tenant_id": tenant_id, "p_call_id": call_id}))
+
+
+async def usage_pending_overage(limit: int = 200) -> list:
+    res = await run_query(get_client().table("usage_events")
+                          .select("tenant_id, call_id, overage_minutes, ended_at, created_at")
+                          .eq("overage_state", "pending").order("created_at").limit(limit))
+    return res.data or []
+
+
+async def usage_overage_needs_review(tenant_id: str, call_id: str) -> None:
+    await run_query(get_client().table("usage_events").update({"overage_state": "review"})
+                    .eq("tenant_id", tenant_id).eq("call_id", call_id).eq("overage_state", "pending"))
 
 
 async def update_tenant(tenant_id: str, data: dict) -> dict:
