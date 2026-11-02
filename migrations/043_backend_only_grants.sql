@@ -45,7 +45,7 @@ begin
     select count(*) into n
       from pg_class c cross join (values ('anon'), ('authenticated')) r(role)
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p', 'v', 'm', 'f')
-       and (has_table_privilege(r.role, c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+       and (has_table_privilege(r.role, c.oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
             or has_any_column_privilege(r.role, c.oid, 'SELECT,INSERT,UPDATE,REFERENCES'));
     if n > 0 then
         raise exception '% table privilege(s) still reachable by anon or authenticated', n;
@@ -68,12 +68,12 @@ begin
         raise exception '% function(s) still executable by anon or authenticated', n;
     end if;
 
-    select count(*) into n from pg_class c
+    -- One privilege per call: a comma list passes if any one of them is held.
+    select count(distinct c.oid) into n
+      from pg_class c cross join unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE',
+                                              'REFERENCES', 'TRIGGER', 'MAINTAIN']) p(privilege)
      where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')
-       and not (has_table_privilege('service_role', c.oid, 'SELECT')
-                and has_table_privilege('service_role', c.oid, 'INSERT')
-                and has_table_privilege('service_role', c.oid, 'UPDATE')
-                and has_table_privilege('service_role', c.oid, 'DELETE'));
+       and not has_table_privilege('service_role', c.oid, p.privilege);
     if n > 0 then
         raise exception '% table(s) would lose service_role access', n;
     end if;
@@ -81,7 +81,9 @@ begin
     select count(*) into n from pg_class c
      where c.relnamespace = 'public'::regnamespace and c.relkind = 'S'
        and case when c.relkind = 'S'
-                then not has_sequence_privilege('service_role', c.oid, 'USAGE,SELECT,UPDATE') end;
+                then not (has_sequence_privilege('service_role', c.oid, 'USAGE')
+                          and has_sequence_privilege('service_role', c.oid, 'SELECT')
+                          and has_sequence_privilege('service_role', c.oid, 'UPDATE')) end;
     if n > 0 then
         raise exception '% sequence(s) would lose service_role access', n;
     end if;
@@ -120,14 +122,20 @@ begin
         raise exception 'postgres functions would still default to PUBLIC execute';
     end if;
 
-    select count(*) into n from (values ('r'), ('S'), ('f')) want(t)
+    -- Every privilege service_role needs on new objects, checked one by one.
+    select count(*) into n
+      from (values ('r', 'SELECT'), ('r', 'INSERT'), ('r', 'UPDATE'), ('r', 'DELETE'),
+                   ('r', 'TRUNCATE'), ('r', 'REFERENCES'), ('r', 'TRIGGER'), ('r', 'MAINTAIN'),
+                   ('S', 'SELECT'), ('S', 'UPDATE'), ('S', 'USAGE'),
+                   ('f', 'EXECUTE')) want(t, privilege)
      where not exists (select 1 from pg_default_acl d, aclexplode(d.defaclacl) a
                         where d.defaclrole = 'postgres'::regrole
                           and d.defaclnamespace = 'public'::regnamespace
                           and d.defaclobjtype = want.t::"char"
-                          and a.grantee = 'service_role'::regrole);
+                          and a.grantee = 'service_role'::regrole
+                          and a.privilege_type = want.privilege);
     if n > 0 then
-        raise exception 'service_role would lose % default privilege type(s) in public', n;
+        raise exception 'service_role would lose % default privilege(s) on new objects in public', n;
     end if;
 end $$;
 
