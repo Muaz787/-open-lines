@@ -193,6 +193,31 @@ async def test_going_back_to_an_earlier_plan_gets_a_new_stripe_request():
 
 
 @pytest.mark.asyncio
+async def test_racing_requests_share_one_customer():
+    # Found by racing two real backends: six requests made six customers, and the
+    # subscription landed on one the tenant hadn't saved, so payment never matched.
+    row = {k: v for k, v in COMPED.items() if k != "stripe_customer_id"}
+    keys = []
+    for _ in range(2):
+        with World(row):
+            await billing.start_paid_transition(BODY, "Bearer t")
+            keys.append(billing.stripe.Customer.create.call_args.kwargs["idempotency_key"])
+    assert keys[0] == keys[1]
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_customer_is_replaced_by_a_new_request():
+    keys = []
+    for customer in (None, "cus_deleted"):
+        row = {**COMPED, "stripe_customer_id": customer}
+        with World(row):
+            billing.stripe.Customer.retrieve.return_value = SimpleNamespace(deleted=True)
+            await billing.start_paid_transition(BODY, "Bearer t")
+            keys.append(billing.stripe.Customer.create.call_args.kwargs["idempotency_key"])
+    assert keys[0] != keys[1]
+
+
+@pytest.mark.asyncio
 async def test_a_double_click_uses_one_stripe_request():
     # Both requests read the tenant before either has saved the pending id.
     with World(COMPED) as one:

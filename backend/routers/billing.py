@@ -890,7 +890,12 @@ async def start_paid_transition(body: dict, authorization: Annotated[str | None,
                 params["name"] = billing_name or tenant["business_name"]
             if address:
                 params["address"] = address
-            customer_id = stripe.Customer.create(**params).id
+            # Racing requests must share one customer. Otherwise the subscription can
+            # land on a customer the tenant didn't save, and its payment never matches.
+            customer_id = stripe.Customer.create(
+                **params,
+                idempotency_key=f"paid-transition-customer-{tenant_id}-{tenant.get('stripe_customer_id') or 'new'}-{tenant['paid_transition_expires_at']}",
+            ).id
             await db.update_tenant(tenant_id, {"stripe_customer_id": customer_id})
         elif address:
             stripe.Customer.modify(customer_id, address=address, **({"name": billing_name} if billing_name else {}))
