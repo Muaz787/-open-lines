@@ -18,7 +18,7 @@ const paidAccount = {
 const manualAccount = { ...paidAccount, source: 'manual', has_provider_subscription: false }
 
 const LEAD = { id: 'l1', name: null, phone: '+15555550100', urgency: null, status: 'new', summary: 'Sample summary', created_at: '2026-10-30T12:00:00Z' }
-const CALL = { id: 'c1', duration_secs: 60, created_at: '2026-10-30T12:00:00Z', leads: { name: 'Sample Caller', phone: '+15555550101', urgency: 'warm', summary: 'Sample call' } }
+const CALL = { id: 'c1', duration_secs: 60, created_at: '2026-10-30T12:00:00Z', summary: 'Sample call', urgency: 'warm', leads: { name: 'Sample Caller', phone: '+15555550101' } }
 const STATS = (n: number) => ({ total_calls: n, total_leads: 1, minutes_handled: 3, appointments_booked: 0, series: { calls: [n], leads: [1], minutes: [3], appointments: [0] } })
 
 interface Mock {

@@ -140,6 +140,21 @@ def call_enrichment(analysis: dict) -> dict:
     return {k: analysis.get(k) for k in CALL_ENRICHMENT_KEYS}
 
 
+def call_summary(analysis: dict) -> dict:
+    """This call's own summary and rating, for the call row (migration 044).
+
+    Empty values become null, so a call with nothing to say shows as unsummarised
+    rather than as an empty summary.
+    """
+    urgency = str(analysis.get("urgency") or "").strip().lower()
+    return {
+        "summary": str(analysis.get("summary") or "").strip() or None,
+        "urgency": urgency if urgency in ("hot", "warm", "cold") else None,
+        "key_details": analysis.get("key_details") or None,
+        "suggested_next_step": str(analysis.get("suggested_next_step") or "").strip() or None,
+    }
+
+
 async def backfill_missing_intents(limit: int = 200, tenant_id: str | None = None) -> dict:
     """Enrich existing calls that don't have intent yet (intent IS NULL).
 

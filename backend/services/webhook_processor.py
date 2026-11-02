@@ -223,6 +223,13 @@ async def process_end_of_call(payload: dict) -> None:
                     await db.update_call(inserted_call["id"], call_enrichment.call_enrichment(analysis))
                 except Exception as e:
                     logger.warning("Call enrichment store failed for call %s (continuing): %s", call_id, e)
+                # This call's own summary and rating. The lead's copy below is
+                # overwritten by the next call; this one never is. Separate write so
+                # a database without migration 044 still gets the enrichment above.
+                try:
+                    await db.update_call(inserted_call["id"], call_enrichment.call_summary(analysis))
+                except Exception as e:
+                    logger.warning("Call summary store failed for call %s (continuing): %s", call_id, e)
         except Exception as e:
             logger.warning("Call analysis failed for call %s (continuing): %s", call_id, e)
 

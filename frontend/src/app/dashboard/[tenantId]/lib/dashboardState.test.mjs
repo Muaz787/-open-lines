@@ -7,6 +7,7 @@ import { parseChoice, withChoice } from './queryState.ts'
 import { routingReasonText } from './routingReason.ts'
 import { matchesLead } from './leadSearch.ts'
 import { usagePeriodText } from './usagePeriod.ts'
+import { callInsight, callQuality } from './callInsight.ts'
 
 const base = { plan: 'pro', feature_plan: 'pro', phone_line: 'on', has_provider_subscription: true, line_active: true, pending_activation: false }
 const account = over => ({ ...base, source: 'subscription', subscription: 'active', ...over })
@@ -241,4 +242,42 @@ describe('usagePeriodText', () => {
       assert.match(usagePeriodText(source, null), /doesn’t reset/)
     })
   }
+})
+
+describe('callInsight', () => {
+  // On 2 Nov every call from one caller showed the newest call's summary and a Hot
+  // rating, including five-second calls, because both were read from the lead.
+  const lead = { summary: 'Booked a demo for Nov 4', urgency: 'hot' }
+
+  it("shows a call's own summary and rating", () => {
+    const i = callInsight({ summary: 'Asked about pricing', urgency: 'warm', leads: lead })
+    assert.equal(i.summary, 'Asked about pricing')
+    assert.equal(i.urgency, 'warm')
+  })
+
+  it("never borrows the lead's summary or rating for an unsummarised call", () => {
+    const i = callInsight({ summary: null, urgency: null, leads: lead })
+    assert.equal(i.summary, 'No summary saved for this call')
+    assert.equal(i.hasSummary, false)
+    assert.equal(i.urgency, null)
+    assert.equal(callQuality({ urgency: null, leads: lead }), 'unknown')
+  })
+
+  it('treats a blank summary or an unknown rating as missing', () => {
+    const i = callInsight({ summary: '   ', urgency: 'unknown' })
+    assert.equal(i.hasSummary, false)
+    assert.equal(i.urgency, null)
+  })
+
+  it("keeps two calls from the same caller apart", () => {
+    const a = callInsight({ summary: 'Booked Nov 5', urgency: 'hot' })
+    const b = callInsight({ summary: 'Hung up', urgency: 'cold' })
+    assert.notEqual(a.summary, b.summary)
+    assert.equal(callQuality({ urgency: 'cold' }), 'cold')
+  })
+
+  it('lists only key details that have a value', () => {
+    const i = callInsight({ key_details: { service_wanted: 'demo', budget: '', party_size: null } })
+    assert.deepEqual(i.keyDetails, [['service wanted', 'demo']])
+  })
 })
