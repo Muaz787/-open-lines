@@ -20,7 +20,7 @@ import stripe
 from datetime import date, datetime, timedelta, timezone
 
 from db import supabase as db
-from services import trial
+from services import subscriptions, trial
 
 logger = logging.getLogger(__name__)
 
@@ -110,52 +110,31 @@ def _send_usage_alert(tenant: dict, threshold_pct: int, minutes_used: int, alloc
     # TODO: send email to tenant.get("email") once an email service is wired in
 
 
-async def _check_and_reset_period(tenant: dict) -> tuple[int, int, str]:
-    """
-    Return (minutes_used, overage_reported, anchor) after resetting counters
-    if the Stripe billing period has rolled over. Skips the Stripe API call
-    unless >= 28 days have passed since the stored anchor.
-    """
-    minutes_used     = tenant.get("minutes_used_this_period") or 0
-    overage_reported = tenant.get("overage_minutes_reported") or 0
-    stored_anchor    = str(tenant.get("billing_period_anchor") or "")
-    tenant_id        = tenant.get("id", "")
-    sub_id           = tenant.get("stripe_subscription_id") or ""
+async def _current_period_anchor(tenant: dict) -> str | None:
+    """Stripe's current period start, when the period may have changed. Skips the Stripe
+    call unless >= 28 days have passed since the stored anchor. None means unknown."""
+    stored_anchor = str(tenant.get("billing_period_anchor") or "")
+    sub_id        = tenant.get("stripe_subscription_id") or ""
 
     if not sub_id or not _stripe_key:
-        return minutes_used, overage_reported, stored_anchor
+        return None
 
     # Only call Stripe if the anchor is old enough that a rollover could have happened
     if stored_anchor:
         try:
             anchor_date = datetime.strptime(stored_anchor, "%Y-%m-%d").date()
             if date.today() < anchor_date + timedelta(days=28):
-                return minutes_used, overage_reported, stored_anchor
+                return None
         except ValueError:
             pass
 
     try:
         stripe.api_key = _stripe_key
-        sub = stripe.Subscription.retrieve(sub_id)
-        new_anchor = datetime.fromtimestamp(
-            int(sub.current_period_start), tz=timezone.utc
-        ).strftime("%Y-%m-%d")
-
-        if stored_anchor and new_anchor > stored_anchor:
-            minutes_used     = 0
-            overage_reported = 0
-            await db.update_tenant(tenant_id, {
-                "minutes_used_this_period": 0,
-                "overage_minutes_reported": 0,
-                "billing_period_anchor":    new_anchor,
-            })
-            logger.info("Billing period reset for tenant %s → %s", tenant_id, new_anchor)
-
-        return minutes_used, overage_reported, new_anchor if new_anchor > stored_anchor else stored_anchor
-
+        start = subscriptions.period_start(stripe.Subscription.retrieve(sub_id))
+        return datetime.fromtimestamp(start, tz=timezone.utc).strftime("%Y-%m-%d") if start else None
     except Exception as e:
-        logger.warning("usage: period check failed for tenant %s: %s", tenant_id, e)
-        return minutes_used, overage_reported, stored_anchor
+        logger.warning("usage: period check failed for tenant %s: %s", tenant.get("id", ""), e)
+        return None
 
 
 async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
@@ -178,9 +157,22 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
     allocation = PLAN_ALLOCATIONS.get(plan, 150)
     customer_id = tenant.get("stripe_customer_id") or ""
 
-    minutes_used, overage_reported, anchor = await _check_and_reset_period(tenant)
+    period_anchor = await _current_period_anchor(tenant)
 
-    new_total = minutes_used + minutes
+    # One locked step in the database, so concurrent calls and the rollover webhook
+    # can't overwrite each other.
+    try:
+        row = await db.usage_add_minutes(tenant_id, int(minutes), period_anchor)
+    except Exception as e:
+        logger.error("Failed to persist usage for tenant %s: %s", tenant_id, e)
+        return
+    if not row:
+        logger.error("usage.record_call_minutes: tenant %s not found", tenant_id)
+        return
+
+    new_total        = row["minutes_used"]
+    overage_reported = row["overage_reported"]
+    minutes_used     = new_total - minutes
 
     # Threshold alerts
     prev_pct = minutes_used / allocation if allocation else 0
@@ -206,26 +198,10 @@ async def record_call_minutes(tenant_id: str, duration_secs: int) -> None:
                     "stripe_customer_id": customer_id,
                 },
             )
-            overage_reported += new_overage
-            logger.info(
-                "Reported %d overage minutes to Stripe for tenant %s (period total: %d)",
-                new_overage, tenant_id, overage_reported,
-            )
+            await db.usage_add_overage_reported(tenant_id, int(new_overage), row["period_anchor"])
+            logger.info("Reported %d overage minutes to Stripe for tenant %s", new_overage, tenant_id)
         except Exception as e:
             logger.error("Stripe meter event failed for tenant %s: %s", tenant_id, e)
-
-    # Persist usage counters — cast to int (int column; never persist a float)
-    try:
-        updates: dict = {
-            "minutes_used_this_period": int(new_total),
-            "overage_minutes_reported": int(overage_reported),
-        }
-        # Without an anchor the period can never roll over, so keep the one Stripe gave.
-        if anchor and not tenant.get("billing_period_anchor"):
-            updates["billing_period_anchor"] = anchor
-        await db.update_tenant(tenant_id, updates)
-    except Exception as e:
-        logger.error("Failed to persist usage for tenant %s: %s", tenant_id, e)
 
     # Auto-convert a card trial that has just used up its trial minutes: charge the
     # card and start the plan the tenant already picked, rather than cutting their

@@ -266,6 +266,29 @@ async def insert_tenant(data: dict) -> dict:
     return res.data[0] if res.data else {}
 
 
+async def usage_add_minutes(tenant_id: str, minutes: int, period_anchor: str | None) -> dict | None:
+    """Add a call's minutes in one locked step. Rolls the period first if period_anchor
+    is newer than the stored one. Returns the row's new counters."""
+    res = await run_query(get_client().rpc("usage_add_minutes", {
+        "p_tenant_id": tenant_id, "p_minutes": minutes, "p_period_anchor": period_anchor,
+    }))
+    return res.data[0] if res.data else None
+
+
+async def usage_roll_period(tenant_id: str, period_anchor: str) -> dict | None:
+    """Move a tenant to a newer billing period. A stale or repeated period does nothing."""
+    res = await run_query(get_client().rpc("usage_roll_period", {
+        "p_tenant_id": tenant_id, "p_period_anchor": period_anchor,
+    }))
+    return res.data[0] if res.data else None
+
+
+async def usage_add_overage_reported(tenant_id: str, minutes: int, period_anchor: str | None) -> None:
+    await run_query(get_client().rpc("usage_add_overage_reported", {
+        "p_tenant_id": tenant_id, "p_minutes": minutes, "p_period_anchor": period_anchor,
+    }))
+
+
 async def update_tenant(tenant_id: str, data: dict) -> dict:
     res = (
         await run_query(get_client()

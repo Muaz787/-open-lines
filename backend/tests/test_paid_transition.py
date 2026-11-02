@@ -315,8 +315,9 @@ async def test_sync_does_not_copy_an_unpaid_transition_onto_the_tenant():
 @pytest.mark.asyncio
 async def test_customer_with_no_subscription_is_not_metered():
     row = {"id": TENANT, "stripe_customer_id": "cus_1", "subscription_plan": "pro", "minutes_used_this_period": 500}
+    total = {"minutes_used": 502, "overage_reported": 0, "period_anchor": None, "rolled": False}
     with patch.object(usage.db, "get_tenant_by_id", AsyncMock(return_value=row)), \
-            patch.object(usage.db, "update_tenant", AsyncMock()), \
+            patch.object(usage.db, "usage_add_minutes", AsyncMock(return_value=total)), \
             patch.object(usage, "_stripe_key", "sk"), patch.object(usage, "_overage_price_id", "price"), \
             patch.object(usage.stripe.billing.MeterEvent, "create", MagicMock()) as meter:
         await usage.record_call_minutes(TENANT, 120)

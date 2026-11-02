@@ -455,18 +455,9 @@ async def stripe_webhook(request: Request):
                 new_period_start = subscriptions.period_start(sub)
                 if new_period_start:
                     new_anchor = datetime.fromtimestamp(new_period_start, tz=_dt_timezone.utc).strftime("%Y-%m-%d")
-                    stored_anchor = str(tenant.get("billing_period_anchor") or "")
-                    if not stored_anchor:
-                        updates["billing_period_anchor"] = new_anchor
-                    # Only forward: a redelivered old event must not reset a later period.
-                    elif new_anchor > stored_anchor:
-                        updates.update({
-                            "minutes_used_this_period": 0,
-                            "overage_minutes_reported": 0,
-                            "billing_period_anchor":    new_anchor,
-                        })
-                        logger.info("Usage counters reset for new billing period %s → %s (tenant %s)",
-                                    stored_anchor, new_anchor, tenant["id"])
+                    rolled = await db.usage_roll_period(tenant["id"], new_anchor)
+                    if rolled and rolled.get("rolled"):
+                        logger.info("Usage counters reset for new billing period %s (tenant %s)", new_anchor, tenant["id"])
 
                 await db.update_tenant(tenant["id"], updates)
                 logger.info("Subscription status updated to %s for customer %s sub %s", our_status, customer_id, sub_id)
