@@ -288,6 +288,22 @@ async def cancel_event(refresh_token: str, event_id: str) -> None:
         logger.info("Deleted Google Calendar event %s", event_id)
 
 
+class EventIdRetiredError(Exception):
+    """The deterministic id belongs to an event that has since been cancelled."""
+
+
+async def get_event(refresh_token: str, event_id: str) -> dict | None:
+    """The event with this id, or None if Google has never had it."""
+    access = await _access_token(refresh_token)
+    async with httpx.AsyncClient() as http:
+        res = await http.get(f"{_CAL_BASE}/calendars/primary/events/{event_id}",
+                             headers={"Authorization": f"Bearer {access}"}, timeout=15.0)
+        if res.status_code in (404, 410):
+            return None
+        res.raise_for_status()
+        return res.json()
+
+
 async def create_event(
     refresh_token: str,
     title: str,
@@ -295,24 +311,38 @@ async def create_event(
     duration_minutes: int,
     timezone: str,
     description: str = "",
+    event_id: str | None = None,
 ) -> dict:
-    """Create a Google Calendar event. Returns {id, htmlLink}."""
+    """Create a Google Calendar event. Returns {id, htmlLink}.
+
+    With event_id the insert is idempotent: Google answers 409 for an id it already
+    has, and the existing event is returned instead of a second one being made.
+    """
     end_dt = start_dt + timedelta(minutes=duration_minutes)
     access = await _access_token(refresh_token)
     headers = {"Authorization": f"Bearer {access}", "Content-Type": "application/json"}
+    body = {
+        "summary":     title,
+        "description": description,
+        "start":       {"dateTime": start_dt.isoformat(), "timeZone": timezone},
+        "end":         {"dateTime": end_dt.isoformat(),   "timeZone": timezone},
+    }
+    if event_id:
+        body["id"] = event_id
 
     async with httpx.AsyncClient() as http:
         res = await http.post(
             f"{_CAL_BASE}/calendars/primary/events",
             headers=headers,
-            json={
-                "summary":     title,
-                "description": description,
-                "start":       {"dateTime": start_dt.isoformat(), "timeZone": timezone},
-                "end":         {"dateTime": end_dt.isoformat(),   "timeZone": timezone},
-            },
+            json=body,
             timeout=15.0,
         )
+        if res.status_code == 409 and event_id:
+            existing = await get_event(refresh_token, event_id)
+            if existing and existing.get("status") != "cancelled":
+                logger.info("Google Calendar event %s already existed; reusing it", event_id)
+                return {"id": event_id, "htmlLink": existing.get("htmlLink", "")}
+            raise EventIdRetiredError(event_id)
         res.raise_for_status()
         data = res.json()
         logger.info("Created Google Calendar event %s", data.get("id"))

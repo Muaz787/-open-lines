@@ -91,6 +91,8 @@ class CalCtx:
                   new=AsyncMock(return_value=list(self.existing))),
             patch("db.supabase.get_active_staff", new=AsyncMock(return_value=[])),
             patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(return_value=None)),
+            # Booking now checks the event for an existing appointment before writing one.
+            patch("db.supabase.get_appointment_by_event_id", new=AsyncMock(return_value=None)),
             patch("db.supabase.insert_appointment",
                   new=AsyncMock(side_effect=lambda d: (self.inserted.append(d), {"id": "new"})[1])),
             patch("db.supabase.update_appointment",

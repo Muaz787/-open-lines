@@ -675,6 +675,7 @@ async def get_upcoming_appointment_by_phone(tenant_id: str, phone: str) -> dict 
         .select("*")
         .eq("tenant_id", tenant_id)
         .eq("caller_phone", phone)
+        .in_("status", ["confirmed", "pending_payment"])
         .gte("appointment_datetime", now_iso)
         .order("appointment_datetime", desc=False)
         .limit(1))
