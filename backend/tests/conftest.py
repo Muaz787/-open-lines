@@ -235,6 +235,13 @@ class FakeCalendarMoves:
         r["updated_at"] = self._stamp()
         return dict(r)
 
+    async def lease(self, op):
+        r = self.rows.get(op["id"])
+        if not r or r["updated_at"] != op["updated_at"] or r["state"] not in self.LIVE:
+            return None
+        r["updated_at"] = self._stamp()
+        return dict(r)
+
     async def list_stale(self, before_iso, limit=20):
         return [dict(r) for r in self.rows.values()
                 if r["state"] in self.LIVE and r["updated_at"] < before_iso][:limit]
@@ -244,6 +251,6 @@ class FakeCalendarMoves:
 def calendar_moves_store(monkeypatch):
     store = FakeCalendarMoves()
     from db import calendar_moves as _db_cm
-    for name in ("insert", "get", "live_for_appointment", "transition", "list_stale"):
+    for name in ("insert", "get", "live_for_appointment", "transition", "list_stale", "lease"):
         monkeypatch.setattr(_db_cm, name, getattr(store, name))
     return store

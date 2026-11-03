@@ -58,3 +58,21 @@ async def list_stale(before_iso: str, limit: int = 20) -> list[dict]:
     res = await run_query(get_client().table(TABLE).select("*").in_("state", list(LIVE))
                           .lt("updated_at", before_iso).limit(limit))
     return res.data or []
+
+
+async def lease(op: dict) -> dict | None:
+    """Take an operation for recovery: succeeds for exactly one worker, because it
+    only matches the updated_at that worker read. Serializes recovery passes."""
+    res = await run_query(get_client().table(TABLE).update({"updated_at": _now_iso()})
+                          .eq("id", op["id"]).eq("updated_at", op["updated_at"])
+                          .in_("state", list(LIVE)))
+    return (res.data or [None])[0]
+
+
+async def finish(operation_id: str, claim_token: str) -> str:
+    """calendar_move_finish (migration 046): write the appointment, complete the
+    operation and release its claim in one transaction, only while it still owns
+    the appointment. Returns completed, not_owner, missing or appointment_inactive."""
+    res = await run_query(get_client().rpc("calendar_move_finish", {
+        "p_operation_id": operation_id, "p_claim_token": claim_token}))
+    return str(res.data or "")

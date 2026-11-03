@@ -48,6 +48,7 @@ BUSY = "busy"
 FAILED = "failed"              # provider refused; the original stands
 UNKNOWN = "unknown"            # provider outcome unknown; nothing more may be sent
 LOCAL_PENDING = "local_pending"  # moved at the provider; our row not yet updated
+STALE = "stale"                # this worker no longer owns the operation; it did nothing
 INVALID_REF = "invalid_ref"
 EXPIRED_REF = "expired_ref"
 NOT_ELIGIBLE = "not_eligible"
@@ -232,23 +233,32 @@ async def _finish_local(tenant: dict, op: dict) -> str:
                          "event %s; leaving it for a person", op["id"], checked)
             await db_cm.transition(op, ("provider_moved",), {"detail": f"provider {checked}"})
         return UNKNOWN
-    to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
+    # Write, complete and release in ONE transaction, and only while this
+    # operation still owns the appointment. A worker that paused after reading the
+    # provider can't overwrite a newer move or a cancellation, release a newer
+    # claim, or go on to send a confirmation.
     try:
-        await db.update_appointment(op["appointment_id"], {"appointment_datetime": to.isoformat()})
+        result = await db_cm.finish(op["id"], op["claim_token"])
     except Exception as e:
         logger.error("calendar_reschedule: RECONCILIATION REQUIRED — appointment %s moved at the "
-                     "provider but not locally: %s", op["appointment_id"], e)
+                     "provider; finishing failed: %s", op["appointment_id"], e)
         return LOCAL_PENDING
+    if result in ("not_owner", "missing"):
+        logger.warning("calendar_reschedule: operation %s is no longer the owner (%s); not writing",
+                       op["id"], result)
+        return STALE
+    if result != "completed":
+        logger.error("calendar_reschedule: INCIDENT — operation %s could not finish (%s)",
+                     op["id"], result)
+        return UNKNOWN
+    to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
     appt = await db.get_appointment_by_id(op["appointment_id"])
     if not appt or not _same_instant(_start(appt), to):
-        return LOCAL_PENDING
-    if not await db_cm.transition(op, ("provider_moved",), {"state": "completed"}):
-        return LOCAL_PENDING
-    await _release(op)
+        return UNKNOWN
     return COMPLETED
 
 
-async def settle(tenant: dict, op: dict) -> str:
+async def settle(tenant: dict, op: dict, *, known_stale: bool = False) -> str:
     """Bring a live operation to an outcome by reading, never by re-sending."""
     if op["state"] == "provider_moved":
         return await _finish_local(tenant, op)
@@ -261,7 +271,7 @@ async def settle(tenant: dict, op: dict) -> str:
     if status == "ok" and _same_instant(start, frm):
         # Still at the old time. Only an operation old enough that no request
         # can still be in flight is declared failed; a fresh one stays unknown.
-        if _age_seconds(op) >= STALE_SECONDS:
+        if known_stale or _age_seconds(op) >= STALE_SECONDS:
             if await db_cm.transition(op, ("in_progress", "unknown"), {"state": "failed",
                                                                        "detail": "not applied"}):
                 await _release(op)
@@ -283,8 +293,15 @@ async def run_recovery(limit: int = 10) -> dict:
         return {"error": str(e)[:200]}
     out: dict[str, int] = {}
     for op in ops:
-        tenant = await db.get_tenant_by_id(op["tenant_id"]) or {}
-        result = await settle(tenant, op)
+        # One worker per operation per pass: the lease only matches the
+        # updated_at this worker read, so a second worker gets nothing.
+        leased = await db_cm.lease(op)
+        if not leased:
+            out["skipped"] = out.get("skipped", 0) + 1
+            continue
+        tenant = await db.get_tenant_by_id(leased["tenant_id"]) or {}
+        # Listed because it was already stale; the lease just refreshed updated_at.
+        result = await settle(tenant, leased, known_stale=True)
         out[result] = out.get(result, 0) + 1
     return out
 

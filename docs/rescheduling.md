@@ -80,6 +80,7 @@ the row and its payment link are unchanged, and payment status is never touched.
 | Provider moved, our row not | `provider_moved`; recovery re-verifies the event, writes the row, re-reads it and completes | n/a |
 | Provider says moved, event reads back different, cancelled or unreadable | Stays `provider_moved` with the reason; claim held; no row change, no text; an unreadable event completes once it reads back correctly | n/a |
 | Retry after success | The reference is consumed; the row is re-read and reported, no new `PATCH` | Second identical call books nothing |
+| A recovery worker pauses, then resumes after the move finished, a newer move, or a cancellation | Nothing: the appointment write, completion and release happen in one transaction (`calendar_move_finish`) that requires this operation to still own the appointment; no stale text, no release of a newer claim. Recovery also leases each operation, so one worker settles it at a time | n/a |
 | Two requests at once | One claim per appointment and one live operation per appointment: one move, the other is told it's being changed | Same, through 021 and 022 |
 
 ## Release

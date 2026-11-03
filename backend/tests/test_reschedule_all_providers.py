@@ -80,6 +80,7 @@ class CalWorld:
         self.payment_calls = 0
         self.after_patch = None          # how the event reads back after a PATCH succeeds
         self.patched_ids: set[str] = set()
+        self.finished: list[str] = []
 
     # db
     def active(self, *_):
@@ -92,6 +93,27 @@ class CalWorld:
         if self.update_fails:
             raise RuntimeError("write lost")
         self.appts[aid].update(data)
+
+    async def finish(self, op_id, token):
+        """calendar_move_finish, with the same checks, in one uninterrupted step."""
+        from db import calendar_moves as db_cm
+        if self.update_fails:
+            raise RuntimeError("write lost")
+        op = await db_cm.get(op_id)
+        if not op:
+            return "missing"
+        if op["claim_token"] != token or op["state"] != "provider_moved":
+            return "not_owner"
+        if self.owners.get(op["appointment_id"]) != token:
+            return "not_owner"
+        appt = self.appts[op["appointment_id"]]
+        if appt["status"] not in ("confirmed", "pending_payment"):
+            return "appointment_inactive"
+        appt["appointment_datetime"] = str(op["to_start_utc"])
+        await db_cm.transition(op, ("provider_moved",), {"state": "completed"})
+        self.owners.pop(op["appointment_id"])
+        self.finished.append(op_id)
+        return "completed"
 
     async def payment(self, *_):
         self.payment_calls += 1
@@ -187,6 +209,7 @@ class CalWorld:
             patch(f"{svc}.patch_event", new=AsyncMock(side_effect=self.patch_event)),
             patch(f"{svc}.get_event", new=AsyncMock(side_effect=self.get_event)),
             patch("services.telephony.send_sms", new=AsyncMock(side_effect=self.send_sms)),
+            patch("db.calendar_moves.finish", new=AsyncMock(side_effect=self.finish)),
             patch("services.analytics.capture"),
         ]
         for p in ps:
@@ -677,3 +700,135 @@ def test_local_instant_names_the_problem(date, time, reason):
     from zoneinfo import ZoneInfo
     got, why = relative_dates.local_instant(date, time, ZoneInfo("America/Toronto"))
     assert why == reason and (got is None) == (reason is not None)
+
+
+# ═════════ a delayed recovery worker must never act on a newer state ══════════
+#
+# Codex's reproduction: a recovery worker verifies the provider and pauses.
+# Another worker completes that operation and releases ownership. A later move
+# changes the appointment. The delayed worker resumes and — before the fix — wrote
+# its old target into the appointment before its own transition failed.
+
+T1_UTC = "2026-11-05T15:00:00+00:00"        # Thu 10:00 a.m.
+T2_UTC = "2026-11-05T16:00:00+00:00"        # Thu 11:00 a.m.
+
+
+async def _first_move_left_for_recovery(w, store):
+    """Move to T1; the read-back fails, so the operation is left provider_moved."""
+    await w.call()
+    w.after_patch = "unreadable"
+    await w.move()                                   # Thursday 10:00
+    w.after_patch = None
+    op = next(iter(store.rows.values()))
+    assert op["state"] == "provider_moved" and "a-1" in w.owners
+    op["updated_at"] = (NOW - timedelta(hours=1)).isoformat()
+    return dict(op)
+
+
+@contextlib.contextmanager
+def pause_after_verification(op_id):
+    """Hold the FIRST worker that verifies op_id until released."""
+    real = cr.verify_provider
+    paused, resume = asyncio.Event(), asyncio.Event()
+
+    async def slow(tenant, op):
+        result = await real(tenant, op)
+        if op["id"] == op_id and not paused.is_set():
+            paused.set()
+            await resume.wait()
+        return result
+    with patch.object(cr, "verify_provider", slow):
+        yield paused, resume
+
+
+async def _second_move(w, time="11:00"):
+    listed = await w.call()
+    ref = listed.split("[")[1].split("]")[0]
+    return await w.move(ref=ref, time=time)
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_delayed_recovery_after_a_newer_completed_move_writes_nothing(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        op1 = await _first_move_left_for_recovery(w, calendar_moves_store)
+        with pause_after_verification(op1["id"]) as (paused, resume):
+            delayed = asyncio.create_task(cr.settle(w.tenant, op1, known_stale=True))
+            await paused.wait()
+            assert await cr.run_recovery() == {cr.COMPLETED: 1}       # another worker finishes op1
+            moved = await _second_move(w)                            # and a later move happens
+            assert moved.startswith("Done") and w.appts["a-1"]["appointment_datetime"] == T2_UTC
+            sms_before = list(w.sms)
+            resume.set()
+            outcome = await delayed
+    assert outcome == cr.STALE
+    assert w.appts["a-1"]["appointment_datetime"] == T2_UTC, "the old target was not written"
+    assert w.sms == sms_before, "no stale confirmation"
+    assert not w.owners
+    assert w.finished.count(op1["id"]) == 1
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_delayed_recovery_never_releases_a_newer_claim(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        op1 = await _first_move_left_for_recovery(w, calendar_moves_store)
+        with pause_after_verification(op1["id"]) as (paused, resume):
+            delayed = asyncio.create_task(cr.settle(w.tenant, op1, known_stale=True))
+            await paused.wait()
+            await cr.run_recovery()                                  # op1 completed and released
+            w.after_patch = "unreadable"
+            await _second_move(w)                                    # op2 holds the appointment
+            op2 = next(o for o in calendar_moves_store.rows.values() if o["id"] != op1["id"])
+            assert op2["state"] == "provider_moved" and w.owners["a-1"] == op2["claim_token"]
+            resume.set()
+            outcome = await delayed
+    assert outcome == cr.STALE
+    assert w.owners["a-1"] == op2["claim_token"], "op2 still owns the appointment"
+    assert w.appts["a-1"]["appointment_datetime"] == T1_UTC, "op1's finish didn't run twice"
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_delayed_recovery_after_a_cancellation_writes_nothing(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        op1 = await _first_move_left_for_recovery(w, calendar_moves_store)
+        with pause_after_verification(op1["id"]) as (paused, resume):
+            delayed = asyncio.create_task(cr.settle(w.tenant, op1, known_stale=True))
+            await paused.wait()
+            await cr.run_recovery()
+            w.appts["a-1"]["status"] = "cancelled"                    # then the caller cancels
+            resume.set()
+            outcome = await delayed
+    assert outcome == cr.STALE
+    assert w.appts["a-1"]["status"] == "cancelled"
+    assert w.appts["a-1"]["appointment_datetime"] == T1_UTC
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_cancelled_while_owned_is_not_written(provider, calendar_moves_store):
+    """The atomic finish also refuses an appointment that stopped being active."""
+    with CalWorld(provider).env() as w:
+        op1 = await _first_move_left_for_recovery(w, calendar_moves_store)
+        w.appts["a-1"]["status"] = "cancelled"
+        result = await cr.settle(w.tenant, op1, known_stale=True)
+    assert result == cr.UNKNOWN
+    assert w.appts["a-1"]["appointment_datetime"] == SOURCE_UTC and "a-1" in w.owners
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_two_recovery_passes_at_once_settle_an_operation_once(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        op1 = await _first_move_left_for_recovery(w, calendar_moves_store)
+        with pause_after_verification(op1["id"]) as (paused, resume):
+            first = asyncio.create_task(cr.run_recovery())
+            await paused.wait()
+            second = await cr.run_recovery()        # the lease refreshed updated_at: not listed
+            resume.set()
+            first = await first
+    assert first == {cr.COMPLETED: 1} and second == {}
+    assert w.finished == [op1["id"]]
+
+
+def test_the_appointment_write_lives_only_in_the_atomic_finish():
+    import inspect
+    src = inspect.getsource(cr)
+    assert "update_appointment" not in src, "no unfenced appointment writes in the move service"
+    assert "db_cm.finish(" in inspect.getsource(cr._finish_local)

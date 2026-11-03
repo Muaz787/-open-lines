@@ -49,8 +49,61 @@ alter table public.calendar_move_operations enable row level security;
 revoke all on table public.calendar_move_operations from public, anon, authenticated;
 grant select, insert, update, delete on table public.calendar_move_operations to service_role;
 
+-- Finishing a move is ONE statement-level decision. A recovery worker that read
+-- the provider and then paused must not write its old target into an appointment
+-- that another worker has since completed, moved again or cancelled. So the
+-- appointment write, the completion and the release happen together, and only
+-- while this operation still owns the appointment: the operation row is locked
+-- and must still be provider_moved under this claim token, and the mutation claim
+-- (021) must still name this operation and token.
+create or replace function public.calendar_move_finish(p_operation_id uuid, p_claim_token uuid)
+returns text
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+    op public.calendar_move_operations%rowtype;
+    n integer;
+begin
+    select * into op from public.calendar_move_operations
+     where id = p_operation_id for update;
+    if not found then
+        return 'missing';
+    end if;
+    if op.claim_token <> p_claim_token or op.state <> 'provider_moved' then
+        return 'not_owner';
+    end if;
+    perform 1 from public.appointment_mutation_claims
+     where appointment_id = op.appointment_id and claim_token = p_claim_token
+       and operation_id = p_operation_id and operation_type = 'reschedule'
+       for update;
+    if not found then
+        return 'not_owner';
+    end if;
+    update public.appointments set appointment_datetime = op.to_start_utc
+     where id = op.appointment_id and status in ('confirmed', 'pending_payment');
+    get diagnostics n = row_count;
+    if n = 0 then
+        return 'appointment_inactive';
+    end if;
+    update public.calendar_move_operations set state = 'completed', updated_at = now()
+     where id = op.id;
+    delete from public.appointment_mutation_claims
+     where appointment_id = op.appointment_id and claim_token = p_claim_token;
+    return 'completed';
+end;
+$$;
+
+revoke execute on function public.calendar_move_finish(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.calendar_move_finish(uuid, uuid) to service_role;
+
 do $$
 begin
+    if has_function_privilege('anon', 'public.calendar_move_finish(uuid, uuid)', 'EXECUTE')
+       or has_function_privilege('authenticated', 'public.calendar_move_finish(uuid, uuid)', 'EXECUTE') then
+        raise exception 'calendar_move_finish is executable by a browser role';
+    end if;
     if has_table_privilege('anon', 'public.calendar_move_operations', 'SELECT')
        or has_table_privilege('authenticated', 'public.calendar_move_operations', 'SELECT') then
         raise exception 'calendar_move_operations is readable by a browser role';
