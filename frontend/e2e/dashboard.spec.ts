@@ -18,13 +18,14 @@ const paidAccount = {
 const manualAccount = { ...paidAccount, source: 'manual', has_provider_subscription: false }
 
 const LEAD = { id: 'l1', name: null, phone: '+15555550100', urgency: null, status: 'new', summary: 'Sample summary', created_at: '2026-10-30T12:00:00Z' }
-const CALL = { id: 'c1', duration_secs: 60, created_at: '2026-10-30T12:00:00Z', leads: { name: 'Sample Caller', phone: '+15555550101', urgency: 'warm', summary: 'Sample call' } }
+const CALL = { id: 'c1', duration_secs: 60, created_at: '2026-10-30T12:00:00Z', summary: 'Sample call', urgency: 'warm', leads: { name: 'Sample Caller', phone: '+15555550101' } }
 const STATS = (n: number) => ({ total_calls: n, total_leads: 1, minutes_handled: 3, appointments_booked: 0, series: { calls: [n], leads: [1], minutes: [3], appointments: [0] } })
 
 interface Mock {
   account: object
   provider: object
   failCalls?: boolean
+  calls?: object[]
   failStats?: boolean
   rejectToken?: boolean
   failProvider?: boolean
@@ -67,7 +68,7 @@ async function answer(route: Route, m: Mock) {
     if (m.failCalls) return json({}, 500)
     return json({ total_calls: 1, avg_duration_secs: 60, urgency_breakdown: { hot: 0, warm: 1, cold: 0, unknown: 0 }, calls_by_day: {} })
   }
-  if (url.includes('/calls/')) return m.failCalls ? json({}, 500) : json([CALL])
+  if (url.includes('/calls/')) return m.failCalls ? json({}, 500) : json(m.calls ?? [CALL])
   if (url.includes('/subscription-details/')) {
     if (m.failProvider) return json({}, 500)
     if (m.holdProvider) await new Promise<void>(resolve => { m.releaseProvider = resolve })
@@ -397,6 +398,31 @@ test('a call row stays readable on a phone', async ({ page, context }) => {
   const phone = await page.locator('.db-lead-phone-inline').first().boundingBox()
   const badge = await page.locator('.db-lead-main .db-urg-warm').first().boundingBox()
   expect(phone!.y + phone!.height <= badge!.y || phone!.x + phone!.width <= badge!.x).toBe(true)
+})
+
+test("each call from one caller shows its own summary and rating", async ({ page, context }) => {
+  // Same caller, three calls. The lead join carries identity only; a call that was
+  // never analysed must not borrow another call's summary or Hot rating.
+  const caller = { name: 'Sample Caller', phone: '+15555550101' }
+  const calls = [
+    { id: 'c3', duration_secs: 5, created_at: '2026-10-30T15:00:00Z', summary: null, urgency: null, leads: caller },
+    { id: 'c2', duration_secs: 219, created_at: '2026-10-30T14:00:00Z', summary: 'Asked about pricing', urgency: 'warm', leads: caller },
+    { id: 'c1', duration_secs: 60, created_at: '2026-10-30T12:00:00Z', summary: 'Booked a demo', urgency: 'hot', leads: caller },
+  ]
+  await signIn(page, context, mock({ calls }))
+  await page.goto(`${BASE}/calls`)
+  const rows = page.locator('.db-lead-row')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.nth(0)).toContainText('No summary saved for this call')
+  await expect(rows.nth(0)).toContainText('Unrated')
+  await expect(rows.nth(0)).not.toContainText('Hot')
+  await expect(rows.nth(1)).toContainText('Asked about pricing')
+  await expect(rows.nth(1)).toContainText('Warm')
+  await expect(rows.nth(2)).toContainText('Booked a demo')
+  await expect(rows.nth(2)).toContainText('Hot')
+  await page.getByRole('button', { name: /HOT|Hot/ }).first().click()
+  await expect(rows).toHaveCount(1)
+  await expect(rows.first()).toContainText('Booked a demo')
 })
 
 test('the sidebar reports the real line state', async ({ page, context }) => {

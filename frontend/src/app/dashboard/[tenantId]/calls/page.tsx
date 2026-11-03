@@ -9,6 +9,7 @@ import { TranscriptLines } from '../components/TranscriptLines'
 import { LoadingState, EmptyState, ErrorState } from '../components/PageStates'
 import { emptyCallsCopy, type CallPeriod, type CallQuality } from '../lib/emptyStates'
 import { useQueryParam } from '../lib/useQueryParam'
+import { callInsight, callQuality } from '../lib/callInsight'
 import { disclosureProps } from '../lib/disclosure'
 import { usePathname, useRouter } from 'next/navigation'
 
@@ -16,12 +17,10 @@ import { authedFetch, peekJson } from '@/lib/api'
 import { Phone } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
+// Identity only. The summary and rating come from the call itself.
 interface CallLead {
   name?: string
   phone?: string
-  urgency?: string
-  summary?: string
-  metadata?: { key_details?: Record<string, string>; suggested_next_step?: string }
 }
 
 interface CallRow {
@@ -32,6 +31,10 @@ interface CallRow {
   lead_id?: string
   disposition?: string
   transferred?: boolean
+  summary?: string | null
+  urgency?: string | null
+  key_details?: Record<string, unknown> | null
+  suggested_next_step?: string | null
   leads?: CallLead
 }
 
@@ -122,7 +125,7 @@ export default function CallsPage() {
 
   const filtered = urgFilter === 'all'
     ? calls
-    : calls.filter(c => (c.leads?.urgency ?? 'unknown').toLowerCase() === urgFilter)
+    : calls.filter(c => callQuality(c) === urgFilter)
 
   const empty = emptyCallsCopy(urgFilter, period, calls.length)
 
@@ -231,6 +234,7 @@ export default function CallsPage() {
             ) : (
               filtered.map(call => {
                 const lead = call.leads
+                const insight = callInsight(call)
                 const isExpanded = expandedId === call.id
                 const detail = detailMap[call.id]
                 const isLoadingDetail = detailLoading === call.id
@@ -244,15 +248,15 @@ export default function CallsPage() {
                           {lead?.name ?? 'Unknown caller'}
                           {lead?.phone && <span className="db-lead-phone-inline"> · {lead.phone}</span>}
                         </div>
-                        <div className="db-lead-sum">{lead?.summary ?? 'No summary'}</div>
+                        <div className="db-lead-sum" style={insight.hasSummary ? undefined : { color: 'var(--db-muted)' }}>{insight.summary}</div>
                       </div>
                       {call.disposition && (
                         <span className={dispositionBadgeClass(call.disposition)}>
                           {dispositionLabel(call.disposition)}
                         </span>
                       )}
-                      <span className={urgBadgeClass(lead?.urgency)}>
-                        {lead?.urgency ? capitalize(lead.urgency) : 'Unrated'}
+                      <span className={urgBadgeClass(insight.urgency ?? undefined)}>
+                        {insight.urgency ? capitalize(insight.urgency) : 'Unrated'}
                       </span>
                       <span className="db-lead-time" style={{ minWidth: 64, textAlign: 'right' }}>
                         {formatDuration(call.duration_secs)}
@@ -283,20 +287,20 @@ export default function CallsPage() {
                               <div style={{ fontSize: 12, color: 'var(--db-muted)' }}>No transcript available.</div>
                             )}
 
-                            {lead?.metadata?.key_details && Object.keys(lead.metadata.key_details).length > 0 && (
+                            {insight.keyDetails.length > 0 && (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-                                {Object.entries(lead.metadata.key_details).map(([k, v]) => (
+                                {insight.keyDetails.map(([k, v]) => (
                                   <div key={k} className="db-chip">
-                                    <b>{k.replace(/_/g, ' ')}:</b> {String(v)}
+                                    <b>{k}:</b> {v}
                                   </div>
                                 ))}
                               </div>
                             )}
 
-                            {lead?.metadata?.suggested_next_step && (
+                            {insight.nextStep && (
                               <div style={{ marginTop: 12, fontSize: 12, color: 'var(--db-text-2)' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--db-text)' }}>Next step: </span>
-                                {lead.metadata.suggested_next_step}
+                                {insight.nextStep}
                               </div>
                             )}
                           </div>

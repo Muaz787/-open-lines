@@ -223,20 +223,29 @@ async def process_end_of_call(payload: dict) -> None:
                     await db.update_call(inserted_call["id"], call_enrichment.call_enrichment(analysis))
                 except Exception as e:
                     logger.warning("Call enrichment store failed for call %s (continuing): %s", call_id, e)
+                # This call's own summary and rating. The lead's copy below is
+                # overwritten by the next call; this one never is. Separate write so
+                # a database without migration 044 still gets the enrichment above.
+                try:
+                    await db.update_call(inserted_call["id"], call_enrichment.call_summary(analysis))
+                except Exception as e:
+                    logger.warning("Call summary store failed for call %s (continuing): %s", call_id, e)
         except Exception as e:
             logger.warning("Call analysis failed for call %s (continuing): %s", call_id, e)
 
-    # Update lead
-    lead_update: dict = {
-        "summary": analysis.get("summary", ""),
-        "urgency": analysis.get("urgency", ""),
-        "status": "contacted",
-        "metadata": {
-            "key_details": analysis.get("key_details") or {},
-            "suggested_next_step": analysis.get("suggested_next_step", ""),
-            "last_call_id": call_id,
-        },
-    }
+    # Update lead. Its summary, rating and details follow the newest call that was
+    # actually analysed: a hang-up too short to analyse used to blank them.
+    lead_update: dict = {"status": "contacted"}
+    if analysis:
+        lead_update.update({
+            "summary": analysis.get("summary", ""),
+            "urgency": analysis.get("urgency", ""),
+            "metadata": {
+                "key_details": analysis.get("key_details") or {},
+                "suggested_next_step": analysis.get("suggested_next_step", ""),
+                "last_call_id": call_id,
+            },
+        })
     caller_name = analysis.get("caller_name")
     if caller_name:
         lead_update["name"] = caller_name
