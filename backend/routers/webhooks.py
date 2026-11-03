@@ -329,13 +329,17 @@ async def _handle_assistant_request(msg: dict) -> dict:
     except Exception as e:
         logger.warning("assistant-request: service menu failed for %s: %s", tenant_id, e)
 
-    system_prompt = vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt))
+    system_prompt = vapi_svc.ensure_call_closing(
+        vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt)))
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
     tools = (build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,
                                   supports_same_call_replace=can_replace)
              if has_calendar else [build_caller_lookup_tool(tenant_id)])
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
+    # Every per-call tool list carries endCall: this list REPLACES the assistant's
+    # own, so without it the model has no way to hang up.
+    tools.append(dict(vapi_svc.END_CALL_TOOL))
 
     logger.info(
         "assistant-request: tenant %s caller %s → %s (phone_found=%s)",
@@ -389,6 +393,9 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Give callers room to pause/think — 10s was hanging up real calls mid-conversation.
     # Set per-call so existing tenants get it on the next call without re-provisioning.
     overrides["silenceTimeoutSeconds"] = 25
+    # Narrow fallback for when the model says its closing line but doesn't call
+    # endCall. Set per call so it overrides the broader list on older assistants.
+    overrides["endCallPhrases"] = list(vapi_svc.CLOSING_PHRASES)
 
     # Routing-entitled tenants: declare the transfer/outcome server messages so the
     # dynamic transfer webhook + end-of-call outcome recording fire. Belt-and-braces
