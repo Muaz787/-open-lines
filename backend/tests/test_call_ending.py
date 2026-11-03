@@ -79,14 +79,14 @@ async def test_the_closing_rules_reach_the_prompt_once_and_last():
 
 # ── a clear goodbye ───────────────────────────────────────────────────────────
 
-async def test_endcall_speaks_exactly_one_goodbye_before_hanging_up():
-    """3 Nov: the model called endCall with nothing in its turn — the caller heard
-    silence, then a dead line. The goodbye now belongs to the tool."""
-    tool = _end_call(await _per_call_setup())
-    msgs = tool["messages"]
-    assert len(msgs) == 1 and msgs[0]["type"] == "request-start"
-    assert msgs[0]["blocking"] is True, "spoken before the call ends"
-    assert msgs[0]["content"] == "Thanks for calling. Goodbye for now."
+async def test_the_goodbye_is_the_end_call_message_not_a_tool_message():
+    """3 Nov, call 424d2579: endCall with nothing said — silence, then a dead line.
+    3 Nov, call 46ac9156: a blocking request-start goodbye on endCall was cut after
+    its first sentence. The goodbye is now Vapi's endCallMessage, the line spoken
+    when the assistant ends the call, and endCall carries no message of its own."""
+    out = await _per_call_setup()
+    assert _end_call(out) == {"type": "endCall"}
+    assert out["assistantOverrides"]["endCallMessage"] == "Thanks for calling. Take care."
 
 
 async def test_a_returning_callers_goodbye_uses_their_first_name():
@@ -102,7 +102,7 @@ async def test_a_returning_callers_goodbye_uses_their_first_name():
                 patch("services.square_booking.service_menu_block", new=AsyncMock(return_value="")), \
                 patch("services.analytics.capture"):
             out = await webhooks._handle_assistant_request(msg)
-    assert _end_call(out)["messages"][0]["content"] == "Thanks for calling, Ricks. Goodbye for now."
+    assert out["assistantOverrides"]["endCallMessage"] == "Thanks for calling, Ricks. Take care."
 
 
 def test_the_model_never_adds_its_own_goodbye():
@@ -112,9 +112,10 @@ def test_the_model_never_adds_its_own_goodbye():
     assert "ONE short line" not in note
 
 
-def test_the_tools_goodbye_also_matches_the_fallback():
-    """If endCall somehow didn't hang up, its own goodbye still ends the call."""
-    assert _would_hang_up(vapi.end_call_tool("Sam")["messages"][0]["content"])
+@pytest.mark.parametrize("name", ["", "Sam", "Ricks Littlebaugh"])
+def test_the_goodbye_never_contains_an_end_call_phrase(name):
+    """A fallback phrase inside the goodbye could end the call as it starts."""
+    assert not _would_hang_up(vapi.closing_line(name))
 
 
 # ── the caller changes their mind before the close ────────────────────────────

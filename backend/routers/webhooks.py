@@ -401,6 +401,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Narrow fallback for when the model says its closing line but doesn't call
     # endCall. Set per call so it overrides the broader list on older assistants.
     overrides["endCallPhrases"] = list(vapi_svc.CLOSING_PHRASES)
+    # The one goodbye, spoken when the assistant ends the call with endCall.
+    overrides["endCallMessage"] = vapi_svc.closing_line(caller_name_for_goodbye)
 
     # Routing-entitled tenants: declare the transfer/outcome server messages so the
     # dynamic transfer webhook + end-of-call outcome recording fire. Belt-and-braces
