@@ -204,12 +204,19 @@ def test_the_multi_location_availability_path_has_NO_toronto_fallback():
 def test_availability_and_booking_return_before_the_legacy_toronto_default():
     """The `calendar_timezone or "America/Toronto"` lines are legacy
     single-location only, and a multi-location tenant returns before them."""
-    for fn, delegate in ((tools.check_availability, "_multi_location_availability"),
-                         (tools.book_appointment, "_multi_location_book")):
+    for fn, delegate, later in ((tools.check_availability, "_multi_location_availability",
+                                 "America/Toronto"),
+                                (tools.book_appointment, "_multi_location_book",
+                                 "_calendar_book(")):
         src = _executable_source(fn)
         assert delegate in src
-        assert src.index(delegate) < src.index("America/Toronto"), \
+        assert src.index(delegate) < src.index(later), \
             f"{fn.__name__} can reach the Toronto default before delegating"
+        # The relative-date check reads the tenant's zone (Toronto by default), so it
+        # too must only run once the multi-location tenant has gone.
+        assert src.index(delegate) < src.index("relative_dates.check("), fn.__name__
+    # booking's Toronto default now lives in the single-location helper it calls
+    assert "America/Toronto" in _executable_source(tools._calendar_book)
 
 
 def test_the_booking_confirmation_no_longer_reads_a_key_nothing_writes():

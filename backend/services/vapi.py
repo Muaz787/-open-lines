@@ -488,7 +488,10 @@ You're a warm, experienced human receptionist for this business — calm, friend
 - Keep replies brief — usually one sentence, two at most. Don't over-explain, don't repeat yourself, and don't restate the caller's name or the booking details more than once.
 - Vary your wording every single time. Rotate acknowledgements naturally — "Sure", "Of course", "No problem", "Perfect", "Got it", "Sounds good", "Great", "One sec" — and never lean on stiff repeats like "Certainly." or "Absolutely." call after call.
 - Ask ONE thing at a time and react to the answer before the next question, the way a real conversation flows. Never fire off a list of questions at once.
-- Before you look something up or book, bridge the pause naturally and briefly — "Let me take a quick look", "One moment", "Let me pull that up". Never mention tools, systems, software, databases, APIs, or "processing".
+- A short holding line plays by itself while you check the calendar or book. Don't add your own "one moment" or "let me check" on top of it. Never mention tools, systems, software, databases, APIs, or "processing".
+- Don't start two replies in a row with the same word — especially "Perfect".
+- Say times the way people say them: "nine a.m.", "nine fifteen a.m.", "two thirty p.m." Never "nine and fifteen", never "oh nine fifteen", never a leading zero.
+- Say a date as the weekday plus month and day — "Wednesday, November fourth" — and never as digits like 11/04. Mention the timezone only if the caller is somewhere else.
 - Ask for details conversationally: "Can I get your name?" / "What's the best number to reach you on?" — not "Please provide your phone number."
 - Confirm naturally and just once, then move on: "Perfect, you're all booked — that's Tuesday at 2 for four, under Emily."
 - Close warmly and vary it: "Thanks for calling", "See you soon", "Take care", "Enjoy your day" — not a robotic "Have a nice day" every time.
@@ -728,6 +731,8 @@ CANCELLING
 - Ask the caller which one they want cancelled, and confirm before acting. Even when there is only one appointment, confirm it first.
 - Then call cancel_appointment again with the appointment_ref for the one they chose.
 - Never say an appointment is cancelled until the tool result says so.
+- If the caller says which appointments they want to KEEP ("I only want the fourth"), work out which others they would be cancelling, read those back, and confirm each before cancelling it.
+- After a cancellation, say what is still booked ONLY from the list in the tool result. Never say "you now have only one" unless that list has exactly one.
 
 BOOKING — CALLING THE TOOL IS MANDATORY
 - The appointment ONLY changes when you call the book_appointment tool. Your words book nothing on their own.
@@ -761,6 +766,7 @@ MOVING AN EXISTING APPOINTMENT — NOT SUPPORTED
 - book_appointment only ever creates a NEW appointment. It never moves, replaces or cancels an existing one.
 - cancel_appointment only ever cancels the one appointment the caller explicitly chose.
 - Changing or moving an existing appointment is not something you can do. Say so simply — "I'm not able to change an existing appointment on this call, but I can take a message for the team and they'll sort it out" — and take their details.
+- You CAN cancel an appointment the caller asks to cancel: follow CANCELLING. Never tell a caller you can't cancel.
 - NEVER cancel an appointment because the caller wants a different time, and never offer cancelling as a way to move one. Those are two separate things and you must not chain them.
 - Never tell a caller their appointment has been moved, changed or rescheduled."""
 
@@ -781,14 +787,36 @@ MOVING AN EXISTING APPOINTMENT
 - If a reference has expired, list the appointments again or call check_availability again. Never invent a reference and never reuse an old one."""
 
 
-def caller_lookup_note(*, supports_reschedule: bool = False) -> str:
+_SAME_CALL_REPLACE_NOTE = """
+
+CORRECTING A BOOKING MADE EARLIER IN THIS CALL
+- If the caller corrects a booking you made earlier in THIS call — the wrong day or the wrong time — call replace_booking with the corrected date and time. Never call book_appointment for the corrected time: that leaves both bookings in place.
+- replace_booking books the new time first and only then cancels the earlier one, so the caller never ends up with nothing.
+- Say only what the replace_booking result says. If it says the earlier booking is still in place, tell the caller that.
+- This is only for a booking made earlier in this same call. Appointments from before this call follow the rules above."""
+
+
+def supports_same_call_replace(tenant: dict) -> bool:
+    """Can replace_booking run for this tenant?
+
+    It creates and cancels Google or Outlook events directly. Square has its own
+    paths and deposits change what a booking is worth, so both are left out.
+    """
+    if tenant.get("square_appointments_enabled"):
+        return False
+    return bool(tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token"))
+
+
+def caller_lookup_note(*, supports_reschedule: bool = False,
+                       supports_same_call_replace: bool = False) -> str:
     """The caller-recognition block plus whichever moving policy is TRUE here.
 
     Defaults to the unsupported policy on purpose: a caller that has not proven
     the tenant can complete a move must not be told the model may attempt one.
     """
-    return _CALLER_LOOKUP_BASE + (_RESCHEDULE_NOTE if supports_reschedule
-                                  else _MOVE_UNSUPPORTED_NOTE)
+    return (_CALLER_LOOKUP_BASE
+            + (_RESCHEDULE_NOTE if supports_reschedule else _MOVE_UNSUPPORTED_NOTE)
+            + (_SAME_CALL_REPLACE_NOTE if supports_same_call_replace else ""))
 
 
 # Back-compatible constant. Every existing call site keeps the safe policy
@@ -842,7 +870,8 @@ def build_caller_lookup_tool(tenant_id: str) -> dict:
 
 
 def build_calendar_tools(tenant_id: str, *,
-                        supports_reschedule: bool = False) -> list[dict]:
+                        supports_reschedule: bool = False,
+                        supports_same_call_replace: bool = False) -> list[dict]:
     """Build all Vapi tool definitions: caller lookup + calendar booking.
 
     supports_reschedule defaults to FALSE deliberately. reschedule_appointment is
@@ -877,6 +906,15 @@ def build_calendar_tools(tenant_id: str, *,
                                 "July=07, August=08, September=09, October=10, November=11, December=12. "
                                 "If the caller says a range like 'Monday or Tuesday', pick the earlier date. "
                                 "Never guess — derive the full YYYY-MM-DD from what the caller actually said."
+                            ),
+                        },
+                        "date_phrase": {
+                            "type": "string",
+                            "description": (
+                                "The caller's own words for the day, exactly as they said them — "
+                                "'the day after tomorrow', 'Thursday', 'tomorrow morning'. Pass it "
+                                "whenever they named the day in words, so the system can check the "
+                                "date. Omit it when they gave a calendar date."
                             ),
                         },
                         "period": {
@@ -972,6 +1010,24 @@ def build_calendar_tools(tenant_id: str, *,
                             "type": "string",
                             "description": "Confirmed appointment date in YYYY-MM-DD format.",
                         },
+                        "date_phrase": {
+                            "type": "string",
+                            "description": (
+                                "The caller's own words for the day, exactly as they said them — "
+                                "'the day after tomorrow', 'Thursday', 'tomorrow morning'. Pass it "
+                                "whenever they named the day in words, so the system can check the "
+                                "date. Omit it when they gave a calendar date."
+                            ),
+                        },
+                        "also_keep_earlier_booking": {
+                            "type": "boolean",
+                            "description": (
+                                "Only when the caller already booked something earlier in this "
+                                "call AND has said they want this as an extra appointment, "
+                                "keeping the earlier one too. Never set it to fix a wrong day or "
+                                "time."
+                            ),
+                        },
                         "time": {
                             "type": "string",
                             "description": "Confirmed appointment time in HH:MM 24-hour format (e.g. '14:00' for 2 PM).",
@@ -1011,7 +1067,7 @@ def build_calendar_tools(tenant_id: str, *,
             },
             "server": _tool_server(f"{base}/book", 35),
             "messages": [
-                {"type": "request-start", "content": "Perfect — let me lock that in for you."},
+                {"type": "request-start", "content": "Let me lock that in for you."},
                 {"type": "request-response-delayed", "content": "Just finishing that up.", "timingMilliseconds": 3000},
             ],
         },
@@ -1049,6 +1105,51 @@ def build_calendar_tools(tenant_id: str, *,
             "server": _tool_server(f"{base}/cancel", 20),
         },
     ]
+
+    if supports_same_call_replace:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "replace_booking",
+                    "description": (
+                        "Correct a booking made earlier in THIS call: book the corrected "
+                        "date and time, then cancel the earlier booking. Use it when the "
+                        "caller says the day or time you booked was wrong. The earlier "
+                        "booking is only cancelled once the new one is confirmed. Never use "
+                        "it for appointments made before this call."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "date": {
+                                "type": "string",
+                                "description": "The corrected date, YYYY-MM-DD.",
+                            },
+                            "date_phrase": {
+                                "type": "string",
+                                "description": (
+                                    "The caller's own words for the day, exactly as they said them — "
+                                    "'the day after tomorrow', 'Thursday', 'tomorrow morning'. Pass it "
+                                    "whenever they named the day in words, so the system can check the "
+                                    "date. Omit it when they gave a calendar date."
+                                ),
+                            },
+                            "time": {
+                                "type": "string",
+                                "description": "The corrected time, HH:MM 24-hour.",
+                            },
+                        },
+                        "required": ["date", "time"],
+                    },
+                },
+                "server": _tool_server(f"{base}/replace-booking", 45),
+                "messages": [
+                    {"type": "request-start", "content": "Let me fix that for you."},
+                    {"type": "request-response-delayed", "content": "Nearly done.", "timingMilliseconds": 3000},
+                ],
+            }
+        )
 
     if supports_reschedule:
         tools.append(
