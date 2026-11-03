@@ -11,8 +11,9 @@ A move happens only when it can be proven safe:
   * the appointment was chosen from a list and the new time from a recorded offer;
   * same location, same service, same team member, same length — Square is asked
     for the target time for THAT team member;
-  * a paid deposit inside the business's non-refundable window is not moved: a
-    later time would reopen a refund the policy had already closed;
+  * a paid deposit whose refund window has closed is not moved (the rule is
+    services.refunds.refund_window_open), and one paid moments ago waits until
+    its confirmation is out (calendar_reschedule.deposit_settling);
   * the booking is still exactly what we have on record (status, location,
     start, team member, service) when we read it under ownership.
 Anything else is the team's, as before. Nothing is charged, refunded, voided or
@@ -27,12 +28,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from db import calendar_moves as db_cm
 from db import supabase as db
 from services import appointment_refs, calendar_reschedule as cr, mutation_ownership
-from services import relative_dates, reschedule, slot_offers, square_booking
+from services import refunds, relative_dates, reschedule, slot_offers, square_booking
 
 logger = logging.getLogger(__name__)
 
@@ -137,18 +138,6 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
             return ri.CROSS_LOCATION, ri.message_for(ri.CROSS_LOCATION)
         src_pid = single
 
-    # Policy: a paid deposit already inside the non-refundable window stays put.
-    try:
-        paid = await _payment(appt["id"])
-    except Exception as e:
-        logger.error("square_inplace: payment lookup failed for %s: %s", appt["id"], e)
-        return HANDOFF, _HANDOFF_MSG
-    if paid:
-        hours = tenant.get("cancellation_refund_hours")
-        hours = 24 if hours is None else int(hours)
-        if _when(appt["appointment_datetime"]) - relative_dates._utcnow() < timedelta(hours=hours):
-            return POLICY_WINDOW, _MESSAGES[POLICY_WINDOW]
-
     token = await square_booking.get_access_token(tenant)
     if not token:
         return HANDOFF, _HANDOFF_MSG
@@ -172,6 +161,25 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
             or str(current.get("google_event_id") or "") != str(appt["google_event_id"])):
         return await _give_up(cr.CHANGED, "That appointment changed while I was moving it. Nothing "
                                           "has been moved. List the caller's appointments again.")
+
+    # The deposit, read under ownership: see calendar_reschedule.deposit_settling.
+    try:
+        paid = await _payment(current["id"])
+        refundable = True
+        if paid:
+            hours = tenant.get("cancellation_refund_hours")
+            refundable = await refunds.deposit_refundable(
+                current["id"], _when(current["appointment_datetime"]), paid,
+                24 if hours is None else int(hours), now=relative_dates._utcnow())
+    except Exception as e:
+        logger.error("square_inplace: payment lookup failed for %s: %s", current["id"], e)
+        return await _give_up(HANDOFF, _HANDOFF_MSG)
+    if cr.deposit_settling(paid):
+        return await _give_up(cr.BUSY, cr.DEPOSIT_SETTLING_MSG + _NO_RETRY)
+    if refundable is None:
+        return await _give_up(HANDOFF, _HANDOFF_MSG)
+    if not refundable:
+        return await _give_up(POLICY_WINDOW, _MESSAGES[POLICY_WINDOW])
 
     fetch, booking = await square_booking.get_booking_detailed(token, current["google_event_id"])
     if fetch != square_booking.FETCH_FOUND:

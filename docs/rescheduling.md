@@ -30,10 +30,10 @@ It moves automatically only when all of this holds; otherwise the team moves it:
   enough.
 - The booking at Square still matches our record (accepted, one segment, same
   start, location and team member) when it is read under ownership.
-- A **paid** deposit already inside the business's non-refundable window
-  (`cancellation_refund_hours`, default 24) is not moved: a later time would
-  reopen a refund the policy had closed. An owed deposit has paid nothing, so it
-  can move.
+- A **paid** deposit whose refund window has closed (see *Refund windows* below)
+  is not moved. An owed deposit has paid nothing, so it can move.
+- A deposit paid in the last two minutes waits (the caller is asked to give us a
+  minute), so its confirmation text can't name a time that is about to change.
 - Square accepts the write. A seller without Appointments Plus or Premium can't
   write bookings through the API; Square answers 403 and the caller is told
   nothing changed.
@@ -46,11 +46,36 @@ team member and service, then our row written by `calendar_move_finish`.
   with Appointments and the four `SQUARE_SANDBOX_*` variables.
 - Square's availability counts the booking itself, so a move that overlaps its own
   current time (for example 15 minutes later) can be refused as unavailable.
-- A deposit paid while a move is in progress confirms the appointment as usual,
-  but its confirmation text may mention the old time; the move's own result gives
-  the new time.
-- Refund eligibility after a move is measured from the new time, as for any
-  appointment; only owed deposits or paid ones outside the window can move.
+- Square bookings moved by the business in Square itself are not in our move
+  history, so they don't count toward a closed refund window.
+
+## Deposits and a move at the same time
+
+**Confirmation texts.** A payment webhook marks the deposit paid, then looks for
+anything changing the appointment: a mutation claim (021), a live move operation
+(046), or a time that differs before and after it looks. If it finds one, the
+caller's text and the owner's note say the deposit is received and the
+appointment confirmed, without a day or time. The caller hears the new time on
+the call. A move, for its part, reads the payment after taking ownership and waits
+if it was paid in the last two minutes. Each side writes before it reads, so one
+always sees the other. This applies to Google, Outlook and Square moves.
+
+**Refund windows (for review).** A paid deposit is refundable on cancellation only
+if its refund window has never closed since it was paid
+(`services.refunds.refund_window_open`):
+
+1. the appointment, where it is now, is at least `cancellation_refund_hours`
+   away; and
+2. every move that finished after the deposit was paid started, or took the
+   payment, while the window for the time it moved *from* was still open.
+
+A move made while the window is open carries refundability to the new time, as
+before. What changes: a deposit paid during a move from a time already inside the
+window, or an appointment moved inside its window after paying (possible for
+Google and Outlook, which don't refuse that), stays non-refundable at the new
+time. The hours are the business's current setting, as before. If the move
+history can't be read, the deposit is neither refunded nor forfeited: the caller
+is told the team will follow up and the business is notified.
 
 ## The conversation
 

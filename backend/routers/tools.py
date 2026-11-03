@@ -2922,12 +2922,16 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
 
     if payment:
         refund_hours = int(tenant.get("cancellation_refund_hours") if tenant.get("cancellation_refund_hours") is not None else 24)
-        eligible = refund_svc.refund_eligible(appt_dt_utc, refund_hours)
+        eligible = await refund_svc.deposit_refundable(appt["id"], appt_dt_utc, payment, refund_hours)
         amount_cents = int(payment.get("amount_cents") or 0)
         cur          = format_currency(payment.get("currency", "usd"))
         amt          = f"{amount_cents // 100}" if amount_cents % 100 == 0 else f"{amount_cents / 100:.2f}"
 
-        if eligible:
+        if eligible is None:
+            # Its move history couldn't be read: neither refund nor forfeit it.
+            await refund_svc.notify_business(tenant, payment, refunded=False, service=service)
+            refund_clause = " Our team will follow up with you about your deposit."
+        elif eligible:
             ok = await refund_svc.issue_provider_refund(payment, tenant)
             if ok:
                 try:

@@ -57,6 +57,10 @@ DATE_REFUSED = "date_refused"
 TEMPORARY = "temporary"
 
 STALE_SECONDS = 120
+# A deposit paid this recently may still have its confirmation being written.
+DEPOSIT_SETTLING_SECONDS = 120
+DEPOSIT_SETTLING_MSG = ("A deposit for that appointment has just come through, so nothing has been "
+                        "moved yet. Ask the caller to give us a minute.")
 _ACTIVE = ("confirmed", "pending_payment")
 _NO_RETRY = (" Do NOT call reschedule_appointment, book_appointment or cancel_appointment "
              "again for this appointment in this call.")
@@ -101,6 +105,22 @@ def _age_seconds(op: dict) -> float:
     except (KeyError, ValueError):
         return 0.0
     return (datetime.now(timezone.utc) - at).total_seconds()
+
+
+def deposit_settling(paid: dict | None) -> bool:
+    """Was this deposit paid moments ago? Its confirmation text may still be on its
+    way, naming the appointment's current time, so a move waits.
+
+    Read the payment AFTER taking ownership. The payment webhook marks a deposit
+    paid BEFORE it looks for an owner (routers/payments.py), so between a move and
+    a payment one always sees the other: either the move waits, or the
+    confirmation leaves the time out."""
+    paid_at = paid and paid.get("paid_at")
+    if not paid_at:
+        return False
+    at = datetime.fromisoformat(str(paid_at).replace("Z", "+00:00"))
+    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    return relative_dates._utcnow() - at < timedelta(seconds=DEPOSIT_SETTLING_SECONDS)
 
 
 def _definite_failure(e: Exception) -> bool:
@@ -449,6 +469,14 @@ async def move(*, tenant: dict, tenant_id: str, call_id: str, caller_phone: str,
         await mutation_ownership.release(claim)
         return CHANGED, ("That appointment changed while I was moving it. Nothing has been moved. "
                          "List the caller's appointments again.")
+    try:
+        settling = deposit_settling(await db.get_payment_by_appointment_id(current["id"]))
+    except Exception as e:
+        logger.error("calendar_reschedule: payment check failed for %s: %s", current["id"], e)
+        settling = True
+    if settling:
+        await mutation_ownership.release(claim)
+        return BUSY, DEPOSIT_SETTLING_MSG + _NO_RETRY
 
     duration = int(current.get("duration_minutes") or tenant.get("appointment_duration_minutes") or 60)
     op = await db_cm.insert({

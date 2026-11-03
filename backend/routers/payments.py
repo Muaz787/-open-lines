@@ -273,7 +273,7 @@ async def _handle_checkout_completed(session: dict) -> None:
             else:
                 logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
                                "payment webhook", payment["appointment_id"])
-            appointment = await db.get_appointment_by_id(payment["appointment_id"])
+            appointment = await _settled_appointment(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
 
@@ -287,6 +287,31 @@ async def _handle_checkout_completed(session: dict) -> None:
         logger.error("Payment notification failed for tenant %s: %s", tenant_id, e)
 
     await _emit_zapier_deposit(tenant_id, payment, "deposit_paid")
+
+
+async def _settled_appointment(appointment_id: str) -> dict | None:
+    """The appointment for a payment confirmation to describe, or None to leave its
+    day and time out.
+
+    A deposit can land while the appointment is being moved. Its time is named
+    only when nothing owns the appointment and it read the same before and after
+    looking. The payment is already marked paid when this runs, and a move reads
+    the payment after taking ownership (calendar_reschedule.deposit_settling), so
+    one of the two always sees the other."""
+    from db import calendar_moves as db_cm, mutation_claims as db_mc
+    try:
+        before = await db.get_appointment_by_id(appointment_id)
+        if await db_mc.get_claim(appointment_id) or await db_cm.live_for_appointment(appointment_id):
+            logger.info("Appointment %s is being changed; confirming its deposit without a time",
+                        appointment_id)
+            return None
+        after = await db.get_appointment_by_id(appointment_id)
+    except Exception as e:
+        logger.warning("Couldn't settle appointment %s for its confirmation: %s", appointment_id, e)
+        return None
+    if not before or not after or before.get("appointment_datetime") != after.get("appointment_datetime"):
+        return None
+    return after
 
 
 async def _handle_checkout_expired(session: dict) -> None:
@@ -531,7 +556,7 @@ async def _handle_square_payment_completed(event: dict) -> None:
             else:
                 logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
                                "Square payment webhook", payment["appointment_id"])
-            appointment = await db.get_appointment_by_id(payment["appointment_id"])
+            appointment = await _settled_appointment(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
 

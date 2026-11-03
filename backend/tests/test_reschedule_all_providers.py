@@ -196,6 +196,7 @@ class CalWorld:
             patch("db.supabase.get_active_appointments_between", new=AsyncMock(side_effect=self.active)),
             patch("db.supabase.get_active_staff", new=AsyncMock(return_value=[])),
             patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(side_effect=self.payment)),
+            patch("db.supabase.update_payment", new=AsyncMock(side_effect=AssertionError("payment written"))),
             patch("db.appointment_refs.insert_refs", new=AsyncMock(side_effect=self.refs.insert_refs)),
             patch("db.appointment_refs.count_refs", new=AsyncMock(side_effect=self.refs.count_refs)),
             patch("db.appointment_refs.get_ref", new=AsyncMock(side_effect=self.refs.get_ref)),
@@ -383,7 +384,8 @@ async def test_cal_deposit_status_is_kept_and_payments_are_never_touched(provide
         said = await w.move()
     assert said.startswith("Done")
     assert w.appts["a-1"]["status"] == status, "deposit-pending stays deposit-pending"
-    assert w.payment_calls == 0, "no charge, no refund, no payment lookup at all"
+    assert w.payment_calls == 1, ("the deposit is read once, under ownership, to wait out one "
+                                  "that has just been paid; nothing is charged or refunded")
 
 
 @pytest.mark.parametrize("provider", PROVIDERS)

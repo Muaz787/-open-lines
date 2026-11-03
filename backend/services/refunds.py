@@ -7,7 +7,7 @@ Kept in services/ (not a router) so tools.py can import it without a circular
 dependency on the payments router.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from services import telephony
 from services.short_links import format_currency
@@ -32,6 +32,56 @@ def refund_eligible(appt_dt_utc: datetime | None, refund_hours: int, now: dateti
     now = now or datetime.now(timezone.utc)
     hours_until = (appt_dt_utc - now).total_seconds() / 3600.0
     return hours_until >= refund_hours
+
+
+def _ts(value) -> datetime | None:
+    if not value:
+        return None
+    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def refund_window_open(appt_dt_utc: datetime | None, refund_hours: int, *, paid_at: datetime | None,
+                       moves: list[dict], now: datetime) -> bool:
+    """Is a paid deposit still refundable? Once its refund window has closed, a
+    reschedule never reopens it (issue #179).
+
+    The rule, for review:
+      1. the appointment, where it is now, is at least `refund_hours` away; and
+      2. every move that finished after the deposit was paid started, or took the
+         payment, while the window for the time it moved FROM was still open.
+         Moving while the window is open carries refundability to the new time
+         (it then closes `refund_hours` before the new time), as before.
+    So a deposit paid while a move was under way, for a time already inside its
+    window, stays non-refundable at the new time. `refund_hours` is the business's
+    current setting, as it always was; nothing about the policy itself changes.
+    """
+    if not refund_eligible(appt_dt_utc, refund_hours, now):
+        return False
+    window = timedelta(hours=refund_hours)
+    for m in moves:
+        started, finished = _ts(m.get("created_at")), _ts(m.get("updated_at"))
+        if paid_at and finished and finished < paid_at:
+            continue  # moved before the deposit was paid: nothing was refundable yet
+        at = max(t for t in (started, paid_at) if t) if (started or paid_at) else None
+        if at is None or at > _ts(m["from_start_utc"]) - window:
+            return False
+    return True
+
+
+async def deposit_refundable(appointment_id: str, appt_dt_utc: datetime | None, payment: dict,
+                             refund_hours: int, *, now: datetime | None = None) -> bool | None:
+    """refund_window_open for a stored deposit. None when the move history can't be
+    read: then the deposit is neither refunded nor forfeited, the team decides."""
+    from db import calendar_moves as db_cm
+    try:
+        moves = await db_cm.completed_for_appointment(appointment_id)
+        paid_at = _ts(payment.get("paid_at")) or _ts(payment.get("created_at"))
+    except Exception as e:
+        logger.error("Refund: move history unreadable for appointment %s: %s", appointment_id, e)
+        return None
+    return refund_window_open(appt_dt_utc, refund_hours, paid_at=paid_at, moves=moves,
+                              now=now or datetime.now(timezone.utc))
 
 
 async def issue_provider_refund(payment: dict, tenant: dict) -> bool:

@@ -4,7 +4,7 @@ Issue #179 — moving Square appointments that have a deposit, in place.
 All Square behaviour here is MOCKED: the fake below models UpdateBooking as
 Square documents it (booking id kept, version incremented, optimistic version
 check, idempotency key replay, start_at the only field sent). The real API is
-exercised separately by tests/integration/test_square_sandbox_update.py, which
+exercised separately by tests/test_square_sandbox_update.py, which
 runs only against a Square sandbox seller.
 
   case                                         single-location   multi-location
