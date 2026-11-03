@@ -773,7 +773,7 @@ async def get_calls_with_leads(tenant_id: str, since: datetime | None = None, li
         get_client()
         .table("calls")
         .select("id, vapi_call_id, duration_secs, created_at, lead_id, disposition, transferred, "
-                "leads(name, phone, urgency, summary, metadata)")
+                "summary, urgency, key_details, suggested_next_step, leads(name, phone)")
         .eq("tenant_id", tenant_id)
         .order("created_at", desc=True)
         .limit(limit)
@@ -789,7 +789,7 @@ async def get_call_detail(tenant_id: str, call_id: str) -> dict | None:
     res = (
         await run_query(get_client()
         .table("calls")
-        .select("*, leads(name, phone, urgency, summary, metadata)")
+        .select("*, leads(name, phone)")
         .eq("tenant_id", tenant_id)
         .eq("id", call_id)
         .single())

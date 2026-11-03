@@ -27,8 +27,8 @@ async def get_analytics(tenant_id: str, days: int = 30):
     urgency_counts: dict = {"hot": 0, "warm": 0, "cold": 0, "unknown": 0}
     calls_by_day: dict = {}
     for c in calls:
-        lead = c.get("leads") or {}
-        u = (lead.get("urgency") or "unknown").lower()
+        # The call's own rating: a lead's is overwritten by its newest call.
+        u = (c.get("urgency") or "unknown").lower()
         urgency_counts[u if u in urgency_counts else "unknown"] += 1
         created = c.get("created_at")
         if created:
