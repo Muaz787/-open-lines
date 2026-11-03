@@ -367,9 +367,9 @@ async def patch_event(refresh_token: str, event_id: str, start_dt: datetime,
         return res.json()
 
 
-def event_start(event: dict | None) -> datetime | None:
-    """The event's start as an aware datetime, or None if it has none we can read."""
-    raw = ((event or {}).get("start") or {}).get("dateTime")
+def event_start(event: dict | None, key: str = "start") -> datetime | None:
+    """The event's start (or end) as an aware datetime, or None if unreadable."""
+    raw = ((event or {}).get(key) or {}).get("dateTime")
     if not raw:
         return None
     try:
@@ -377,3 +377,7 @@ def event_start(event: dict | None) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else None
+
+
+def event_end(event: dict | None) -> datetime | None:
+    return event_start(event, "end")

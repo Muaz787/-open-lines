@@ -378,9 +378,9 @@ async def patch_event(refresh_token: str, event_id: str, start_dt: datetime,
         return res.json()
 
 
-def event_start(event: dict | None) -> datetime | None:
-    """Start of an event read with times in UTC (see _UTC_PREFER)."""
-    start = (event or {}).get("start") or {}
+def event_start(event: dict | None, key: str = "start") -> datetime | None:
+    """Start (or end) of an event read with times in UTC (see _UTC_PREFER)."""
+    start = (event or {}).get(key) or {}
     raw = start.get("dateTime")
     if not raw:
         return None
@@ -395,3 +395,7 @@ def event_start(event: dict | None) -> datetime | None:
         except Exception:
             return None
     return dt
+
+
+def event_end(event: dict | None) -> datetime | None:
+    return event_start(event, "end")

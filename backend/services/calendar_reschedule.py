@@ -199,8 +199,39 @@ async def _release(op: dict) -> None:
                      op["appointment_id"], e)
 
 
-async def _finish_local(op: dict) -> str:
-    """The provider has the new time: write our row, re-read both, complete."""
+async def verify_provider(tenant: dict, op: dict) -> str:
+    """Re-read the event: 'ok' when it is active and starts AND ends exactly where
+    this operation moved it; otherwise 'unreadable', 'missing' or 'mismatch'."""
+    refresh_token, provider = _provider(tenant)
+    if not refresh_token or provider != op["provider"]:
+        return "unreadable"
+    try:
+        ev = await _svc(provider).get_event(refresh_token, op["provider_event_id"])
+    except Exception as e:
+        logger.warning("calendar_reschedule: could not re-read event for operation %s: %s", op["id"], e)
+        return "unreadable"
+    if not ev or ev.get("status") == "cancelled" or ev.get("isCancelled"):
+        return "missing"
+    to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
+    end = to + timedelta(minutes=int(op["duration_minutes"]))
+    if _same_instant(_svc(provider).event_start(ev), to) and _same_instant(_svc(provider).event_end(ev), end):
+        return "ok"
+    return "mismatch"
+
+
+async def _finish_local(tenant: dict, op: dict) -> str:
+    """The provider reports the new time. Prove it by re-reading the event, then
+    write our row, re-read it, and only then complete.
+
+    Anything short of proof keeps the operation live and the appointment owned,
+    for recovery or a person to settle."""
+    checked = await verify_provider(tenant, op)
+    if checked != "ok":
+        if checked != "unreadable":
+            logger.error("calendar_reschedule: INCIDENT — after moving, operation %s finds the "
+                         "event %s; leaving it for a person", op["id"], checked)
+            await db_cm.transition(op, ("provider_moved",), {"detail": f"provider {checked}"})
+        return UNKNOWN
     to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
     try:
         await db.update_appointment(op["appointment_id"], {"appointment_datetime": to.isoformat()})
@@ -220,13 +251,13 @@ async def _finish_local(op: dict) -> str:
 async def settle(tenant: dict, op: dict) -> str:
     """Bring a live operation to an outcome by reading, never by re-sending."""
     if op["state"] == "provider_moved":
-        return await _finish_local(op)
+        return await _finish_local(tenant, op)
     status, start = await _read_event_start(tenant, op)
     to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
     frm = datetime.fromisoformat(str(op["from_start_utc"]).replace("Z", "+00:00"))
     if status == "ok" and _same_instant(start, to):
         moved = await db_cm.transition(op, ("in_progress", "unknown"), {"state": "provider_moved"})
-        return await _finish_local(moved) if moved else UNKNOWN
+        return await _finish_local(tenant, moved) if moved else UNKNOWN
     if status == "ok" and _same_instant(start, frm):
         # Still at the old time. Only an operation old enough that no request
         # can still be in flight is declared failed; a fresh one stays unknown.
@@ -283,10 +314,16 @@ async def move(*, tenant: dict, tenant_id: str, call_id: str, caller_phone: str,
     checked, problem = relative_dates.check(date_str, date_phrase, tenant)
     if problem:
         return DATE_REFUSED, problem
-    try:
-        new_start = datetime.strptime(f"{checked} {time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz)
-    except ValueError:
+    new_start, why = relative_dates.local_instant(checked, time_str, tz)
+    if why == relative_dates.BAD_FORMAT:
         return DATE_REFUSED, "I need the new time as HH:MM. Confirm it with the caller and try again."
+    if why:
+        return DATE_REFUSED, (f"{time_str} on {checked} falls in the hour the clocks change, so "
+                              "that time is unclear. Nothing has been moved. Ask the caller for "
+                              "another time.")
+    if new_start <= relative_dates._utcnow():
+        return DATE_REFUSED, (f"{_spoken(new_start, tz)} has already passed. Nothing has been "
+                              "moved. Ask the caller for a time later today or another day.")
 
     appt = await db.get_appointment_by_id(ref["appointment_id"])
     if not appt or str(appt.get("tenant_id")) != str(tenant_id) \
@@ -372,7 +409,7 @@ async def move(*, tenant: dict, tenant_id: str, call_id: str, caller_phone: str,
         await _svc(provider).patch_event(refresh_token, current["google_event_id"], new_start,
                                          duration, str(tz))
         moved = await db_cm.transition(op, ("in_progress",), {"state": "provider_moved"})
-        outcome = await _finish_local(moved) if moved else UNKNOWN
+        outcome = await _finish_local(tenant, moved) if moved else UNKNOWN
     except Exception as e:
         if _definite_failure(e):
             logger.error("calendar_reschedule: provider refused the move for %s: %s", current["id"], e)

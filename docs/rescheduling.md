@@ -10,6 +10,26 @@ provider uses its own supported operation.
 | Square, multi-location | W6A2 engine: replacement booking, then cancel the original | Claim (021) + `appointment_reschedule_operations` (020); existing recovery | Refused: the deposit is linked to the original row |
 | Square, single-location | The same W6A2 engine, at the tenant's own Square location | Same as multi-location | Refused |
 
+## Square appointments with a deposit: not rescheduled automatically
+
+Square moves an appointment by booking a replacement and cancelling the original.
+A deposit — paid, or still owed through a payment link — is linked to the original
+appointment row, so an automatic move would leave the payment attached to a
+cancelled appointment. These appointments are therefore refused before anything
+is locked or sent:
+
+- The assistant says the appointment has a deposit and can't be moved on this
+  call, that nothing has changed, and that the team will move it and keep the
+  deposit with it. It takes a message (`create_callback` where routing is on).
+- Nothing is charged, refunded, voided or re-linked. The appointment, its status
+  and its payment stay exactly as they were.
+- If the deposit lookup itself fails, the appointment is treated as having one.
+- The team moves it in Square and, if needed, updates the appointment and
+  payment records by hand.
+
+Google and Outlook appointments with a deposit can be moved: they move in place,
+the row and its payment link are unchanged, and payment status is never touched.
+
 ## The conversation
 
 1. `reschedule_appointment` with no arguments lists the caller's appointments
@@ -22,7 +42,11 @@ provider uses its own supported operation.
    - Square: `appointment_ref` and `slot_ref`;
    - Google and Outlook: `appointment_ref`, `date`, `time` and `date_phrase`.
 5. Success is reported only after both the provider and our row are re-read at the
-   new time. The confirmation text is sent after that re-read.
+   new time. For Google and Outlook the event must read back active, starting and
+   ending exactly where it was moved; anything else — a different time, a
+   cancelled event, an unreadable calendar — keeps the operation live and the
+   appointment owned, and the caller is told the team will confirm. The
+   confirmation text is sent only after both re-reads.
 
 ## What is kept and what is refused
 
@@ -31,7 +55,10 @@ provider uses its own supported operation.
 - Google and Outlook: the new time must be inside opening hours and outside the
   break, the team member must be free, and the calendar must be free. The
   appointment's own event and seat are left out, so it can shift a little.
-- A date that contradicts the caller's words, or is in the past, is refused.
+- A date that contradicts the caller's words, or is in the past, is refused. So
+  is a time earlier today, judged in the tenant's timezone.
+- On clock-change days, a time that doesn't exist (clocks go forward) or happens
+  twice (clocks go back) is refused, and the caller is asked for another time.
 - An appointment that changed since it was listed is not moved.
 - Nothing is charged and nothing is refunded. Payment status is never changed.
 
@@ -41,7 +68,8 @@ provider uses its own supported operation.
 |---|---|---|
 | Provider refuses (4xx) | Operation `failed`, claim released, original unchanged; a new attempt may run | `create_failed`, original unchanged |
 | Timeout or 5xx | The event is read. At the new time: completed. Otherwise `unknown`: claim held, no second `PATCH`; recovery reads again after 120 seconds | `create_unknown`, replayed by the existing recovery |
-| Provider moved, our row not | `provider_moved`; recovery writes the row, re-reads it and completes | n/a |
+| Provider moved, our row not | `provider_moved`; recovery re-verifies the event, writes the row, re-reads it and completes | n/a |
+| Provider says moved, event reads back different, cancelled or unreadable | Stays `provider_moved` with the reason; claim held; no row change, no text; an unreadable event completes once it reads back correctly | n/a |
 | Retry after success | The reference is consumed; the row is re-read and reported, no new `PATCH` | Second identical call books nothing |
 | Two requests at once | One claim per appointment and one live operation per appointment: one move, the other is told it's being changed | Same, through 021 and 022 |
 

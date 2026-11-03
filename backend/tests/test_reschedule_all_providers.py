@@ -78,6 +78,8 @@ class CalWorld:
         self.update_fails = False
         self.patch_delay = 0
         self.payment_calls = 0
+        self.after_patch = None          # how the event reads back after a PATCH succeeds
+        self.patched_ids: set[str] = set()
 
     # db
     def active(self, *_):
@@ -128,18 +130,33 @@ class CalWorld:
             raise err
         self.events[event_id] = new
         self.patches.append((event_id, new))
+        self.patched_ids.add(event_id)
         return {}
 
     async def get_event(self, rt, event_id):
-        if self.get_fails:
+        mode = self.after_patch if event_id in self.patched_ids else None
+        if self.get_fails or mode == "unreadable":
             raise RuntimeError("calendar unreachable")
         if event_id not in self.events:
             return None
         start = datetime.fromisoformat(self.events[event_id])
-        if self.provider == "microsoft":
-            return {"start": {"dateTime": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.0000000"),
-                              "timeZone": "UTC"}}
-        return {"status": "confirmed", "start": {"dateTime": start.isoformat()}}
+        end = start + timedelta(minutes=60)
+        if mode == "moved_elsewhere":
+            start, end = start + timedelta(minutes=30), end + timedelta(minutes=30)
+        if mode == "end_changed":
+            end = end + timedelta(minutes=15)
+
+        def fmt(dt):
+            if self.provider == "microsoft":
+                return {"dateTime": dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.0000000"),
+                        "timeZone": "UTC"}
+            return {"dateTime": dt.isoformat()}
+        ev = {"start": fmt(start), "end": fmt(end)}
+        if mode == "cancelled":
+            ev.update({"status": "cancelled", "isCancelled": True})
+        elif self.provider != "microsoft":
+            ev["status"] = "confirmed"
+        return ev
 
     async def send_sms(self, **kw):
         self.sms.append(kw["body"])
@@ -544,3 +561,119 @@ def test_square_single_location_availability_records_offers():
     import inspect
     src = inspect.getsource(tools._square_availability_response)
     assert "slot_offers.create_offers(" in src and "available_slots(" in src
+
+
+
+# ═══════════ after a successful PATCH, the event must read back exactly ═══════
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("mode", ["moved_elsewhere", "end_changed", "cancelled", "unreadable"])
+async def test_cal_patch_success_is_not_trusted_until_the_event_reads_back(provider, mode,
+                                                                          calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        await w.call()
+        w.after_patch = mode
+        said = await w.move()
+    assert len(w.patches) == 1
+    assert not said.startswith("Done") and "couldn't confirm" in said
+    assert w.sms == [], "no confirmation text without proof"
+    assert at(w) == datetime.fromisoformat(SOURCE_UTC), "our record is not moved on an unproven event"
+    op = next(iter(calendar_moves_store.rows.values()))
+    assert op["state"] == "provider_moved", "kept live for reconciliation"
+    assert "a-1" in w.owners, "the appointment stays owned"
+    if mode != "unreadable":
+        assert op["detail"] == f"provider {'missing' if mode == 'cancelled' else 'mismatch'}"
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_cal_unreadable_after_patch_completes_once_it_reads_back(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        await w.call()
+        w.after_patch = "unreadable"
+        await w.move()
+        w.after_patch = None
+        op = next(iter(calendar_moves_store.rows.values()))
+        op["updated_at"] = (NOW - timedelta(hours=1)).isoformat()
+        settled = await cr.run_recovery()
+    assert settled == {cr.COMPLETED: 1} and at(w) == TARGET_UTC and not w.owners
+    assert len(w.patches) == 1
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_cal_mismatched_event_never_completes_on_recovery(provider, calendar_moves_store):
+    with CalWorld(provider).env() as w:
+        await w.call()
+        w.after_patch = "moved_elsewhere"
+        await w.move()
+        op = next(iter(calendar_moves_store.rows.values()))
+        op["updated_at"] = (NOW - timedelta(hours=1)).isoformat()
+        settled = await cr.run_recovery()
+    assert settled == {cr.UNKNOWN: 1} and "a-1" in w.owners
+    assert at(w) == datetime.fromisoformat(SOURCE_UTC) and len(w.patches) == 1
+
+
+# ═══════════════════ earlier today and clock-change targets ═══════════════════
+
+AFTERNOON = datetime(2026, 11, 4, 18, 0, tzinfo=timezone.utc)      # Wed 1:00 p.m. Toronto
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_cal_earlier_today_is_refused(provider):
+    w = CalWorld(provider, [appointment(when="2026-11-04T21:00:00+00:00")])   # Wed 4 p.m.
+    with w.env(), patch.object(relative_dates, "_utcnow", lambda: AFTERNOON):
+        await w.call()
+        said = await w.move(date="2026-11-04", time="10:00")
+    assert w.patches == [] and "already passed" in said
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+async def test_cal_later_today_is_allowed(provider):
+    w = CalWorld(provider, [appointment(when="2026-11-04T21:00:00+00:00")], free=["3:00 PM"])
+    with w.env(), patch.object(relative_dates, "_utcnow", lambda: AFTERNOON):
+        await w.call()
+        said = await w.move(date="2026-11-04", time="15:00")
+    assert said.startswith("Done") and w.patches == [("EV-a-1", "2026-11-04T20:00:00+00:00")]
+
+
+SPRING_EVE = datetime(2026, 3, 7, 15, 0, tzinfo=timezone.utc)      # Sat 7 Mar, before clocks go forward
+AUTUMN_EVE = datetime(2026, 10, 31, 15, 0, tzinfo=timezone.utc)    # Sat 31 Oct, before clocks go back
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("now, source, date, time", [
+    (SPRING_EVE, "2026-03-09T13:00:00+00:00", "2026-03-08", "02:30"),   # does not exist
+    (AUTUMN_EVE, "2026-11-02T14:00:00+00:00", "2026-11-01", "01:30"),   # happens twice
+])
+async def test_cal_clock_change_hours_are_refused(provider, now, source, date, time):
+    w = CalWorld(provider, [appointment(when=source)])
+    w.tenant.update(business_hours_start=0, business_hours_end=23)
+    with w.env(), patch.object(relative_dates, "_utcnow", lambda: now):
+        await w.call()
+        said = await w.move(date=date, time=time)
+    assert w.patches == [] and "clocks change" in said
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("now, source, date, utc", [
+    (SPRING_EVE, "2026-03-09T13:00:00+00:00", "2026-03-08", "2026-03-08T14:00:00+00:00"),  # EDT
+    (AUTUMN_EVE, "2026-11-02T14:00:00+00:00", "2026-11-01", "2026-11-01T15:00:00+00:00"),  # EST
+])
+async def test_cal_ordinary_hours_on_clock_change_days_use_that_days_offset(provider, now, source,
+                                                                            date, utc):
+    w = CalWorld(provider, [appointment(when=source)])
+    with w.env(), patch.object(relative_dates, "_utcnow", lambda: now):
+        await w.call()
+        said = await w.move(date=date, time="10:00")
+    assert said.startswith("Done") and w.patches == [("EV-a-1", utc)]
+
+
+@pytest.mark.parametrize("date, time, reason", [
+    ("2026-03-08", "02:30", relative_dates.NONEXISTENT),
+    ("2026-11-01", "01:30", relative_dates.AMBIGUOUS),
+    ("2026-11-01", "10:00", None),
+    ("2026-11-01", "9am", relative_dates.BAD_FORMAT),
+])
+def test_local_instant_names_the_problem(date, time, reason):
+    from zoneinfo import ZoneInfo
+    got, why = relative_dates.local_instant(date, time, ZoneInfo("America/Toronto"))
+    assert why == reason and (got is None) == (reason is not None)
