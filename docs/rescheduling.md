@@ -85,6 +85,25 @@ the row and its payment link are unchanged, and payment status is never touched.
 
 ## Release
 
-Apply `migrations/046_calendar_move_operations.sql` before deploying. Until the
-table exists, Google and Outlook moves fail closed: the operation can't be
-recorded, so nothing is sent to the provider.
+1. Run `migrations/preflight/046_preflight.sql` on production; every `ok` must be true.
+2. Apply `migrations/046_calendar_move_operations.sql`, then run
+   `ops/rescheduling/verify-046.sql`; every `ok` must be true.
+3. Merge and deploy. Until the table exists, Google and Outlook moves fail closed:
+   the operation can't be recorded, so nothing is sent to the provider.
+4. Check `/health` reports the merge commit and System Health passes.
+5. On the first natural reschedule: one operation row reaches `completed`, the
+   appointment row and its event are at the new time, and the claim is released.
+
+## Rollback
+
+Keep the table, the function and every row.
+
+1. First check `calendar_move_operations` for rows in `in_progress`, `unknown` or
+   `provider_moved`, and `appointment_mutation_claims` for `reschedule` claims.
+   Settle each one by reading its calendar event and recording the outcome. Old
+   code doesn't know these operations and would otherwise leave the appointment
+   owned.
+2. Then revert the code (revert the merge, or redeploy the previous Railway
+   deployment). Rescheduling falls back to the old behaviour: Google and Outlook
+   callers are told moves aren't supported, and single-location Square loses the
+   reschedule tool.
