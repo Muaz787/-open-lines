@@ -149,3 +149,24 @@ def local_instant(date_str: str, time_str: str, tz) -> tuple[datetime | None, st
         round_trip = first.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None)
         return None, (NONEXISTENT if round_trip != naive else AMBIGUOUS)
     return first, None
+
+
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+         "eighteen", "nineteen"]
+_TENS = {2: "twenty", 3: "thirty", 4: "forty", 5: "fifty"}
+
+
+def spoken_clock(dt: datetime) -> str:
+    """'nine a.m.', 'nine fifteen a.m.', 'two oh five p.m.' — how a person says it."""
+    h = dt.hour % 12 or 12
+    m = dt.minute
+    if m == 0:
+        mins = ""
+    elif m < 10:
+        mins = f" oh {_ONES[m]}"
+    elif m < 20:
+        mins = f" {_ONES[m]}"
+    else:
+        mins = f" {_TENS[m // 10]}" + (f"-{_ONES[m % 10]}" if m % 10 else "")
+    return f"{_ONES[h]}{mins} {'a.m.' if dt.hour < 12 else 'p.m.'}"

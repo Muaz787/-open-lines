@@ -451,7 +451,8 @@ def _message(outcome: str, tz, appt: dict, new_start: datetime | None) -> str:
     to = _spoken(new_start, tz) if new_start else ""
     return {
         COMPLETED: (f"Done, re-read just now: the {svc} is moved to {now_at}. Tell the caller the "
-                    "new day and time."),
+                    f"new day and time, saying the time exactly as "
+                    f"\"{relative_dates.spoken_clock(_start(appt).astimezone(tz))}\"."),
         NOT_FREE: (f"{to} isn't free for this {svc}. Nothing has been moved. Call check_availability "
                    "for that day and offer the caller the open times."),
         CLOSED: (f"We're not open for a {svc} at {to}. Nothing has been moved. Offer a time within "
