@@ -214,6 +214,21 @@ async def _has_payment(appointment_id: str) -> bool:
         return True
 
 
+async def _moves_in_place(blocked: str, *, vapi_call_id: str, tenant_id: str, caller_phone: str,
+                          appointment_ref: str) -> bool:
+    """Does this request belong to the in-place deposit path?"""
+    if blocked == PAYMENT_ON_FILE:
+        return True
+    status, ref = await appointment_refs.resolve_for_cancel(
+        vapi_call_id=vapi_call_id, appointment_ref=appointment_ref, tenant_id=tenant_id,
+        caller_phone=caller_phone)
+    if status != appointment_refs.ALREADY_CONSUMED or not ref:
+        return False
+    from db import supabase as db
+    appt = await db.get_appointment_by_id(ref["appointment_id"]) or {}
+    return (appt.get("status") or "") in ("confirmed", "pending_payment")
+
+
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
                     appointment_ref: str, slot_ref: str) -> str | None:
     """Cheap read-only gates, BEFORE ownership is taken. None means proceed.
@@ -271,6 +286,18 @@ async def move_appointment(*, vapi_call_id: str, tenant_id: str, caller_phone: s
     blocked = await _precheck(
         vapi_call_id=vapi_call_id, tenant_id=tenant_id, caller_phone=caller_phone,
         appointment_ref=appointment_ref, slot_ref=slot_ref)
+    if blocked in (PAYMENT_ON_FILE, ALREADY_CANCELLED) and await _moves_in_place(
+            blocked, vapi_call_id=vapi_call_id, tenant_id=tenant_id,
+            caller_phone=caller_phone, appointment_ref=appointment_ref):
+        # A deposit appointment moves in place with UpdateBooking (issue #179),
+        # keeping its row and so its deposit. A spent reference to an appointment
+        # that is still active is a retry of such a move, answered from the record.
+        from db import supabase as _db
+        from services import square_inplace_reschedule as sq_in
+        tenant = await _db.get_tenant_by_id(tenant_id) or {}
+        return await sq_in.move(tenant=tenant, tenant_id=tenant_id, vapi_call_id=vapi_call_id,
+                                caller_phone=caller_phone, appointment_ref=appointment_ref,
+                                slot_ref=slot_ref)
     if blocked:
         return blocked, message_for(blocked)
 
