@@ -291,7 +291,9 @@ def env(w, *, create=None, cancel=(sb.CANCEL_OK, {}, ""), fetch=sb.FETCH_FOUND,
                         get_appointment_by_rescheduled_from=AsyncMock(side_effect=w.by_lineage),
                         insert_appointment=AsyncMock(side_effect=w.insert_appt),
                         update_appointment=AsyncMock(side_effect=w.update_appt),
-                        get_tenant_by_id=AsyncMock(return_value=dict(TENANT))), \
+                        get_tenant_by_id=AsyncMock(return_value=dict(TENANT)),
+                        # The deposit precheck: none of these appointments has one.
+                        get_payment_by_appointment_id=AsyncMock(return_value=None)), \
          patch.multiple("db.appointment_refs",
                         insert_refs=AsyncMock(side_effect=w.insert_refs),
                         count_refs=AsyncMock(side_effect=w.count_refs),

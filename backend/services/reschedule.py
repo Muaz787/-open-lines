@@ -126,25 +126,39 @@ async def _under_ownership(*, claim, operation_id, idempotency_key, vapi_call_id
     # ── same-location hard gate, against the RE-READ source ─────────────────
     src_loc = str(appt.get("tenant_location_id") or "")
     src_pid = str(appt.get("provider_location_id") or "")
-    if not src_loc or not src_pid:
-        # Every appointment predating the multi-location model has these NULL.
-        # Nothing here can prove the target is the same place, so refuse.
-        await mutation_ownership.release(claim)
-        return Result(LEGACY_LOCATION, detail="source predates location tracking")
-
-    if str(offer.get("tenant_location_id") or "") != src_loc \
-            or str(offer.get("provider_location_id") or "") != src_pid:
-        await mutation_ownership.release(claim)
-        return Result(CROSS_LOCATION,
-                      detail=f"source {src_loc}/{src_pid} vs target "
-                             f"{offer.get('tenant_location_id')}/{offer.get('provider_location_id')}")
-
-    binding_ok = await _binding_is_live(tenant_id, src_loc, src_pid)
-    if not binding_ok:
-        await mutation_ownership.release(claim)
-        return Result(CROSS_LOCATION, detail="location binding is not active")
-
     tenant = await db.get_tenant_by_id(tenant_id) or {}
+
+    if not src_loc:
+        # No tenant location: either a single-location Square business, whose one
+        # location is the tenant's own Square location, or an appointment from
+        # before multi-location tracking at a business that now has several.
+        # Only the first can be proven to stay in the same place.
+        single_pid = await _single_location_id(tenant, tenant_id)
+        if not single_pid or (src_pid and src_pid != single_pid):
+            await mutation_ownership.release(claim)
+            return Result(LEGACY_LOCATION, detail="source location cannot be proven")
+        src_pid = single_pid
+        if str(offer.get("tenant_location_id") or "") \
+                or str(offer.get("provider_location_id") or "") != src_pid:
+            await mutation_ownership.release(claim)
+            return Result(CROSS_LOCATION,
+                          detail=f"single location {src_pid} vs target "
+                                 f"{offer.get('tenant_location_id')}/{offer.get('provider_location_id')}")
+    else:
+        if not src_pid:
+            await mutation_ownership.release(claim)
+            return Result(LEGACY_LOCATION, detail="source predates location tracking")
+        if str(offer.get("tenant_location_id") or "") != src_loc \
+                or str(offer.get("provider_location_id") or "") != src_pid:
+            await mutation_ownership.release(claim)
+            return Result(CROSS_LOCATION,
+                          detail=f"source {src_loc}/{src_pid} vs target "
+                                 f"{offer.get('tenant_location_id')}/{offer.get('provider_location_id')}")
+        binding_ok = await _binding_is_live(tenant_id, src_loc, src_pid)
+        if not binding_ok:
+            await mutation_ownership.release(claim)
+            return Result(CROSS_LOCATION, detail="location binding is not active")
+
     token = await square_booking.get_access_token(tenant)
     if not token:
         await mutation_ownership.release(claim)
@@ -249,6 +263,20 @@ async def _under_ownership(*, claim, operation_id, idempotency_key, vapi_call_id
     return Result(OK, operation_id=operation_id)
 
 
+async def _single_location_id(tenant: dict, tenant_id: str) -> str:
+    """The Square location of a single-location business, or '' if this business
+    has several locations (or that can't be established)."""
+    if not tenant.get("square_appointments_enabled"):
+        return ""
+    try:
+        from services import call_location
+        multi, _ = await call_location.is_multi_location(tenant_id)
+    except Exception as e:
+        logger.warning("reschedule: location mode check failed for %s: %s", tenant_id, e)
+        return ""
+    return "" if multi else str(tenant.get("square_location_id") or "")
+
+
 async def _binding_is_live(tenant_id: str, tenant_location_id: str,
                            provider_location_id: str) -> bool:
     """The location must still be active and still map to the same provider id."""
@@ -287,6 +315,12 @@ async def _reconcile_source_cancelled(source_id: str) -> None:
         logger.error("reschedule: could not reconcile cancelled source %s: %s", source_id, e)
 
 
+async def _operation_exists(op_id: str) -> bool:
+    """A Square reschedule (migration 020) or a Google/Outlook move (046)."""
+    from db import calendar_moves as db_cm
+    return bool(await db_ops.get_operation(op_id) or await db_cm.get(op_id))
+
+
 async def cleanup_orphan_reschedule_claims(limit: int = 20) -> dict:
     """Release reschedule claims whose operation row never landed.
 
@@ -310,12 +344,12 @@ async def cleanup_orphan_reschedule_claims(limit: int = 20) -> dict:
         if not op_id:
             outcomes["no_operation_id"] = outcomes.get("no_operation_id", 0) + 1
             continue
-        if await db_ops.get_operation(op_id):
+        if await _operation_exists(op_id):
             # A real operation owns this appointment. Not an orphan, and not D1's
             # to recover — that is the reschedule recovery worker's job.
             outcomes["live_operation"] = outcomes.get("live_operation", 0) + 1
             continue
-        if await db_ops.get_operation(op_id):          # second look; see docstring
+        if await _operation_exists(op_id):             # second look; see docstring
             outcomes["live_operation"] = outcomes.get("live_operation", 0) + 1
             continue
         ok = await db_mc.release_orphan_reschedule_claim(

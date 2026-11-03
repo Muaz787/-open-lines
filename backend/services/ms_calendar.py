@@ -341,3 +341,57 @@ async def cancel_event(refresh_token: str, event_id: str) -> None:
         if res.status_code not in (200, 204, 404):
             res.raise_for_status()
         logger.info("Microsoft Calendar event deleted: %s", str(event_id)[:20])
+
+
+_UTC_PREFER = {"Prefer": 'outlook.timezone="UTC"'}
+
+
+async def get_event(refresh_token: str, event_id: str) -> dict | None:
+    """The event, with times in UTC, or None if Outlook has no such event."""
+    access = await _access_token(refresh_token)
+    async with httpx.AsyncClient() as http:
+        res = await http.get(f"{_MS_GRAPH_BASE}/me/events/{event_id}",
+                             headers={"Authorization": f"Bearer {access}", **_UTC_PREFER},
+                             timeout=15.0)
+        if res.status_code == 404:
+            return None
+        res.raise_for_status()
+        return res.json()
+
+
+async def patch_event(refresh_token: str, event_id: str, start_dt: datetime,
+                      duration_minutes: int, timezone: str) -> dict:
+    """Move an existing event in place. Same event id, same everything else."""
+    end_dt = start_dt + timedelta(minutes=duration_minutes)
+    access = await _access_token(refresh_token)
+    async with httpx.AsyncClient() as http:
+        res = await http.patch(
+            f"{_MS_GRAPH_BASE}/me/events/{event_id}",
+            headers={"Authorization": f"Bearer {access}", "Content-Type": "application/json",
+                     **_UTC_PREFER},
+            json={"start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": timezone},
+                  "end":   {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:%S"), "timeZone": timezone}},
+            timeout=15.0,
+        )
+        res.raise_for_status()
+        logger.info("Microsoft Calendar event moved: %s", str(event_id)[:20])
+        return res.json()
+
+
+def event_start(event: dict | None) -> datetime | None:
+    """Start of an event read with times in UTC (see _UTC_PREFER)."""
+    start = (event or {}).get("start") or {}
+    raw = start.get("dateTime")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw[:26].replace("Z", ""))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        zone = start.get("timeZone") or "UTC"
+        try:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC" if zone.upper() == "UTC" else zone))
+        except Exception:
+            return None
+    return dt

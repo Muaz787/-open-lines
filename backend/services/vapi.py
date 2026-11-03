@@ -796,6 +796,18 @@ CORRECTING A BOOKING MADE EARLIER IN THIS CALL
 - This is only for a booking made earlier in this same call. Appointments from before this call follow the rules above."""
 
 
+_CALENDAR_RESCHEDULE_NOTE = """
+
+MOVING AN EXISTING APPOINTMENT
+- You can move an appointment from this call or an earlier one to a new day or time. It keeps the same service, length and team member. Changing the service is a new booking, not a move.
+- To move one, call reschedule_appointment with NO arguments first. It lists the caller's appointments and changes nothing. Read them back — service, day and time; NEVER read the appt_ references aloud.
+- Ask which appointment they want moved. Even when there is only one, confirm it.
+- Ask for the new day and time, call check_availability for that day, and offer only times it returns.
+- Confirm the new day and time out loud — "Just to confirm, I'll move your demo from Wednesday at 9 a.m. to Thursday at 10 a.m.?" — and only after a clear yes call reschedule_appointment with the appointment_ref, the date, the time and the caller's own words as date_phrase.
+- book_appointment never moves anything, and NEVER cancel an appointment as a way of moving it.
+- Say it's moved only when the tool result says so. If the result says the outcome is unknown, or that nothing changed, say exactly that and do not try again in this call."""
+
+
 def supports_same_call_replace(tenant: dict) -> bool:
     """Can replace_booking run for this tenant?
 
@@ -808,14 +820,18 @@ def supports_same_call_replace(tenant: dict) -> bool:
 
 
 def caller_lookup_note(*, supports_reschedule: bool = False,
-                       supports_same_call_replace: bool = False) -> str:
+                       supports_same_call_replace: bool = False,
+                       reschedule_kind: str = "square") -> str:
     """The caller-recognition block plus whichever moving policy is TRUE here.
 
     Defaults to the unsupported policy on purpose: a caller that has not proven
     the tenant can complete a move must not be told the model may attempt one.
     """
+    moving = _MOVE_UNSUPPORTED_NOTE
+    if supports_reschedule:
+        moving = _CALENDAR_RESCHEDULE_NOTE if reschedule_kind == "calendar" else _RESCHEDULE_NOTE
     return (_CALLER_LOOKUP_BASE
-            + (_RESCHEDULE_NOTE if supports_reschedule else _MOVE_UNSUPPORTED_NOTE)
+            + moving
             + (_SAME_CALL_REPLACE_NOTE if supports_same_call_replace else ""))
 
 
@@ -824,21 +840,38 @@ def caller_lookup_note(*, supports_reschedule: bool = False,
 _CALLER_LOOKUP_NOTE = caller_lookup_note()
 
 
+def reschedule_kind(tenant: dict) -> str:
+    """Which move this account can complete, by configuration alone.
+
+    'square'   Square Appointments, single- or multi-location: the W6A2 engine,
+               which moves to a recorded slot offer (slot_ref).
+    'calendar' Google or Outlook without Square: the event is moved in place
+               (services.calendar_reschedule), to a date and time.
+    ''         nothing that can be completed safely.
+    """
+    if tenant.get("square_appointments_enabled"):
+        return "square"
+    if tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token"):
+        return "calendar"
+    return ""
+
+
 async def supports_safe_reschedule(tenant: dict) -> bool:
-    """Can this tenant actually complete a W6A2 move?
+    """Can this tenant actually complete a move?
 
-    Exactly the condition under which a slot_ref can exist: Square Appointments
-    enabled AND the multi-location availability path active (>= 2 adopted
-    locations, i.e. active locations carrying a usable Square binding). That is
-    the only branch in routers/tools.py that calls slot_offers.create_offers, and
-    D1 independently refuses any source appointment predating location tracking.
+    Google/Outlook: yes, whenever a calendar is connected without Square.
 
-    Not a new abstraction -- it is the existing pair of capability checks the
-    availability and booking dispatchers already use, asked in one place.
+    Square: when a slot_ref can exist and its location can be proven. That is the
+    multi-location path (>= 2 adopted locations with usable bindings), or a
+    single-location business with its Square location set — its availability now
+    records offers too, and D1 proves the source is at that one location.
 
     Fails closed on any error: no proven capability, no tool.
     """
-    if not tenant.get("square_appointments_enabled"):
+    kind = reschedule_kind(tenant)
+    if kind == "calendar":
+        return True
+    if kind != "square":
         return False
     tenant_id = str(tenant.get("id") or "")
     if not tenant_id:
@@ -846,10 +879,59 @@ async def supports_safe_reschedule(tenant: dict) -> bool:
     try:
         from services import call_location
         multi, _adopted = await call_location.is_multi_location(tenant_id)
-        return bool(multi)
     except Exception as e:
         logger.warning("vapi: reschedule capability check failed for %s: %s", tenant_id, e)
         return False
+    return bool(multi) or bool(tenant.get("square_location_id"))
+
+
+def _calendar_reschedule_tool(base: str) -> dict:
+    """Google/Outlook: the appointment is chosen by reference, the new time by date
+    and time (checked by the server), and it is moved in place."""
+    return {
+        "type": "function",
+        "function": {
+            "name": "reschedule_appointment",
+            "description": (
+                "Move an EXISTING appointment — from this call or an earlier one — to a new "
+                "day or time, keeping its service, length and team member. Call it with no "
+                "arguments first: it lists the caller's appointments and changes nothing. "
+                "Then, once the caller has chosen the appointment, heard the new time from "
+                "check_availability and said yes to it, call it with appointment_ref, date and "
+                "time. Never use book_appointment to move an appointment, and never cancel one "
+                "as a way of moving it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "appointment_ref": {
+                        "type": "string",
+                        "description": (
+                            "The appt_ reference beside the appointment the caller chose, from "
+                            "the most recent reschedule_appointment list. Omit it on your FIRST "
+                            "call. Never invent one and never read one aloud."
+                        ),
+                    },
+                    "date": {"type": "string", "description": "The new date, YYYY-MM-DD."},
+                    "time": {"type": "string", "description": "The new time, HH:MM 24-hour."},
+                    "date_phrase": {
+                        "type": "string",
+                        "description": (
+                            "The caller's own words for the new day — 'Thursday', 'the day after "
+                            "tomorrow' — so the system can check the date. Omit if they gave a "
+                            "calendar date."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+        "server": _tool_server(f"{base}/reschedule", 45),
+        "messages": [
+            {"type": "request-start", "content": "Let me move that for you."},
+            {"type": "request-response-delayed", "content": "Still working on that.", "timingMilliseconds": 3000},
+        ],
+    }
 
 
 def build_caller_lookup_tool(tenant_id: str) -> dict:
@@ -871,7 +953,8 @@ def build_caller_lookup_tool(tenant_id: str) -> dict:
 
 def build_calendar_tools(tenant_id: str, *,
                         supports_reschedule: bool = False,
-                        supports_same_call_replace: bool = False) -> list[dict]:
+                        supports_same_call_replace: bool = False,
+                        reschedule_kind: str = "square") -> list[dict]:
     """Build all Vapi tool definitions: caller lookup + calendar booking.
 
     supports_reschedule defaults to FALSE deliberately. reschedule_appointment is
@@ -1151,7 +1234,9 @@ def build_calendar_tools(tenant_id: str, *,
             }
         )
 
-    if supports_reschedule:
+    if supports_reschedule and reschedule_kind == "calendar":
+        tools.append(_calendar_reschedule_tool(base))
+    elif supports_reschedule:
         tools.append(
             {
                 "type": "function",

@@ -191,3 +191,59 @@ def booking_claims_store(monkeypatch):
     monkeypatch.setattr(_db_bc, "transition", store.transition)
     monkeypatch.setattr(_db_bc, "pending_for_call", store.pending_for_call)
     return store
+
+
+# ── Google/Outlook move operations (migration 046), in memory ────────────────
+class FakeCalendarMoves:
+    LIVE = ("in_progress", "unknown", "provider_moved")
+
+    def __init__(self):
+        self.rows: dict[str, dict] = {}
+        self.fail = False
+        self._tick = _itertools.count(1)
+
+    def _stamp(self):
+        from datetime import timedelta as _td
+        from services import booking_claims as _bc
+        return (_bc._now() + _td(microseconds=next(self._tick))).isoformat()
+
+    async def insert(self, row):
+        if self.fail:
+            raise RuntimeError("move store down")
+        if any(r["appointment_id"] == row["appointment_id"] and r["state"] in self.LIVE
+               for r in self.rows.values()):
+            return None
+        stamp = self._stamp()
+        self.rows[row["id"]] = {**row, "detail": None, "created_at": stamp, "updated_at": stamp}
+        return dict(self.rows[row["id"]])
+
+    async def get(self, op_id):
+        r = self.rows.get(op_id)
+        return dict(r) if r else None
+
+    async def live_for_appointment(self, appointment_id):
+        if self.fail:
+            raise RuntimeError("move store down")
+        return next((dict(r) for r in self.rows.values()
+                     if r["appointment_id"] == appointment_id and r["state"] in self.LIVE), None)
+
+    async def transition(self, op, from_states, patch):
+        r = self.rows.get(op["id"])
+        if not r or r["claim_token"] != op["claim_token"] or r["state"] not in from_states:
+            return None
+        r.update(patch)
+        r["updated_at"] = self._stamp()
+        return dict(r)
+
+    async def list_stale(self, before_iso, limit=20):
+        return [dict(r) for r in self.rows.values()
+                if r["state"] in self.LIVE and r["updated_at"] < before_iso][:limit]
+
+
+@_pytest.fixture(autouse=True)
+def calendar_moves_store(monkeypatch):
+    store = FakeCalendarMoves()
+    from db import calendar_moves as _db_cm
+    for name in ("insert", "get", "live_for_appointment", "transition", "list_stale"):
+        monkeypatch.setattr(_db_cm, name, getattr(store, name))
+    return store
