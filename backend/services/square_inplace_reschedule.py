@@ -11,9 +11,9 @@ A move happens only when it can be proven safe:
   * the appointment was chosen from a list and the new time from a recorded offer;
   * same location, same service, same team member, same length — Square is asked
     for the target time for THAT team member;
-  * a paid deposit whose refund window has closed is not moved (the rule is
-    services.refunds.refund_window_open), and one paid moments ago waits until
-    its confirmation is out (calendar_reschedule.deposit_settling);
+  * a paid deposit whose refund window has closed, or whose refund needs the
+    team's review, is not moved (services.refunds.deposit_refundable). A deposit
+    confirmation being written owns the appointment, so a move can't overlap it;
   * the booking is still exactly what we have on record (status, location,
     start, team member, service) when we read it under ownership.
 Anything else is the team's, as before. Nothing is charged, refunded, voided or
@@ -162,20 +162,18 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
         return await _give_up(cr.CHANGED, "That appointment changed while I was moving it. Nothing "
                                           "has been moved. List the caller's appointments again.")
 
-    # The deposit, read under ownership: see calendar_reschedule.deposit_settling.
+    # The deposit, read under ownership.
     try:
         paid = await _payment(current["id"])
         refundable = True
         if paid:
             hours = tenant.get("cancellation_refund_hours")
             refundable = await refunds.deposit_refundable(
-                current["id"], _when(current["appointment_datetime"]), paid,
-                24 if hours is None else int(hours), now=relative_dates._utcnow())
+                tenant, current, paid, 24 if hours is None else int(hours),
+                now=relative_dates._utcnow())
     except Exception as e:
         logger.error("square_inplace: payment lookup failed for %s: %s", current["id"], e)
         return await _give_up(HANDOFF, _HANDOFF_MSG)
-    if cr.deposit_settling(paid):
-        return await _give_up(cr.BUSY, cr.DEPOSIT_SETTLING_MSG + _NO_RETRY)
     if refundable is None:
         return await _give_up(HANDOFF, _HANDOFF_MSG)
     if not refundable:

@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 OP_CANCEL = "cancel"
 OP_RESCHEDULE = "reschedule"
 OP_CANCEL_RECONCILE = "cancel_reconcile"
+# A deposit confirmation (migration 047) owns the appointment while it reads the
+# time and sends its texts, so no move can change the time under it.
+OP_PAYMENT_CONFIRMATION = "payment_confirmation"
+CONFIRMATION_LEASE_SECONDS = 300
 
 REASON_PROVIDER_UNKNOWN = "provider_outcome_unknown"
 REASON_LOCAL_WRITE_FAILED = "local_write_failed"
@@ -104,6 +108,41 @@ async def acquire_reschedule_claim(appointment_id: str, tenant_id: str,
         if is_unique_violation(e):
             return None
         raise
+
+
+async def acquire_confirmation_claim(appointment_id: str, tenant_id: str,
+                                     claim_token: str) -> dict | None:
+    """Take ownership while a deposit confirmation is written. None means busy."""
+    try:
+        res = await run_query(get_client().table("appointment_mutation_claims").insert({
+            "appointment_id": appointment_id,
+            "tenant_id": tenant_id,
+            "operation_type": OP_PAYMENT_CONFIRMATION,
+            "claim_token": claim_token,
+            "claimed_at": _now_iso(),
+        }))
+        return (res.data or [None])[0]
+    except Exception as e:
+        if is_unique_violation(e):
+            return None
+        raise
+
+
+def _confirmation_cutoff_iso() -> str:
+    return (_now() - timedelta(seconds=CONFIRMATION_LEASE_SECONDS)).isoformat()
+
+
+async def expire_stale_confirmations(appointment_id: str | None = None, limit: int = 20) -> int:
+    """Remove confirmation claims past their lease: the webhook that held them
+    stopped. Only this type, and only once expired; a confirmation never sends
+    after its lease (routers/payments.py), so nothing it does can still land."""
+    q = (get_client().table("appointment_mutation_claims").delete()
+         .eq("operation_type", OP_PAYMENT_CONFIRMATION)
+         .lt("claimed_at", _confirmation_cutoff_iso()))
+    if appointment_id:
+        q = q.eq("appointment_id", appointment_id)
+    res = await run_query(q)
+    return len(res.data or [])
 
 
 async def list_stale_reschedule_claims(limit: int = 20) -> list:

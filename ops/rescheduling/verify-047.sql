@@ -10,6 +10,16 @@ select json_build_object(
   'existing_rows_untouched', (select json_build_object('ok', count(*) filter (where provider_version is not null
        or team_member_id is not null or service_variation_id is not null or slot_ref is not null) = 0, 'rows', count(*))
       from public.calendar_move_operations),
+  'claim_type_allows_confirmation', json_build_object('ok', exists (select 1 from pg_constraint
+      where conrelid = 'public.appointment_mutation_claims'::regclass and conname = 'appointment_mutation_claims_type_chk'
+        and pg_get_constraintdef(oid) like '%payment_confirmation%' and pg_get_constraintdef(oid) like '%cancel_reconcile%'
+        and pg_get_constraintdef(oid) like '%reschedule%')),
+  'appointments_column', (select json_build_object('ok', count(*) = 1, 'type', min(data_type))
+      from information_schema.columns where table_schema = 'public' and table_name = 'appointments'
+       and column_name = 'provider_time_changed_at' and data_type = 'timestamp with time zone'),
+  'stamped_rows', (select json_build_object('ok', count(*) filter (where provider_time_changed_at is distinct from provider_updated_at) = 0,
+          'count', count(*), 'compare_with_preflight', 'rows_to_stamp.count')
+      from public.appointments where provider_time_changed_at is not null),
   'browser_roles_denied', json_build_object('ok',
       not has_table_privilege('anon', 'public.calendar_move_operations', 'SELECT,INSERT,UPDATE,DELETE')
       and not has_table_privilege('authenticated', 'public.calendar_move_operations', 'SELECT,INSERT,UPDATE,DELETE'))

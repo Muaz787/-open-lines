@@ -30,10 +30,9 @@ It moves automatically only when all of this holds; otherwise the team moves it:
   enough.
 - The booking at Square still matches our record (accepted, one segment, same
   start, location and team member) when it is read under ownership.
-- A **paid** deposit whose refund window has closed (see *Refund windows* below)
-  is not moved. An owed deposit has paid nothing, so it can move.
-- A deposit paid in the last two minutes waits (the caller is asked to give us a
-  minute), so its confirmation text can't name a time that is about to change.
+- A **paid** deposit whose refund window has closed, or whose refund the team
+  must decide (see *Refund windows* below), is not moved. An owed deposit has
+  paid nothing, so it can move.
 - Square accepts the write. A seller without Appointments Plus or Premium can't
   write bookings through the API; Square answers 403 and the caller is told
   nothing changed.
@@ -42,40 +41,73 @@ Success needs the booking read back at the new time with the same version step,
 team member and service, then our row written by `calendar_move_finish`.
 
 **Remaining limits**
-- The real API has not been exercised yet: the sandbox test needs a sandbox seller
-  with Appointments and the four `SQUARE_SANDBOX_*` variables.
+- The real API has not been exercised yet: the sandbox test is blocked because
+  the sandbox seller can't write bookings (Square support case pending).
 - Square's availability counts the booking itself, so a move that overlaps its own
   current time (for example 15 minutes later) can be refused as unavailable.
-- Square bookings moved by the business in Square itself are not in our move
-  history, so they don't count toward a closed refund window.
+- When a deposit lands during a move, its text leaves the day and time out; the
+  caller hears the new time on the call.
 
 ## Deposits and a move at the same time
 
-**Confirmation texts.** A payment webhook marks the deposit paid, then looks for
-anything changing the appointment: a mutation claim (021), a live move operation
-(046), or a time that differs before and after it looks. If it finds one, the
-caller's text and the owner's note say the deposit is received and the
-appointment confirmed, without a day or time. The caller hears the new time on
-the call. A move, for its part, reads the payment after taking ownership and waits
-if it was paid in the last two minutes. Each side writes before it reads, so one
-always sees the other. This applies to Google, Outlook and Square moves.
+**Confirmation texts.** A deposit confirmation takes ownership of the appointment
+(a `payment_confirmation` claim, migration 047) before it reads the time, and
+releases it after its texts are sent. A move needs the same ownership, so the two
+never overlap: a move that meets a confirmation is told the appointment is being
+changed, and a confirmation that meets a move (or can't take ownership) says the
+deposit is received and the appointment confirmed, without a day or time. The
+claim has a five-minute lease so a stopped webhook can't hold an appointment;
+before each message the confirmation checks it has at least 60 seconds of lease
+left (each send has its own shorter timeout), and leaves the time out if not.
+Recovery and the next move or cancellation clear expired confirmation claims.
+A Square booking webhook that meets a confirmation asks Square to redeliver.
+`tests/test_deposit_move_payment_state.py` pauses a confirmation and a move before
+each read, write and send and runs all 3,003 orders: no text names a time that
+differs from our record or Square's at the moment it is sent. Without the claim,
+1,569 of them do.
 
-**Refund windows (for review).** A paid deposit is refundable on cancellation only
-if its refund window has never closed since it was paid
-(`services.refunds.refund_window_open`):
+## Refund windows (proposed — not yet approved)
 
-1. the appointment, where it is now, is at least `cancellation_refund_hours`
-   away; and
+`cancellation_refund_hours` (default 24) is unchanged. The question is only what a
+reschedule does to it.
+
+**Existing behaviour:** a caller who cancels gets the deposit back if the
+appointment, where it is *now*, is at least that many hours away. Moves are
+ignored. Square phone moves of a paid deposit inside the window are refused;
+Google and Outlook moves aren't.
+
+**Proposed** (`services.refunds.refund_window_open`): a paid deposit is refundable
+only if its window has never closed since it was paid —
+
+1. the appointment, where it is now, is at least the refund hours away; and
 2. every move that finished after the deposit was paid started, or took the
    payment, while the window for the time it moved *from* was still open.
 
-A move made while the window is open carries refundability to the new time, as
-before. What changes: a deposit paid during a move from a time already inside the
-window, or an appointment moved inside its window after paying (possible for
-Google and Outlook, which don't refuse that), stays non-refundable at the new
-time. The hours are the business's current setting, as before. If the move
-history can't be read, the deposit is neither refunded nor forfeited: the caller
-is told the team will follow up and the business is notified.
+Examples, 24-hour window, deposit paid Monday 9:00 for Friday 14:00 (cutoff
+Thursday 14:00):
+
+| Case | Existing | Proposed |
+|---|---|---|
+| Moved Tuesday to next Friday 14:00, cancelled the following Tuesday | Refund | Refund (moved before the cutoff; new cutoff next Thursday) |
+| Moved Thursday 16:00 (after the cutoff) to next Friday | Square: refused, team. Google/Outlook: moved, then refund | Square: refused, team. Google/Outlook: moved, no refund |
+| Deposit paid during a move, appointment 10 hours away when the move began | Refund at the new time | No refund |
+| Deposit paid during a move, appointment 3 days away | Refund | Refund |
+| Repeated moves, each before its own cutoff | Refund | Refund |
+| Moved before the cutoff, moved again after the *new* cutoff | Refund | No refund |
+| Moved by the business directly in Square after payment | Refund decided from the new time | The team decides (below) |
+| Move history can't be read | Refund decided from the current time | The team decides |
+
+**Moves made directly in Square.** Our move history only knows our own moves.
+Two signals catch the rest: the Square booking webhook stamps
+`appointments.provider_time_changed_at` (047) when it carries a new time into our
+row, and at cancellation Square's copy of the booking is read and compared with
+ours. If the booking was moved in Square after the deposit was paid, if Square's
+time differs from ours, or if Square can't be read, the deposit is neither
+refunded nor forfeited: the caller hears the team will follow up and the
+business is notified. 047 stamps existing paid-deposit rows that a booking
+webhook already touched, since whether those were moved is unknown. Google and
+Outlook edits made directly in the calendar are not seen at all; for them the
+rule is enforced only against our own moves.
 
 ## The conversation
 
@@ -125,16 +157,24 @@ is told the team will follow up and the business is notified.
 
 1. Run `migrations/preflight/047_preflight.sql` on production; every `ok` must be
    true, including no live moves.
+   Note `rows_to_stamp`: those paid-deposit appointments will send any refund to
+   the team.
 2. Apply `migrations/047_square_inplace_moves.sql`, then run
-   `ops/rescheduling/verify-047.sql`; every `ok` must be true.
+   `ops/rescheduling/verify-047.sql`; every `ok` must be true and `stamped_rows`
+   must equal the preflight's `rows_to_stamp`.
 3. Merge and deploy. Until 047 is applied, a Square deposit move can't be recorded,
    so it is refused and handed to the team as before.
 4. Check `/health` and System Health. On the first natural Square deposit move:
    the booking id is unchanged, its version went up by one, the booking and our
    row show the new time, payment rows are untouched and ownership is released.
 
-Rollback: keep 047's columns and every row. Settle any live Square move by reading
-the booking, then revert the code: deposit appointments go back to the team handoff.
+Rollback: keep 047's columns, its constraint and every row. Settle any live Square
+move by reading the booking, then revert the code: deposit appointments go back
+to the team handoff and confirmations name the time as before. Old code doesn't
+know `payment_confirmation` claims and won't expire them, so after the old code
+is live, delete any that remain (they last seconds:
+`delete from appointment_mutation_claims where operation_type = 'payment_confirmation'
+and claimed_at < now() - interval '5 minutes'`).
 
 ## Release (046)
 

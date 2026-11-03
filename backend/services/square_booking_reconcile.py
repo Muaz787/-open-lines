@@ -37,6 +37,7 @@ location, so they need a different answer and a separate workstream.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 import db.supabase as db
 from db import mutation_claims as db_mc
@@ -68,7 +69,8 @@ NO_CREDENTIAL = "no_credential"
 # permanently unresolvable, and a permanent refusal must NOT become an endless
 # retry loop -- Square eventually disables a subscription that keeps failing, and
 # that subscription also carries payments.
-RETRYABLE = frozenset({PROVIDER_UNKNOWN})
+DEFERRED_CONFIRMING = "deferred_confirming"   # a deposit confirmation owns it for a moment
+RETRYABLE = frozenset({PROVIDER_UNKNOWN, DEFERRED_CONFIRMING})
 
 # Square booking statuses that mean "this appointment is not happening".
 # Matched by substring for the CANCELLED_BY_* family, exactly for the rest.
@@ -235,6 +237,13 @@ async def reconcile_booking_event(
         except Exception as e:
             logger.warning("W7D: could not read the mutation claim for %s: %s",
                            existing["id"], e)
+        if claim and claim.get("operation_type") == db_mc.OP_PAYMENT_CONFIRMATION:
+            # Held for seconds while a deposit confirmation is sent. Square
+            # redelivers, so a time change isn't lost behind it.
+            return Outcome(DEFERRED_CONFIRMING, tenant_id=tenant_id,
+                           tenant_location_id=location_id,
+                           appointment_id=str(existing["id"]), provider_version=auth_version,
+                           detail="a deposit confirmation owns it")
         if claim:
             # The owner reads provider truth itself and reconciles under its own
             # rules -- C3's cancel reconciliation and D2's recovery both do. A
@@ -304,6 +313,14 @@ async def reconcile_booking_event(
                                 auth_version, auth_updated)
 
 
+def _instant(value) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 async def _operation_owning(booking_id: str) -> dict | None:
     """The W6A2 operation that created this exact booking, or None.
 
@@ -363,6 +380,10 @@ async def _update_existing(existing: dict, booking: dict, meta: dict, tenant_id:
     start_at = booking.get("start_at")
     if start_at and str(existing.get("appointment_datetime") or "") != str(start_at):
         patch["appointment_datetime"] = str(start_at)
+        if _instant(existing.get("appointment_datetime")) != _instant(start_at):
+            # Moved outside our own moves (those own the row and are deferred
+            # above). Refund decisions after this go to the team (services.refunds).
+            patch["provider_time_changed_at"] = str(updated_at or datetime.now(timezone.utc).isoformat())
     # Stamp location on a legacy row the first time authoritative truth touches it.
     if not existing.get("tenant_location_id"):
         patch["tenant_location_id"] = location_id

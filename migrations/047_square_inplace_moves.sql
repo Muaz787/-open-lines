@@ -12,9 +12,21 @@
 -- version, team member and service variation at the moment the move was frozen,
 -- so a recovery can tell "moved by us" from "changed by someone else".
 --
+-- It also adds two things deposits need around a move:
+--   * a 'payment_confirmation' claim type (021): a deposit confirmation owns the
+--     appointment for the few seconds it reads the time and sends its texts, so
+--     no move can change the time under it. Claims of this type expire after a
+--     five-minute lease (backend);
+--   * appointments.provider_time_changed_at: stamped by the Square booking
+--     webhook when it carries a new time into our row, i.e. a move made in Square
+--     rather than by us. A refund after such a move goes to the team. Existing
+--     rows with a paid deposit that a booking webhook has already touched are
+--     stamped with that touch's time, because whether it moved them is unknown.
+--
 -- Backend only. Apply BEFORE deploying the backend that uses it: until then a
 -- Square deposit move can't be recorded, so it is refused and handed to the team,
--- exactly as today. Changes no existing rows. Safe to run twice.
+-- and a deposit confirmation can't take ownership, so it leaves the time out.
+-- Writes existing rows only in that one stamp. Safe to run twice.
 
 begin;
 set local lock_timeout = '3s';
@@ -31,8 +43,31 @@ alter table public.calendar_move_operations
   add column if not exists service_variation_id text,
   add column if not exists slot_ref text;
 
+alter table public.appointment_mutation_claims
+  drop constraint if exists appointment_mutation_claims_type_chk;
+alter table public.appointment_mutation_claims
+  add constraint appointment_mutation_claims_type_chk
+  check (operation_type in ('cancel', 'reschedule', 'cancel_reconcile', 'payment_confirmation'));
+
+alter table public.appointments
+  add column if not exists provider_time_changed_at timestamptz;
+
+update public.appointments a
+   set provider_time_changed_at = a.provider_updated_at
+ where a.provider_time_changed_at is null
+   and a.provider_updated_at is not null
+   and exists (select 1 from public.payments p
+                where p.appointment_id = a.id and p.status = 'succeeded');
+
 do $$
 begin
+    if not exists (select 1 from pg_constraint
+                    where conrelid = 'public.appointment_mutation_claims'::regclass
+                      and conname = 'appointment_mutation_claims_type_chk'
+                      and pg_get_constraintdef(oid) like '%payment_confirmation%'
+                      and pg_get_constraintdef(oid) like '%cancel_reconcile%') then
+        raise exception 'claim type check does not allow payment_confirmation';
+    end if;
     if not exists (select 1 from pg_constraint
                     where conrelid = 'public.calendar_move_operations'::regclass
                       and conname = 'calendar_move_operations_provider_check'

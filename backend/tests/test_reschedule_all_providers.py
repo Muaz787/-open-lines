@@ -384,8 +384,7 @@ async def test_cal_deposit_status_is_kept_and_payments_are_never_touched(provide
         said = await w.move()
     assert said.startswith("Done")
     assert w.appts["a-1"]["status"] == status, "deposit-pending stays deposit-pending"
-    assert w.payment_calls == 1, ("the deposit is read once, under ownership, to wait out one "
-                                  "that has just been paid; nothing is charged or refunded")
+    assert w.payment_calls == 0, "no charge, no refund, no payment lookup at all"
 
 
 @pytest.mark.parametrize("provider", PROVIDERS)

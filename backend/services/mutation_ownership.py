@@ -46,11 +46,24 @@ class Claim:
         self.operation_type = operation_type
 
 
+async def _expired_confirmation(appointment_id: str) -> bool:
+    """Clear this appointment's confirmation claim if its lease has run out.
+    Never a live one: see db_mc.expire_stale_confirmations."""
+    try:
+        return await db_mc.expire_stale_confirmations(appointment_id) > 0
+    except Exception as e:
+        logger.warning("mutation_ownership: confirmation expiry check failed for %s: %s",
+                       appointment_id, e)
+        return False
+
+
 async def acquire_for_cancel(appointment_id: str, tenant_id: str) -> tuple[str, Claim | None]:
     """Take global ownership for a cancellation. (status, claim)."""
     token = str(uuid.uuid4())
     try:
         row = await db_mc.acquire_cancel_claim(appointment_id, tenant_id, token)
+        if not row and await _expired_confirmation(appointment_id):
+            row = await db_mc.acquire_cancel_claim(appointment_id, tenant_id, token)
     except Exception as e:
         logger.error("mutation_ownership: claim insert failed for %s: %s", appointment_id, e)
         return ERROR, None
@@ -76,12 +89,31 @@ async def acquire_for_reschedule(appointment_id: str, tenant_id: str,
     try:
         row = await db_mc.acquire_reschedule_claim(
             appointment_id, tenant_id, operation_id, token)
+        if not row and await _expired_confirmation(appointment_id):
+            row = await db_mc.acquire_reschedule_claim(
+                appointment_id, tenant_id, operation_id, token)
     except Exception as e:
         logger.error("mutation_ownership: reschedule claim insert failed for %s: %s",
                      appointment_id, e)
         return ERROR, None
     if not row:
         logger.info("mutation_ownership: appointment %s is already owned", appointment_id)
+        return BUSY, None
+    return ACQUIRED, Claim(appointment_id, row["claim_token"], row["claimed_at"],
+                           row["operation_type"])
+
+
+async def acquire_for_confirmation(appointment_id: str, tenant_id: str) -> tuple[str, Claim | None]:
+    """Own the appointment while a deposit confirmation names its time. (status, claim)."""
+    token = str(uuid.uuid4())
+    try:
+        row = await db_mc.acquire_confirmation_claim(appointment_id, tenant_id, token)
+        if not row and await _expired_confirmation(appointment_id):
+            row = await db_mc.acquire_confirmation_claim(appointment_id, tenant_id, token)
+    except Exception as e:
+        logger.error("mutation_ownership: confirmation claim failed for %s: %s", appointment_id, e)
+        return ERROR, None
+    if not row:
         return BUSY, None
     return ACQUIRED, Claim(appointment_id, row["claim_token"], row["claimed_at"],
                            row["operation_type"])
