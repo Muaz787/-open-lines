@@ -520,17 +520,25 @@ END_CALL_TOOL = {"type": "endCall"}
 CLOSING_PHRASES = ["goodbye for now", "bye for now", "bye bye"]
 
 
-def end_call_tool(caller_name: str = "") -> dict:
-    """endCall that speaks the ONE closing line itself, then hangs up.
+def closing_line(caller_name: str = "") -> str:
+    """The one goodbye the line speaks when the assistant ends the call.
 
-    On 3 Nov the model called endCall with nothing in its turn and the caller heard
-    silence, then a dead line. The goodbye now belongs to the tool: a blocking
-    request-start message is spoken before the call ends, so there is always one
-    audible closing, and the model is told never to add its own."""
+    It deliberately contains none of CLOSING_PHRASES, so the phrase fallback can't
+    fire on the goodbye itself."""
     first = (caller_name or "").strip().split(" ")[0] if caller_name else ""
-    line = f"Thanks for calling, {first}. Goodbye for now." if first else "Thanks for calling. Goodbye for now."
-    return {"type": "endCall",
-            "messages": [{"type": "request-start", "content": line, "blocking": True}]}
+    return f"Thanks for calling, {first}. Take care." if first else "Thanks for calling. Take care."
+
+
+def end_call_tool(caller_name: str = "") -> dict:
+    """Plain endCall. The goodbye is the assistant's endCallMessage (set per call),
+    not a request-start message on this tool.
+
+    On 3 Nov (call 46ac9156) a blocking request-start goodbye was cut off after its
+    first sentence: "Thanks for calling Rick's." played for 1.2 s and the call
+    ended 0.4 s later, without "Goodbye for now." endCallMessage is Vapi's field
+    for the line spoken when the assistant ends the call."""
+    return dict(END_CALL_TOOL)
+
 
 CALL_CLOSING_NOTE = """
 
