@@ -347,3 +347,37 @@ async def create_event(
         data = res.json()
         logger.info("Created Google Calendar event %s", data.get("id"))
         return {"id": data.get("id", ""), "htmlLink": data.get("htmlLink", "")}
+
+
+async def patch_event(refresh_token: str, event_id: str, start_dt: datetime,
+                      duration_minutes: int, timezone: str) -> dict:
+    """Move an existing event in place. Same event id, same everything else."""
+    end_dt = start_dt + timedelta(minutes=duration_minutes)
+    access = await _access_token(refresh_token)
+    async with httpx.AsyncClient() as http:
+        res = await http.patch(
+            f"{_CAL_BASE}/calendars/primary/events/{event_id}",
+            headers={"Authorization": f"Bearer {access}", "Content-Type": "application/json"},
+            json={"start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
+                  "end":   {"dateTime": end_dt.isoformat(),   "timeZone": timezone}},
+            timeout=15.0,
+        )
+        res.raise_for_status()
+        logger.info("Moved Google Calendar event %s", event_id)
+        return res.json()
+
+
+def event_start(event: dict | None, key: str = "start") -> datetime | None:
+    """The event's start (or end) as an aware datetime, or None if unreadable."""
+    raw = ((event or {}).get(key) or {}).get("dateTime")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else None
+
+
+def event_end(event: dict | None) -> datetime | None:
+    return event_start(event, "end")

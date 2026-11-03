@@ -292,6 +292,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # model to call a tool it has not been given is how a caller reaches a dead end
     # after being promised their appointment would be moved.
     can_reschedule = await supports_safe_reschedule(tenant)
+    move_kind = vapi_svc.reschedule_kind(tenant)
     # A booking made earlier in THIS call can be swapped for a corrected one on the
     # Google and Outlook paths, which create and cancel calendar events directly.
     can_replace = vapi_svc.supports_same_call_replace(tenant)
@@ -306,7 +307,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
         # No calendar connected — stop the AI confirming appointments it can't book.
         system_prompt += _NO_BOOKING_NOTE
     system_prompt += caller_lookup_note(supports_reschedule=can_reschedule,
-                                        supports_same_call_replace=can_replace)
+                                        supports_same_call_replace=can_replace,
+                                        reschedule_kind=move_kind)
     # Defense-in-depth: guarantee the non-overridable safety preamble is present
     # even if this tenant's stored prompt predates it. The receptionist voice/manner
     # guidance is applied on every call so ALL tenants (incl. pre-existing) get it.
@@ -334,7 +336,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
 
     # Include tools in the override so they are never lost if Vapi replaces model wholesale
     tools = (build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,
-                                  supports_same_call_replace=can_replace)
+                                  supports_same_call_replace=can_replace,
+                                  reschedule_kind=move_kind)
              if has_calendar else [build_caller_lookup_tool(tenant_id)])
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
     # Every per-call tool list carries endCall: this list REPLACES the assistant's

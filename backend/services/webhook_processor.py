@@ -458,6 +458,16 @@ async def _maybe_reconcile_cancellations() -> None:
     except Exception as e:
         logger.error("reschedule recovery pass failed: %s", e)
 
+    try:
+        # Google/Outlook moves (migration 046): settle operations a request left
+        # unknown or half-written, by reading the event. Never re-sends a move.
+        from services import calendar_reschedule
+        settled = await calendar_reschedule.run_recovery()
+        if settled:
+            logger.info("calendar move recovery: %s", settled)
+    except Exception as e:
+        logger.error("calendar move recovery pass failed: %s", e)
+
 
 _OVERAGE_RETRY_SECONDS = 600
 _last_overage_retry = 0.0

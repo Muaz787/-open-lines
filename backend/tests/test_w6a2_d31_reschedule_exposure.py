@@ -58,24 +58,35 @@ async def test_predicate_true_only_for_square_plus_multi_location(multi_location
 
 @pytest.mark.asyncio
 async def test_predicate_false_for_square_without_multi_location(multi_location):
-    """D — a Square tenant on the legacy single-location path mints no slot_refs."""
+    """D — a single-location Square tenant with no Square location set has nothing
+    its availability can record offers against, so no move can be proven."""
     with multi_location(False):
         assert await vapi.supports_safe_reschedule(
             tenant(square_appointments_enabled=True)) is False
 
 
 @pytest.mark.asyncio
-async def test_predicate_false_for_google_only(multi_location):
-    with multi_location(True):          # even if it somehow had locations
+async def test_predicate_true_for_single_location_square_with_its_location(multi_location):
+    """Single-location availability now records offers at the tenant's Square
+    location, and D1 proves the source is at that one location."""
+    with multi_location(False):
         assert await vapi.supports_safe_reschedule(
-            tenant(google_refresh_token="x")) is False
+            tenant(square_appointments_enabled=True, square_location_id="L1")) is True
 
 
 @pytest.mark.asyncio
-async def test_predicate_false_for_microsoft_only(multi_location):
+async def test_predicate_true_for_google_only(multi_location):
+    """Google moves the event in place (services.calendar_reschedule)."""
     with multi_location(True):
-        assert await vapi.supports_safe_reschedule(
-            tenant(microsoft_refresh_token="x")) is False
+        assert await vapi.supports_safe_reschedule(tenant(google_refresh_token="x")) is True
+    assert vapi.reschedule_kind(tenant(google_refresh_token="x")) == "calendar"
+
+
+@pytest.mark.asyncio
+async def test_predicate_true_for_microsoft_only(multi_location):
+    with multi_location(True):
+        assert await vapi.supports_safe_reschedule(tenant(microsoft_refresh_token="x")) is True
+    assert vapi.reschedule_kind(tenant(microsoft_refresh_token="x")) == "calendar"
 
 
 @pytest.mark.asyncio
@@ -152,7 +163,8 @@ def test_E_no_calendar_tenant_is_unaffected():
     """A tenant with no calendar never reaches build_calendar_tools at all."""
     src = inspect.getsource(__import__("routers.webhooks", fromlist=["x"]))
     assert ("build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,\n"
-            "                                  supports_same_call_replace=can_replace)") in src
+            "                                  supports_same_call_replace=can_replace,\n"
+            "                                  reschedule_kind=move_kind)") in src
     assert "else [build_caller_lookup_tool(tenant_id)]" in src
 
 
@@ -216,10 +228,13 @@ def test_H_the_live_call_path_gates_tools_and_prompt_on_the_same_predicate():
     assert "can_reschedule = await supports_safe_reschedule(tenant)" in src
     # Same rule for replace_booking: one predicate decides the tool and the prompt.
     assert "can_replace = vapi_svc.supports_same_call_replace(tenant)" in src
+    assert "move_kind = vapi_svc.reschedule_kind(tenant)" in src
     assert ("caller_lookup_note(supports_reschedule=can_reschedule,\n"
-            "                                        supports_same_call_replace=can_replace)") in src
+            "                                        supports_same_call_replace=can_replace,\n"
+            "                                        reschedule_kind=move_kind)") in src
     assert ("build_calendar_tools(tenant_id, supports_reschedule=can_reschedule,\n"
-            "                                  supports_same_call_replace=can_replace)") in src
+            "                                  supports_same_call_replace=can_replace,\n"
+            "                                  reschedule_kind=move_kind)") in src
     # the old unconditional forms are gone
     assert "system_prompt += _CALLER_LOOKUP_NOTE" not in src
     assert "build_calendar_tools(tenant_id) if has_calendar" not in src

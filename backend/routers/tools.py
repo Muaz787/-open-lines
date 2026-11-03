@@ -616,11 +616,23 @@ async def _square_availability_response(
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
     timezone = tenant.get("square_location_timezone") or tenant.get("calendar_timezone") or "America/Toronto"
+    location_id = str(tenant.get("square_location_id") or "")
+    call_id = args.get("_call_id") or ""
     try:
-        slots = await square_booking.available_slot_strings(
-            tenant, date_str=date_str, timezone=timezone,
-            service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
-        )
+        if call_id and location_id:
+            # The slot-bearing form, so the offered times can be recorded and an
+            # existing appointment moved to exactly one of them (reschedule).
+            slot_rows = await square_booking.available_slots(
+                tenant, date_str=date_str, timezone=timezone,
+                service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
+                provider_location_id=location_id)
+            slots = [r["display"] for r in slot_rows]
+        else:
+            slot_rows = []
+            slots = await square_booking.available_slot_strings(
+                tenant, date_str=date_str, timezone=timezone,
+                service_variation_id=chosen["square_variation_id"], team_member_ids=team_ids,
+            )
     except Exception as e:
         logger.error("tools/availability: Square availability failed for %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
@@ -632,12 +644,23 @@ async def _square_availability_response(
     if not slots:
         return _result(tc_id, prefix +
             f"Unfortunately there are no available slots on {_fmt_date}. Would you like to try a different day?")
-    times_text = ", ".join(slots)
+    offers = []
+    if slot_rows:
+        offers = await slot_offers.create_offers(
+            vapi_call_id=call_id, tenant_id=tenant_id, tenant_location_id="",
+            provider_location_id=location_id, service_variation_id=chosen["square_variation_id"],
+            service_name=chosen.get("name") or "", slots=slot_rows)
+    times_text = (slot_offers.spoken_offer_list(offers) if offers else ", ".join(slots))
+    move_note = (" To MOVE an existing appointment to one of these times, call "
+                 "reschedule_appointment with the slot_ref beside it; never read slot_ "
+                 "references aloud. For a new booking, use book_appointment with the date "
+                 "and time." if offers else "")
     return _result(tc_id, prefix +
         f"Available times on {_fmt_date} (full list — {slots[0]} through {slots[-1]}): {times_text}. "
         "If the caller asked for a specific time, check this exact list: confirm it if present, "
         "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
-        "it is genuinely absent from this list. Only read a few options aloud, not the whole list.")
+        "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
+        + move_note)
 
 
 async def _multi_location_book(
@@ -968,7 +991,9 @@ async def _square_book_appointment(
 
     appt_data = {
         "tenant_id": tenant_id, "caller_name": caller_name or None, "caller_phone": caller_phone,
-        "service": service, "appointment_datetime": start_dt.isoformat(),
+        # The catalog's name for the service: what a later reschedule compares
+        # against, rather than the caller's own words.
+        "service": chosen.get("name") or service, "appointment_datetime": start_dt.isoformat(),
         "duration_minutes": seg.get("duration_minutes") or duration, "party_size": party_size,
         "status": "confirmed", "vapi_call_id": call_id, "google_event_id": booking_id,
     }
@@ -1089,7 +1114,8 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
 
     if tenant.get("square_appointments_enabled"):
         return await _square_availability_response(
-            tc_id, tenant, tenant_id, args, date_str, _year_correction_prefix)
+            tc_id, tenant, tenant_id, {**args, "_call_id": _call_id}, date_str,
+            _year_correction_prefix)
 
     refresh_token, cal_provider = _calendar_provider(tenant)
     if not refresh_token:
@@ -2525,6 +2551,14 @@ async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
         return await _list_cancellable(tc_id, call_id, tenant, tenant_id,
                                        caller_phone, action="reschedule")
 
+    from services import vapi as vapi_svc
+    kind = vapi_svc.reschedule_kind(tenant)
+    if kind == "calendar":
+        return await _calendar_move(tc_id, call_id, tenant, tenant_id, caller_phone, ref_arg, args)
+    if kind != "square":
+        return _result(tc_id, "I can't move appointments for this business on the phone. "
+                       "Nothing has changed. Take a message for the team.")
+
     if not slot_arg:
         # A chosen appointment but no chosen time. Asking for availability is the
         # only safe next step; acting on half a decision is not.
@@ -2558,6 +2592,54 @@ async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
                            "provider": "square_appointments"})
 
     logger.info("tools/reschedule: tenant %s outcome %s", tenant_id, outcome)
+    return _result(tc_id, message)
+
+
+async def _calendar_move(tc_id, call_id, tenant, tenant_id, caller_phone, ref_arg, args):
+    """Google/Outlook: move the chosen appointment in place, to the chosen time."""
+    from services import calendar_reschedule as cr
+    date_arg, time_arg = (args.get("date") or "").strip(), (args.get("time") or "").strip()
+    if not date_arg or not time_arg:
+        return _result(tc_id,
+            "I have the appointment but not a new time. Call check_availability for the day "
+            "the caller wants, read the times back, confirm their choice, and call "
+            "reschedule_appointment again with the appointment_ref, date and time.")
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id),
+                      "reschedule_requested", {"tenant_id": tenant_id})
+    try:
+        outcome, message = await cr.move(
+            tenant=tenant, tenant_id=tenant_id, call_id=call_id, caller_phone=caller_phone,
+            appointment_ref=ref_arg, date_str=date_arg, time_str=time_arg,
+            date_phrase=args.get("date_phrase", ""))
+    except Exception as e:
+        logger.error("tools/reschedule[calendar]: move raised for tenant %s: %s", tenant_id, e)
+        return _result(tc_id, "I couldn't confirm whether that appointment moved. Tell the caller "
+                       "the team will confirm the time with them. Do NOT try again in this call.")
+    if outcome == cr.COMPLETED:
+        appt_ref = await appointment_refs.resolve_for_cancel(
+            vapi_call_id=call_id, appointment_ref=ref_arg, tenant_id=tenant_id,
+            caller_phone=caller_phone)
+        appt = await db.get_appointment_by_id((appt_ref[1] or {}).get("appointment_id", "")) or {}
+        when = _spoken_when(_start(appt, relative_dates.tenant_tz(tenant))) if appt else ""
+        name = appt.get("caller_name") or ""
+        sms = await _send_text(tenant, tenant_id, caller_phone,
+                               f"{'Hi ' + name + '! ' if name else ''}Your "
+                               f"{appt.get('service') or 'appointment'} at "
+                               f"{tenant.get('business_name', '')} has been moved to {when}.") \
+            if when else "not_configured"
+        message += _sms_clause(sms) + await _remaining_clause(tenant, tenant_id, caller_phone)
+        event = "reschedule_completed"
+    elif outcome == cr.FAILED:
+        event = "reschedule_create_failed"
+    elif outcome in (cr.UNKNOWN, cr.LOCAL_PENDING):
+        event = "reschedule_partial"
+    else:
+        event = ""
+    if event:
+        analytics.capture(analytics.distinct_id_for(tenant, tenant_id), event,
+                          {"tenant_id": tenant_id, "outcome": outcome,
+                           "provider": _calendar_provider(tenant)[1]})
+    logger.info("tools/reschedule[calendar]: tenant %s outcome %s", tenant_id, outcome)
     return _result(tc_id, message)
 
 

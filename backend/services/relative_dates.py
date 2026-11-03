@@ -128,3 +128,24 @@ def check(date_str: str, phrase: str, tenant: dict | None) -> tuple[str | None, 
             f"{spoken_date(d)} is in the past: today is {spoken_date(today)}. Nothing has "
             "been checked or booked. Ask the caller which upcoming date they mean.")
     return d.isoformat(), None
+
+
+NONEXISTENT, AMBIGUOUS, BAD_FORMAT = "nonexistent", "ambiguous", "bad_format"
+
+
+def local_instant(date_str: str, time_str: str, tz) -> tuple[datetime | None, str | None]:
+    """The exact moment a local date and time name, or (None, reason).
+
+    On the day clocks go forward an hour of wall-clock time does not exist; on the
+    day they go back an hour happens twice. Neither is guessed at: the caller is
+    asked for another time.
+    """
+    try:
+        naive = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    except (TypeError, ValueError):
+        return None, BAD_FORMAT
+    first, second = naive.replace(tzinfo=tz, fold=0), naive.replace(tzinfo=tz, fold=1)
+    if first.utcoffset() != second.utcoffset():
+        round_trip = first.astimezone(timezone.utc).astimezone(tz).replace(tzinfo=None)
+        return None, (NONEXISTENT if round_trip != naive else AMBIGUOUS)
+    return first, None

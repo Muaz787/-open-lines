@@ -63,6 +63,7 @@ SERVICE_MISMATCH = "service_mismatch"
 NOT_ELIGIBLE = "not_eligible"
 ALREADY_CANCELLED = "already_cancelled"
 TEMPORARY = "temporary"
+PAYMENT_ON_FILE = "payment_on_file"
 
 # Outcomes after which the assistant must not attempt any further mutation.
 NO_RETRY = frozenset({BUSY, UNRESOLVED, SOURCE_CHANGED, CANCEL_FAILED})
@@ -71,6 +72,11 @@ _DO_NOT_RETRY = ("Do NOT call reschedule_appointment, book_appointment or "
                  "cancel_appointment again for this caller in this call.")
 
 _MESSAGES = {
+    PAYMENT_ON_FILE: (
+        "That appointment has a deposit attached, so I can't move it on this call: the "
+        "deposit has to stay with the booking it was paid for. Nothing has changed. Take "
+        "a message and tell the caller the team will move it and keep their deposit with it."
+    ),
     COMPLETED: (
         "Done — the appointment has been moved. The old time is cancelled and the "
         "new one is confirmed. Tell the caller the new day and time."
@@ -195,6 +201,19 @@ def _same_service(ref: dict, offer: dict) -> bool:
     return source == target
 
 
+async def _has_payment(appointment_id: str) -> bool:
+    """True when a deposit is owed or on file. Fails closed: unknown counts as yes."""
+    from db import supabase as db
+    try:
+        appt = await db.get_appointment_by_id(appointment_id) or {}
+        if (appt.get("status") or "") == "pending_payment":
+            return True
+        return bool(await db.get_payment_by_appointment_id(appointment_id))
+    except Exception as e:
+        logger.warning("reschedule_intent: payment check failed for %s: %s", appointment_id, e)
+        return True
+
+
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
                     appointment_ref: str, slot_ref: str) -> str | None:
     """Cheap read-only gates, BEFORE ownership is taken. None means proceed.
@@ -227,6 +246,12 @@ async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
     # Refusing here too simply avoids taking ownership to say no.
     if str(offer.get("tenant_location_id") or "") != str(ref.get("tenant_location_id") or ""):
         return CROSS_LOCATION
+
+    # Square moves an appointment by booking a replacement row and cancelling the
+    # original. A deposit is linked to the original row, so moving it here would
+    # strand the payment on a cancelled appointment. Owed or paid, it's the team's.
+    if await _has_payment(ref["appointment_id"]):
+        return PAYMENT_ON_FILE
 
     if REQUIRE_SAME_SERVICE and not _same_service(ref, offer):
         logger.info("reschedule_intent: refusing a service change (%r -> %r)",
