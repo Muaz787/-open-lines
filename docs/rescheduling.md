@@ -3,14 +3,23 @@
 Callers can move an appointment from the current call or an earlier one. Each
 provider uses its own supported operation.
 
+**Not complete yet.** The requirement is rescheduling across Google, Outlook and
+Square, with and without deposits. Square appointments with a deposit are still
+handed to the team; supporting them is tracked in issue #179. Until that ships,
+rescheduling is not complete across providers.
+
 | Provider | How it moves | Ownership and recovery | Deposits |
 |---|---|---|---|
 | Google Calendar | `PATCH` the event in place (`services.calendar_reschedule`) | Mutation claim (021) + `calendar_move_operations` (046); recovery reads the event | Kept: same appointment row, status unchanged |
 | Microsoft Outlook | `PATCH` the event in place | Same as Google | Kept |
-| Square, multi-location | W6A2 engine: replacement booking, then cancel the original | Claim (021) + `appointment_reschedule_operations` (020); existing recovery | Refused: the deposit is linked to the original row |
-| Square, single-location | The same W6A2 engine, at the tenant's own Square location | Same as multi-location | Refused |
+| Square, multi-location | W6A2 engine: replacement booking, then cancel the original | Claim (021) + `appointment_reschedule_operations` (020); existing recovery | Not yet supported: handed to the team (#179) |
+| Square, single-location | The same W6A2 engine, at the tenant's own Square location | Same as multi-location | Not yet supported: handed to the team (#179) |
 
-## Square appointments with a deposit: not rescheduled automatically
+## Square appointments with a deposit: temporary team handoff (#179)
+
+This is unfinished work, not a product restriction. It stays in place until a
+verified replacement ships (issue #179: Square's booking-update operation, with
+payment status and audit history preserved).
 
 Square moves an appointment by booking a replacement and cancelling the original.
 A deposit — paid, or still owed through a payment link — is linked to the original
