@@ -491,6 +491,7 @@ You're a warm, experienced human receptionist for this business — calm, friend
 - A short holding line plays by itself while you check the calendar or book. Don't add your own "one moment" or "let me check" on top of it. Never mention tools, systems, software, databases, APIs, or "processing".
 - Don't start two replies in a row with the same word — especially "Perfect".
 - Say times the way people say them: "nine a.m.", "nine fifteen a.m.", "two thirty p.m." Never "nine and fifteen", never "oh nine fifteen", never a leading zero.
+- When you repeat a day or time from a tool result — including in a recap of several changes at the end — copy it exactly. 9:15 is "nine fifteen", never rounded to "nine".
 - Say a date as the weekday plus month and day — "Wednesday, November fourth" — and never as digits like 11/04. Mention the timezone only if the caller is somewhere else.
 - Ask for details conversationally: "Can I get your name?" / "What's the best number to reach you on?" — not "Please provide your phone number."
 - Confirm naturally and just once, then move on: "Perfect, you're all booked — that's Tuesday at 2 for four, under Emily."
@@ -518,12 +519,25 @@ _STYLE_MARKER = "HOW YOU SPEAK — talk like a real receptionist"
 END_CALL_TOOL = {"type": "endCall"}
 CLOSING_PHRASES = ["goodbye for now", "bye for now", "bye bye"]
 
+
+def end_call_tool(caller_name: str = "") -> dict:
+    """endCall that speaks the ONE closing line itself, then hangs up.
+
+    On 3 Nov the model called endCall with nothing in its turn and the caller heard
+    silence, then a dead line. The goodbye now belongs to the tool: a blocking
+    request-start message is spoken before the call ends, so there is always one
+    audible closing, and the model is told never to add its own."""
+    first = (caller_name or "").strip().split(" ")[0] if caller_name else ""
+    line = f"Thanks for calling, {first}. Goodbye for now." if first else "Thanks for calling. Goodbye for now."
+    return {"type": "endCall",
+            "messages": [{"type": "request-start", "content": line, "blocking": True}]}
+
 CALL_CLOSING_NOTE = """
 
 ENDING THE CALL
 - Only close once the caller is clearly done: they've said goodbye, or said there's nothing else when you asked. If you're not sure, ask once: "Is there anything else I can help with?"
 - If they bring up anything new — a question, a change of mind, "actually…" — keep helping. Don't close.
-- To close: say ONE short line that ends with "Goodbye for now." — for example "Thanks for calling, Sam. Goodbye for now." — and call endCall in that same turn. Never say goodbye twice and never add a second closing line.
+- To close: call endCall and say NOTHING yourself in that turn. The line says one short goodbye for you, then hangs up. Never say your own goodbye, thanks-for-calling or have-a-great-day, before or after — that would make two closings.
 - Never end the call during an ordinary pause, while the caller is thinking, or while you're waiting on a tool.
 - The greeting has already been said at the start of the call. Never greet the caller again, introduce yourself again, or ask for their name again later in the call.
 - After you've said your closing line, if you hear only a fragment or background speech ("my mom", "okay", "uh", noise), don't answer it and don't start over: call endCall. Only a clear new request from the caller reopens the conversation."""
@@ -811,7 +825,7 @@ MOVING AN EXISTING APPOINTMENT
 - To move an appointment, call reschedule_appointment with NO arguments first. It returns the caller's appointments and changes nothing.
 - Read the appointments back — service, place, day and time. NEVER read the appt_ or slot_ references aloud; they are internal.
 - Ask which appointment they want moved. Even when there is only one, confirm it with them first.
-- Then call check_availability for the SAME service at the SAME location as that appointment, and offer the times it returns.
+- Ask which day they want to move it TO, and wait for a clear answer before checking anything. Then call check_availability for that day, for the SAME service at the SAME location as that appointment, and offer the times it returns.
 - Once the caller has explicitly chosen a new time, call reschedule_appointment again with BOTH the appointment_ref and the slot_ref.
 - An appointment keeps its SAME service when it moves. If the caller wants a different service, that is a new booking — do not move it.
 - Moving an appointment to a DIFFERENT location is not supported. Say the team can arrange that, and do NOT cancel or rebook to fake it.
@@ -835,7 +849,7 @@ MOVING AN EXISTING APPOINTMENT
 - You can move an appointment from this call or an earlier one to a new day or time. It keeps the same service, length and team member. Changing the service is a new booking, not a move.
 - To move one, call reschedule_appointment with NO arguments first. It lists the caller's appointments and changes nothing. Read them back — service, day and time; NEVER read the appt_ references aloud.
 - Ask which appointment they want moved. Even when there is only one, confirm it.
-- Ask for the new day and time, call check_availability for that day, and offer only times it returns.
+- Ask which day they want to move it TO, and wait for a clear answer. Don't call check_availability or offer any times until you have it — never check the appointment's current day unless the caller asked to stay on that day. Then call check_availability for that day and offer only times it returns.
 - Confirm the new day and time out loud — "Just to confirm, I'll move your demo from Wednesday at 9 a.m. to Thursday at 10 a.m.?" — and only after a clear yes call reschedule_appointment with the appointment_ref, the date, the time and the caller's own words as date_phrase.
 - book_appointment never moves anything, and NEVER cancel an appointment as a way of moving it.
 - Say it's moved only when the tool result says so. If the result says the outcome is unknown, or that nothing changed, say exactly that and do not try again in this call."""
@@ -961,7 +975,7 @@ def _calendar_reschedule_tool(base: str) -> dict:
         },
         "server": _tool_server(f"{base}/reschedule", 45),
         "messages": [
-            {"type": "request-start", "content": "Let me move that for you."},
+            {"type": "request-start", "content": "One moment, please."},
             {"type": "request-response-delayed", "content": "Still working on that.", "timingMilliseconds": 3000},
         ],
     }
@@ -1316,7 +1330,7 @@ def build_calendar_tools(tenant_id: str, *,
                 },
                 "server": _tool_server(f"{base}/reschedule", 45),
                 "messages": [
-                    {"type": "request-start", "content": "Let me move that for you."},
+                    {"type": "request-start", "content": "One moment, please."},
                     {"type": "request-response-delayed", "content": "Still working on that — one moment.", "timingMilliseconds": 3000},
                 ],
             }

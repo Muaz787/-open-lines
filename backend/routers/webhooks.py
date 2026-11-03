@@ -237,6 +237,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Caller context
     caller_context = ""
     personalized_greeting = tenant.get("greeting_template", "")
+    caller_name_for_goodbye = ""
 
     if caller_phone:
         try:
@@ -273,6 +274,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
                     + "\n".join(lines)
                 )
                 greeting_name = name or "there"
+                caller_name_for_goodbye = name
                 personalized_greeting = f"Hey {greeting_name}! Great to hear from you again. How can I help you today?"
         except Exception as e:
             logger.warning("assistant-request: caller lookup failed for tenant %s: %s", tenant_id, e)
@@ -342,7 +344,7 @@ async def _handle_assistant_request(msg: dict) -> dict:
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
     # Every per-call tool list carries endCall: this list REPLACES the assistant's
     # own, so without it the model has no way to hang up.
-    tools.append(dict(vapi_svc.END_CALL_TOOL))
+    tools.append(vapi_svc.end_call_tool(caller_name_for_goodbye))
 
     logger.info(
         "assistant-request: tenant %s caller %s → %s (phone_found=%s)",

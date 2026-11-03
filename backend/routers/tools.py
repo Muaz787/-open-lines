@@ -2884,6 +2884,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     service  = appt.get("service", "appointment")
     appt_dt_raw = appt.get("appointment_datetime", "")
     friendly = appt_dt_raw
+    say_time = ""
     appt_dt_utc = None
     try:
         appt_dt_utc = datetime.fromisoformat(appt_dt_raw)
@@ -2894,6 +2895,7 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         h    = appt_dt_local.hour % 12 or 12
         ampm = "AM" if appt_dt_local.hour < 12 else "PM"
         friendly = f"{appt_dt_local.strftime('%A, %B')} {appt_dt_local.day} at {h}:{appt_dt_local.minute:02d} {ampm}"
+        say_time = relative_dates.spoken_clock(appt_dt_local)
     except Exception:
         pass
 
@@ -2982,7 +2984,9 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
     remaining = await _remaining_clause(tenant, tenant_id, caller_phone)
     return _result(
         tc_id,
-        f"Done — your {service} on {friendly} has been cancelled.{refund_clause}{remaining} "
+        f"Done — your {service} on {friendly} has been cancelled"
+        + (f" (say the time exactly: \"{say_time}\")" if say_time else "")
+        + f".{refund_clause}{remaining} "
         f"Is there anything else I can help you with?",
     )
 

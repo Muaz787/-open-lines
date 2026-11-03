@@ -45,15 +45,18 @@ def _would_hang_up(utterance: str) -> bool:
 
 # ── the setup every call receives ─────────────────────────────────────────────
 
+def _end_call(out):
+    ends = [t for t in out["assistantOverrides"]["model"]["tools"] if t.get("type") == "endCall"]
+    assert len(ends) == 1
+    return ends[0]
+
+
 async def test_every_call_can_end_itself():
-    out = await _per_call_setup()
-    tools = out["assistantOverrides"]["model"]["tools"]
-    assert {"type": "endCall"} in tools
+    _end_call(await _per_call_setup())
 
 
 async def test_a_tenant_without_a_calendar_can_end_its_calls_too():
-    out = await _per_call_setup({**TENANT, "google_refresh_token": None})
-    assert {"type": "endCall"} in out["assistantOverrides"]["model"]["tools"]
+    _end_call(await _per_call_setup({**TENANT, "google_refresh_token": None}))
 
 
 async def test_the_fallback_phrases_are_set_per_call():
@@ -76,15 +79,42 @@ async def test_the_closing_rules_reach_the_prompt_once_and_last():
 
 # ── a clear goodbye ───────────────────────────────────────────────────────────
 
-def test_a_clear_goodbye_gets_one_closing_line_and_endcall():
+async def test_endcall_speaks_exactly_one_goodbye_before_hanging_up():
+    """3 Nov: the model called endCall with nothing in its turn — the caller heard
+    silence, then a dead line. The goodbye now belongs to the tool."""
+    tool = _end_call(await _per_call_setup())
+    msgs = tool["messages"]
+    assert len(msgs) == 1 and msgs[0]["type"] == "request-start"
+    assert msgs[0]["blocking"] is True, "spoken before the call ends"
+    assert msgs[0]["content"] == "Thanks for calling. Goodbye for now."
+
+
+async def test_a_returning_callers_goodbye_uses_their_first_name():
+    lead = {"id": "l1", "name": "Ricks Littlebaugh", "summary": ""}
+    with patch("db.supabase.get_lead_by_phone", new=AsyncMock(return_value=lead)), \
+            patch("db.supabase.get_upcoming_appointment_by_phone", new=AsyncMock(return_value=None)):
+        msg = {"type": "assistant-request", "phoneNumber": {"number": "+14385550000"},
+               "call": {"id": "c1", "customer": {"number": "+16475550100"}}}
+        with patch("db.supabase.get_tenant_by_phone", new=AsyncMock(return_value=TENANT)), \
+                patch("routers.webhooks._calls_allowed", new=AsyncMock(return_value=True)), \
+                patch("routers.webhooks.supports_safe_reschedule", new=AsyncMock(return_value=False)), \
+                patch("services.call_location.location_prompt_block_for", new=AsyncMock(return_value="")), \
+                patch("services.square_booking.service_menu_block", new=AsyncMock(return_value="")), \
+                patch("services.analytics.capture"):
+            out = await webhooks._handle_assistant_request(msg)
+    assert _end_call(out)["messages"][0]["content"] == "Thanks for calling, Ricks. Goodbye for now."
+
+
+def test_the_model_never_adds_its_own_goodbye():
     note = vapi.CALL_CLOSING_NOTE
-    assert 'ONE short line that ends with "Goodbye for now."' in note
-    assert "call endCall in that same turn" in note
-    assert "Never say goodbye twice" in note
+    assert "call endCall and say NOTHING yourself in that turn" in note
+    assert "Never say your own goodbye" in note
+    assert "ONE short line" not in note
 
 
-def test_the_instructed_closing_line_hangs_up_even_without_endcall():
-    assert _would_hang_up("Thanks for calling, Sam. Goodbye for now.")
+def test_the_tools_goodbye_also_matches_the_fallback():
+    """If endCall somehow didn't hang up, its own goodbye still ends the call."""
+    assert _would_hang_up(vapi.end_call_tool("Sam")["messages"][0]["content"])
 
 
 # ── the caller changes their mind before the close ────────────────────────────
