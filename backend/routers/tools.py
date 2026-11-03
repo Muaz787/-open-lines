@@ -1544,6 +1544,17 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
             return _result(tc_id, "I couldn't safely check for a duplicate booking just now, so "
                            "nothing has been booked. Try once more; if it happens again, take "
                            "the caller's details for the team."), _NOT_BOOKED
+        # Check again now that this request owns the slot. The first check ran before
+        # the claim, so another booking in this call could have finished in between;
+        # a claim can only be taken once that booking has written its appointment.
+        recheck = await _same_call_booking_guard(
+            call_id, tenant, tenant_id, caller_phone, date_str, time_str, args,
+            ignore_ids={replaces["id"]} if replaces else frozenset())
+        if recheck:
+            if not recheck.startswith("Already booked"):
+                await booking_claims.mark_failed(claim)  # nothing was created
+            # (Already booked: the check above has just settled this claim as booked.)
+            return _result(tc_id, recheck), _NOT_BOOKED
     ev_id = booking_claims.event_id(claim) if claim else None
 
     event = None
@@ -1607,6 +1618,23 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
     )
     if claim:
         claim = await booking_claims.note_event(claim, event.get("id", ""))
+        # Whatever got us here — a first attempt, a retry, or a takeover of a claim
+        # whose request died — an appointment already written for this event is the
+        # booking. Never write a second one for it.
+        try:
+            existing = await db.get_appointment_by_event_id(tenant_id, event.get("id", ""))
+        except Exception as e:
+            logger.error("tools/book: could not check event %s for an appointment (tenant %s): %s",
+                         event.get("id"), tenant_id, e)
+            return _result(tc_id, _UNCERTAIN_BOOKING_MSG), _NOT_BOOKED
+        if existing:
+            await booking_claims.mark_booked(claim, existing["id"])
+            done = await _already_booked(tc_id, {**claim, "appointment_id": existing["id"]}, tenant)
+            if done:
+                return done
+            logger.error("tools/book: event %s maps to appointment %s, which no longer stands "
+                         "(tenant %s)", event.get("id"), existing["id"], tenant_id)
+            return _result(tc_id, _UNCERTAIN_BOOKING_MSG), _NOT_BOOKED
 
     from routers.payments import _deposit_provider
     _dep_provider = _deposit_provider(tenant)
@@ -1654,11 +1682,8 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
         if replaces:
             appt_data["rescheduled_from_appointment_id"] = replaces["id"]
         # Always an insert. Updating an existing row in place is what made an
-        # ordinary booking overwrite an appointment the caller still wanted. The one
-        # exception is recovery: a row this event already has is reused, not doubled.
-        _existing = (await db.get_appointment_by_event_id(tenant_id, event.get("id", ""))
-                     if claim and claim.get("recovered") else None)
-        _inserted = _existing or await db.insert_appointment(appt_data)
+        # ordinary booking overwrite an appointment the caller still wanted.
+        _inserted = await db.insert_appointment(appt_data)
         appt_id = (_inserted or {}).get("id")
         if claim and appt_id:
             await booking_claims.mark_booked(claim, appt_id)
@@ -1842,18 +1867,23 @@ async def _remaining_clause(tenant: dict, tenant_id: str, caller_phone: str) -> 
 
 
 async def _same_call_booking_guard(call_id, tenant, tenant_id, caller_phone,
-                                   date_str, time_str, args) -> str | None:
-    """None when booking may go ahead; otherwise what to tell the model instead."""
+                                   date_str, time_str, args,
+                                   ignore_ids=frozenset()) -> str | None:
+    """None when booking may go ahead; otherwise what to tell the model instead.
+
+    ignore_ids leaves out the booking replace_booking is swapping out."""
     if not call_id or not caller_phone:
         return None
     try:
-        earlier = await _bookings_from_this_call(tenant_id, caller_phone, call_id)
+        in_call = await _bookings_from_this_call(tenant_id, caller_phone, call_id)
+        earlier = [a for a in in_call if a.get("id") not in ignore_ids]
     except Exception as e:
         # Not knowing what this call already booked is not permission to book again.
         logger.error("tools/book: same-call lookup failed for tenant %s: %s", tenant_id, e)
         return ("I couldn't check what's already booked on this call, so nothing has been "
                 "booked. Try once more; if it happens again, take the caller's details for "
                 "the team.")
+    await booking_claims.settle_from_appointments(tenant_id, call_id, in_call)
     if not earlier:
         return None
     tz = relative_dates.tenant_tz(tenant)

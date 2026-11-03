@@ -93,7 +93,7 @@ async def acquire(tenant_id: str, call_id: str, caller_phone: str,
         if won:
             logger.warning("booking_claims: took over a stale claim for call %s slot %s",
                            call_id, slot)
-            return ACQUIRED, {**won, "recovered": True}
+            return ACQUIRED, won
         return IN_PROGRESS, existing
     except Exception as e:
         logger.error("booking_claims: claim store failed for call %s: %s", call_id, e)
@@ -110,6 +110,35 @@ async def restart(claim: dict) -> tuple[str, dict | None]:
         logger.error("booking_claims: restart failed for call %s: %s", claim.get("vapi_call_id"), e)
         return ERROR, None
     return (ACQUIRED, won) if won else (IN_PROGRESS, claim)
+
+
+def _same_instant(a: str, b: str) -> bool:
+    try:
+        return (datetime.fromisoformat(str(a).replace("Z", "+00:00"))
+                == datetime.fromisoformat(str(b).replace("Z", "+00:00")))
+    except Exception:
+        return False
+
+
+async def settle_from_appointments(tenant_id: str, call_id: str, appointments: list[dict]) -> None:
+    """A pending claim whose appointment already exists was left by a request that
+    wrote the row and died before marking it booked. Mark it booked now, so it
+    can't hold up the call's other bookings or be mistaken for one in flight."""
+    try:
+        pending = await db_bc.pending_for_call(tenant_id, call_id)
+    except Exception as e:
+        logger.warning("booking_claims: could not read pending claims for call %s: %s", call_id, e)
+        return
+    for claim in pending:
+        appt = next((a for a in appointments
+                     if _same_instant(a.get("appointment_datetime"), claim["slot_start"])), None)
+        if appt:
+            try:
+                if await db_bc.transition(claim, {"state": "booked", "appointment_id": appt["id"]}):
+                    logger.warning("booking_claims: settled an abandoned claim for call %s slot %s",
+                                   call_id, claim["slot_start"])
+            except Exception as e:
+                logger.warning("booking_claims: could not settle claim for call %s: %s", call_id, e)
 
 
 async def note_event(claim: dict, provider_event_id: str) -> dict:

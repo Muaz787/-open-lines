@@ -712,3 +712,108 @@ def test_event_ids_are_deterministic_and_valid_for_google():
     assert a == b and 5 <= len(a) <= 1024
     assert set(a) <= set("0123456789abcdefghijklmnopqrstuv")
     assert booking_claims.event_id({**claim, "attempt": 2}) != a
+
+
+# ── 12. recovery after the row was written, and the finish-then-acquire race ──
+
+async def test_a_crash_after_the_appointment_row_is_recovered_without_a_second_row(
+        booking_claims_store):
+    """The request writes the appointment, then dies before marking its claim
+    booked. The next request finds the row, settles the claim and writes nothing."""
+    from services import booking_claims
+    with Cal() as c:
+        booking_claims_store.fail_next_transition_to = "booked"
+        await c.book("2026-11-04")
+        claim = next(iter(booking_claims_store.rows.values()))
+        assert claim["state"] == "pending" and len(c.bookings_from_this_call()) == 1
+        later = booking_claims._now() + timedelta(seconds=booking_claims.STALE_SECONDS + 5)
+        with patch.object(booking_claims, "_now", lambda: later):
+            recovered = await c.book("2026-11-04")
+        again = await c.book("2026-11-04")
+    assert len(c.created) == 1, "one provider event"
+    assert len(c.bookings_from_this_call()) == 1, "one local appointment"
+    assert len(c.events) == 1
+    assert recovered.startswith("Already booked") and again.startswith("Already booked")
+    assert next(iter(booking_claims_store.rows.values()))["state"] == "booked"
+    assert len(c.sms) == 1, "the recovery sends no second text"
+
+
+async def test_a_second_slot_that_passed_the_guard_before_the_first_finished_is_refused(
+        booking_claims_store):
+    """Exact ordering: B passes the first same-call check while A is still booking;
+    A finishes and releases its claim; only then does B acquire its own. The check
+    after acquiring must catch A, so B books nothing without the caller's yes."""
+    from services import booking_claims
+    real_guard, real_acquire = tools._same_call_booking_guard, booking_claims.acquire
+    b_passed_first_check, a_done = asyncio.Event(), asyncio.Event()
+    b_checks = []
+
+    async def guard(call_id, tenant, tid, phone, date_str, time_str, args, **kw):
+        out = await real_guard(call_id, tenant, tid, phone, date_str, time_str, args, **kw)
+        if date_str == "2026-11-05":
+            b_checks.append(out)
+            b_passed_first_check.set()
+        return out
+
+    async def acquire(tid, call_id, phone, start_dt):
+        if start_dt.day == 5:
+            await a_done.wait()                    # B claims only after A has finished
+        return await real_acquire(tid, call_id, phone, start_dt)
+
+    with Cal() as c, patch.object(tools, "_same_call_booking_guard", guard), \
+            patch.object(booking_claims, "acquire", acquire):
+        real_insert = c._insert
+
+        async def insert_after_b_checked(data):
+            await b_passed_first_check.wait()      # A writes its row after B's first check
+            return await real_insert(data)
+        c._insert = insert_after_b_checked
+        with patch("db.supabase.insert_appointment", new=AsyncMock(side_effect=insert_after_b_checked)):
+            async def a():
+                try:
+                    return await c.book("2026-11-04")
+                finally:
+                    a_done.set()
+            res_a, res_b = await asyncio.gather(a(), c.book("2026-11-05"))
+    assert b_checks[0] is None, "B really did pass the first check"
+    assert b_checks[1] and "Nothing has been booked" in b_checks[1], "and was caught by the second"
+    assert res_a.startswith("Done!") and "Nothing has been booked" in res_b
+    assert len(c.created) == 1 and len(c.bookings_from_this_call()) == 1
+    claims = {r["slot_start"]: r["state"] for r in booking_claims_store.rows.values()}
+    assert sorted(claims.values()) == ["booked", "failed"]
+
+
+async def test_with_explicit_consent_the_same_ordering_books_both(booking_claims_store):
+    with Cal([NOV4_THIS_CALL]) as c:
+        said = await c.book("2026-11-05", also_keep_earlier_booking=True)
+    assert said.startswith("Done!") and len(c.bookings_from_this_call()) == 2
+
+
+async def test_replace_is_not_blocked_by_the_booking_it_replaces(booking_claims_store):
+    with Cal([NOV5_THIS_CALL]) as c:
+        said = await c.replace("2026-11-04")
+    assert said.startswith("Done") and c.status("a-nov5") == "cancelled"
+    assert len(c.bookings_from_this_call()) == 1
+
+
+async def test_a_stale_takeover_maps_the_event_to_its_appointment(booking_claims_store):
+    """Same crash, but the same-call check can't see the row (it filters by caller
+    and call, and a row can be written under different identity data). The takeover
+    re-sends the same event id, gets the existing event, and must find the
+    appointment by that event rather than insert another."""
+    from services import booking_claims
+    with Cal() as c:
+        booking_claims_store.fail_next_transition_to = "booked"
+        await c.book("2026-11-04")
+        later = booking_claims._now() + timedelta(seconds=booking_claims.STALE_SECONDS + 5)
+        with patch.object(booking_claims, "_now", lambda: later), \
+                patch.object(tools, "_bookings_from_this_call", new=AsyncMock(return_value=[])):
+            recovered = await c.book("2026-11-04")
+    rows = [a for a in c.appts.values() if a.get("vapi_call_id") == CALL]
+    assert len(c.created) == 1 and len(c.events) == 1, "one provider event"
+    assert len(rows) == 1, "one local appointment"
+    assert recovered.startswith("Already booked")
+    claim = next(iter(booking_claims_store.rows.values()))
+    assert claim["state"] == "booked" and claim["appointment_id"] == rows[0]["id"]
+    assert claim["attempt"] == 1, "taken over at the same attempt, so the same event id"
+    assert len(c.sms) == 1

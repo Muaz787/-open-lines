@@ -12,7 +12,12 @@ caller's appointments, decides whether a request may create an event.
 | Calendar error that proves nothing was made (4xx) | Claim marked failed; the next attempt uses a new event id |
 | Timeout or 5xx | Google: the event is looked up by its id. Otherwise the claim stays pending and the caller is told it isn't confirmed |
 | Process dies after the event, before the appointment row | After 90 seconds the next request takes the claim over at the same attempt, re-sends the same event id, gets the existing event, and writes the row once |
+| Process dies after the appointment row, before marking the claim booked | The next read of the call's bookings marks the claim booked; a takeover finds the row by its event id and writes nothing |
+| A second slot passes the first check, then the first booking finishes | After claiming, the request checks the call's bookings again and books nothing without the caller's explicit yes |
 | Claim store or appointment lookup fails | Nothing is booked |
+
+Before any appointment is written, the event id is looked up in `appointments`: an
+event never gets a second row, however the request got there.
 
 Event ids are derived from tenant, call, slot and attempt. Google is given the id
 directly and answers 409 for a repeat; Outlook gets it as `transactionId`, which

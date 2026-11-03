@@ -125,6 +125,7 @@ class FakeBookingClaims:
         self.rows: dict[tuple, dict] = {}
         self.lock = _asyncio.Lock()
         self.fail = False
+        self.fail_next_transition_to = None    # e.g. "booked": that write raises, once
         self._tick = _itertools.count(1)
 
     def _stamp(self):
@@ -155,9 +156,18 @@ class FakeBookingClaims:
         r = self.rows.get((tenant_id, call_id, slot))
         return dict(r) if r else None
 
+    async def pending_for_call(self, tenant_id, call_id):
+        if self.fail:
+            raise RuntimeError("claim store down")
+        return [dict(r) for r in self.rows.values()
+                if (r["tenant_id"], r["vapi_call_id"]) == (tenant_id, call_id) and r["state"] == "pending"]
+
     async def transition(self, claim, patch):
         if self.fail:
             raise RuntimeError("claim store down")
+        if self.fail_next_transition_to and patch.get("state") == self.fail_next_transition_to:
+            self.fail_next_transition_to = None
+            raise RuntimeError("process died")
         async with self.lock:
             key = (claim["tenant_id"], claim["vapi_call_id"], claim["slot_start"])
             r = self.rows.get(key)
@@ -179,4 +189,5 @@ def booking_claims_store(monkeypatch):
     monkeypatch.setattr(_db_bc, "insert_pending", store.insert_pending)
     monkeypatch.setattr(_db_bc, "get", store.get)
     monkeypatch.setattr(_db_bc, "transition", store.transition)
+    monkeypatch.setattr(_db_bc, "pending_for_call", store.pending_for_call)
     return store

@@ -45,6 +45,12 @@ async def get(tenant_id: str, call_id: str, slot_start: str) -> dict | None:
     return (res.data or [None])[0]
 
 
+async def pending_for_call(tenant_id: str, call_id: str) -> list[dict]:
+    res = await run_query(get_client().table(TABLE).select("*").eq("tenant_id", tenant_id)
+                          .eq("vapi_call_id", call_id).eq("state", "pending"))
+    return res.data or []
+
+
 async def transition(claim: dict, patch: dict) -> dict | None:
     """Apply patch only if the row is still exactly as the caller last read it.
 
