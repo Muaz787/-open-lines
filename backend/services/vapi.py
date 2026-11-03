@@ -504,6 +504,39 @@ You're a warm, experienced human receptionist for this business — calm, friend
 _STYLE_MARKER = "HOW YOU SPEAK — talk like a real receptionist"
 
 
+# ── Ending the call ─────────────────────────────────────────────────────────
+# On 2 Nov a caller said "You too. Thanks.", the assistant said "Thank you. Take
+# care." and the line stayed open: the per-call tool list had no endCall tool, and
+# "take care" was not an end-call phrase. Eleven seconds later background speech
+# was transcribed as "My mom." and the assistant introduced itself all over again.
+#
+# endCall is the primary mechanism: the model ends the call once the caller is
+# done. The phrases are a narrow fallback — Vapi hangs up when the ASSISTANT says
+# one — so each is something that only ever ends a conversation. Words like "take
+# care" or a bare "goodbye" can sit inside an ordinary sentence ("we'll take care of
+# that", "say goodbye to missed calls"), so they are not used.
+END_CALL_TOOL = {"type": "endCall"}
+CLOSING_PHRASES = ["goodbye for now", "bye for now", "bye bye"]
+
+CALL_CLOSING_NOTE = """
+
+ENDING THE CALL
+- Only close once the caller is clearly done: they've said goodbye, or said there's nothing else when you asked. If you're not sure, ask once: "Is there anything else I can help with?"
+- If they bring up anything new — a question, a change of mind, "actually…" — keep helping. Don't close.
+- To close: say ONE short line that ends with "Goodbye for now." — for example "Thanks for calling, Sam. Goodbye for now." — and call endCall in that same turn. Never say goodbye twice and never add a second closing line.
+- Never end the call during an ordinary pause, while the caller is thinking, or while you're waiting on a tool.
+- The greeting has already been said at the start of the call. Never greet the caller again, introduce yourself again, or ask for their name again later in the call.
+- After you've said your closing line, if you hear only a fragment or background speech ("my mom", "okay", "uh", noise), don't answer it and don't start over: call endCall. Only a clear new request from the caller reopens the conversation."""
+_CLOSING_MARKER = "ENDING THE CALL\n- Only close once the caller is clearly done"
+
+
+def ensure_call_closing(prompt: str) -> str:
+    """Append the call-ending rules (idempotent), after the voice guidance."""
+    if prompt and _CLOSING_MARKER in prompt:
+        return prompt
+    return (prompt or "") + CALL_CLOSING_NOTE
+
+
 def ensure_receptionist_style(prompt: str) -> str:
     """Append the receptionist voice/manner guidance (idempotent). Placed last so
     it's the freshest guidance the model sees; safety preamble stays first."""

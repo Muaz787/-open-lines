@@ -1,0 +1,133 @@
+"""
+Ending a call cleanly.
+
+On 2 November a caller said "You too. Thanks." and the assistant answered "Thank
+you. Take care." The line stayed open: the per-call tool list (which replaces the
+assistant's own) had no endCall tool, and "take care" was not an end-call phrase.
+Eleven seconds later background speech was transcribed as "My mom." and the
+assistant started again from its introduction.
+
+What can be tested here is the setup the model is given on every call and the
+fallback that hangs up without it. Whether the model follows the rules is checked
+on real calls.
+"""
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from routers import webhooks
+from services import vapi
+
+TENANT = {"id": "t1", "business_name": "Open Lines", "vapi_assistant_id": "asst-1",
+          "last_system_prompt": "You are the receptionist for Open Lines. Greet callers warmly.",
+          "google_refresh_token": "rt", "calendar_timezone": "America/Toronto",
+          "greeting_template": "Thanks for calling Open Lines."}
+
+
+async def _per_call_setup(tenant=TENANT):
+    msg = {"type": "assistant-request", "phoneNumber": {"number": "+14385550000"},
+           "call": {"id": "c1", "customer": {"number": "+16475550100"}}}
+    with patch("db.supabase.get_tenant_by_phone", new=AsyncMock(return_value=tenant)), \
+            patch("routers.webhooks._calls_allowed", new=AsyncMock(return_value=True)), \
+            patch("db.supabase.get_lead_by_phone", new=AsyncMock(return_value=None)), \
+            patch("routers.webhooks.supports_safe_reschedule", new=AsyncMock(return_value=False)), \
+            patch("services.call_location.location_prompt_block_for", new=AsyncMock(return_value="")), \
+            patch("services.square_booking.service_menu_block", new=AsyncMock(return_value="")), \
+            patch("services.analytics.capture"):
+        return await webhooks._handle_assistant_request(msg)
+
+
+def _would_hang_up(utterance: str) -> bool:
+    """Vapi ends the call when the assistant says an end-call phrase (case-insensitive)."""
+    said = utterance.lower()
+    return any(p in said for p in vapi.CLOSING_PHRASES)
+
+
+# ── the setup every call receives ─────────────────────────────────────────────
+
+async def test_every_call_can_end_itself():
+    out = await _per_call_setup()
+    tools = out["assistantOverrides"]["model"]["tools"]
+    assert {"type": "endCall"} in tools
+
+
+async def test_a_tenant_without_a_calendar_can_end_its_calls_too():
+    out = await _per_call_setup({**TENANT, "google_refresh_token": None})
+    assert {"type": "endCall"} in out["assistantOverrides"]["model"]["tools"]
+
+
+async def test_the_fallback_phrases_are_set_per_call():
+    ov = (await _per_call_setup())["assistantOverrides"]
+    assert ov["endCallPhrases"] == ["goodbye for now", "bye for now", "bye bye"]
+
+
+async def test_silence_handling_is_unchanged():
+    """Ending cleanly must not come from hanging up on quiet callers."""
+    ov = (await _per_call_setup())["assistantOverrides"]
+    assert ov["silenceTimeoutSeconds"] == 25
+
+
+async def test_the_closing_rules_reach_the_prompt_once_and_last():
+    prompt = (await _per_call_setup())["assistantOverrides"]["model"]["messages"][0]["content"]
+    assert prompt.count("ENDING THE CALL") == 1
+    assert prompt.index("ENDING THE CALL") > prompt.index("HOW YOU SPEAK")
+    assert vapi.ensure_call_closing(prompt) == prompt, "idempotent"
+
+
+# ── a clear goodbye ───────────────────────────────────────────────────────────
+
+def test_a_clear_goodbye_gets_one_closing_line_and_endcall():
+    note = vapi.CALL_CLOSING_NOTE
+    assert 'ONE short line that ends with "Goodbye for now."' in note
+    assert "call endCall in that same turn" in note
+    assert "Never say goodbye twice" in note
+
+
+def test_the_instructed_closing_line_hangs_up_even_without_endcall():
+    assert _would_hang_up("Thanks for calling, Sam. Goodbye for now.")
+
+
+# ── the caller changes their mind before the close ────────────────────────────
+
+def test_a_new_request_before_closing_keeps_the_call_going():
+    note = vapi.CALL_CLOSING_NOTE
+    assert "Only close once the caller is clearly done" in note
+    assert "a change of mind" in note and "keep helping" in note
+    assert "Is there anything else I can help with?" in note
+
+
+@pytest.mark.parametrize("mid_call", [
+    # Real assistant lines from the 2 November calls, and lines built to trip a
+    # careless phrase list. None of them may end a call.
+    "I'm not able to change an existing appointment on this call. But I can take a message for the team, and they'll sort it out.",
+    "No problem at all. If you change your mind or want any other help, just give us a call.",
+    "We'll take care of that for you right away.",
+    "Open Lines helps you say goodbye to missed calls for good.",
+    "Thanks for calling Open Lines. How can I help you today?",
+    "Perfect. Your demo is now confirmed for Wednesday the fourth at 9 a.m. Anything else I can help with?",
+    "One moment. You actually have three upcoming demo appointments.",
+])
+def test_ordinary_lines_never_trip_the_fallback(mid_call):
+    assert not _would_hang_up(mid_call)
+
+
+def test_no_phrase_is_a_word_that_appears_in_ordinary_speech():
+    for p in vapi.CLOSING_PHRASES:
+        assert p not in ("goodbye", "take care", "thanks for calling", "have a great day")
+
+
+# ── background speech after the close ─────────────────────────────────────────
+
+def test_background_speech_after_closing_ends_the_call_instead_of_restarting():
+    note = vapi.CALL_CLOSING_NOTE
+    assert '"my mom"' in note and "call endCall" in note
+    assert "don't start over" in note
+
+
+def test_the_introduction_is_never_repeated():
+    note = vapi.CALL_CLOSING_NOTE
+    assert "Never greet the caller again, introduce yourself again, or ask for their name again" in note
+
+
+def test_ending_never_comes_from_pauses():
+    assert "Never end the call during an ordinary pause" in vapi.CALL_CLOSING_NOTE
