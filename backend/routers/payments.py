@@ -311,12 +311,21 @@ async def _send_confirmations(tenant: dict, payment: dict) -> None:
     payment_confirmation claim): no move can change the time while it holds it,
     and a move that already holds the appointment makes this leave the time out.
     Released when done; a stopped webhook's claim expires after its lease."""
-    from services import mutation_ownership
+    from services import mutation_ownership, square_inplace_scope
     appointment_id = payment.get("appointment_id")
     claim = appointment = None
+    tenant_id = str(tenant.get("id") or payment.get("tenant_id") or "")
+    if appointment_id and not square_inplace_scope.allowed(tenant_id, appointment_id):
+        # Everyone outside the validation scope: exactly as before.
+        try:
+            appointment = await db.get_appointment_by_id(appointment_id)
+        except Exception as e:
+            logger.error("Failed to read appointment %s for its confirmation: %s", appointment_id, e)
+        await _notify_payment(tenant, payment, appointment)
+        await _sms_caller_confirmation(tenant, payment, appointment)
+        return
     if appointment_id:
-        own, claim = await mutation_ownership.acquire_for_confirmation(
-            appointment_id, str(tenant.get("id") or payment.get("tenant_id") or ""))
+        own, claim = await mutation_ownership.acquire_for_confirmation(appointment_id, tenant_id)
         if own == mutation_ownership.ACQUIRED and claim:
             try:
                 appointment = await db.get_appointment_by_id(appointment_id)

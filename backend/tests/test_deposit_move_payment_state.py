@@ -13,10 +13,11 @@ tests/test_square_sandbox_update.py, which is separate and currently blocked.
      send, runs every order, and checks each text against our record, Square's
      copy and the owner at the moment it is sent. The same runs without the claim
      find a stale text, so the check has teeth.
-  2. A reschedule never reopens a refund window that had closed
-     (services.refunds.refund_window_open).
-  3. A booking moved directly in Square after the deposit was paid sends the
-     refund decision to the team.
+  2. Outside the validation scope (services.square_inplace_scope) a confirmation
+     behaves exactly as before: it never takes ownership and names the time.
+
+Refund eligibility is unchanged in this release. The proposed refund-window rule
+and its tests are on branch refund-window-policy, for separate review.
 """
 import asyncio
 import contextvars
@@ -29,13 +30,18 @@ import pytest
 
 from db import mutation_claims as db_mc
 from routers import payments
-from services import mutation_ownership as mo, refunds, square_booking as sb
+from services import mutation_ownership as mo
 from services import square_booking_reconcile as recon
 from tests import test_square_deposit_reschedule as sq
-from tests import test_w6a1_safe_cancellation as w6a1
 
 NOW, SRC, TARGET = sq.NOW, sq.SRC, sq.TARGET
 PROC = contextvars.ContextVar("proc", default=None)
+
+
+@pytest.fixture(autouse=True)
+def _validation_scope(monkeypatch):
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", sq.TID)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-1")
 
 
 def _when(value):
@@ -398,198 +404,25 @@ async def test_recovery_sweeps_expired_confirmations():
     assert out.get("confirmation_claims_expired") == 2
 
 
-# ════════════ 2. a reschedule never reopens a closed refund window ══════════════
-
-def move(frm, started, finished=None):
-    return {"from_start_utc": frm.isoformat(), "created_at": started.isoformat(),
-            "updated_at": (finished or started + timedelta(seconds=2)).isoformat()}
-
-
-@pytest.mark.parametrize("case, appt_at, paid_at, moves, now, open_", [
-    ("no move, outside the window", SRC, NOW, [], NOW, True),
-    ("no move, inside the window", NOW + timedelta(hours=10), NOW, [], NOW, False),
-    ("moved before the cutoff: refundable at the new time",
-     TARGET, NOW, [move(SRC, NOW + timedelta(hours=1))], NOW + timedelta(hours=2), True),
-    ("moved before the cutoff, later inside the NEW window",
-     TARGET, NOW, [move(SRC, NOW + timedelta(hours=1))], TARGET - timedelta(hours=3), False),
-    ("moved after the cutoff (Google/Outlook allow it; Square on the phone doesn't)",
-     TARGET, NOW, [move(NOW + timedelta(hours=30), NOW + timedelta(hours=8))],
-     NOW + timedelta(hours=9), False),
-    ("paid during a move from a time already inside its window",
-     TARGET, NOW, [move(NOW + timedelta(hours=10), NOW - timedelta(seconds=1))], NOW, False),
-    ("paid during a move from a time still outside its window",
-     TARGET, NOW, [move(SRC, NOW - timedelta(seconds=1))], NOW, True),
-    ("repeated moves, each before its cutoff",
-     TARGET + timedelta(days=7), NOW,
-     [move(SRC, NOW + timedelta(hours=1)), move(TARGET, NOW + timedelta(days=2))],
-     NOW + timedelta(days=3), True),
-    ("repeated moves, the second after the first move's new cutoff",
-     TARGET + timedelta(days=7), NOW,
-     [move(SRC, NOW + timedelta(hours=1)), move(TARGET, TARGET - timedelta(hours=2))],
-     TARGET, False),
-    ("moved before the deposit was paid: not counted",
-     TARGET, NOW, [move(NOW + timedelta(hours=10), NOW - timedelta(hours=1))], NOW, True),
-    ("no payment time on record: every move counts",
-     TARGET, None, [move(NOW + timedelta(hours=10), NOW - timedelta(hours=1))], NOW, False),
-])
-def test_refund_window_rule(case, appt_at, paid_at, moves, now, open_):
-    assert refunds.refund_window_open(appt_at, 24, paid_at=paid_at, moves=moves, now=now) is open_, case
-
-
-def _stamp_paid(w):
-    def go():
-        for p in w.payments:
-            p["paid_at"] = sq.z(NOW)
-    return go
-
-
-async def test_a_deposit_paid_mid_move_inside_its_window_stays_closed_after_the_move():
-    soon = NOW + timedelta(hours=10)
-    with PayWorld(status="pending_payment", payments=OWED, src=soon).env() as w:
-        with _paying_mid_move(w, then=_stamp_paid(w)):
-            await w.call()
-            assert (await w.move()).startswith("Done") and w.moved()
-        paid = next(p for p in w.payments if p["status"] == "succeeded")
-        refundable = await refunds.deposit_refundable(w.tenant, dict(w.appt), paid, 24, now=NOW)
-    assert refundable is False
-    assert refunds.refund_eligible(TARGET, 24, now=NOW) is True, "the old rule would have reopened it"
-
-
-async def test_a_closed_window_also_stops_a_second_move():
-    soon = NOW + timedelta(hours=10)
-    with PayWorld(status="pending_payment", payments=OWED, src=soon).env() as w:
-        with _paying_mid_move(w, then=_stamp_paid(w)):
-            await w.call()
-            await w.move()
-        w.offer["start_at_utc"] = sq.z(TARGET + timedelta(days=1))
-        w.offer_claimed = False
-        w.refs.rows.clear()                          # a later call lists it afresh
-        await w.call()
-        again = await w.move()
-    assert "cancellation window" in again and len(w.updates) == 1
-
-
-async def test_an_unreadable_move_history_is_neither_refunded_nor_forfeited(calendar_moves_store):
-    calendar_moves_store.fail = True
-    appt = {"id": "a-1", "appointment_datetime": SRC.isoformat()}
-    assert await refunds.deposit_refundable({}, appt, {"paid_at": sq.z(NOW)}, 24, now=NOW) is None
-
-
-# ════════════ 3. a booking moved directly in Square ═════════════════════════════
-
-SQ_TENANT = {"square_appointments_enabled": True}
-
-
-def _appt(**k):
-    return {"id": "a-1", "appointment_datetime": TARGET.isoformat(), "google_event_id": "BK-1", **k}
-
-
-@pytest.mark.parametrize("case, appt, square_start, expect", [
-    ("no change in Square", _appt(), TARGET, True),
-    ("changed in Square after the deposit was paid",
-     _appt(provider_time_changed_at=(NOW + timedelta(hours=1)).isoformat()), TARGET, None),
-    ("changed in Square before the deposit was paid",
-     _appt(provider_time_changed_at=(NOW - timedelta(hours=1)).isoformat()), TARGET, True),
-    ("moved in Square, its webhook not processed yet", _appt(), TARGET + timedelta(hours=2), None),
-    ("Square's copy unreadable", _appt(), None, None),
-])
-async def test_square_side_moves_go_to_the_team(case, appt, square_start, expect):
-    fetch = (sb.FETCH_FOUND, {"start_at": sq.z(square_start)}) if square_start else (sb.FETCH_UNKNOWN, {})
-    with patch("services.square_booking.get_access_token", new=AsyncMock(return_value="tok")), \
-         patch("services.square_booking.get_booking_detailed", new=AsyncMock(return_value=fetch)):
-        got = await refunds.deposit_refundable(SQ_TENANT, appt, {"paid_at": sq.z(NOW)}, 24, now=NOW)
-    assert got is expect, case
-
-
-@pytest.mark.parametrize("stored, incoming, stamped", [
-    ("2026-11-06T14:00:00+00:00", "2026-11-06T16:00:00Z", True),     # moved
-    ("2026-11-06T14:00:00+00:00", "2026-11-06T14:00:00Z", False),    # same instant, other format
-])
-async def test_the_booking_webhook_stamps_a_time_change(stored, incoming, stamped):
-    existing = {"id": "a-1", "appointment_datetime": stored, "tenant_location_id": "l",
-                "provider_location_id": "L"}
-    written = []
-    with patch("db.supabase.reconcile_appointment_if_newer",
-               new=AsyncMock(side_effect=lambda aid, v, p: written.append(p) or True)):
-        await recon._update_existing(existing, {"start_at": incoming}, {"provider_location_id": "L"},
-                                     "t", "l", 5, "2026-11-03T12:00:00Z", False)
-    assert ("provider_time_changed_at" in written[0]) is stamped
-    if stamped:
-        assert written[0]["provider_time_changed_at"] == "2026-11-03T12:00:00Z"
-
-
 def test_a_booking_event_meeting_a_confirmation_is_retried():
     assert recon.Outcome(recon.DEFERRED_CONFIRMING).should_retry
     assert not recon.Outcome(recon.DEFERRED_OWNED).should_retry
 
 
-# ── the cancel tool, end to end ──────────────────────────────────────────────
+# ════════════ 2. outside the validation scope: exactly as before ════════════════
 
-class _Cancel(w6a1.Ctx):
-    def __init__(self, when, payment, square_start=None):
-        a = w6a1.appt("a-cork", when=when.isoformat())
-        booking = {"id": "BK-CORK", "status": "ACCEPTED", "location_id": w6a1.CORK_PID, "version": 0,
-                   "start_at": (square_start or when).isoformat()}
-        super().__init__(candidates=[a], booking=booking)
-        self.payment = payment
-        self.refunded, self.forfeit, self.team = [], [], []
-
-    def __enter__(self):
-        super().__enter__()
-        self._q = [
-            patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(return_value=self.payment)),
-            patch("services.refunds.issue_provider_refund",
-                  new=AsyncMock(side_effect=lambda *a: self.refunded.append(1) or True)),
-            patch("services.refunds.sms_caller_refund", new=AsyncMock()),
-            patch("services.refunds.sms_caller_cancelled",
-                  new=AsyncMock(side_effect=lambda *a, **k: self.forfeit.append(k))),
-            patch("services.refunds.notify_business",
-                  new=AsyncMock(side_effect=lambda *a, **k: self.team.append(k))),
-            patch("db.supabase.update_payment", new=AsyncMock()),
-        ]
-        for p in self._q:
-            p.start()
-        return self
-
-    def __exit__(self, *a):
-        for p in self._q:
-            p.stop()
-        return super().__exit__(*a)
+@pytest.mark.parametrize("provider", ["stripe", "square"])
+@pytest.mark.parametrize("appts_env", ["", "a-other"])
+async def test_outside_the_scope_a_confirmation_takes_no_ownership(provider, appts_env, monkeypatch):
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", appts_env)
+    with PayWorld(status="pending_payment", payments=OWED, provider=provider).env() as w:
+        w.claims["a-1"] = {"token": "op", "type": "reschedule"}   # even while something owns it
+        await w.webhook()
+        acquired = payments_acquire_calls(w)
+    assert acquired == 0, "no confirmation claim is ever taken"
+    assert named_time(w.sent[0][0]) == SRC and w.owner_notes[0]["id"] == "a-1", "named, as today"
 
 
-def _paid(days_ago=2):
-    return {"id": "p-1", "status": "succeeded", "amount_cents": 2000, "currency": "cad",
-            "paid_at": utcnow_iso(days_ago * 86400)}
-
-
-async def test_cancel_after_a_window_closing_move_forfeits(calendar_moves_store):
-    real_now = datetime.now(timezone.utc)
-    calendar_moves_store.rows["op-1"] = {"id": "op-1", "appointment_id": "a-cork", "state": "completed",
-                                         **move(real_now - timedelta(hours=2), real_now - timedelta(hours=3))}
-    with _Cancel(real_now + timedelta(days=3), _paid()) as c:
-        await c.call()
-        said = c.text(await c.call(ref="appt_1"))
-    assert c.refunded == [] and "non-refundable" in said
-    assert c.forfeit and c.forfeit[0].get("deposit_forfeited") is True
-
-
-async def test_cancel_after_an_ordinary_move_still_refunds(calendar_moves_store):
-    real_now = datetime.now(timezone.utc)
-    calendar_moves_store.rows["op-1"] = {"id": "op-1", "appointment_id": "a-cork", "state": "completed",
-                                         **move(real_now + timedelta(days=2), real_now - timedelta(hours=3))}
-    with _Cancel(real_now + timedelta(days=3), _paid()) as c:
-        await c.call()
-        said = c.text(await c.call(ref="appt_1"))
-    assert c.refunded == [1] and "will be refunded" in said
-
-
-@pytest.mark.parametrize("why", ["history unreadable", "moved in Square"])
-async def test_cancel_the_team_decides(why, calendar_moves_store):
-    later = datetime.now(timezone.utc) + timedelta(days=3)
-    square_start = later + timedelta(hours=2) if why == "moved in Square" else None
-    calendar_moves_store.fail = why == "history unreadable"
-    with _Cancel(later, _paid(), square_start=square_start) as c:
-        await c.call()
-        said = c.text(await c.call(ref="appt_1"))
-    assert c.refunded == [] and c.forfeit == [] and c.team, "neither refunded nor forfeited"
-    assert "team will follow up" in said and "non-refundable" not in said
+def payments_acquire_calls(w):
+    from services import mutation_ownership as m
+    return m.acquire_for_confirmation.await_count

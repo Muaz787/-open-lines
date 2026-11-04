@@ -227,12 +227,6 @@ class FakeCalendarMoves:
         return next((dict(r) for r in self.rows.values()
                      if r["appointment_id"] == appointment_id and r["state"] in self.LIVE), None)
 
-    async def completed_for_appointment(self, appointment_id):
-        if self.fail:
-            raise RuntimeError("move store down")
-        return [dict(r) for r in self.rows.values()
-                if r["appointment_id"] == appointment_id and r["state"] == "completed"]
-
     async def transition(self, op, from_states, patch):
         r = self.rows.get(op["id"])
         if not r or r["claim_token"] != op["claim_token"] or r["state"] not in from_states:
@@ -257,7 +251,6 @@ class FakeCalendarMoves:
 def calendar_moves_store(monkeypatch):
     store = FakeCalendarMoves()
     from db import calendar_moves as _db_cm
-    for name in ("insert", "get", "live_for_appointment", "completed_for_appointment",
-                 "transition", "list_stale", "lease"):
+    for name in ("insert", "get", "live_for_appointment", "transition", "list_stale", "lease"):
         monkeypatch.setattr(_db_cm, name, getattr(store, name))
     return store

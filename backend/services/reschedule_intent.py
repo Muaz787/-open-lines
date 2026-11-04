@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 
 from services import appointment_refs, reschedule, reschedule_execute as rx
-from services import slot_offers
+from services import slot_offers, square_inplace_scope
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +229,19 @@ async def _moves_in_place(blocked: str, *, vapi_call_id: str, tenant_id: str, ca
     return (appt.get("status") or "") in ("confirmed", "pending_payment")
 
 
+async def _in_scope(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
+                    appointment_ref: str) -> bool:
+    """Is this the named test tenant's named appointment (square_inplace_scope)?"""
+    if not square_inplace_scope.enabled():
+        return False
+    status, ref = await appointment_refs.resolve_for_cancel(
+        vapi_call_id=vapi_call_id, appointment_ref=appointment_ref, tenant_id=tenant_id,
+        caller_phone=caller_phone)
+    if status not in (appointment_refs.OK, appointment_refs.ALREADY_CONSUMED) or not ref:
+        return False
+    return square_inplace_scope.allowed(tenant_id, ref.get("appointment_id"))
+
+
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
                     appointment_ref: str, slot_ref: str) -> str | None:
     """Cheap read-only gates, BEFORE ownership is taken. None means proceed.
@@ -286,7 +299,9 @@ async def move_appointment(*, vapi_call_id: str, tenant_id: str, caller_phone: s
     blocked = await _precheck(
         vapi_call_id=vapi_call_id, tenant_id=tenant_id, caller_phone=caller_phone,
         appointment_ref=appointment_ref, slot_ref=slot_ref)
-    if blocked in (PAYMENT_ON_FILE, ALREADY_CANCELLED) and await _moves_in_place(
+    if blocked in (PAYMENT_ON_FILE, ALREADY_CANCELLED) and await _in_scope(
+            vapi_call_id=vapi_call_id, tenant_id=tenant_id, caller_phone=caller_phone,
+            appointment_ref=appointment_ref) and await _moves_in_place(
             blocked, vapi_call_id=vapi_call_id, tenant_id=tenant_id,
             caller_phone=caller_phone, appointment_ref=appointment_ref):
         # A deposit appointment moves in place with UpdateBooking (issue #179),

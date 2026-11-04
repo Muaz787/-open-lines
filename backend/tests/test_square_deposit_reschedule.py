@@ -37,6 +37,14 @@ from services import square_booking as sb, square_inplace_reschedule as sq_in
 from tests import test_w6a1_safe_cancellation as w6a1
 
 TID, CALL, PHONE = "t-sq", "call-1", "+16475550100"
+
+
+@pytest.fixture(autouse=True)
+def _validation_scope(monkeypatch):
+    """These tests exercise the in-place path, which runs only for the named test
+    tenant and appointment (services.square_inplace_scope)."""
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", TID)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-1")
 LOC_PID, LOC_ID = "L-MAIN", "loc-main"
 TM, OTHER_TM, VAR = "TM-AOIFE", "TM-SEAN", "VAR-CONSULT"
 NOW = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)
@@ -429,6 +437,34 @@ def test_update_sends_only_the_version_and_start():
     src = inspect.getsource(sb.update_booking_start)
     assert '"booking": {"version": version, "start_at": start_at_iso}' in src
     assert "appointment_segments" not in src.split('"""')[2]
+
+
+@pytest.mark.parametrize("tenant_env, appts_env", [
+    ("", ""),                       # validation off: everyone
+    ("t-other", "a-1"),             # another tenant named
+    (TID, "a-other"),               # this tenant, another appointment
+    (TID, ""),                      # half-configured
+])
+async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
+        tenant_env, appts_env, monkeypatch, calendar_moves_store):
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", tenant_env)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", appts_env)
+    from services import reschedule_intent as ri
+    with SqWorld(payments=PAID).env() as w:
+        await w.call()
+        said = await w.move()
+    assert said == ri.message_for(ri.PAYMENT_ON_FILE), "today's team handoff, word for word"
+    assert w.updates == [] and not w.owners and not w.moved()
+    assert calendar_moves_store.rows == {}, "no move operation recorded"
+
+
+async def test_the_in_place_move_refuses_an_appointment_outside_the_scope(monkeypatch):
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-other")
+    with SqWorld(payments=PAID).env() as w:
+        await w.call()
+        outcome, _ = await sq_in.move(tenant=w.tenant, tenant_id=TID, vapi_call_id=CALL,
+                                      caller_phone=PHONE, appointment_ref="appt_1", slot_ref="slot_1")
+    assert outcome == sq_in.HANDOFF and w.updates == [] and not w.owners
 
 
 def test_no_payment_is_written_by_the_in_place_move():

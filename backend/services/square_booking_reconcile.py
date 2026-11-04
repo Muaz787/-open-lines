@@ -37,7 +37,6 @@ location, so they need a different answer and a separate workstream.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 import db.supabase as db
 from db import mutation_claims as db_mc
@@ -313,14 +312,6 @@ async def reconcile_booking_event(
                                 auth_version, auth_updated)
 
 
-def _instant(value) -> datetime | None:
-    try:
-        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
 async def _operation_owning(booking_id: str) -> dict | None:
     """The W6A2 operation that created this exact booking, or None.
 
@@ -380,10 +371,6 @@ async def _update_existing(existing: dict, booking: dict, meta: dict, tenant_id:
     start_at = booking.get("start_at")
     if start_at and str(existing.get("appointment_datetime") or "") != str(start_at):
         patch["appointment_datetime"] = str(start_at)
-        if _instant(existing.get("appointment_datetime")) != _instant(start_at):
-            # Moved outside our own moves (those own the row and are deferred
-            # above). Refund decisions after this go to the team (services.refunds).
-            patch["provider_time_changed_at"] = str(updated_at or datetime.now(timezone.utc).isoformat())
     # Stamp location on a legacy row the first time authoritative truth touches it.
     if not existing.get("tenant_location_id"):
         patch["tenant_location_id"] = location_id

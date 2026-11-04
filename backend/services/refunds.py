@@ -7,7 +7,7 @@ Kept in services/ (not a router) so tools.py can import it without a circular
 dependency on the payments router.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from services import telephony
 from services.short_links import format_currency
@@ -32,89 +32,6 @@ def refund_eligible(appt_dt_utc: datetime | None, refund_hours: int, now: dateti
     now = now or datetime.now(timezone.utc)
     hours_until = (appt_dt_utc - now).total_seconds() / 3600.0
     return hours_until >= refund_hours
-
-
-def _ts(value) -> datetime | None:
-    if not value:
-        return None
-    dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
-def refund_window_open(appt_dt_utc: datetime | None, refund_hours: int, *, paid_at: datetime | None,
-                       moves: list[dict], now: datetime) -> bool:
-    """Is a paid deposit still refundable? Once its refund window has closed, a
-    reschedule never reopens it (issue #179).
-
-    The rule, for review:
-      1. the appointment, where it is now, is at least `refund_hours` away; and
-      2. every move that finished after the deposit was paid started, or took the
-         payment, while the window for the time it moved FROM was still open.
-         Moving while the window is open carries refundability to the new time
-         (it then closes `refund_hours` before the new time), as before.
-    So a deposit paid while a move was under way, for a time already inside its
-    window, stays non-refundable at the new time. `refund_hours` is the business's
-    current setting, as it always was; nothing about the policy itself changes.
-    """
-    if not refund_eligible(appt_dt_utc, refund_hours, now):
-        return False
-    window = timedelta(hours=refund_hours)
-    for m in moves:
-        started, finished = _ts(m.get("created_at")), _ts(m.get("updated_at"))
-        if paid_at and finished and finished < paid_at:
-            continue  # moved before the deposit was paid: nothing was refundable yet
-        at = max(t for t in (started, paid_at) if t) if (started or paid_at) else None
-        if at is None or at > _ts(m["from_start_utc"]) - window:
-            return False
-    return True
-
-
-async def deposit_refundable(tenant: dict, appt: dict, payment: dict, refund_hours: int, *,
-                             now: datetime | None = None) -> bool | None:
-    """refund_window_open for a stored deposit. None means the team decides: the
-    deposit is neither refunded nor forfeited automatically. That is the answer
-    when the move history can't be read, and for Square, when the booking was
-    moved outside our own moves after the deposit was paid, or Square's copy
-    can't be read or no longer matches ours: our history can't vouch for those."""
-    from db import calendar_moves as db_cm
-    appt_dt = _ts(appt.get("appointment_datetime"))
-    try:
-        moves = await db_cm.completed_for_appointment(appt["id"])
-        paid_at = _ts(payment.get("paid_at")) or _ts(payment.get("created_at"))
-    except Exception as e:
-        logger.error("Refund: move history unreadable for appointment %s: %s", appt.get("id"), e)
-        return None
-    if tenant.get("square_appointments_enabled") and appt.get("google_event_id"):
-        if await _changed_in_square(tenant, appt, paid_at):
-            return None
-    return refund_window_open(appt_dt, refund_hours, paid_at=paid_at, moves=moves,
-                              now=now or datetime.now(timezone.utc))
-
-
-async def _changed_in_square(tenant: dict, appt: dict, paid_at: datetime | None) -> bool:
-    """Was this booking moved other than by our own moves since the deposit was
-    paid, or can't we tell? Two signals: the booking webhook stamps
-    provider_time_changed_at when it carries a new time into our row (migration
-    047), and Square's own copy is read now, in case that webhook hasn't arrived."""
-    changed = _ts(appt.get("provider_time_changed_at"))
-    if changed and (paid_at is None or changed >= paid_at):
-        logger.warning("Refund: appointment %s was moved in Square after its deposit was "
-                       "paid; the team decides the refund", appt.get("id"))
-        return True
-    from services import square_booking
-    try:
-        token = await square_booking.get_access_token(tenant)
-        status, booking = (await square_booking.get_booking_detailed(token, appt["google_event_id"])
-                           if token else (square_booking.FETCH_UNKNOWN, {}))
-        start = _ts(booking.get("start_at")) if status == square_booking.FETCH_FOUND else None
-    except Exception as e:
-        logger.warning("Refund: Square booking for %s unreadable: %s", appt.get("id"), e)
-        start = None
-    if start is None or start != _ts(appt.get("appointment_datetime")):
-        logger.warning("Refund: Square's booking for appointment %s is unreadable or at another "
-                       "time; the team decides the refund", appt.get("id"))
-        return True
-    return False
 
 
 async def issue_provider_refund(payment: dict, tenant: dict) -> bool:

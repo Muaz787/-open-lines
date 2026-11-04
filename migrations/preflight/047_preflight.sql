@@ -14,12 +14,6 @@ select json_build_object(
           and min(pg_get_constraintdef(oid)) not like '%payment_confirmation%', 'def', min(pg_get_constraintdef(oid)))
       from pg_constraint where conrelid = 'public.appointment_mutation_claims'::regclass
        and conname = 'appointment_mutation_claims_type_chk'),
-  'appointments_column_absent', json_build_object('ok', not exists (select 1 from information_schema.columns
-      where table_schema = 'public' and table_name = 'appointments' and column_name = 'provider_time_changed_at')),
-  'rows_to_stamp', (select json_build_object('ok', true, 'count', count(*),
-          'future', count(*) filter (where a.appointment_datetime > now()))
-      from public.appointments a where a.provider_updated_at is not null
-       and exists (select 1 from public.payments p where p.appointment_id = a.id and p.status = 'succeeded')),
   'no_live_moves', (select json_build_object('ok', count(*) = 0, 'count', count(*))
       from public.calendar_move_operations where state in ('in_progress', 'unknown', 'provider_moved')),
   'long_transactions', (select json_build_object('ok', count(*) = 0, 'count', count(*)) from pg_stat_activity

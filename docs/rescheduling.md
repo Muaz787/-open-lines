@@ -30,9 +30,9 @@ It moves automatically only when all of this holds; otherwise the team moves it:
   enough.
 - The booking at Square still matches our record (accepted, one segment, same
   start, location and team member) when it is read under ownership.
-- A **paid** deposit whose refund window has closed, or whose refund the team
-  must decide (see *Refund windows* below), is not moved. An owed deposit has
-  paid nothing, so it can move.
+- A **paid** deposit already inside the business's non-refundable window
+  (`cancellation_refund_hours`, default 24) is not moved. An owed deposit has paid
+  nothing, so it can move. Refund eligibility on cancellation is unchanged.
 - Square accepts the write. A seller without Appointments Plus or Premium can't
   write bookings through the API; Square answers 403 and the caller is told
   nothing changed.
@@ -66,48 +66,27 @@ each read, write and send and runs all 3,003 orders: no text names a time that
 differs from our record or Square's at the moment it is sent. Without the claim,
 1,569 of them do.
 
-## Refund windows (proposed — not yet approved)
+## Validation scope
 
-`cancellation_refund_hours` (default 24) is unchanged. The question is only what a
-reschedule does to it.
+While it is validated in production, the in-place move runs for one named test
+tenant and its named appointments only (`services/square_inplace_scope.py`), set
+on the **web** service:
 
-**Existing behaviour:** a caller who cancels gets the deposit back if the
-appointment, where it is *now*, is at least that many hours away. Moves are
-ignored. Square phone moves of a paid deposit inside the window are refused;
-Google and Outlook moves aren't.
+- `SQUARE_INPLACE_TEST_TENANT_ID`
+- `SQUARE_INPLACE_TEST_APPOINTMENT_IDS` (comma-separated)
 
-**Proposed** (`services.refunds.refund_window_open`): a paid deposit is refundable
-only if its window has never closed since it was paid —
+Both must be set. For everyone else a Square deposit appointment is handed to the
+team exactly as before, and a deposit confirmation names the time exactly as
+before, without taking ownership. Unset either variable to switch it off.
 
-1. the appointment, where it is now, is at least the refund hours away; and
-2. every move that finished after the deposit was paid started, or took the
-   payment, while the window for the time it moved *from* was still open.
+## Refund windows
 
-Examples, 24-hour window, deposit paid Monday 9:00 for Friday 14:00 (cutoff
-Thursday 14:00):
-
-| Case | Existing | Proposed |
-|---|---|---|
-| Moved Tuesday to next Friday 14:00, cancelled the following Tuesday | Refund | Refund (moved before the cutoff; new cutoff next Thursday) |
-| Moved Thursday 16:00 (after the cutoff) to next Friday | Square: refused, team. Google/Outlook: moved, then refund | Square: refused, team. Google/Outlook: moved, no refund |
-| Deposit paid during a move, appointment 10 hours away when the move began | Refund at the new time | No refund |
-| Deposit paid during a move, appointment 3 days away | Refund | Refund |
-| Repeated moves, each before its own cutoff | Refund | Refund |
-| Moved before the cutoff, moved again after the *new* cutoff | Refund | No refund |
-| Moved by the business directly in Square after payment | Refund decided from the new time | The team decides (below) |
-| Move history can't be read | Refund decided from the current time | The team decides |
-
-**Moves made directly in Square.** Our move history only knows our own moves.
-Two signals catch the rest: the Square booking webhook stamps
-`appointments.provider_time_changed_at` (047) when it carries a new time into our
-row, and at cancellation Square's copy of the booking is read and compared with
-ours. If the booking was moved in Square after the deposit was paid, if Square's
-time differs from ours, or if Square can't be read, the deposit is neither
-refunded nor forfeited: the caller hears the team will follow up and the
-business is notified. 047 stamps existing paid-deposit rows that a booking
-webhook already touched, since whether those were moved is unknown. Google and
-Outlook edits made directly in the calendar are not seen at all; for them the
-rule is enforced only against our own moves.
+Unchanged in this release: a cancelled deposit is refunded when the appointment,
+at its current time, is at least `cancellation_refund_hours` away. A proposed rule
+that stops a reschedule reopening a closed window, and sends refunds after moves
+made directly in Square to the team, is on branch `refund-window-policy` for
+separate review. Until then, a deposit paid during a move from a time already
+inside the window is judged from the new time.
 
 ## The conversation
 
@@ -157,18 +136,17 @@ rule is enforced only against our own moves.
 
 1. Run `migrations/preflight/047_preflight.sql` on production; every `ok` must be
    true, including no live moves.
-   Note `rows_to_stamp`: those paid-deposit appointments will send any refund to
-   the team.
 2. Apply `migrations/047_square_inplace_moves.sql`, then run
-   `ops/rescheduling/verify-047.sql`; every `ok` must be true and `stamped_rows`
-   must equal the preflight's `rows_to_stamp`.
+   `ops/rescheduling/verify-047.sql`; every `ok` must be true.
 3. Merge and deploy. Until 047 is applied, a Square deposit move can't be recorded,
    so it is refused and handed to the team as before.
 4. Check `/health` and System Health. On the first natural Square deposit move:
    the booking id is unchanged, its version went up by one, the booking and our
    row show the new time, payment rows are untouched and ownership is released.
 
-Rollback: keep 047's columns, its constraint and every row. Settle any live Square
+Rollback: first unset `SQUARE_INPLACE_TEST_APPOINTMENT_IDS` (the in-place path and
+the confirmation lock stop for everyone). Keep 047's columns, its constraint and
+every row. Settle any live Square
 move by reading the booking, then revert the code: deposit appointments go back
 to the team handoff and confirmations name the time as before. Old code doesn't
 know `payment_confirmation` claims and won't expire them, so after the old code

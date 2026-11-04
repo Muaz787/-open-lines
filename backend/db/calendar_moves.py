@@ -46,14 +46,6 @@ async def live_for_appointment(appointment_id: str) -> dict | None:
     return (res.data or [None])[0]
 
 
-async def completed_for_appointment(appointment_id: str) -> list[dict]:
-    """Every finished move of an appointment: when it started (created_at), when it
-    finished (updated_at) and the time it moved from. Refund eligibility reads these."""
-    res = await run_query(get_client().table(TABLE).select("*")
-                          .eq("appointment_id", appointment_id).eq("state", "completed"))
-    return res.data or []
-
-
 async def transition(op: dict, from_states: tuple, patch: dict) -> dict | None:
     """Apply patch if the row is still owned by op's claim and in from_states."""
     res = await run_query(get_client().table(TABLE).update({**patch, "updated_at": _now_iso()})
