@@ -28,18 +28,20 @@ from db.supabase import get_client  # noqa: E402
 client = get_client()
 
 
-def table_or_empty(name, columns):
+def read_table(name, columns):
+    """(rows, available). An existing empty table is available with no rows; only a
+    table that can't be read, such as before its migration, is unavailable."""
     try:
-        return client.table(name).select(columns).limit(100000).execute().data or []
+        return client.table(name).select(columns).limit(100000).execute().data or [], True
     except Exception:
-        return []
+        return [], False
 
 
 tenants = client.table("tenants").select(
     "id, subscription_status, stripe_subscription_id, billing_exempt, minutes_used_this_period, "
     "overage_minutes_reported, billing_period_anchor").execute().data
 calls = client.table("calls").select("tenant_id, duration_secs, created_at").limit(100000).execute().data
-ledger = table_or_empty("usage_events", "tenant_id, minutes, ended_at, counted, overage_state")
+ledger, ledger_available = read_table("usage_events", "tenant_id, minutes, ended_at, counted, overage_state")
 
 rows = []
 for t in tenants:
@@ -65,7 +67,7 @@ summary = {
     "counter_lower": sum(1 for r in rows if r["difference"] < 0),
     "with_overage_reported": sum(1 for r in rows if r["overage_reported"]),
     "live_subscription_with_anchor": sum(1 for r in rows if r["has_subscription"] and r["anchor"] and r["status"] in ("active", "trialing", "past_due", "canceling")),
-    "ledger_available": bool(ledger), "ledger_pending": sum(r["ledger_pending"] for r in rows),
+    "ledger_available": ledger_available, "ledger_rows": len(ledger), "ledger_pending": sum(r["ledger_pending"] for r in rows),
 }
 print(json.dumps(summary, indent=1))
 if args.out:
