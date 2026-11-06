@@ -177,21 +177,34 @@ def _square_error_code(e: Exception) -> str:
         return ""
 
 
-def rejection_confirmed(e: Exception, status: str) -> bool:
-    """Is this a 401 that only reconnecting Square can fix?
+# Square error codes that say this one credential can never work again, so only
+# reconnecting Square fixes it. UNAUTHORIZED is Square's GENERIC authorization
+# error and is deliberately absent, as are app-wide codes (CLIENT_DISABLED,
+# APPLICATION_DISABLED) that reconnecting one workspace would not fix.
+PERMANENT_CREDENTIAL_CODES = frozenset({"ACCESS_TOKEN_REVOKED", "V1_ACCESS_TOKEN"})
 
-    Not when a refresh was due and failed: the stored token may simply have
-    expired, and the next attempt may refresh it. Not when Square says the token
-    EXPIRED and a refresh token is on file, for the same reason. Otherwise —
-    revoked or invalid, a credential refreshed moments ago and still refused, or
-    no refresh token to try — it is."""
+
+def rejection_confirmed(e: Exception, status: str) -> bool:
+    """Is this a 401 that only reconnecting Square can fix? Explicitly:
+
+      * no refresh token stored (TOKEN_NOT_REFRESHABLE): yes, for any 401 —
+        nothing but reconnecting can produce a new credential;
+      * refreshed moments ago (TOKEN_REFRESHED) and still refused: yes;
+      * a refresh was due and failed (TOKEN_REFRESH_FAILED): no — the stored
+        token may only have expired, and a later attempt may refresh it;
+      * no refresh due, refresh token on file (TOKEN_CURRENT): only for an
+        explicit PERMANENT_CREDENTIAL_CODES code. A bare 401, the generic
+        UNAUTHORIZED, ACCESS_TOKEN_EXPIRED and any unknown code stay retryable.
+    """
     if getattr(getattr(e, "response", None), "status_code", None) != 401:
         return False
-    if status == TOKEN_REFRESH_FAILED:
-        return False
-    if _square_error_code(e) == "ACCESS_TOKEN_EXPIRED" and status != TOKEN_NOT_REFRESHABLE:
-        return False
-    return True
+    if status == TOKEN_NOT_REFRESHABLE:
+        return True
+    if status == TOKEN_REFRESHED:
+        return True
+    if status == TOKEN_CURRENT:
+        return _square_error_code(e) in PERMANENT_CREDENTIAL_CODES
+    return False
 
 
 # ---------------------------------------------------------------------------

@@ -418,8 +418,10 @@ async def test_M8_no_refresh_due_and_square_says_expired_with_a_refresh_token_is
 @pytest.mark.parametrize("stored_extra, code", [
     ({"square_refresh_token": None}, "UNAUTHORIZED"),            # production's DANI Test
     ({"square_refresh_token": None}, "ACCESS_TOKEN_EXPIRED"),    # expired, nothing to refresh with
+    ({"square_refresh_token": None}, ""),                        # bare 401, nothing to refresh with
     ({"square_refresh_token": "r", "square_token_expires_at": None}, "ACCESS_TOKEN_REVOKED"),
-    ({"square_refresh_token": "r", "square_token_expires_at": None}, "UNAUTHORIZED"),
+    ({"square_refresh_token": "r", "square_token_expires_at": "2027-01-01T00:00:00Z"}, "ACCESS_TOKEN_REVOKED"),
+    ({"square_refresh_token": "r", "square_token_expires_at": None}, "V1_ACCESS_TOKEN"),
 ])
 async def test_M9_confirmed_rejections_through_the_real_sync(stored_extra, code):
     stored = tenant(DANI) | stored_extra
@@ -427,6 +429,35 @@ async def test_M9_confirmed_rejections_through_the_real_sync(stored_extra, code)
     r = await _route_with(ps)
     assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
     assert r.should_retry is False and writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expires_at", [None, "2027-01-01T00:00:00Z"])
+@pytest.mark.parametrize("code", ["", "UNAUTHORIZED", "ACCESS_TOKEN_EXPIRED", "CLIENT_DISABLED",
+                                  "APPLICATION_DISABLED", "SOMETHING_SQUARE_ADDS_LATER"])
+async def test_M13_a_current_token_with_a_refresh_token_needs_an_explicit_permanent_code(expires_at, code):
+    """Current token (no refresh due), refresh token on file: a bare 401, the
+    generic UNAUTHORIZED, an expiry, an app-wide code or an unknown code is NOT a
+    confirmed rejection. Through the real sync(); retried, nothing written."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": expires_at}
+    ps, writes = _real_sync(stored, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert r.failed[0].detail.startswith("raised:"), r.summary
+    assert r.should_retry is True and writes == []
+
+
+def test_M14_the_permanent_codes_are_explicit():
+    from services import square_booking as sb
+    assert sb.PERMANENT_CREDENTIAL_CODES == frozenset({"ACCESS_TOKEN_REVOKED", "V1_ACCESS_TOKEN"})
+    for status, code, expected in [
+        (sb.TOKEN_CURRENT, "ACCESS_TOKEN_REVOKED", True), (sb.TOKEN_CURRENT, "V1_ACCESS_TOKEN", True),
+        (sb.TOKEN_CURRENT, "UNAUTHORIZED", False), (sb.TOKEN_CURRENT, "", False),
+        (sb.TOKEN_CURRENT, "ACCESS_TOKEN_EXPIRED", False), (sb.TOKEN_CURRENT, "CLIENT_DISABLED", False),
+        (sb.TOKEN_REFRESH_FAILED, "ACCESS_TOKEN_REVOKED", False), (sb.TOKEN_REFRESH_FAILED, "", False),
+        (sb.TOKEN_REFRESHED, "", True), (sb.TOKEN_REFRESHED, "UNAUTHORIZED", True),
+        (sb.TOKEN_NOT_REFRESHABLE, "", True), (sb.TOKEN_NOT_REFRESHABLE, "UNAUTHORIZED", True)]:
+        assert sb.rejection_confirmed(_http_error(401, code=code), status) is expected, (status, code)
+    assert sb.rejection_confirmed(_http_error(403, code="ACCESS_TOKEN_REVOKED"), sb.TOKEN_CURRENT) is False
 
 
 @pytest.mark.asyncio
