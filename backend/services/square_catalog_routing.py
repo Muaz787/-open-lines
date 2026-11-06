@@ -76,6 +76,14 @@ SKIP_TENANT_INACTIVE = "tenant_inactive"
 SKIP_NOT_CONNECTED = "square_not_connected"
 SKIP_APPOINTMENTS_DISABLED = "appointments_disabled"
 
+# Why an eligible tenant failed, when the failure is a fact about that tenant
+# rather than about the moment. Square answering 401 after sync() has been
+# through get_access_token() — which refreshes a token nearing expiry — means
+# the stored credential is revoked or invalid. Only reconnecting Square fixes
+# it, so it is reported for that tenant and is not a reason to redeliver the
+# event to everyone.
+FAIL_CREDENTIAL_REJECTED = "credential_rejected"
+
 # Event-level results, written to the ledger as evidence.
 RESULT_SYNCED = "catalog_synced"
 RESULT_PARTIAL = "catalog_partial"
@@ -154,6 +162,8 @@ class CatalogRouting:
           * sync() returning ok=False      -- it reports exactly two structural
             conditions this way (tenant_not_found, not_connected) rather than
             raising. Neither improves by being asked again.
+          * credential_rejected            -- Square refused this tenant's
+            credential after the normal refresh; only reconnecting fixes it.
         """
         return any(o.detail.startswith("raised:") for o in self.failed)
 
@@ -197,6 +207,13 @@ def catalog_sync_eligibility(tenant: dict, merchant_id: str) -> tuple[bool, str]
     if not tenant.get("square_appointments_enabled"):
         return False, SKIP_APPOINTMENTS_DISABLED
     return True, ""
+
+
+def _credential_rejected(e: Exception) -> bool:
+    """Did Square answer 401 Unauthorized? Anything else — 5xx, 429, a timeout, a
+    dropped connection, a 403 — stays transient and keeps the retry."""
+    response = getattr(e, "response", None)
+    return getattr(response, "status_code", None) == 401
 
 
 async def route_catalog_event(event: dict) -> CatalogRouting:
@@ -243,6 +260,12 @@ async def route_catalog_event(event: dict) -> CatalogRouting:
             from services import square_booking
             result = await square_booking.sync(tenant_id)
         except Exception as e:
+            if _credential_rejected(e):
+                logger.error("W7E: Square rejected the credential for tenant %s (merchant %s) — "
+                             "RECONNECT REQUIRED: this workspace must reconnect Square. "
+                             "Not retrying the event for it.", tenant_id, merchant_id)
+                outcomes.append(TenantOutcome(tenant_id, FAILED, FAIL_CREDENTIAL_REJECTED))
+                continue
             logger.error("W7E: catalog sync RAISED for tenant %s (merchant %s): %s",
                          tenant_id, merchant_id, e)
             outcomes.append(TenantOutcome(tenant_id, FAILED, f"raised: {type(e).__name__}"))

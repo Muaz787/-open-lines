@@ -256,6 +256,126 @@ async def test_K_a_credential_failure_for_one_tenant_is_reported_not_retried():
     assert r.should_retry is False, "a structural refusal must not loop forever"
 
 
+def _http_error(status: int, url: str = "https://connect.squareup.com/v2/catalog/search"):
+    import httpx
+    request = httpx.Request("POST", url)
+    return httpx.HTTPStatusError(f"Client error '{status}'", request=request,
+                                 response=httpx.Response(status, request=request))
+
+
+@pytest.mark.asyncio
+async def test_M_a_rejected_credential_fails_that_tenant_without_retrying_the_event():
+    """Production 2026-11-06: one workspace's Square credential was revoked. Its
+    sync raised a 401 and the whole event was redelivered, re-syncing every other
+    workspace each time. Now the healthy workspace syncs, the rejected one is
+    reported as needing reconnection, and the event is not retried for it."""
+    attempted = []
+
+    async def mixed(tid):
+        attempted.append(tid)
+        if tid == DANI:
+            raise _http_error(401)
+        return {"ok": True, "services": [{"id": "s"}], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=mixed)):
+        r = await w7e.route_catalog_event(event())
+    assert sorted(attempted) == sorted([DANI, THIRD])
+    assert [o.tenant_id for o in r.synced] == [THIRD], "the healthy workspace synced"
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.result == w7e.RESULT_PARTIAL
+    assert r.should_retry is False, "a revoked credential must not redeliver the event"
+    assert f"{DANI[:8]}…=failed(credential_rejected)" in r.summary, "surfaced in the ledger"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transient", [
+    lambda: _http_error(500), lambda: _http_error(503), lambda: _http_error(429),
+    lambda: _http_error(403), lambda: TimeoutError("read timeout"), lambda: ConnectionError("reset")])
+async def test_M2_transient_failures_are_still_retried(transient):
+    async def flaky(tid):
+        if tid == DANI:
+            raise transient()
+        return {"ok": True, "services": [], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=flaky)):
+        r = await w7e.route_catalog_event(event())
+    assert len(r.synced) == 1 and r.failed[0].detail.startswith("raised:")
+    assert r.should_retry is True
+
+
+@pytest.mark.asyncio
+async def test_M3_a_rejected_credential_does_not_hide_a_transient_failure_elsewhere():
+    async def both(tid):
+        if tid == DANI:
+            raise _http_error(401)
+        if tid == SHAHID:
+            raise _http_error(502)
+        return {"ok": True, "services": [], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(SHAHID), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=both)):
+        r = await w7e.route_catalog_event(event())
+    assert len(r.synced) == 1 and len(r.failed) == 2
+    assert r.should_retry is True, "the transient failure still earns a redelivery"
+
+
+@pytest.mark.asyncio
+async def test_M4_through_the_real_sync_a_revoked_token_is_classified_and_nothing_is_written():
+    """The real square_booking.sync(), as in production: locations and the booking
+    profile fail softly, then the catalog call raises the 401. No cache or tenant
+    write happens for that workspace, and the router reports credential_rejected."""
+    from services import square_booking as sb
+    writes = []
+    revoked = tenant(DANI) | {"square_location_id": None}
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[revoked])), \
+         patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=revoked)), \
+         patch.object(sb, "get_access_token", new=AsyncMock(return_value="tok")), \
+         patch("services.square_service.list_locations",
+               new=AsyncMock(side_effect=_http_error(401, "https://connect.squareup.com/v2/locations"))), \
+         patch.object(sb, "retrieve_booking_profile", new=AsyncMock(return_value={})), \
+         patch.object(sb, "list_services", new=AsyncMock(side_effect=_http_error(401))), \
+         patch("db.supabase.replace_square_services", new=AsyncMock(side_effect=writes.append)), \
+         patch("db.supabase.replace_square_staff", new=AsyncMock(side_effect=writes.append)), \
+         patch("db.supabase.update_tenant", new=AsyncMock(side_effect=lambda *a: writes.append(a))):
+        r = await w7e.route_catalog_event(event())
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.should_retry is False and writes == []
+
+
+@pytest.mark.asyncio
+async def test_M5_the_normal_token_refresh_still_runs_first():
+    """sync() still obtains its token through get_access_token(), which refreshes
+    a credential nearing expiry; a refreshed credential syncs normally."""
+    import inspect
+    from services import square_booking as sb
+    assert "token = await get_access_token(tenant)" in inspect.getsource(sb.sync)
+    calls = []
+
+    async def refreshed(t):
+        calls.append(t["id"])
+        return "fresh-token"
+    healthy = tenant(DANI) | {"square_location_id": "L1"}
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[healthy])), \
+         patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=healthy)), \
+         patch.object(sb, "get_access_token", new=AsyncMock(side_effect=refreshed)), \
+         patch("services.square_service.list_locations", new=AsyncMock(return_value=[])), \
+         patch.object(sb, "retrieve_booking_profile", new=AsyncMock(return_value={"booking_enabled": True})), \
+         patch.object(sb, "list_services", new=AsyncMock(return_value=[])), \
+         patch.object(sb, "list_team_members", new=AsyncMock(return_value=[])), \
+         patch("db.supabase.replace_square_services", new=AsyncMock()), \
+         patch("db.supabase.replace_square_staff", new=AsyncMock()), \
+         patch("db.supabase.update_tenant", new=AsyncMock()):
+        r = await w7e.route_catalog_event(event())
+    assert calls == [DANI] and [o.tenant_id for o in r.synced] == [DANI] and r.should_retry is False
+
+
 @pytest.mark.asyncio
 async def test_L_a_candidate_lookup_failure_is_transient_and_retried():
     with patch("db.square_routing.list_tenants_by_square_merchant_id",
