@@ -416,7 +416,7 @@ def test_a_booking_event_meeting_a_confirmation_is_retried():
 async def test_outside_the_scope_a_confirmation_takes_no_ownership(provider, case, monkeypatch,
                                                                     inplace_runs_store):
     if case == "validation off":
-        monkeypatch.delenv("SQUARE_INPLACE_TEST_CODE_SHA256")
+        monkeypatch.delenv("SQUARE_INPLACE_TEST_CALLER_PHONE")
     else:
         sq.bind_run(inplace_runs_store, "a-other" if case == "run bound elsewhere" else "a-1",
                     disabled=case == "run disabled")

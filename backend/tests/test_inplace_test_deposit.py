@@ -4,8 +4,8 @@ Twilio or database calls; tests/conftest.py fakes the inplace_test_runs table).
 
 Workspace deposits stay off. A Square Appointments booking gets a deposit link
 only for the configured caller (telephony metadata), on the configured workspace
-and location, with the one-time code, inside the validation window — and only
-once. Everyone else books exactly as today.
+and location, inside the validation window, reading out a code an operator has
+ARMED — and only once. Everyone else books exactly as today.
 """
 import asyncio
 import hashlib
@@ -20,7 +20,7 @@ from services import vapi as vapi_svc
 
 TID, LOC = "b63c3f48-0000-0000-0000-000000000001", "L0Q8GTAZCHD42"
 ME, DEMO = "+16475550100", "+14165550123"
-CODE = "482917"
+CODE = "482917305146"                      # 12 digits, the minimum
 HASH = hashlib.sha256(CODE.encode()).hexdigest()
 
 
@@ -28,7 +28,6 @@ def open_window(monkeypatch, *, tenant=TID, location=LOC, phone=ME, hours=6):
     monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", tenant)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_LOCATION_ID", location)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_CALLER_PHONE", phone)
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_CODE_SHA256", HASH)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_EXPIRES_AT",
                        (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat())
 
@@ -127,6 +126,7 @@ def deposit_texts(shop):
 
 async def test_the_test_caller_with_the_code_gets_one_cad_1_link(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop:
         said = await shop.book()
     assert len(shop.links) == 1 and shop.links[0]["amount_cents"] == 100
@@ -160,6 +160,7 @@ async def _ordinary(shop, **k):
 ])
 async def test_everyone_else_books_as_today(case, monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     kwargs = {}
     shop = Shop()
     if case == "ordinary demo caller":
@@ -175,7 +176,7 @@ async def test_everyone_else_books_as_today(case, monkeypatch, inplace_runs_stor
     elif case == "window over 24h":
         open_window(monkeypatch, hours=30)
     elif case == "validation off":
-        monkeypatch.delenv("SQUARE_INPLACE_TEST_CODE_SHA256")
+        monkeypatch.delenv("SQUARE_INPLACE_TEST_CALLER_PHONE")
     elif case == "another workspace configured":
         open_window(monkeypatch, tenant="t-other")
     elif case == "another location configured":
@@ -184,11 +185,12 @@ async def test_everyone_else_books_as_today(case, monkeypatch, inplace_runs_stor
         shop.tenant["square_currency"] = "usd"
     with shop.env():
         await _ordinary(shop, **kwargs)
-    assert HASH not in inplace_runs_store.rows, "the code is not used up"
+    assert inplace_runs_store.rows[HASH]["vapi_call_id"] is None, "the code is not used up"
 
 
-async def test_the_booking_and_its_text_are_identical_with_and_without_the_test(monkeypatch):
+async def test_the_booking_and_its_text_are_identical_with_and_without_the_test(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as plain:
         a = await plain.book(phone=DEMO, code=None)
     with Shop().env() as test:
@@ -203,6 +205,7 @@ async def test_the_booking_and_its_text_are_identical_with_and_without_the_test(
 
 async def test_a_second_call_cannot_reuse_the_code(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop:
         await shop.book(call="call-1")
         said = await shop.book(call="call-2")
@@ -212,6 +215,7 @@ async def test_a_second_call_cannot_reuse_the_code(monkeypatch, inplace_runs_sto
 
 async def test_a_retry_in_the_same_call_sends_no_second_link(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop:
         await shop.book()
         # The same call booking again (were the same-call guard ever bypassed):
@@ -223,6 +227,7 @@ async def test_a_retry_in_the_same_call_sends_no_second_link(monkeypatch, inplac
 
 async def test_concurrent_bookings_create_one_link(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop:
         results = await asyncio.gather(*(shop.book() for _ in range(5)))
     assert len(shop.links) == 1 and len(shop.payments) == 1 and len(deposit_texts(shop)) == 1
@@ -231,6 +236,7 @@ async def test_concurrent_bookings_create_one_link(monkeypatch, inplace_runs_sto
 
 async def test_concurrent_calls_with_the_same_code_create_one_link(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop:
         await asyncio.gather(*(shop.book(call=f"call-{i}") for i in range(5)))
     assert len(shop.links) == 1 and len(shop.payments) == 1
@@ -251,15 +257,15 @@ async def test_a_claimed_link_is_never_created_twice(monkeypatch, inplace_runs_s
 
 async def test_a_disabled_run_sends_nothing(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
-    inplace_runs_store.rows[HASH] = {"code_sha256": HASH, "tenant_id": TID, "vapi_call_id": "call-1",
-                                     "appointment_id": None, "link_claimed_at": None,
-                                     "payment_id": None, "disabled_at": "now"}
+    inplace_runs_store.arm(HASH, TID)
+    inplace_runs_store.rows[HASH].update(vapi_call_id="call-1", disabled_at="now")
     with Shop().env() as shop:
         await _ordinary(shop)
 
 
-async def test_bookkeeping_failure_sends_nothing(monkeypatch):
+async def test_bookkeeping_failure_sends_nothing(monkeypatch, inplace_runs_store):
     open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
     with Shop().env() as shop, \
             patch("db.inplace_test_runs.use_code", new=AsyncMock(side_effect=RuntimeError("db down"))):
         await _ordinary(shop)
@@ -272,6 +278,102 @@ async def test_the_test_deposit_never_reads_workspace_deposit_settings(monkeypat
         dep = await tools._create_and_send_deposit(shop.tenant, caller_phone=ME, caller_name="x",
                                                    service="s", appointment_id="appt-9")
     assert dep["error"] == "no_provider" and shop.links == []
+
+
+# ══════════════════ armed, stopped, burned: fail closed ════════════════════════
+
+async def test_with_nothing_armed_the_code_does_nothing(monkeypatch, inplace_runs_store):
+    """Five settings configured, nobody armed a run: an ordinary booking."""
+    open_window(monkeypatch)
+    with Shop().env() as shop:
+        await _ordinary(shop)
+    assert inplace_runs_store.rows == {}, "nothing is ever inserted by a call"
+
+
+async def test_stopping_before_first_use_blocks_first_use(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
+    inplace_runs_store.disable_all()                      # the stop command
+    with Shop().env() as shop:
+        await _ordinary(shop)
+    assert inplace_runs_store.rows[HASH]["vapi_call_id"] is None, "never used"
+
+
+async def test_stopping_mid_booking_blocks_the_payment_link(monkeypatch, inplace_runs_store):
+    """Stop lands after the code was used and the appointment bound, before the
+    link is claimed: no link, and nothing the move or lock may act on."""
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
+    real_bind = inplace_runs_store.bind_appointment
+
+    async def bind_then_stop(h, appt):
+        ok = await real_bind(h, appt)
+        inplace_runs_store.disable_all()
+        return ok
+    with Shop().env() as shop, patch("db.inplace_test_runs.bind_appointment", new=bind_then_stop):
+        said = await shop.book()
+    assert shop.links == [] and shop.payments == [] and deposit_texts(shop) == []
+    assert "test deposit" not in said
+    assert not await scope.allowed(TID, "appt-1"), "the move and lock are off for it too"
+
+
+async def test_stopping_after_the_link_stops_the_move_and_lock(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
+    with Shop().env() as shop:
+        await shop.book()
+    assert await scope.allowed(TID, "appt-1")
+    inplace_runs_store.disable_all()
+    assert not await scope.allowed(TID, "appt-1")
+
+
+async def test_a_code_shorter_than_12_digits_is_refused(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    short = "482917"
+    inplace_runs_store.arm(hashlib.sha256(short.encode()).hexdigest(), TID)
+    with Shop().env() as shop:
+        await _ordinary(shop, code=short)
+
+
+async def test_a_code_armed_for_another_workspace_is_refused(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, "t-other")
+    with Shop().env() as shop:
+        await _ordinary(shop)
+
+
+async def test_a_test_call_that_ends_unused_burns_the_code(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
+    assert await scope.burn_unused_codes(TID, DEMO, "call-x") == 0, "other callers burn nothing"
+    assert await scope.burn_unused_codes(TID, ME, "call-x") == 1
+    with Shop().env() as shop:
+        await _ordinary(shop)
+
+
+async def test_a_used_code_is_not_burned_by_a_later_call(monkeypatch, inplace_runs_store):
+    open_window(monkeypatch)
+    inplace_runs_store.arm(HASH, TID)
+    with Shop().env() as shop:
+        await shop.book()
+    assert await scope.burn_unused_codes(TID, ME, "call-later") == 0
+    assert await scope.allowed(TID, "appt-1"), "the booked test appointment stays in scope"
+
+
+def test_every_end_of_call_report_runs_the_burn_check():
+    import inspect
+    from services import webhook_processor
+    src = inspect.getsource(webhook_processor.process_end_of_call)
+    assert "square_inplace_scope.burn_unused_codes(tenant_id, caller_number, call_id)" in src
+
+
+def test_test_calls_are_not_recorded_and_others_are_unchanged():
+    import inspect
+    from routers import webhooks
+    src = inspect.getsource(webhooks)
+    i = src.index('overrides["artifactPlan"] = {"recordingEnabled": False}')
+    assert "if test_call:" in src[i - 120:i]
+    assert src.count("artifactPlan") == 1, "no other call's recording settings are touched"
 
 
 # ═══════════════════════ the call: only the test caller ═══════════════════════
@@ -302,4 +404,4 @@ def test_the_webhook_offers_the_code_only_through_the_scope_check():
     from routers import webhooks
     src = inspect.getsource(webhooks)
     i = src.index("with_test_code(tools)")
-    assert "square_inplace_scope.caller_in_test(tenant_id, caller_phone)" in src[i - 300:i]
+    assert "test_call = square_inplace_scope.caller_in_test(tenant_id, caller_phone)" in src[i - 300:i]

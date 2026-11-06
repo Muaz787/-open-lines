@@ -148,6 +148,11 @@ async def process_end_of_call(payload: dict) -> None:
     tenant_id: str = tenant["id"]
     business_name: str = tenant["business_name"]
 
+    # Issue #179 validation: a test call that ended without using its armed code
+    # burns it (services/square_inplace_scope). Nobody else is affected.
+    from services import square_inplace_scope
+    await square_inplace_scope.burn_unused_codes(tenant_id, caller_number, call_id)
+
     # Find or create lead
     existing_lead = await db.get_lead_by_phone(tenant_id, caller_number)
     is_new_lead = existing_lead is None

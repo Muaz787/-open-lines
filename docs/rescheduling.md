@@ -76,24 +76,30 @@ Everything new is off unless all of these are set on the **web** service
 | `SQUARE_INPLACE_TEST_TENANT_ID` | the one workspace |
 | `SQUARE_INPLACE_TEST_LOCATION_ID` | its Square location |
 | `SQUARE_INPLACE_TEST_CALLER_PHONE` | the one caller, E.164, matched against call metadata (never the model) |
-| `SQUARE_INPLACE_TEST_CODE_SHA256` | sha256 of a one-time code the caller reads out |
 | `SQUARE_INPLACE_TEST_EXPIRES_AT` | ISO-8601 UTC, at most 24 hours ahead (otherwise off) |
 
+- Nothing works until a run is **armed**: an operator inserts the sha256 of a
+  one-time code of at least 12 digits into `inplace_test_runs`. The plaintext never
+  leaves the caller; it is not in any setting or log.
 - Only that caller, on that workspace, inside the window, is offered a `test_code`
-  field on `book_appointment`. Everyone else's tools and prompt are unchanged.
+  field on `book_appointment`, and those calls are not recorded. Everyone else's
+  tools, prompt and recording are unchanged.
+- A call from that caller that ends without using an armed code disables it: the
+  code may now be in that call's transcript. Arm a new one.
 - A Square booking by that caller with the right code gets one CAD $1.00 deposit
   link (`services/inplace_test_deposit.py`). The amount is fixed in code. Workspace
   deposit settings stay off and are never read or changed.
-- Using the code inserts a row in `inplace_test_runs` (047). The row makes the code
-  single-use, binds the one appointment, and lets only one request claim the payment
-  link, so retries and concurrent requests can't create a second link.
+- Using the code marks its row used by that call (single use), binds the one
+  appointment, and lets only one request claim the payment link, so retries and
+  concurrent requests can't create a second link.
 - The in-place move and the deposit-confirmation lock act only on the appointment
   bound to a live, enabled run. Everyone else: today's team handoff for a Square
   deposit move and today's confirmation text.
 
 **Stop the test immediately:** `update public.inplace_test_runs set disabled_at = now()
-where disabled_at is null;` takes effect on the next request, with no redeploy. Before
-the code is used, insert a disabled row for its hash instead. Unsetting a variable or
+where disabled_at is null;` takes effect on the next request, used or not, with no
+redeploy: an unused code can't be used, and a used one can't create a link, move
+or lock anything. Unsetting a variable or
 letting the expiry pass also turns everything off.
 
 **An unfinished move after the test is stopped:** the move keeps the appointment's

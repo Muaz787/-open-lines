@@ -18,10 +18,11 @@
 -- after a five-minute lease (backend).
 --
 -- And it adds inplace_test_runs, for the one production validation of this
--- feature (backend services/square_inplace_scope): one row per one-time test
--- code. Inserting the row is what uses the code, so it is single-use; the row
--- names the one appointment the test may act on, and link_claimed_at lets only
--- one request create its one payment link. disabled_at stops the run at once.
+-- feature (backend services/square_inplace_scope). An operator ARMS a run by
+-- inserting the sha256 of a one-time code; nothing works without one. Using the
+-- code sets vapi_call_id once, so it is single-use; the row then names the one
+-- appointment the test may act on, and link_claimed_at lets only one request
+-- create its one payment link. disabled_at stops the run at once, used or not.
 --
 -- Backend only. Apply BEFORE deploying the backend that uses it: until then a
 -- Square deposit move can't be recorded, so it is refused and handed to the team,
@@ -52,7 +53,9 @@ alter table public.appointment_mutation_claims
 create table if not exists public.inplace_test_runs (
   code_sha256     text        primary key check (code_sha256 ~ '^[0-9a-f]{64}$'),
   tenant_id       uuid        not null references public.tenants(id) on delete cascade,
-  vapi_call_id    text        not null,
+  vapi_call_id    text,
+  armed_at        timestamptz not null default now(),
+  used_at         timestamptz,
   appointment_id  uuid        references public.appointments(id) on delete set null,
   link_claimed_at timestamptz,
   payment_id      uuid,

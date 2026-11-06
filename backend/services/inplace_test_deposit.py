@@ -7,7 +7,7 @@ of these holds:
 
   * the call is from the test caller (telephony metadata, never the model) to the
     test workspace, inside the validation window;
-  * the caller read out the one-time code, and it matches;
+  * the caller read out an ARMED one-time code (at least 12 digits);
   * the booking is at the test location, and the workspace's currency is CAD;
   * the code had not been used by another call, and the run isn't disabled;
   * this appointment is the run's appointment, and no link was created before.
@@ -35,22 +35,20 @@ async def deposit_for_booking(*, tenant: dict, tenant_id: str, vapi_call_id: str
     Otherwise the deposit sender's status dict."""
     if not scope.caller_in_test(tenant_id, metadata_phone):
         return None
-    if not test_code:
-        logger.info("inplace_test: test caller booked without a code; ordinary booking")
-        return None
-    if not scope.code_matches(test_code):
-        logger.warning("inplace_test: test code did not match; ordinary booking")
+    h = scope.code_hash(test_code)
+    if not h:
+        logger.info("inplace_test: test caller booked without a usable code; ordinary booking")
         return None
     if (location_id != scope.test_location() or str(tenant.get("square_location_id") or "") != scope.test_location()
             or (tenant.get("square_currency") or "").lower() != scope.TEST_DEPOSIT_CURRENCY or not appointment_id):
         logger.warning("inplace_test: location, currency or appointment not as configured; ordinary booking")
         return None
 
-    h = scope.code_hash(test_code)
     try:
         run = await db_runs.use_code(h, tenant_id, vapi_call_id)
         if not run:
-            logger.warning("inplace_test: code already used by another call, or disabled; ordinary booking")
+            logger.warning("inplace_test: code not armed, used by another call, or disabled; "
+                           "ordinary booking")
             return None
         if str(run.get("appointment_id") or "") not in ("", str(appointment_id)):
             logger.warning("inplace_test: run already bound to another appointment; ordinary booking")
@@ -60,6 +58,10 @@ async def deposit_for_booking(*, tenant: dict, tenant_id: str, vapi_call_id: str
             if str(fresh.get("appointment_id") or "") != str(appointment_id):
                 return None
         if not await db_runs.claim_link(h, appointment_id):
+            fresh = await db_runs.get(h) or {}
+            if fresh.get("disabled_at"):
+                logger.warning("inplace_test: run stopped before the link was created; none sent")
+                return None
             return ALREADY_SENT
     except Exception as e:
         logger.error("inplace_test: run bookkeeping failed; no deposit: %s", e)

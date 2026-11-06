@@ -267,17 +267,35 @@ class FakeInplaceRuns:
         r = self.rows.get(h)
         return dict(r) if r else None
 
+    def arm(self, h, tenant_id):
+        """What the operator's INSERT does."""
+        self.rows[h] = {"code_sha256": h, "tenant_id": tenant_id, "vapi_call_id": None,
+                        "appointment_id": None, "link_claimed_at": None, "payment_id": None,
+                        "disabled_at": None}
+
+    def disable_all(self):
+        """What the operator's stop command does."""
+        for r in self.rows.values():
+            r["disabled_at"] = r["disabled_at"] or "now"
+
     async def use_code(self, h, tenant_id, call_id):
         async with self.lock:
-            if h not in self.rows:
-                self.rows[h] = {"code_sha256": h, "tenant_id": tenant_id, "vapi_call_id": call_id,
-                                "appointment_id": None, "link_claimed_at": None, "payment_id": None,
-                                "disabled_at": None}
-            r = self.rows[h]
-            if (str(r["tenant_id"]) != str(tenant_id) or str(r["vapi_call_id"]) != str(call_id)
+            r = self.rows.get(h)
+            if r and str(r["tenant_id"]) == str(tenant_id) and r["vapi_call_id"] is None \
+                    and not r["disabled_at"]:
+                r["vapi_call_id"] = call_id
+            if (not r or str(r["tenant_id"]) != str(tenant_id) or str(r["vapi_call_id"]) != str(call_id)
                     or r["disabled_at"]):
                 return None
             return dict(r)
+
+    async def disable_unused(self, tenant_id):
+        n = 0
+        for r in self.rows.values():
+            if str(r["tenant_id"]) == str(tenant_id) and r["vapi_call_id"] is None and not r["disabled_at"]:
+                r["disabled_at"] = "burned"
+                n += 1
+        return n
 
     async def bind_appointment(self, h, appointment_id):
         async with self.lock:
@@ -311,6 +329,7 @@ class FakeInplaceRuns:
 def inplace_runs_store(monkeypatch):
     store = FakeInplaceRuns()
     from db import inplace_test_runs as _db_runs
-    for name in ("get", "use_code", "bind_appointment", "claim_link", "record_payment", "for_appointment"):
+    for name in ("get", "use_code", "disable_unused", "bind_appointment", "claim_link", "record_payment",
+                 "for_appointment"):
         monkeypatch.setattr(_db_runs, name, getattr(store, name))
     return store

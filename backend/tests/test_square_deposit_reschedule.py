@@ -39,7 +39,7 @@ from tests import test_w6a1_safe_cancellation as w6a1
 TID, CALL, PHONE = "t-sq", "call-1", "+16475550100"
 
 
-TEST_CODE = "482917"
+TEST_CODE = "482917305146"
 TEST_HASH = __import__("hashlib").sha256(TEST_CODE.encode()).hexdigest()
 
 
@@ -49,7 +49,6 @@ def open_validation(monkeypatch, *, tenant=TID, location=None, phone=PHONE, hour
     monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", tenant)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_LOCATION_ID", location or LOC_PID)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_CALLER_PHONE", phone)
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_CODE_SHA256", TEST_HASH)
     monkeypatch.setenv("SQUARE_INPLACE_TEST_EXPIRES_AT",
                        (_dt.now(_tz.utc) + _td(hours=hours)).isoformat())
 
@@ -463,7 +462,7 @@ def test_update_sends_only_the_version_and_start():
 
 
 @pytest.mark.parametrize("case", ["validation off", "other tenant configured", "run bound elsewhere",
-                                  "run disabled", "window expired", "window over 24h", "other code configured"])
+                                  "run disabled", "window expired", "window over 24h", "no run armed"])
 async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
         case, monkeypatch, inplace_runs_store, calendar_moves_store):
     if case == "validation off":
@@ -479,7 +478,7 @@ async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
     elif case == "window over 24h":
         open_validation(monkeypatch, hours=30)
     else:
-        monkeypatch.setenv("SQUARE_INPLACE_TEST_CODE_SHA256", "0" * 64)
+        inplace_runs_store.rows.clear()
     from services import reschedule_intent as ri
     with SqWorld(payments=PAID).env() as w:
         await w.call()

@@ -345,7 +345,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
     # Issue #179 production validation: only the test caller, on the test
     # workspace, inside its window, is offered a place for the one-time code.
     from services import square_inplace_scope
-    if square_inplace_scope.caller_in_test(tenant_id, caller_phone):
+    test_call = square_inplace_scope.caller_in_test(tenant_id, caller_phone)
+    if test_call:
         tools = vapi_svc.with_test_code(tools)
         system_prompt += vapi_svc.TEST_CODE_NOTE
     # Every per-call tool list carries endCall: this list REPLACES the assistant's
@@ -427,6 +428,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if demo_tid and tenant_id == demo_tid:
         overrides["maxDurationSeconds"] = int(os.getenv("DEMO_MAX_CALL_SECONDS", "300"))
         overrides["silenceTimeoutSeconds"] = int(os.getenv("DEMO_SILENCE_SECONDS", "15"))
+
+    if test_call:
+        # The one-time code is spoken on this call: keep no audio of it.
+        overrides["artifactPlan"] = {"recordingEnabled": False}
 
     return {
         "assistantId": assistant_id,
