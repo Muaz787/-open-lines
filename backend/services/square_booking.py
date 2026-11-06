@@ -125,6 +125,75 @@ async def get_access_token(tenant: dict) -> str | None:
     return token
 
 
+# What refreshing did for the token a sync used. Catalog routing needs to tell a
+# credential Square has really rejected from one that only expired while a
+# refresh failed; get_access_token() itself is unchanged and reports nothing.
+TOKEN_CURRENT = "current"                  # no refresh was due (or no expiry is known)
+TOKEN_REFRESHED = "refreshed"              # get_access_token() returned a new token
+TOKEN_REFRESH_FAILED = "refresh_failed"    # a refresh was due and the stored token came back
+TOKEN_NOT_REFRESHABLE = "not_refreshable"  # no refresh token is stored
+
+
+class CredentialRejected(Exception):
+    """Square rejected the tenant's credential in a way only reconnecting can fix."""
+
+    def __init__(self, code: str):
+        super().__init__(f"Square rejected the stored credential ({code or 'unauthorized'})")
+        self.code = code
+
+
+def _refresh_due(tenant: dict) -> bool:
+    """get_access_token()'s own rule: a stored expiry within 3 days, and a refresh
+    token to renew it with. A test keeps the two in step."""
+    expires_at = tenant.get("square_token_expires_at")
+    if not (expires_at and tenant.get("square_refresh_token")):
+        return False
+    try:
+        exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=dt_timezone.utc)
+    return exp - datetime.now(dt_timezone.utc) < timedelta(days=3)
+
+
+def token_status(tenant: dict, token_used: str) -> str:
+    """What refreshing did, judged from the token get_access_token() returned."""
+    if not tenant.get("square_refresh_token"):
+        return TOKEN_NOT_REFRESHABLE
+    if not _refresh_due(tenant):
+        return TOKEN_CURRENT
+    try:
+        stored = decrypt(tenant.get("square_access_token") or "")
+    except Exception:
+        return TOKEN_REFRESH_FAILED
+    return TOKEN_REFRESHED if token_used != stored else TOKEN_REFRESH_FAILED
+
+
+def _square_error_code(e: Exception) -> str:
+    try:
+        return str(((e.response.json() or {}).get("errors") or [{}])[0].get("code") or "")
+    except Exception:
+        return ""
+
+
+def rejection_confirmed(e: Exception, status: str) -> bool:
+    """Is this a 401 that only reconnecting Square can fix?
+
+    Not when a refresh was due and failed: the stored token may simply have
+    expired, and the next attempt may refresh it. Not when Square says the token
+    EXPIRED and a refresh token is on file, for the same reason. Otherwise —
+    revoked or invalid, a credential refreshed moments ago and still refused, or
+    no refresh token to try — it is."""
+    if getattr(getattr(e, "response", None), "status_code", None) != 401:
+        return False
+    if status == TOKEN_REFRESH_FAILED:
+        return False
+    if _square_error_code(e) == "ACCESS_TOKEN_EXPIRED" and status != TOKEN_NOT_REFRESHABLE:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Raw Bookings API calls
 # ---------------------------------------------------------------------------
@@ -812,8 +881,13 @@ async def sync(tenant_id: str) -> dict:
     profile = await retrieve_booking_profile(token)
     bookable = bool(profile.get("booking_enabled"))
 
-    services = await list_services(token)
-    staff = await list_team_members(token)
+    try:
+        services = await list_services(token)
+        staff = await list_team_members(token)
+    except httpx.HTTPStatusError as e:
+        if rejection_confirmed(e, token_status(tenant, token)):
+            raise CredentialRejected(_square_error_code(e)) from e
+        raise
 
     await db.replace_square_services(tenant_id, services)
     await db.replace_square_staff(tenant_id, staff)
