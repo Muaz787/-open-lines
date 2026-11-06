@@ -393,10 +393,10 @@ async def test_M6b_an_incomplete_refresh_response_is_also_not_a_confirmation():
 
 
 @pytest.mark.asyncio
-async def test_M7_refreshed_just_now_and_still_rejected_is_confirmed():
+async def test_M7_refreshed_just_now_and_explicitly_revoked_is_confirmed():
     stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry()}
     refresh = AsyncMock(return_value={"access_token": "new", "expires_at": "2026-12-06T00:00:00Z"})
-    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code="UNAUTHORIZED"),
+    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code="ACCESS_TOKEN_REVOKED"),
                             extra=[patch("services.security.encrypt", new=lambda v: f"enc-{v}")])
     r = await _route_with(ps)
     assert refresh.await_count == 1
@@ -446,16 +446,63 @@ async def test_M13_a_current_token_with_a_refresh_token_needs_an_explicit_perman
     assert r.should_retry is True and writes == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["UNAUTHORIZED", "", "SOMETHING_SQUARE_ADDS_LATER", "ACCESS_TOKEN_EXPIRED",
+                                  "CLIENT_DISABLED", "APPLICATION_DISABLED"])
+async def test_M15_a_successful_refresh_then_a_generic_or_app_level_401_is_retried(code):
+    """Through the real refresh and sync: the refresh succeeds, then Square answers
+    a bare, generic, unknown, expired or app-level 401. Not confirmed: retried."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry()}
+    refresh = AsyncMock(return_value={"access_token": "new", "expires_at": "2026-12-06T00:00:00Z"})
+    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code=code),
+                            extra=[patch("services.security.encrypt", new=lambda v: f"enc-{v}")])
+    r = await _route_with(ps)
+    assert refresh.await_count == 1, "the refresh ran and succeeded first"
+    assert r.failed[0].detail.startswith("raised:"), r.summary
+    assert r.should_retry is True
+    assert [w[0] for w in writes] == ["tenant"], "only the refresh's own token write happened"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_extra", [
+    {"square_refresh_token": None},                                                   # DANI Test's shape
+    {"square_refresh_token": "r", "square_token_expires_at": None},                   # current
+    {"square_refresh_token": "r", "square_token_expires_at": "2027-01-01T00:00:00Z"},  # current
+])
+@pytest.mark.parametrize("code", ["CLIENT_DISABLED", "APPLICATION_DISABLED"])
+async def test_M16_app_level_errors_never_mark_a_workspace_rejected(stored_extra, code):
+    stored = tenant(DANI) | stored_extra
+    ps, writes = _real_sync(stored, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert r.failed[0].detail.startswith("raised:") and r.should_retry is True
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_M16b_app_level_error_after_a_failed_refresh_is_retried():
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry(-1)}
+    ps, _ = _real_sync(stored, refresh=AsyncMock(side_effect=ConnectionError("x")),
+                       catalog_error=_http_error(401, code="APPLICATION_DISABLED"))
+    r = await _route_with(ps)
+    assert r.should_retry is True and r.failed[0].detail.startswith("raised:")
+
+
 def test_M14_the_permanent_codes_are_explicit():
     from services import square_booking as sb
     assert sb.PERMANENT_CREDENTIAL_CODES == frozenset({"ACCESS_TOKEN_REVOKED", "V1_ACCESS_TOKEN"})
+    assert sb.APP_LEVEL_CODES == frozenset({"CLIENT_DISABLED", "APPLICATION_DISABLED"})
     for status, code, expected in [
         (sb.TOKEN_CURRENT, "ACCESS_TOKEN_REVOKED", True), (sb.TOKEN_CURRENT, "V1_ACCESS_TOKEN", True),
         (sb.TOKEN_CURRENT, "UNAUTHORIZED", False), (sb.TOKEN_CURRENT, "", False),
         (sb.TOKEN_CURRENT, "ACCESS_TOKEN_EXPIRED", False), (sb.TOKEN_CURRENT, "CLIENT_DISABLED", False),
         (sb.TOKEN_REFRESH_FAILED, "ACCESS_TOKEN_REVOKED", False), (sb.TOKEN_REFRESH_FAILED, "", False),
-        (sb.TOKEN_REFRESHED, "", True), (sb.TOKEN_REFRESHED, "UNAUTHORIZED", True),
-        (sb.TOKEN_NOT_REFRESHABLE, "", True), (sb.TOKEN_NOT_REFRESHABLE, "UNAUTHORIZED", True)]:
+        (sb.TOKEN_REFRESHED, "ACCESS_TOKEN_REVOKED", True), (sb.TOKEN_REFRESHED, "V1_ACCESS_TOKEN", True),
+        (sb.TOKEN_REFRESHED, "", False), (sb.TOKEN_REFRESHED, "UNAUTHORIZED", False),
+        (sb.TOKEN_REFRESHED, "SOMETHING_NEW", False), (sb.TOKEN_REFRESHED, "ACCESS_TOKEN_EXPIRED", False),
+        (sb.TOKEN_NOT_REFRESHABLE, "", True), (sb.TOKEN_NOT_REFRESHABLE, "UNAUTHORIZED", True),
+        (sb.TOKEN_NOT_REFRESHABLE, "SOMETHING_NEW", True)] + [
+        (st, app, False) for app in ("CLIENT_DISABLED", "APPLICATION_DISABLED")
+        for st in (sb.TOKEN_CURRENT, sb.TOKEN_REFRESHED, sb.TOKEN_REFRESH_FAILED, sb.TOKEN_NOT_REFRESHABLE)]:
         assert sb.rejection_confirmed(_http_error(401, code=code), status) is expected, (status, code)
     assert sb.rejection_confirmed(_http_error(403, code="ACCESS_TOKEN_REVOKED"), sb.TOKEN_CURRENT) is False
 

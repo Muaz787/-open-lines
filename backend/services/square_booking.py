@@ -179,31 +179,37 @@ def _square_error_code(e: Exception) -> str:
 
 # Square error codes that say this one credential can never work again, so only
 # reconnecting Square fixes it. UNAUTHORIZED is Square's GENERIC authorization
-# error and is deliberately absent, as are app-wide codes (CLIENT_DISABLED,
-# APPLICATION_DISABLED) that reconnecting one workspace would not fix.
+# error and is deliberately absent.
 PERMANENT_CREDENTIAL_CODES = frozenset({"ACCESS_TOKEN_REVOKED", "V1_ACCESS_TOKEN"})
+
+# App-wide refusals: our Square application or client is disabled. Reconnecting
+# one workspace cannot fix them, so they are never a workspace's
+# credential_rejected, whatever the token's state.
+APP_LEVEL_CODES = frozenset({"CLIENT_DISABLED", "APPLICATION_DISABLED"})
 
 
 def rejection_confirmed(e: Exception, status: str) -> bool:
     """Is this a 401 that only reconnecting Square can fix? Explicitly:
 
-      * no refresh token stored (TOKEN_NOT_REFRESHABLE): yes, for any 401 —
-        nothing but reconnecting can produce a new credential;
-      * refreshed moments ago (TOKEN_REFRESHED) and still refused: yes;
-      * a refresh was due and failed (TOKEN_REFRESH_FAILED): no — the stored
-        token may only have expired, and a later attempt may refresh it;
-      * no refresh due, refresh token on file (TOKEN_CURRENT): only for an
-        explicit PERMANENT_CREDENTIAL_CODES code. A bare 401, the generic
-        UNAUTHORIZED, ACCESS_TOKEN_EXPIRED and any unknown code stay retryable.
+      * an app-level code (APP_LEVEL_CODES): never, in any token state;
+      * no refresh token stored (TOKEN_NOT_REFRESHABLE): any other 401 — nothing
+        but reconnecting can produce a new credential;
+      * a refresh token on file, token current (TOKEN_CURRENT) or refreshed
+        moments ago (TOKEN_REFRESHED): only an explicit
+        PERMANENT_CREDENTIAL_CODES code. A bare 401, the generic UNAUTHORIZED,
+        ACCESS_TOKEN_EXPIRED and any unknown code stay retryable;
+      * a refresh was due and failed (TOKEN_REFRESH_FAILED): never — the stored
+        token may only have expired, and a later attempt may refresh it.
     """
     if getattr(getattr(e, "response", None), "status_code", None) != 401:
         return False
+    code = _square_error_code(e)
+    if code in APP_LEVEL_CODES:
+        return False
     if status == TOKEN_NOT_REFRESHABLE:
         return True
-    if status == TOKEN_REFRESHED:
-        return True
-    if status == TOKEN_CURRENT:
-        return _square_error_code(e) in PERMANENT_CREDENTIAL_CODES
+    if status in (TOKEN_CURRENT, TOKEN_REFRESHED):
+        return code in PERMANENT_CREDENTIAL_CODES
     return False
 
 
