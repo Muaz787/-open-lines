@@ -66,18 +66,45 @@ each read, write and send and runs all 3,003 orders: no text names a time that
 differs from our record or Square's at the moment it is sent. Without the claim,
 1,569 of them do.
 
-## Validation scope
+## Validation scope (#179 production test)
 
-While it is validated in production, the in-place move runs for one named test
-tenant and its named appointments only (`services/square_inplace_scope.py`), set
-on the **web** service:
+Everything new is off unless all of these are set on the **web** service
+(`services/square_inplace_scope.py`):
 
-- `SQUARE_INPLACE_TEST_TENANT_ID`
-- `SQUARE_INPLACE_TEST_APPOINTMENT_IDS` (comma-separated)
+| Variable | Value |
+|---|---|
+| `SQUARE_INPLACE_TEST_TENANT_ID` | the one workspace |
+| `SQUARE_INPLACE_TEST_LOCATION_ID` | its Square location |
+| `SQUARE_INPLACE_TEST_CALLER_PHONE` | the one caller, E.164, matched against call metadata (never the model) |
+| `SQUARE_INPLACE_TEST_CODE_SHA256` | sha256 of a one-time code the caller reads out |
+| `SQUARE_INPLACE_TEST_EXPIRES_AT` | ISO-8601 UTC, at most 24 hours ahead (otherwise off) |
 
-Both must be set. For everyone else a Square deposit appointment is handed to the
-team exactly as before, and a deposit confirmation names the time exactly as
-before, without taking ownership. Unset either variable to switch it off.
+- Only that caller, on that workspace, inside the window, is offered a `test_code`
+  field on `book_appointment`. Everyone else's tools and prompt are unchanged.
+- A Square booking by that caller with the right code gets one CAD $1.00 deposit
+  link (`services/inplace_test_deposit.py`). The amount is fixed in code. Workspace
+  deposit settings stay off and are never read or changed.
+- Using the code inserts a row in `inplace_test_runs` (047). The row makes the code
+  single-use, binds the one appointment, and lets only one request claim the payment
+  link, so retries and concurrent requests can't create a second link.
+- The in-place move and the deposit-confirmation lock act only on the appointment
+  bound to a live, enabled run. Everyone else: today's team handoff for a Square
+  deposit move and today's confirmation text.
+
+**Stop the test immediately:** `update public.inplace_test_runs set disabled_at = now()
+where disabled_at is null;` takes effect on the next request, with no redeploy. Before
+the code is used, insert a disabled row for its hash instead. Unsetting a variable or
+letting the expiry pass also turns everything off.
+
+**An unfinished move after the test is stopped:** the move keeps the appointment's
+ownership claim, so other calls hear it is being changed. Recovery
+(`calendar_reschedule.run_recovery`, in the web service's background processor) does
+not consult the scope. It reads Square's booking and never re-sends:
+- at the new time: writes our row and releases the claim;
+- still at the old time after two minutes: marks the move failed and releases;
+- unreadable or anything else: leaves it held for a person.
+
+Expired confirmation claims are swept by the same pass.
 
 ## Refund windows
 
@@ -144,8 +171,8 @@ inside the window is judged from the new time.
    the booking id is unchanged, its version went up by one, the booking and our
    row show the new time, payment rows are untouched and ownership is released.
 
-Rollback: first unset `SQUARE_INPLACE_TEST_APPOINTMENT_IDS` (the in-place path and
-the confirmation lock stop for everyone). Keep 047's columns, its constraint and
+Rollback: first disable the run (see *Validation scope*); the in-place path, the
+test deposit and the confirmation lock stop for everyone. Keep 047's columns, its constraint and
 every row. Settle any live Square
 move by reading the booking, then revert the code: deposit appointments go back
 to the team handoff and confirmations name the time as before. Old code doesn't

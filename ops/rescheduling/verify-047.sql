@@ -17,6 +17,13 @@ select json_build_object(
   'claims_untouched', (select json_build_object('ok', count(*) filter (where operation_type not in
           ('cancel', 'reschedule', 'cancel_reconcile', 'payment_confirmation')) = 0, 'rows', count(*))
       from public.appointment_mutation_claims),
+  'runs_table', json_build_object('ok', to_regclass('public.inplace_test_runs') is not null
+      and (select relrowsecurity from pg_class where oid = 'public.inplace_test_runs'::regclass)
+      and not has_table_privilege('anon', 'public.inplace_test_runs', 'SELECT,INSERT,UPDATE,DELETE')
+      and not has_table_privilege('authenticated', 'public.inplace_test_runs', 'SELECT,INSERT,UPDATE,DELETE')
+      and has_table_privilege('service_role', 'public.inplace_test_runs', 'SELECT,INSERT,UPDATE')
+      and not has_table_privilege('service_role', 'public.inplace_test_runs', 'DELETE'),
+      'rows', (select count(*) from public.inplace_test_runs)),
   'browser_roles_denied', json_build_object('ok',
       not has_table_privilege('anon', 'public.calendar_move_operations', 'SELECT,INSERT,UPDATE,DELETE')
       and not has_table_privilege('authenticated', 'public.calendar_move_operations', 'SELECT,INSERT,UPDATE,DELETE'))

@@ -92,7 +92,7 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
     if not appt or str(appt.get("tenant_id")) != str(tenant_id) \
             or str(appt.get("caller_phone") or "") != caller_phone:
         return cr.INVALID_REF, _HANDOFF_MSG
-    if not square_inplace_scope.allowed(tenant_id, appt["id"]):
+    if not await square_inplace_scope.allowed(tenant_id, appt["id"]):
         # The router only sends the named test appointment here; refuse anything else.
         return HANDOFF, _HANDOFF_MSG
 

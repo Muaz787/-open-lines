@@ -1348,6 +1348,30 @@ def build_calendar_tools(tenant_id: str, *,
 
 
 
+TEST_CODE_NOTE = """
+
+INTERNAL TEST CALL
+This caller is running an internal test. If they read out a test code, pass its digits
+exactly as test_code when you call book_appointment. Never ask for a code, never repeat
+it back, and never mention it otherwise.
+"""
+
+
+def with_test_code(tools: list[dict]) -> list[dict]:
+    """A copy of the tool list whose book_appointment accepts an optional test_code
+    (issue #179 validation; services/square_inplace_scope). Other tools unchanged."""
+    import copy
+    out = copy.deepcopy(tools)
+    for t in out:
+        fn = t.get("function") or {}
+        if fn.get("name") == "book_appointment":
+            fn.setdefault("parameters", {}).setdefault("properties", {})["test_code"] = {
+                "type": "string",
+                "description": "Only if the caller read out a test code: its digits, exactly as spoken.",
+            }
+    return out
+
+
 _DEPOSIT_NOTE = """
 
 DEPOSIT COLLECTION

@@ -39,9 +39,9 @@ PROC = contextvars.ContextVar("proc", default=None)
 
 
 @pytest.fixture(autouse=True)
-def _validation_scope(monkeypatch):
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", sq.TID)
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-1")
+def _validation_scope(monkeypatch, inplace_runs_store):
+    sq.open_validation(monkeypatch)
+    sq.bind_run(inplace_runs_store)
 
 
 def _when(value):
@@ -412,9 +412,14 @@ def test_a_booking_event_meeting_a_confirmation_is_retried():
 # ════════════ 2. outside the validation scope: exactly as before ════════════════
 
 @pytest.mark.parametrize("provider", ["stripe", "square"])
-@pytest.mark.parametrize("appts_env", ["", "a-other"])
-async def test_outside_the_scope_a_confirmation_takes_no_ownership(provider, appts_env, monkeypatch):
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", appts_env)
+@pytest.mark.parametrize("case", ["validation off", "run bound elsewhere", "run disabled"])
+async def test_outside_the_scope_a_confirmation_takes_no_ownership(provider, case, monkeypatch,
+                                                                    inplace_runs_store):
+    if case == "validation off":
+        monkeypatch.delenv("SQUARE_INPLACE_TEST_CODE_SHA256")
+    else:
+        sq.bind_run(inplace_runs_store, "a-other" if case == "run bound elsewhere" else "a-1",
+                    disabled=case == "run disabled")
     with PayWorld(status="pending_payment", payments=OWED, provider=provider).env() as w:
         w.claims["a-1"] = {"token": "op", "type": "reschedule"}   # even while something owns it
         await w.webhook()

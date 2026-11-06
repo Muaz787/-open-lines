@@ -315,7 +315,7 @@ async def _send_confirmations(tenant: dict, payment: dict) -> None:
     appointment_id = payment.get("appointment_id")
     claim = appointment = None
     tenant_id = str(tenant.get("id") or payment.get("tenant_id") or "")
-    if appointment_id and not square_inplace_scope.allowed(tenant_id, appointment_id):
+    if appointment_id and not await square_inplace_scope.allowed(tenant_id, appointment_id):
         # Everyone outside the validation scope: exactly as before.
         try:
             appointment = await db.get_appointment_by_id(appointment_id)

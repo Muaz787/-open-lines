@@ -39,12 +39,35 @@ from tests import test_w6a1_safe_cancellation as w6a1
 TID, CALL, PHONE = "t-sq", "call-1", "+16475550100"
 
 
+TEST_CODE = "482917"
+TEST_HASH = __import__("hashlib").sha256(TEST_CODE.encode()).hexdigest()
+
+
+def open_validation(monkeypatch, *, tenant=TID, location=None, phone=PHONE, hours=6):
+    """A validation window, as the web service would be configured for it."""
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", tenant)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_LOCATION_ID", location or LOC_PID)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_CALLER_PHONE", phone)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_CODE_SHA256", TEST_HASH)
+    monkeypatch.setenv("SQUARE_INPLACE_TEST_EXPIRES_AT",
+                       (_dt.now(_tz.utc) + _td(hours=hours)).isoformat())
+
+
+def bind_run(store, appointment_id="a-1", *, tenant=TID, disabled=False):
+    store.rows[TEST_HASH] = {"code_sha256": TEST_HASH, "tenant_id": tenant, "vapi_call_id": "call-earlier",
+                             "appointment_id": appointment_id, "link_claimed_at": "then",
+                             "payment_id": "p-1", "disabled_at": "now" if disabled else None}
+
+
 @pytest.fixture(autouse=True)
-def _validation_scope(monkeypatch):
-    """These tests exercise the in-place path, which runs only for the named test
-    tenant and appointment (services.square_inplace_scope)."""
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", TID)
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-1")
+def _validation_scope(monkeypatch, inplace_runs_store):
+    """These tests exercise the in-place path, which runs only for the appointment
+    bound to a live validation run (services.square_inplace_scope)."""
+    open_validation(monkeypatch)
+    bind_run(inplace_runs_store)
+
+
 LOC_PID, LOC_ID = "L-MAIN", "loc-main"
 TM, OTHER_TM, VAR = "TM-AOIFE", "TM-SEAN", "VAR-CONSULT"
 NOW = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)
@@ -439,16 +462,24 @@ def test_update_sends_only_the_version_and_start():
     assert "appointment_segments" not in src.split('"""')[2]
 
 
-@pytest.mark.parametrize("tenant_env, appts_env", [
-    ("", ""),                       # validation off: everyone
-    ("t-other", "a-1"),             # another tenant named
-    (TID, "a-other"),               # this tenant, another appointment
-    (TID, ""),                      # half-configured
-])
+@pytest.mark.parametrize("case", ["validation off", "other tenant configured", "run bound elsewhere",
+                                  "run disabled", "window expired", "window over 24h", "other code configured"])
 async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
-        tenant_env, appts_env, monkeypatch, calendar_moves_store):
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_TENANT_ID", tenant_env)
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", appts_env)
+        case, monkeypatch, inplace_runs_store, calendar_moves_store):
+    if case == "validation off":
+        monkeypatch.delenv("SQUARE_INPLACE_TEST_TENANT_ID")
+    elif case == "other tenant configured":
+        open_validation(monkeypatch, tenant="t-other")
+    elif case == "run bound elsewhere":
+        bind_run(inplace_runs_store, "a-other")
+    elif case == "run disabled":
+        bind_run(inplace_runs_store, disabled=True)
+    elif case == "window expired":
+        open_validation(monkeypatch, hours=-1)
+    elif case == "window over 24h":
+        open_validation(monkeypatch, hours=30)
+    else:
+        monkeypatch.setenv("SQUARE_INPLACE_TEST_CODE_SHA256", "0" * 64)
     from services import reschedule_intent as ri
     with SqWorld(payments=PAID).env() as w:
         await w.call()
@@ -458,8 +489,8 @@ async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
     assert calendar_moves_store.rows == {}, "no move operation recorded"
 
 
-async def test_the_in_place_move_refuses_an_appointment_outside_the_scope(monkeypatch):
-    monkeypatch.setenv("SQUARE_INPLACE_TEST_APPOINTMENT_IDS", "a-other")
+async def test_the_in_place_move_refuses_an_appointment_outside_the_scope(inplace_runs_store):
+    bind_run(inplace_runs_store, "a-other")
     with SqWorld(payments=PAID).env() as w:
         await w.call()
         outcome, _ = await sq_in.move(tenant=w.tenant, tenant_id=TID, vapi_call_id=CALL,

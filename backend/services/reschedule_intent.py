@@ -239,7 +239,7 @@ async def _in_scope(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
         caller_phone=caller_phone)
     if status not in (appointment_refs.OK, appointment_refs.ALREADY_CONSUMED) or not ref:
         return False
-    return square_inplace_scope.allowed(tenant_id, ref.get("appointment_id"))
+    return await square_inplace_scope.allowed(tenant_id, ref.get("appointment_id"))
 
 
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
