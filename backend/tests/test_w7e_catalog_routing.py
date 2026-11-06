@@ -256,6 +256,310 @@ async def test_K_a_credential_failure_for_one_tenant_is_reported_not_retried():
     assert r.should_retry is False, "a structural refusal must not loop forever"
 
 
+def _http_error(status: int, url: str = "https://connect.squareup.com/v2/catalog/search", code: str = ""):
+    import httpx
+    request = httpx.Request("POST", url)
+    body = {"errors": [{"category": "AUTHENTICATION_ERROR", "code": code}]} if code else {}
+    return httpx.HTTPStatusError(f"Client error '{status}'", request=request,
+                                 response=httpx.Response(status, request=request, json=body))
+
+
+@pytest.mark.asyncio
+async def test_M_a_confirmed_rejection_fails_that_tenant_while_healthy_ones_sync():
+    """Production 2026-11-06: one workspace's Square credential was revoked. Its
+    sync raised a 401 and the whole event was redelivered, re-syncing every other
+    workspace each time. Now a CONFIRMED rejection is reported for that workspace,
+    the healthy workspace syncs, and the event is not retried for it."""
+    from services import square_booking as sb
+    attempted = []
+
+    async def mixed(tid):
+        attempted.append(tid)
+        if tid == DANI:
+            raise sb.CredentialRejected("UNAUTHORIZED")
+        return {"ok": True, "services": [{"id": "s"}], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=mixed)):
+        r = await w7e.route_catalog_event(event())
+    assert sorted(attempted) == sorted([DANI, THIRD])
+    assert [o.tenant_id for o in r.synced] == [THIRD], "the healthy workspace synced"
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.result == w7e.RESULT_PARTIAL
+    assert r.should_retry is False, "a confirmed rejection must not redeliver the event"
+    assert f"{DANI[:8]}…=failed(credential_rejected)" in r.summary, "surfaced in the ledger"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transient", [
+    lambda: _http_error(401), lambda: _http_error(401, code="ACCESS_TOKEN_EXPIRED"),
+    lambda: _http_error(500), lambda: _http_error(503), lambda: _http_error(429),
+    lambda: _http_error(403), lambda: TimeoutError("read timeout"), lambda: ConnectionError("reset")])
+async def test_M2_anything_not_confirmed_is_still_retried(transient):
+    """A bare 401 reaching the router has not been confirmed by sync(), so it is
+    retried like any other raised failure."""
+    async def flaky(tid):
+        if tid == DANI:
+            raise transient()
+        return {"ok": True, "services": [], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=flaky)):
+        r = await w7e.route_catalog_event(event())
+    assert len(r.synced) == 1 and r.failed[0].detail.startswith("raised:")
+    assert r.should_retry is True
+
+
+@pytest.mark.asyncio
+async def test_M3_a_confirmed_rejection_does_not_hide_a_transient_failure_elsewhere():
+    from services import square_booking as sb
+
+    async def both(tid):
+        if tid == DANI:
+            raise sb.CredentialRejected("ACCESS_TOKEN_REVOKED")
+        if tid == SHAHID:
+            raise _http_error(502)
+        return {"ok": True, "services": [], "staff": []}
+
+    with patch("db.square_routing.list_tenants_by_square_merchant_id",
+               new=AsyncMock(return_value=[tenant(DANI), tenant(SHAHID), tenant(THIRD)])), \
+         patch("services.square_booking.sync", new=AsyncMock(side_effect=both)):
+        r = await w7e.route_catalog_event(event())
+    assert len(r.synced) == 1 and len(r.failed) == 2
+    assert r.should_retry is True, "the transient failure still earns a redelivery"
+
+
+# ── through the REAL sync() and the REAL token refresh ───────────────────────
+
+def _near_expiry(hours=2):
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+
+
+def _real_sync(stored, *, refresh=None, catalog_error=None, extra=()):
+    """Patches for running the real route -> sync -> get_access_token_checked chain.
+    Records every database write the sync makes."""
+    from services import square_booking as sb
+    writes = []
+    ps = [patch("db.square_routing.list_tenants_by_square_merchant_id", new=AsyncMock(return_value=[stored])),
+          patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=stored)),
+          patch.object(sb, "decrypt", new=lambda v: f"plain-{v}"),
+          patch("services.square_service.list_locations", new=AsyncMock(return_value=[])),
+          patch.object(sb, "retrieve_booking_profile", new=AsyncMock(return_value={"booking_enabled": True})),
+          patch.object(sb, "list_services", new=AsyncMock(side_effect=catalog_error) if catalog_error
+                       else AsyncMock(return_value=[])),
+          patch.object(sb, "list_team_members", new=AsyncMock(return_value=[])),
+          patch("db.supabase.replace_square_services", new=AsyncMock(side_effect=lambda *a: writes.append(("services", a)))),
+          patch("db.supabase.replace_square_staff", new=AsyncMock(side_effect=lambda *a: writes.append(("staff", a)))),
+          patch("db.supabase.update_tenant", new=AsyncMock(side_effect=lambda *a: writes.append(("tenant", a)))),
+          patch("services.square_service.refresh_access_token",
+                new=refresh or AsyncMock(side_effect=AssertionError("no refresh expected"))),
+          *extra]
+    return ps, writes
+
+
+async def _route_with(ps):
+    import contextlib
+    with contextlib.ExitStack() as st:
+        for p in ps:
+            st.enter_context(p)
+        return await w7e.route_catalog_event(event())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["ACCESS_TOKEN_EXPIRED", "UNAUTHORIZED", ""])
+async def test_M6_refresh_fails_then_the_expired_token_gets_401_and_is_RETRIED(code):
+    """The sequence: the token is near expiry, the refresh fails temporarily, sync
+    falls back to the stored (expired) token, and Square answers 401. A later
+    delivery may refresh successfully, so this must stay retryable."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry(-1)}
+    refresh = AsyncMock(side_effect=ConnectionError("oauth endpoint unreachable"))
+    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert refresh.await_count == 1, "the normal refresh was attempted first"
+    assert r.failed[0].detail.startswith("raised:") and r.failed[0].detail != w7e.FAIL_CREDENTIAL_REJECTED
+    assert r.should_retry is True
+    assert writes == [], "nothing written for a failed sync"
+
+
+@pytest.mark.asyncio
+async def test_M6b_an_incomplete_refresh_response_is_also_not_a_confirmation():
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry(-1)}
+    ps, _ = _real_sync(stored, refresh=AsyncMock(return_value={}), catalog_error=_http_error(401))
+    r = await _route_with(ps)
+    assert r.should_retry is True and r.failed[0].detail.startswith("raised:")
+
+
+@pytest.mark.asyncio
+async def test_M7_refreshed_just_now_and_explicitly_revoked_is_confirmed():
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry()}
+    refresh = AsyncMock(return_value={"access_token": "new", "expires_at": "2026-12-06T00:00:00Z"})
+    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code="ACCESS_TOKEN_REVOKED"),
+                            extra=[patch("services.security.encrypt", new=lambda v: f"enc-{v}")])
+    r = await _route_with(ps)
+    assert refresh.await_count == 1
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.should_retry is False
+    assert [w[0] for w in writes] == ["tenant"], "only the refresh's own token write happened"
+
+
+@pytest.mark.asyncio
+async def test_M8_no_refresh_due_and_square_says_expired_with_a_refresh_token_is_retried():
+    """Expired per Square, but a refresh token is on file: a refresh might fix it."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": None}
+    ps, _ = _real_sync(stored, catalog_error=_http_error(401, code="ACCESS_TOKEN_EXPIRED"))
+    r = await _route_with(ps)
+    assert r.should_retry is True and r.failed[0].detail.startswith("raised:")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_extra, code", [
+    ({"square_refresh_token": None}, "UNAUTHORIZED"),            # production's DANI Test
+    ({"square_refresh_token": None}, "ACCESS_TOKEN_EXPIRED"),    # expired, nothing to refresh with
+    ({"square_refresh_token": None}, ""),                        # bare 401, nothing to refresh with
+    ({"square_refresh_token": "r", "square_token_expires_at": None}, "ACCESS_TOKEN_REVOKED"),
+    ({"square_refresh_token": "r", "square_token_expires_at": "2027-01-01T00:00:00Z"}, "ACCESS_TOKEN_REVOKED"),
+    ({"square_refresh_token": "r", "square_token_expires_at": None}, "V1_ACCESS_TOKEN"),
+])
+async def test_M9_confirmed_rejections_through_the_real_sync(stored_extra, code):
+    stored = tenant(DANI) | stored_extra
+    ps, writes = _real_sync(stored, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.should_retry is False and writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expires_at", [None, "2027-01-01T00:00:00Z"])
+@pytest.mark.parametrize("code", ["", "UNAUTHORIZED", "ACCESS_TOKEN_EXPIRED", "CLIENT_DISABLED",
+                                  "APPLICATION_DISABLED", "SOMETHING_SQUARE_ADDS_LATER"])
+async def test_M13_a_current_token_with_a_refresh_token_needs_an_explicit_permanent_code(expires_at, code):
+    """Current token (no refresh due), refresh token on file: a bare 401, the
+    generic UNAUTHORIZED, an expiry, an app-wide code or an unknown code is NOT a
+    confirmed rejection. Through the real sync(); retried, nothing written."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": expires_at}
+    ps, writes = _real_sync(stored, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert r.failed[0].detail.startswith("raised:"), r.summary
+    assert r.should_retry is True and writes == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["UNAUTHORIZED", "", "SOMETHING_SQUARE_ADDS_LATER", "ACCESS_TOKEN_EXPIRED",
+                                  "CLIENT_DISABLED", "APPLICATION_DISABLED"])
+async def test_M15_a_successful_refresh_then_a_generic_or_app_level_401_is_retried(code):
+    """Through the real refresh and sync: the refresh succeeds, then Square answers
+    a bare, generic, unknown, expired or app-level 401. Not confirmed: retried."""
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry()}
+    refresh = AsyncMock(return_value={"access_token": "new", "expires_at": "2026-12-06T00:00:00Z"})
+    ps, writes = _real_sync(stored, refresh=refresh, catalog_error=_http_error(401, code=code),
+                            extra=[patch("services.security.encrypt", new=lambda v: f"enc-{v}")])
+    r = await _route_with(ps)
+    assert refresh.await_count == 1, "the refresh ran and succeeded first"
+    assert r.failed[0].detail.startswith("raised:"), r.summary
+    assert r.should_retry is True
+    assert [w[0] for w in writes] == ["tenant"], "only the refresh's own token write happened"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_extra", [
+    {"square_refresh_token": None},                                                   # DANI Test's shape
+    {"square_refresh_token": "r", "square_token_expires_at": None},                   # current
+    {"square_refresh_token": "r", "square_token_expires_at": "2027-01-01T00:00:00Z"},  # current
+])
+@pytest.mark.parametrize("code", ["CLIENT_DISABLED", "APPLICATION_DISABLED"])
+async def test_M16_app_level_errors_never_mark_a_workspace_rejected(stored_extra, code):
+    stored = tenant(DANI) | stored_extra
+    ps, writes = _real_sync(stored, catalog_error=_http_error(401, code=code))
+    r = await _route_with(ps)
+    assert r.failed[0].detail.startswith("raised:") and r.should_retry is True
+    assert writes == []
+
+
+@pytest.mark.asyncio
+async def test_M16b_app_level_error_after_a_failed_refresh_is_retried():
+    stored = tenant(DANI) | {"square_refresh_token": "r", "square_token_expires_at": _near_expiry(-1)}
+    ps, _ = _real_sync(stored, refresh=AsyncMock(side_effect=ConnectionError("x")),
+                       catalog_error=_http_error(401, code="APPLICATION_DISABLED"))
+    r = await _route_with(ps)
+    assert r.should_retry is True and r.failed[0].detail.startswith("raised:")
+
+
+def test_M14_the_permanent_codes_are_explicit():
+    from services import square_booking as sb
+    assert sb.PERMANENT_CREDENTIAL_CODES == frozenset({"ACCESS_TOKEN_REVOKED", "V1_ACCESS_TOKEN"})
+    assert sb.APP_LEVEL_CODES == frozenset({"CLIENT_DISABLED", "APPLICATION_DISABLED"})
+    for status, code, expected in [
+        (sb.TOKEN_CURRENT, "ACCESS_TOKEN_REVOKED", True), (sb.TOKEN_CURRENT, "V1_ACCESS_TOKEN", True),
+        (sb.TOKEN_CURRENT, "UNAUTHORIZED", False), (sb.TOKEN_CURRENT, "", False),
+        (sb.TOKEN_CURRENT, "ACCESS_TOKEN_EXPIRED", False), (sb.TOKEN_CURRENT, "CLIENT_DISABLED", False),
+        (sb.TOKEN_REFRESH_FAILED, "ACCESS_TOKEN_REVOKED", False), (sb.TOKEN_REFRESH_FAILED, "", False),
+        (sb.TOKEN_REFRESHED, "ACCESS_TOKEN_REVOKED", True), (sb.TOKEN_REFRESHED, "V1_ACCESS_TOKEN", True),
+        (sb.TOKEN_REFRESHED, "", False), (sb.TOKEN_REFRESHED, "UNAUTHORIZED", False),
+        (sb.TOKEN_REFRESHED, "SOMETHING_NEW", False), (sb.TOKEN_REFRESHED, "ACCESS_TOKEN_EXPIRED", False),
+        (sb.TOKEN_NOT_REFRESHABLE, "", True), (sb.TOKEN_NOT_REFRESHABLE, "UNAUTHORIZED", True),
+        (sb.TOKEN_NOT_REFRESHABLE, "SOMETHING_NEW", True)] + [
+        (st, app, False) for app in ("CLIENT_DISABLED", "APPLICATION_DISABLED")
+        for st in (sb.TOKEN_CURRENT, sb.TOKEN_REFRESHED, sb.TOKEN_REFRESH_FAILED, sb.TOKEN_NOT_REFRESHABLE)]:
+        assert sb.rejection_confirmed(_http_error(401, code=code), status) is expected, (status, code)
+    assert sb.rejection_confirmed(_http_error(403, code="ACCESS_TOKEN_REVOKED"), sb.TOKEN_CURRENT) is False
+
+
+@pytest.mark.asyncio
+async def test_M10_mixed_workspaces_through_the_real_sync():
+    """A confirmed rejection for one workspace; the other syncs and writes its catalog."""
+    from services import square_booking as sb
+    revoked = tenant(DANI) | {"square_access_token": "enc-dani", "square_refresh_token": None}
+    healthy = tenant(THIRD) | {"square_access_token": "enc-third", "square_refresh_token": "r"}
+
+    async def services_for(token):
+        if token == "plain-enc-dani":
+            raise _http_error(401, code="UNAUTHORIZED")
+        return [{"id": "svc"}]
+    ps, writes = _real_sync(healthy, extra=[
+        patch("db.square_routing.list_tenants_by_square_merchant_id", new=AsyncMock(return_value=[revoked, healthy])),
+        patch("db.supabase.get_tenant_by_id", new=AsyncMock(side_effect=lambda tid: {DANI: revoked, THIRD: healthy}[tid])),
+        patch.object(sb, "list_services", new=AsyncMock(side_effect=services_for))])
+    r = await _route_with(ps)
+    assert [o.tenant_id for o in r.synced] == [THIRD], "the healthy workspace synced"
+    assert [(o.tenant_id, o.detail) for o in r.failed] == [(DANI, w7e.FAIL_CREDENTIAL_REJECTED)]
+    assert r.should_retry is False
+    assert ("services", (THIRD, [{"id": "svc"}])) in writes and all(w[1][0] == THIRD for w in writes)
+
+
+def test_M11_get_access_token_is_unchanged_from_main():
+    import subprocess
+    from services import square_booking as sb
+    import inspect
+    main_src = subprocess.run(["git", "show", "main:backend/services/square_booking.py"],
+                              capture_output=True, text=True).stdout
+    if main_src:
+        start = main_src.index("async def get_access_token(")
+        end = main_src.index("\n\n\n", start)
+        assert inspect.getsource(sb.get_access_token).strip() == main_src[start:end].strip()
+
+
+@pytest.mark.parametrize("hours, has_refresh, due", [
+    (-1, True, True), (2, True, True), (71, True, True), (73, True, False), (24 * 30, True, False),
+    (2, False, False), (None, True, False)])
+def test_M12_the_refresh_due_rule_matches_get_access_token(hours, has_refresh, due):
+    """_refresh_due() mirrors get_access_token()'s window: drive the real function
+    and see whether it tries to refresh."""
+    import asyncio
+    from services import square_booking as sb
+    t = {"id": "t", "square_access_token": "enc",
+         "square_refresh_token": "r" if has_refresh else None,
+         "square_token_expires_at": _near_expiry(hours) if hours is not None else None}
+    refresh = AsyncMock(side_effect=ConnectionError("x"))
+    with patch.object(sb, "decrypt", new=lambda v: v), \
+         patch("services.square_service.refresh_access_token", new=refresh):
+        asyncio.run(sb.get_access_token(t))
+    assert bool(refresh.await_count) is due
+    assert sb._refresh_due(t) is due
+
+
 @pytest.mark.asyncio
 async def test_L_a_candidate_lookup_failure_is_transient_and_retried():
     with patch("db.square_routing.list_tenants_by_square_merchant_id",

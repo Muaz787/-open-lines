@@ -76,6 +76,14 @@ SKIP_TENANT_INACTIVE = "tenant_inactive"
 SKIP_NOT_CONNECTED = "square_not_connected"
 SKIP_APPOINTMENTS_DISABLED = "appointments_disabled"
 
+# Why an eligible tenant failed, when the failure is a fact about that tenant
+# rather than about the moment: sync() raised square_booking.CredentialRejected,
+# i.e. Square refused the credential in a way only reconnecting Square fixes
+# (square_booking.rejection_confirmed). It is reported for that tenant and is not
+# a reason to redeliver the event to everyone. A 401 that a refresh might still
+# fix stays an ordinary raised failure and is retried.
+FAIL_CREDENTIAL_REJECTED = "credential_rejected"
+
 # Event-level results, written to the ledger as evidence.
 RESULT_SYNCED = "catalog_synced"
 RESULT_PARTIAL = "catalog_partial"
@@ -154,6 +162,8 @@ class CatalogRouting:
           * sync() returning ok=False      -- it reports exactly two structural
             conditions this way (tenant_not_found, not_connected) rather than
             raising. Neither improves by being asked again.
+          * credential_rejected            -- Square refused this tenant's
+            credential and a refresh cannot fix it; only reconnecting does.
         """
         return any(o.detail.startswith("raised:") for o in self.failed)
 
@@ -243,6 +253,13 @@ async def route_catalog_event(event: dict) -> CatalogRouting:
             from services import square_booking
             result = await square_booking.sync(tenant_id)
         except Exception as e:
+            from services import square_booking as _sb
+            if isinstance(e, _sb.CredentialRejected):
+                logger.error("W7E: Square rejected the credential for tenant %s (merchant %s) — "
+                             "RECONNECT REQUIRED: this workspace must reconnect Square. "
+                             "Not retrying the event for it.", tenant_id, merchant_id)
+                outcomes.append(TenantOutcome(tenant_id, FAILED, FAIL_CREDENTIAL_REJECTED))
+                continue
             logger.error("W7E: catalog sync RAISED for tenant %s (merchant %s): %s",
                          tenant_id, merchant_id, e)
             outcomes.append(TenantOutcome(tenant_id, FAILED, f"raised: {type(e).__name__}"))
