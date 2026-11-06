@@ -94,7 +94,7 @@ function SuccessContent() {
           <svg width="11" height="13" viewBox="0 0 11 13" fill="none" aria-hidden="true">
             <path d="M5.5 0C3.567 0 2 1.343 2 3v1H1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9V3C9 1.343 7.433 0 5.5 0Zm0 1.5C6.88 1.5 7.5 2.2 7.5 3v1h-4V3c0-.8.62-1.5 2-1.5ZM5.5 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" fill="currentColor"/>
           </svg>
-          Secured by Stripe · Powered by Open Lines
+          Powered by Open Lines
         </p>
       </div>
     </div>
