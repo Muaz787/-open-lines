@@ -902,17 +902,6 @@ async def get_payment_by_checkout_session(session_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
-async def get_payment_provider(column: str, value: str) -> str | None:
-    """Only the provider of the payment with this id or checkout session; nothing
-    else about it. Used by the public payment-success page."""
-    assert column in ("id", "checkout_session_id")
-    res = (
-        await run_query(get_client().table("payments").select("provider")
-        .eq(column, value).limit(1))
-    )
-    return (res.data[0].get("provider") or "stripe") if res.data else None
-
-
 async def get_payment_by_appointment_id(appointment_id: str) -> dict | None:
     """Return the most recent succeeded deposit for an appointment, if any."""
     res = (

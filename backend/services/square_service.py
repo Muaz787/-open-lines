@@ -184,9 +184,7 @@ async def create_payment_link(
             "location_id": location_id,
         },
         "checkout_options": {
-            # Our own payment id, so the success page can ask us which processor
-            # took this payment (GET /payments/processor) instead of guessing.
-            "redirect_url": f"{FRONTEND_URL}/payment-success?ref={payment_id}",
+            "redirect_url": f"{FRONTEND_URL}/payment-success",
             "ask_for_shipping_address": False,
         },
         "payment_note": note,

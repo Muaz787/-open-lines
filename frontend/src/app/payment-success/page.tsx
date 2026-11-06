@@ -1,42 +1,11 @@
 'use client'
 
 import { useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useState } from 'react'
-import { API } from '@/lib/api'
-
-type Processor = 'square' | 'stripe' | null
-
-const PROCESSOR_LABEL: Record<'square' | 'stripe', string> = {
-  square: 'Processed by Square',
-  stripe: 'Secured by Stripe',
-}
-
-// Square's return link carries our payment id (ref); Stripe's carries its
-// Checkout Session id. Neither is trusted as-is: the backend names the processor
-// only from its own payment record. Until it answers, and whenever it can't,
-// the footer stays neutral.
-function useProcessor(ref: string | null, sessionId: string | null): Processor {
-  const [processor, setProcessor] = useState<Processor>(null)
-  useEffect(() => {
-    const query = ref ? `ref=${encodeURIComponent(ref)}`
-      : sessionId ? `session_id=${encodeURIComponent(sessionId)}` : ''
-    if (!query) return
-    let cancelled = false
-    fetch(`${API}/payments/processor?${query}`, { cache: 'no-store' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(body => {
-        const p = body?.processor
-        if (!cancelled && (p === 'square' || p === 'stripe')) setProcessor(p)
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [ref, sessionId])
-  return processor
-}
+import { Suspense } from 'react'
 
 function SuccessContent() {
   const params = useSearchParams()
-  const processor = useProcessor(params.get('ref'), params.get('session_id'))
+  const sessionId = params.get('session_id')
 
   return (
     <div style={{
@@ -125,9 +94,7 @@ function SuccessContent() {
           <svg width="11" height="13" viewBox="0 0 11 13" fill="none" aria-hidden="true">
             <path d="M5.5 0C3.567 0 2 1.343 2 3v1H1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H9V3C9 1.343 7.433 0 5.5 0Zm0 1.5C6.88 1.5 7.5 2.2 7.5 3v1h-4V3c0-.8.62-1.5 2-1.5ZM5.5 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" fill="currentColor"/>
           </svg>
-          <span data-testid="payment-footer">
-            {processor ? `${PROCESSOR_LABEL[processor]} · Powered by Open Lines` : 'Powered by Open Lines'}
-          </span>
+          Powered by Open Lines
         </p>
       </div>
     </div>

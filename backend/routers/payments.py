@@ -1,18 +1,15 @@
 import json
 import logging
-import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, Header
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from services.security import verify_tenant_owner
 from services import stripe_service as svc, vapi, telephony
 from services import entitlements
-from services.ratelimit import limiter
 from db import supabase as db
 
 logger = logging.getLogger(__name__)
@@ -69,33 +66,6 @@ def _deposit_provider(tenant: dict) -> str:
 # ---------------------------------------------------------------------------
 # GET /payments/settings/{tenant_id}
 # ---------------------------------------------------------------------------
-
-_PAYMENT_REF = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-_STRIPE_SESSION = re.compile(r"cs_(?:live|test)_[A-Za-z0-9]{10,200}")
-
-
-@router.get("/processor")
-@limiter.limit("30/minute")
-async def payment_processor(request: Request, session_id: str = "", ref: str = ""):
-    """Which processor took this payment, for the public payment-success page.
-
-    Answers only from our own payment record: `ref` is our payment id (Square's
-    return link carries it), `session_id` is the Stripe Checkout Session Stripe
-    substitutes into its return link. An id we have no record of, or a malformed
-    one, gets {"processor": null} and the page shows a neutral footer. Nothing
-    else about the payment is returned."""
-    processor = None
-    try:
-        if _PAYMENT_REF.fullmatch(ref or ""):
-            processor = await db.get_payment_provider("id", ref)
-        elif _STRIPE_SESSION.fullmatch(session_id or ""):
-            processor = await db.get_payment_provider("checkout_session_id", session_id)
-    except Exception as e:
-        logger.warning("payment processor lookup failed: %s", e)
-        processor = None
-    return JSONResponse({"processor": processor if processor in ("square", "stripe") else None},
-                        headers={"Cache-Control": "no-store"})
-
 
 @router.get("/settings/{tenant_id}")
 async def get_settings(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
