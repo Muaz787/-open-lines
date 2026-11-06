@@ -342,6 +342,13 @@ async def _handle_assistant_request(msg: dict) -> dict:
                                   reschedule_kind=move_kind)
              if has_calendar else [build_caller_lookup_tool(tenant_id)])
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
+    # Issue #179 production validation: only the test caller, on the test
+    # workspace, inside its window, is offered a place for the one-time code.
+    from services import square_inplace_scope
+    test_call = square_inplace_scope.caller_in_test(tenant_id, caller_phone)
+    if test_call:
+        tools = vapi_svc.with_test_code(tools)
+        system_prompt += vapi_svc.TEST_CODE_NOTE
     # Every per-call tool list carries endCall: this list REPLACES the assistant's
     # own, so without it the model has no way to hang up.
     tools.append(vapi_svc.end_call_tool(caller_name_for_goodbye))
@@ -421,6 +428,10 @@ async def _handle_assistant_request(msg: dict) -> dict:
     if demo_tid and tenant_id == demo_tid:
         overrides["maxDurationSeconds"] = int(os.getenv("DEMO_MAX_CALL_SECONDS", "300"))
         overrides["silenceTimeoutSeconds"] = int(os.getenv("DEMO_SILENCE_SECONDS", "15"))
+
+    if test_call:
+        # The one-time code is spoken on this call: keep no audio of it.
+        overrides["artifactPlan"] = {"recordingEnabled": False}
 
     return {
         "assistantId": assistant_id,

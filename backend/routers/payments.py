@@ -263,7 +263,6 @@ async def _handle_checkout_completed(session: dict) -> None:
     logger.info("Payment %s succeeded for tenant %s", payment["id"], tenant_id)
 
     # Confirm the linked appointment
-    appointment = None
     if payment.get("appointment_id"):
         try:
             # C4: conditional — a late payment webhook must not resurrect an
@@ -273,7 +272,6 @@ async def _handle_checkout_completed(session: dict) -> None:
             else:
                 logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
                                "payment webhook", payment["appointment_id"])
-            appointment = await db.get_appointment_by_id(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
 
@@ -281,12 +279,69 @@ async def _handle_checkout_completed(session: dict) -> None:
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         if tenant:
-            await _notify_payment(tenant, payment, appointment)
-            await _sms_caller_confirmation(tenant, payment, appointment)
+            await _send_confirmations(tenant, payment)
     except Exception as e:
         logger.error("Payment notification failed for tenant %s: %s", tenant_id, e)
 
     await _emit_zapier_deposit(tenant_id, payment, "deposit_paid")
+
+
+# A confirmation re-checks its lease before each message. Each send is bounded by
+# its own HTTP timeout, well inside this budget, so no message names a time after
+# the lease (db_mc.CONFIRMATION_LEASE_SECONDS) could have let a move take over.
+CONFIRMATION_SEND_BUDGET_SECONDS = 60
+
+
+def _lease_left(claim) -> bool:
+    from db import mutation_claims as db_mc
+    try:
+        at = datetime.fromisoformat(str(claim.claimed_at).replace("Z", "+00:00"))
+    except Exception:
+        return False
+    at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - at).total_seconds()
+    return age + CONFIRMATION_SEND_BUDGET_SECONDS < db_mc.CONFIRMATION_LEASE_SECONDS
+
+
+async def _send_confirmations(tenant: dict, payment: dict) -> None:
+    """Tell the owner and the caller that the deposit was received.
+
+    A deposit can land while its appointment is being moved. The day and time are
+    named only while this confirmation owns the appointment (migration 047's
+    payment_confirmation claim): no move can change the time while it holds it,
+    and a move that already holds the appointment makes this leave the time out.
+    Released when done; a stopped webhook's claim expires after its lease."""
+    from services import mutation_ownership, square_inplace_scope
+    appointment_id = payment.get("appointment_id")
+    claim = appointment = None
+    tenant_id = str(tenant.get("id") or payment.get("tenant_id") or "")
+    if appointment_id and not await square_inplace_scope.allowed(tenant_id, appointment_id):
+        # Everyone outside the validation scope: exactly as before.
+        try:
+            appointment = await db.get_appointment_by_id(appointment_id)
+        except Exception as e:
+            logger.error("Failed to read appointment %s for its confirmation: %s", appointment_id, e)
+        await _notify_payment(tenant, payment, appointment)
+        await _sms_caller_confirmation(tenant, payment, appointment)
+        return
+    if appointment_id:
+        own, claim = await mutation_ownership.acquire_for_confirmation(appointment_id, tenant_id)
+        if own == mutation_ownership.ACQUIRED and claim:
+            try:
+                appointment = await db.get_appointment_by_id(appointment_id)
+            except Exception as e:
+                logger.warning("Couldn't read appointment %s for its confirmation: %s",
+                               appointment_id, e)
+        else:
+            logger.info("Appointment %s is being changed; confirming its deposit without a time",
+                        appointment_id)
+    try:
+        await _notify_payment(tenant, payment, appointment if claim and _lease_left(claim) else None)
+        await _sms_caller_confirmation(tenant, payment,
+                                       appointment if claim and _lease_left(claim) else None)
+    finally:
+        if claim:
+            await mutation_ownership.release(claim)
 
 
 async def _handle_checkout_expired(session: dict) -> None:
@@ -523,7 +578,6 @@ async def _handle_square_payment_completed(event: dict) -> None:
     })
     logger.info("Square payment %s succeeded for tenant %s", payment["id"], tenant_id)
 
-    appointment = None
     if payment.get("appointment_id"):
         try:
             if await db.confirm_appointment_unless_cancelled(payment["appointment_id"]):
@@ -531,15 +585,13 @@ async def _handle_square_payment_completed(event: dict) -> None:
             else:
                 logger.warning("Appointment %s is cancelled — NOT confirming it after a late "
                                "Square payment webhook", payment["appointment_id"])
-            appointment = await db.get_appointment_by_id(payment["appointment_id"])
         except Exception as e:
             logger.error("Failed to confirm appointment %s: %s", payment["appointment_id"], e)
 
     try:
         tenant = await db.get_tenant_by_id(tenant_id)
         if tenant:
-            await _notify_payment(tenant, payment, appointment)
-            await _sms_caller_confirmation(tenant, payment, appointment)
+            await _send_confirmations(tenant, payment)
     except Exception as e:
         logger.error("Square payment notification failed for tenant %s: %s", tenant_id, e)
 

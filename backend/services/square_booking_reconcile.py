@@ -68,7 +68,8 @@ NO_CREDENTIAL = "no_credential"
 # permanently unresolvable, and a permanent refusal must NOT become an endless
 # retry loop -- Square eventually disables a subscription that keeps failing, and
 # that subscription also carries payments.
-RETRYABLE = frozenset({PROVIDER_UNKNOWN})
+DEFERRED_CONFIRMING = "deferred_confirming"   # a deposit confirmation owns it for a moment
+RETRYABLE = frozenset({PROVIDER_UNKNOWN, DEFERRED_CONFIRMING})
 
 # Square booking statuses that mean "this appointment is not happening".
 # Matched by substring for the CANCELLED_BY_* family, exactly for the rest.
@@ -235,6 +236,13 @@ async def reconcile_booking_event(
         except Exception as e:
             logger.warning("W7D: could not read the mutation claim for %s: %s",
                            existing["id"], e)
+        if claim and claim.get("operation_type") == db_mc.OP_PAYMENT_CONFIRMATION:
+            # Held for seconds while a deposit confirmation is sent. Square
+            # redelivers, so a time change isn't lost behind it.
+            return Outcome(DEFERRED_CONFIRMING, tenant_id=tenant_id,
+                           tenant_location_id=location_id,
+                           appointment_id=str(existing["id"]), provider_version=auth_version,
+                           detail="a deposit confirmation owns it")
         if claim:
             # The owner reads provider truth itself and reconciles under its own
             # rules -- C3's cancel reconciliation and D2's recovery both do. A

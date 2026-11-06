@@ -233,6 +233,18 @@ def _plausible_caller_phone(value: str) -> bool:
     return not digits.startswith("555555")
 
 
+def _metadata_caller_phone(body: dict) -> str:
+    """The caller's number from telephony metadata only, never from the model."""
+    msg = body.get("message", body)
+    cust = (msg.get("call") or {}).get("customer") or {}
+    for candidate in (cust.get("number"), cust.get("phoneNumber"),
+                      (msg.get("customer") or {}).get("number"),
+                      (msg.get("customer") or {}).get("phoneNumber")):
+        if (candidate or "").strip():
+            return candidate.strip()
+    return ""
+
+
 def trusted_caller_phone(body: dict, args: dict) -> str:
     """The caller's number, preferring what the telephony provider told us.
 
@@ -897,7 +909,7 @@ def _booked_message(offer: dict, tenant: dict, *, pending: bool, again: bool = F
 async def _square_book_appointment(
     tc_id: str, call_id: str, tenant: dict, tenant_id: str, args: dict, *,
     caller_name: str, caller_phone: str, service: str, date_str: str,
-    time_str: str, party_size: int,
+    time_str: str, party_size: int, metadata_phone: str = "",
 ):
     """Square Appointments booking path — writes into the merchant's Square calendar
     via CreateBooking. Square owns availability/slot allocation; we resolve the spoken
@@ -1006,8 +1018,9 @@ async def _square_book_appointment(
     # destructive code is itself the hazard: the next person to add the argument
     # would have shipped implicit rescheduling without meaning to. Moving an
     # appointment will arrive as an explicit reschedule_appointment tool.
+    appt_id = None
     try:
-        await db.insert_appointment(appt_data)
+        appt_id = (await db.insert_appointment(appt_data) or {}).get("id")
     except Exception as e:
         logger.error("tools/book[square]: failed to save appointment mirror for %s: %s", tenant_id, e)
     analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "appointment_booked",
@@ -1031,13 +1044,28 @@ async def _square_book_appointment(
     except Exception as e:
         logger.error("tools/book[square]: SMS failed for %s: %s", tenant_id, e)
 
+    # Issue #179 production validation only: one CAD $1 deposit for the test
+    # caller's code. Everyone else: None, and nothing below changes.
+    from services import inplace_test_deposit
+    test_dep = await inplace_test_deposit.deposit_for_booking(
+        tenant=tenant, tenant_id=tenant_id, vapi_call_id=call_id, metadata_phone=metadata_phone,
+        test_code=args.get("test_code"), appointment_id=appt_id, location_id=location_id,
+        caller_name=caller_name, service=chosen.get("name") or service)
+    test_clause = ""
+    if test_dep == inplace_test_deposit.ALREADY_SENT:
+        test_clause = " The test deposit link was already sent; do not send another."
+    elif isinstance(test_dep, dict):
+        test_clause = (" A CAD $1 test deposit link has been texted to the caller."
+                       if test_dep.get("sms_sent") else
+                       " The test deposit link could not be sent; tell the caller the team will follow up.")
+
     if pending:
         return _result(tc_id,
             f"Your {service} at {business_name} is requested for {friendly}. Tell the caller the shop "
-            f"will confirm the appointment shortly and they'll get a text once it's accepted.")
+            f"will confirm the appointment shortly and they'll get a text once it's accepted." + test_clause)
     return _result(tc_id,
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
-        "You'll receive a text confirmation shortly.")
+        "You'll receive a text confirmation shortly." + test_clause)
 
 
 @router.post("/{tenant_id}/availability")
@@ -1357,7 +1385,8 @@ async def book_appointment(request: Request, tenant_id: str, body: dict):
         return await _square_book_appointment(
             tc_id, call_id, tenant, tenant_id, args, caller_name=caller_name,
             caller_phone=caller_phone, service=service, date_str=date_str,
-            time_str=time_str, party_size=party_size)
+            time_str=time_str, party_size=party_size,
+            metadata_phone=_metadata_caller_phone(body))
 
     result, _outcome = await _calendar_book(
         tc_id, call_id, tenant, tenant_id, args, caller_name=caller_name,
@@ -2339,6 +2368,7 @@ async def _resolve_square_deposit_location(
 async def _create_and_send_deposit(
     tenant: dict, *, caller_phone: str, caller_name: str, service: str,
     appointment_id: str | None, amount_cents: int | None = None,
+    force_provider: str | None = None,
 ) -> dict:
     """Create a deposit payment + branded short link and SMS it to the caller.
     Shared by book_appointment (auto-send the instant a deposit is owed) and the
@@ -2346,10 +2376,12 @@ async def _create_and_send_deposit(
     per-person group deposits). Never raises; returns a status dict so the caller
     can craft the right voice response."""
     out = {"sms_sent": False, "already_paid": False, "amount_display": "",
-           "currency_voice": "", "expiry_hours": 0, "error": None}
+           "currency_voice": "", "expiry_hours": 0, "error": None, "payment_id": None}
     try:
         from routers.payments import _deposit_provider, _currency_for
-        _provider = _deposit_provider(tenant)
+        # force_provider: only the #179 validation deposit (services/inplace_test_deposit).
+        _provider = (force_provider if force_provider == "square" and tenant.get("square_access_token")
+                     else _deposit_provider(tenant))
         if not _provider:
             out["error"] = "no_provider"
             return out
@@ -2442,6 +2474,7 @@ async def _create_and_send_deposit(
                 "service": service, "description": description, "expires_at": expires_at,
             })
 
+        out["payment_id"] = payment_id
         logger.info("Created deposit payment %s via %s for tenant %s caller %s",
                     payment_id, _provider, tenant_id, caller_phone)
 

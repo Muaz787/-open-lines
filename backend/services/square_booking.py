@@ -571,6 +571,72 @@ async def cancel_booking_detailed(
         return CANCEL_FAILED, booking, code
 
 
+# UpdateBooking outcomes, with the same discipline as cancellation: UNKNOWN is
+# never collapsed into FAILED.
+UPDATE_OK = "updated"
+UPDATE_FAILED = "failed"
+UPDATE_UNKNOWN = "unknown"
+
+
+async def update_booking_start(token: str, booking_id: str, *, version, start_at_iso: str,
+                               idempotency_key: str) -> tuple[str, dict, str]:
+    """Move a booking to start_at with UpdateBooking. Returns (status, booking, code).
+
+    Only start_at (and the version it was read at) is sent: the booking keeps its
+    id, location, customer, service, team member and duration. Square refuses to
+    change appointment segments once a deposit has been taken, and a move never
+    needs to. The version makes a booking edited since we read it fail cleanly;
+    the idempotency key makes a retried request return the first result.
+    """
+    body = {"idempotency_key": idempotency_key,
+            "booking": {"version": version, "start_at": start_at_iso}}
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.put(f"{sq_svc._api_base()}/v2/bookings/{booking_id}",
+                                   json=body, headers=sq_svc._sq_headers(token), timeout=15.0)
+        except Exception as e:
+            logger.error("Square update_booking transport failure for %s: %s", booking_id, e)
+            return UPDATE_UNKNOWN, {}, ""
+    if res.is_success:
+        try:
+            booking = res.json().get("booking") or {}
+        except Exception:
+            booking = {}
+        if not booking:
+            logger.warning("Square update_booking returned an unreadable body for %s", booking_id)
+            return UPDATE_UNKNOWN, {}, ""
+        return UPDATE_OK, booking, ""
+    if res.status_code == 429 or res.status_code >= 500:
+        logger.error("Square update_booking %s (unknown outcome): %s", res.status_code, res.text[:300])
+        return UPDATE_UNKNOWN, {}, ""
+    code = _first_error_code(res)
+    logger.warning("Square update_booking %s (%s): %s", res.status_code, code or "no code", res.text[:300])
+    return UPDATE_FAILED, {}, code
+
+
+def booking_shape(booking: dict) -> dict:
+    """The parts of a booking a move must leave alone, plus its start and end."""
+    segs = booking.get("appointment_segments") or []
+    start = None
+    try:
+        start = datetime.fromisoformat(str(booking.get("start_at") or "").replace("Z", "+00:00"))
+    except ValueError:
+        pass
+    minutes = sum(int(s.get("duration_minutes") or 0) for s in segs)
+    return {
+        "status": (booking.get("status") or "").upper(),
+        "location_id": booking.get("location_id") or "",
+        "customer_id": booking.get("customer_id") or "",
+        "version": booking.get("version"),
+        "segments": len(segs),
+        "team_member_id": (segs[0].get("team_member_id") if segs else "") or "",
+        "service_variation_id": (segs[0].get("service_variation_id") if segs else "") or "",
+        "start": start,
+        "end": (start + timedelta(minutes=minutes)) if start and minutes else None,
+        "minutes": minutes,
+    }
+
+
 async def cancel_booking(token: str, booking_id: str) -> bool:
     """LEGACY bool shim. Prefer cancel_booking_detailed(), which distinguishes
     'already cancelled' and 'unknown' from success — a difference a bool destroys."""

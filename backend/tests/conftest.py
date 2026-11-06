@@ -254,3 +254,82 @@ def calendar_moves_store(monkeypatch):
     for name in ("insert", "get", "live_for_appointment", "transition", "list_stale", "lease"):
         monkeypatch.setattr(_db_cm, name, getattr(store, name))
     return store
+
+
+# ── #179 validation runs (migration 047), in memory ──────────────────────────
+# Same rules as the table: the code hash is the key, every update is a CAS.
+class FakeInplaceRuns:
+    def __init__(self):
+        self.rows: dict[str, dict] = {}
+        self.lock = _asyncio.Lock()
+
+    async def get(self, h):
+        r = self.rows.get(h)
+        return dict(r) if r else None
+
+    def arm(self, h, tenant_id):
+        """What the operator's INSERT does."""
+        self.rows[h] = {"code_sha256": h, "tenant_id": tenant_id, "vapi_call_id": None,
+                        "appointment_id": None, "link_claimed_at": None, "payment_id": None,
+                        "disabled_at": None}
+
+    def disable_all(self):
+        """What the operator's stop command does."""
+        for r in self.rows.values():
+            r["disabled_at"] = r["disabled_at"] or "now"
+
+    async def use_code(self, h, tenant_id, call_id):
+        async with self.lock:
+            r = self.rows.get(h)
+            if r and str(r["tenant_id"]) == str(tenant_id) and r["vapi_call_id"] is None \
+                    and not r["disabled_at"]:
+                r["vapi_call_id"] = call_id
+            if (not r or str(r["tenant_id"]) != str(tenant_id) or str(r["vapi_call_id"]) != str(call_id)
+                    or r["disabled_at"]):
+                return None
+            return dict(r)
+
+    async def disable_unused(self, tenant_id):
+        n = 0
+        for r in self.rows.values():
+            if str(r["tenant_id"]) == str(tenant_id) and r["vapi_call_id"] is None and not r["disabled_at"]:
+                r["disabled_at"] = "burned"
+                n += 1
+        return n
+
+    async def bind_appointment(self, h, appointment_id):
+        async with self.lock:
+            r = self.rows.get(h)
+            if r and r["appointment_id"] is None and not r["disabled_at"] and not any(
+                    x["appointment_id"] == appointment_id for x in self.rows.values()):
+                r["appointment_id"] = appointment_id
+                return True
+            return False
+
+    async def claim_link(self, h, appointment_id):
+        async with self.lock:
+            r = self.rows.get(h)
+            if r and r["appointment_id"] == appointment_id and r["link_claimed_at"] is None \
+                    and not r["disabled_at"]:
+                r["link_claimed_at"] = "now"
+                return True
+            return False
+
+    async def record_payment(self, h, payment_id):
+        r = self.rows.get(h)
+        if r and r["payment_id"] is None:
+            r["payment_id"] = payment_id
+
+    async def for_appointment(self, appointment_id):
+        r = next((x for x in self.rows.values() if x["appointment_id"] == appointment_id), None)
+        return dict(r) if r else None
+
+
+@_pytest.fixture(autouse=True)
+def inplace_runs_store(monkeypatch):
+    store = FakeInplaceRuns()
+    from db import inplace_test_runs as _db_runs
+    for name in ("get", "use_code", "disable_unused", "bind_appointment", "claim_link", "record_payment",
+                 "for_appointment"):
+        monkeypatch.setattr(_db_runs, name, getattr(store, name))
+    return store

@@ -196,6 +196,7 @@ class CalWorld:
             patch("db.supabase.get_active_appointments_between", new=AsyncMock(side_effect=self.active)),
             patch("db.supabase.get_active_staff", new=AsyncMock(return_value=[])),
             patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(side_effect=self.payment)),
+            patch("db.supabase.update_payment", new=AsyncMock(side_effect=AssertionError("payment written"))),
             patch("db.appointment_refs.insert_refs", new=AsyncMock(side_effect=self.refs.insert_refs)),
             patch("db.appointment_refs.count_refs", new=AsyncMock(side_effect=self.refs.count_refs)),
             patch("db.appointment_refs.get_ref", new=AsyncMock(side_effect=self.refs.get_ref)),
@@ -516,7 +517,10 @@ async def test_square_single_location_rule_does_not_apply_to_multi_location_busi
 
 @pytest.mark.parametrize("multi", [False, True])
 @pytest.mark.parametrize("deposit", ["paid", "owed"])
-async def test_square_deposit_appointments_are_handed_to_the_team(multi, deposit):
+async def test_square_deposit_appointments_never_use_the_replacement_engine(multi, deposit):
+    """Issue #179: a deposit appointment moves in place (tests/test_square_deposit_
+    reschedule.py) or goes to the team. It is never booked anew and cancelled,
+    which would leave the deposit on a cancelled row."""
     status = "pending_payment" if deposit == "owed" else "confirmed"
     if multi:
         w = d3.World([d3.appt("a-cork", status=status)])
@@ -524,12 +528,13 @@ async def test_square_deposit_appointments_are_handed_to_the_team(multi, deposit
     else:
         w = single_world(status=status)
         ctx = single_env(w)
-    payment = {"id": "p1", "status": "paid"} if deposit == "paid" else None
-    with ctx as e, patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(return_value=payment)):
+    payment = {"id": "p1", "status": "succeeded"} if deposit == "paid" else None
+    with ctx as e, patch("db.supabase.get_payment_by_appointment_id", new=AsyncMock(return_value=payment)), \
+            patch("services.square_booking.update_booking_start", new=AsyncMock()) as upd:
         await d3.call()
         said = await d3.call("appt_1", "slot_1")
-    assert said == ri.message_for(ri.PAYMENT_ON_FILE)
     assert e["create"].await_count == 0 and w.cancelled_bookings == []
+    assert not said.startswith("Done") or upd.await_count == 1
 
 
 @pytest.mark.parametrize("multi", [False, True])

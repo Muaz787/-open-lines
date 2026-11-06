@@ -177,8 +177,32 @@ async def slot_problem(tenant: dict, tenant_id: str, appt: dict, new_start: date
 
 # ── settling an operation by reading the provider ───────────────────────────
 
+async def _read_square(tenant: dict, op: dict) -> tuple[str, dict]:
+    """('ok', shape) | ('missing', {}) | ('unknown', {}) for a Square booking."""
+    from services import square_booking
+    try:
+        token = await square_booking.get_access_token(tenant)
+    except Exception as e:
+        logger.warning("calendar_reschedule: no Square token for operation %s: %s", op["id"], e)
+        return "unknown", {}
+    if not token:
+        return "unknown", {}
+    status, booking = await square_booking.get_booking_detailed(token, op["provider_event_id"])
+    if status == square_booking.FETCH_NOT_FOUND:
+        return "missing", {}
+    if status != square_booking.FETCH_FOUND:
+        return "unknown", {}
+    shape = square_booking.booking_shape(booking)
+    if "CANCELLED" in shape["status"] or shape["status"] == "DECLINED":
+        return "missing", shape
+    return "ok", shape
+
+
 async def _read_event_start(tenant: dict, op: dict) -> tuple[str, datetime | None]:
     """('ok', start) | ('missing', None) | ('unknown', None)."""
+    if op["provider"] == "square":
+        status, shape = await _read_square(tenant, op)
+        return status, (shape.get("start") if status == "ok" else None)
     refresh_token, provider = _provider(tenant)
     if not refresh_token or provider != op["provider"]:
         return "unknown", None
@@ -202,7 +226,24 @@ async def _release(op: dict) -> None:
 
 async def verify_provider(tenant: dict, op: dict) -> str:
     """Re-read the event: 'ok' when it is active and starts AND ends exactly where
-    this operation moved it; otherwise 'unreadable', 'missing' or 'mismatch'."""
+    this operation moved it; otherwise 'unreadable', 'missing' or 'mismatch'.
+
+    For Square the team member and service must also be the ones frozen on the
+    operation: a booking someone else changed is not proof of our move."""
+    if op["provider"] == "square":
+        status, shape = await _read_square(tenant, op)
+        if status == "unknown":
+            return "unreadable"
+        if status == "missing":
+            return "missing"
+        to = datetime.fromisoformat(str(op["to_start_utc"]).replace("Z", "+00:00"))
+        end = to + timedelta(minutes=int(op["duration_minutes"]))
+        same_parts = (shape["segments"] == 1
+                      and shape["team_member_id"] == (op.get("team_member_id") or "")
+                      and shape["service_variation_id"] == (op.get("service_variation_id") or ""))
+        if same_parts and _same_instant(shape["start"], to) and _same_instant(shape["end"], end):
+            return "ok"
+        return "mismatch"
     refresh_token, provider = _provider(tenant)
     if not refresh_token or provider != op["provider"]:
         return "unreadable"
@@ -292,6 +333,12 @@ async def run_recovery(limit: int = 10) -> dict:
         logger.error("calendar_reschedule: recovery scan failed: %s", e)
         return {"error": str(e)[:200]}
     out: dict[str, int] = {}
+    try:
+        # Confirmation claims whose webhook stopped (migration 047).
+        if expired := await db_mc.expire_stale_confirmations():
+            out["confirmation_claims_expired"] = expired
+    except Exception as e:
+        logger.warning("calendar_reschedule: confirmation claim sweep failed: %s", e)
     for op in ops:
         # One worker per operation per pass: the lease only matches the
         # updated_at this worker read, so a second worker gets nothing.
