@@ -242,6 +242,37 @@ async def _in_scope(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
     return await deposit_moves.allowed(tenant_id, ref.get("appointment_id"))
 
 
+async def _into_own_slot(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
+                         appointment_ref: str, slot_ref: str) -> bool:
+    """Does the chosen time overlap the appointment's own current slot?"""
+    from datetime import datetime, timezone
+    from db import supabase as db
+    from services import self_overlap
+    try:
+        st, ref = await appointment_refs.resolve_for_cancel(
+            vapi_call_id=vapi_call_id, appointment_ref=appointment_ref, tenant_id=tenant_id,
+            caller_phone=caller_phone)
+        ost, offer = await slot_offers.resolve_for_booking(
+            vapi_call_id=vapi_call_id, slot_ref=slot_ref, tenant_id=tenant_id, active_location_id="")
+        if st != appointment_refs.OK or ost != slot_offers.OK or not ref or not offer:
+            return False
+        appt = await db.get_appointment_by_id(ref["appointment_id"]) or {}
+
+        def _t(v):
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        minutes = int(appt.get("duration_minutes") or offer.get("duration_minutes") or 0)
+        if minutes <= 0 or not appt.get("appointment_datetime"):
+            return False
+        if not self_overlap.overlaps(_t(offer["start_at_utc"]), minutes,
+                                     _t(appt["appointment_datetime"]), minutes):
+            return False
+    except Exception as e:
+        logger.warning("reschedule_intent: own-slot check failed: %s", e)
+        return False
+    return await deposit_moves.allowed(tenant_id, ref["appointment_id"])
+
+
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
                     appointment_ref: str, slot_ref: str) -> str | None:
     """Cheap read-only gates, BEFORE ownership is taken. None means proceed.
@@ -309,6 +340,17 @@ async def move_appointment(*, vapi_call_id: str, tenant_id: str, caller_phone: s
         # A deposit appointment moves in place with UpdateBooking (issue #179),
         # keeping its row and so its deposit. A spent reference to an appointment
         # that is still active is a retry of such a move, answered from the record.
+        from db import supabase as _db
+        from services import square_inplace_reschedule as sq_in
+        tenant = await _db.get_tenant_by_id(tenant_id) or {}
+        return await sq_in.move(tenant=tenant, tenant_id=tenant_id, vapi_call_id=vapi_call_id,
+                                caller_phone=caller_phone, appointment_ref=appointment_ref,
+                                slot_ref=slot_ref)
+    if blocked is None and await _into_own_slot(
+            vapi_call_id=vapi_call_id, tenant_id=tenant_id, caller_phone=caller_phone,
+            appointment_ref=appointment_ref, slot_ref=slot_ref):
+        # 9:00 -> 9:30: booking a replacement first would collide with the original,
+        # so the booking itself is moved (UpdateBooking), as for deposits.
         from db import supabase as _db
         from services import square_inplace_reschedule as sq_in
         tenant = await _db.get_tenant_by_id(tenant_id) or {}

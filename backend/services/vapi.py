@@ -1103,6 +1103,16 @@ def build_calendar_tools(tenant_id: str, *,
                                 "or identifier, and never guess when the caller has not said."
                             ),
                         },
+                        "moving_appointment_ref": {
+                            "type": "string",
+                            "description": (
+                                "ONLY when the caller is moving an existing appointment: the "
+                                "appt_ reference of that appointment, exactly as "
+                                "reschedule_appointment listed it. Its current time then doesn't "
+                                "block times close to it (moving 9:00 to 9:30). Omit for new "
+                                "bookings. Never read it aloud."
+                            ),
+                        },
                     },
                     "required": ["date"],
                 },

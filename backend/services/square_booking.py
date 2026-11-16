@@ -977,6 +977,82 @@ async def available_slots(
     return out
 
 
+async def _free_starts(token: str, location_id: str, variation_id: str, team_member_id: str,
+                       day_start: datetime, day_end: datetime) -> list[datetime]:
+    """Start times Square offers for ONE team member and service in a window."""
+    now = datetime.now(dt_timezone.utc) + timedelta(minutes=1)
+    start = max(day_start.astimezone(dt_timezone.utc), now)
+    end = day_end.astimezone(dt_timezone.utc)
+    if start >= end:
+        return []
+
+    def _z(dt: datetime) -> str:
+        return dt.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
+
+    avails = await search_availability(token, location_id, variation_id, [team_member_id],
+                                       _z(start), _z(end))
+    out = set()
+    for a in avails:
+        seg = (a.get("appointment_segments") or [{}])[0]
+        if seg.get("team_member_id") and seg.get("team_member_id") != team_member_id:
+            continue
+        try:
+            out.add(datetime.fromisoformat(str(a.get("start_at")).replace("Z", "+00:00")))
+        except Exception:
+            continue
+    return sorted(out)
+
+
+async def own_slot_extras(tenant: dict, *, booking_id: str, date_str: str, timezone: str,
+                          provider_location_id: str, service_variation_id: str) -> list[dict]:
+    """Extra offers for MOVING one booking: times that overlap its own slot and are
+    free once it moves (services.self_overlap). Same shape as available_slots().
+    Empty when the booking isn't on that day, at that location, for that service."""
+    from services import self_overlap
+    token = await get_access_token(tenant)
+    if not (token and booking_id):
+        return []
+    status, booking = await get_booking_detailed(token, booking_id)
+    if status != FETCH_FOUND:
+        return []
+    src = booking_shape(booking)
+    tz = ZoneInfo(timezone)
+    if (src["status"] not in ("ACCEPTED", "PENDING") or src["segments"] != 1 or not src["start"]
+            or not src["minutes"] or src["location_id"] != provider_location_id
+            or src["service_variation_id"] != service_variation_id
+            or src["start"].astimezone(tz).date().isoformat() != date_str):
+        return []
+    day = date_type.fromisoformat(date_str)
+    day_start = datetime(day.year, day.month, day.day, tzinfo=tz)
+    free = await _free_starts(token, provider_location_id, service_variation_id,
+                              src["team_member_id"], day_start, day_start + timedelta(days=1))
+    own = src["start"].astimezone(tz)
+    extras = self_overlap.extra_starts(
+        own_start=own, minutes=src["minutes"], free_starts=[f.astimezone(tz) for f in free],
+        not_before=datetime.now(dt_timezone.utc).astimezone(tz))
+    seg = (booking.get("appointment_segments") or [{}])[0]
+    return [{
+        "start_at_utc": t.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"),
+        "display": _fmt_slot(t),
+        "team_member_id": src["team_member_id"],
+        "service_variation_version": seg.get("service_variation_version"),
+        "duration_minutes": src["minutes"],
+        "own_slot": True,
+    } for t in extras]
+
+
+async def free_once_moved(token: str, *, location_id: str, variation_id: str, team_member_id: str,
+                          own_start: datetime, minutes: int, target: datetime) -> bool:
+    """Re-check, just before moving, that target is free once the booking leaves
+    its own slot: the same coverage rule against a fresh read from Square."""
+    from services import self_overlap
+    window_start = min(own_start, target) - timedelta(minutes=minutes)
+    window_end = max(own_start, target) + timedelta(minutes=2 * minutes)
+    free = await _free_starts(token, location_id, variation_id, team_member_id,
+                              window_start, window_end)
+    return self_overlap.covered(target, minutes, own_start, minutes, free, minutes)
+
+
 async def available_slot_strings(
     tenant: dict, *, date_str: str, timezone: str,
     service_variation_id: str, team_member_ids: list[str],
