@@ -87,6 +87,9 @@ class ProvisionRequest(BaseModel):
     email: str = ""
     password: str = ""
     business_phone: str = ""
+    # The owner's browser zone (Intl.DateTimeFormat). A hint only: checked against
+    # the chosen country by services.business_timezone before it is stored.
+    timezone: str = ""
     analysis_token: str = ""
     # Card-required trial. card_setup_token comes from /onboarding/setup-card and
     # carries the Stripe customer id in authenticated encryption — the raw id is
