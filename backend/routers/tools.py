@@ -2434,7 +2434,7 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
             "'I'm having a little trouble sending the link right now. Our team will follow up with you "
             "shortly to arrange the payment.' Then close the call warmly.",
         )
-    _amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
+    _amt = _spoken_deposit(dep)
     return _result(
         tc_id,
         f"SMS_SENT. Now close the call professionally. Say: 'I've just sent a secure payment link to "
@@ -2459,10 +2459,18 @@ def _deposit_terms(tenant: dict, party_size: int = 1) -> tuple[bool, bool]:
     return due, due and bool(tenant.get("stripe_deposit_mandatory", True))
 
 
+def _spoken_deposit(dep: dict) -> str:
+    """'1 dollar', not '1 dollars'."""
+    from services.short_links import spoken_amount
+    if dep.get("currency"):
+        return spoken_amount(dep.get("amount_display", ""), dep["currency"])
+    return f"{dep.get('amount_display', '')} {dep.get('currency_voice', '')}".strip()
+
+
 def _deposit_voice(dep: dict, *, service: str, caller_name: str, friendly: str,
                    business_name: str) -> str:
     """What the assistant is told after the server tried to send the deposit link."""
-    amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
+    amt = _spoken_deposit(dep)
     if dep["already_paid"]:
         return (f"Done! Your {service} at {business_name} is set for {friendly}. "
                 f"Tell the caller their deposit is already on file, so no further payment is needed. "
@@ -2611,6 +2619,7 @@ async def _create_and_send_deposit(
         )
         out["amount_display"] = f"{deposit_cents // 100}" if deposit_cents % 100 == 0 else f"{deposit_cents / 100:.2f}"
         out["currency_voice"] = format_currency_voice(currency)
+        out["currency"] = currency
         currency_display = format_currency(currency)
 
         # Never collect a second deposit for an already-paid appointment.

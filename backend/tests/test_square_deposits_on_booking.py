@@ -368,3 +368,25 @@ async def test_order_and_link_helpers_classify_square_responses():
             return R(_c)
         with patch.object(httpx.AsyncClient, "delete", delete):
             assert await sq.delete_payment_link("t", "L") == want
+
+
+# ═════════════════════════ "1 dollar", not "1 dollars" ════════════════════════
+
+@pytest.mark.parametrize("amount,code,want", [
+    ("1", "cad", "1 dollar"), ("1.00", "usd", "1 dollar"), ("1", "eur", "1 euro"),
+    ("1", "gbp", "1 pound"), ("25", "cad", "25 dollars"), ("1.50", "cad", "1.50 dollars"),
+    ("10", "eur", "10 euros"), ("1", "jpy", "1 JPY")])
+def test_the_amount_is_spoken_in_the_right_number(amount, code, want):
+    from services.short_links import format_currency, spoken_amount
+    got = spoken_amount(amount, code)
+    if code == "jpy":
+        assert got == f"1 {format_currency('jpy')}".strip()
+    else:
+        assert got == want
+
+
+async def test_the_booking_result_says_one_dollar():
+    with deposits_on(Shop()).env() as shop:
+        said = await book(shop)
+    assert "1 dollars" not in said
+    assert "A 1 dollar deposit link" in said and "pay the 1 dollar deposit" in said

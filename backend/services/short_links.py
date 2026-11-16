@@ -68,6 +68,18 @@ def format_currency(code: str) -> str:
     return _CURRENCY_DISPLAY.get((code or "").lower(), (code or "").upper())
 
 
+def spoken_amount(amount_display: str, code: str) -> str:
+    """'1 dollar', '25 dollars', '1.50 dollars', '1 euro' — what the assistant says.
+
+    format_currency_voice is always plural, which made the tool results read
+    "a 1 dollars deposit" (16 Nov)."""
+    amount = (amount_display or "").strip()
+    word = format_currency_voice(code)
+    if amount in ("1", "1.00") and word.endswith("s") and (code or "").lower() in _CURRENCY_VOICE:
+        word, amount = word[:-1], "1"
+    return f"{amount} {word}".strip()
+
+
 def format_currency_voice(code: str) -> str:
     """Return the natural spoken word for a currency (e.g. 'cad' → 'dollars', 'eur' → 'euros').
     Used in AI voice scripts so the assistant says '20 dollars' not '20 CAD'."""
