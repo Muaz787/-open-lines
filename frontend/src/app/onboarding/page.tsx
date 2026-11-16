@@ -111,6 +111,12 @@ const COUNTRIES: Country[] = [
   { code: 'IE', name: 'Ireland',        dial: '+353', flag: '🇮🇪' },
 ]
 
+// The owner's IANA zone, sent with signup so the business isn't stored on the
+// America/Toronto default. The backend checks it against the chosen country.
+function browserTimeZone(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || '' } catch { return '' }
+}
+
 function detectCountry(): string {
   try {
     // Timezone is the reliable geographic signal. Device language must NOT take
@@ -389,6 +395,7 @@ export default function OnboardingPage() {
       business_name: form.business_name,
       industry:      form.industry,
       country:       form.country,
+      timezone:      browserTimeZone(),
       agent_name:    form.agent_name || 'Alex',
       voice_gender:  form.voice_gender || 'female',
       email:         form.email,

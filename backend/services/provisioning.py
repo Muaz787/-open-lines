@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from openai import AsyncOpenAI
 
 from services import onboarding_lifecycle as lifecycle_ob
-from services import phone_registry
+from services import business_timezone, phone_registry
 from services import tenant_subaccount
 from services import telephony, vapi, knowledge
 from db import supabase as db
@@ -469,6 +469,9 @@ def _initial_tenant_row(payload: dict, country: str) -> dict:
         "country": country or None,
         "business_country_code": country or None,
         "website_url": payload.get("website_url", ""),
+        # Never the column default (America/Toronto) for everyone: the owner's own
+        # zone when it fits their country, else that country's main zone.
+        "calendar_timezone": business_timezone.resolve(payload.get("timezone"), country),
         "is_active": True,
         "onboarding_state": lifecycle_ob.initial_state(country),
     }
