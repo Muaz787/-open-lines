@@ -48,10 +48,10 @@ class Claim:
 
 async def _expired_confirmation(appointment_id: str) -> bool:
     """Clear this appointment's confirmation claim if its lease has run out.
-    Never a live one: see db_mc.expire_stale_confirmations. Only while the
-    in-place validation is on: nobody else ever holds one."""
-    from services import square_inplace_scope
-    if not square_inplace_scope.enabled():
+    Never a live one: see db_mc.expire_stale_confirmations. Only while
+    deposit moves are on (services.deposit_moves): nobody else ever holds one."""
+    from services import deposit_moves
+    if not deposit_moves.any_enabled():
         return False
     try:
         return await db_mc.expire_stale_confirmations(appointment_id) > 0

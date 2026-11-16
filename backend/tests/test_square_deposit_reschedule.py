@@ -463,8 +463,9 @@ def test_update_sends_only_the_version_and_start():
 
 @pytest.mark.parametrize("case", ["validation off", "other tenant configured", "run bound elsewhere",
                                   "run disabled", "window expired", "window over 24h", "no run armed"])
-async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
+async def test_deposit_moves_off_and_outside_the_scope_deposits_go_to_the_team_as_before(
         case, monkeypatch, inplace_runs_store, calendar_moves_store):
+    monkeypatch.setenv("SQUARE_DEPOSIT_MOVES", "off")
     if case == "validation off":
         monkeypatch.delenv("SQUARE_INPLACE_TEST_TENANT_ID")
     elif case == "other tenant configured":
@@ -483,12 +484,15 @@ async def test_outside_the_validation_scope_deposits_go_to_the_team_as_before(
     with SqWorld(payments=PAID).env() as w:
         await w.call()
         said = await w.move()
-    assert said == ri.message_for(ri.PAYMENT_ON_FILE), "today's team handoff, word for word"
+    assert said.startswith(ri.message_for(ri.PAYMENT_ON_FILE)), "today's team handoff"
+    assert "already been sent to the team" in said, "and the team now has a record of it"
     assert w.updates == [] and not w.owners and not w.moved()
     assert calendar_moves_store.rows == {}, "no move operation recorded"
 
 
-async def test_the_in_place_move_refuses_an_appointment_outside_the_scope(inplace_runs_store):
+async def test_the_in_place_move_refuses_an_appointment_outside_the_scope(inplace_runs_store,
+                                                                          monkeypatch):
+    monkeypatch.setenv("SQUARE_DEPOSIT_MOVES", "off")
     bind_run(inplace_runs_store, "a-other")
     with SqWorld(payments=PAID).env() as w:
         await w.call()

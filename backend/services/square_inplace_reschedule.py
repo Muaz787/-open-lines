@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 from db import calendar_moves as db_cm
 from db import supabase as db
 from services import appointment_refs, calendar_reschedule as cr, mutation_ownership
-from services import relative_dates, reschedule, slot_offers, square_booking, square_inplace_scope
+from services import deposit_moves, relative_dates, reschedule, slot_offers, square_booking
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +92,8 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
     if not appt or str(appt.get("tenant_id")) != str(tenant_id) \
             or str(appt.get("caller_phone") or "") != caller_phone:
         return cr.INVALID_REF, _HANDOFF_MSG
-    if not await square_inplace_scope.allowed(tenant_id, appt["id"]):
-        # The router only sends the named test appointment here; refuse anything else.
+    if not await deposit_moves.allowed(tenant_id, appt["id"]):
+        # Released generally unless SQUARE_DEPOSIT_MOVES=off (services.deposit_moves).
         return HANDOFF, _HANDOFF_MSG
 
     if consumed:

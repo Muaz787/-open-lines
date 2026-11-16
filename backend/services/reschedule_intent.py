@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 
 from services import appointment_refs, reschedule, reschedule_execute as rx
-from services import slot_offers, square_inplace_scope
+from services import deposit_moves, slot_offers
 
 logger = logging.getLogger(__name__)
 
@@ -231,15 +231,15 @@ async def _moves_in_place(blocked: str, *, vapi_call_id: str, tenant_id: str, ca
 
 async def _in_scope(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
                     appointment_ref: str) -> bool:
-    """Is this the named test tenant's named appointment (square_inplace_scope)?"""
-    if not square_inplace_scope.enabled():
+    """May this appointment move in place (services.deposit_moves)?"""
+    if not deposit_moves.any_enabled():
         return False
     status, ref = await appointment_refs.resolve_for_cancel(
         vapi_call_id=vapi_call_id, appointment_ref=appointment_ref, tenant_id=tenant_id,
         caller_phone=caller_phone)
     if status not in (appointment_refs.OK, appointment_refs.ALREADY_CONSUMED) or not ref:
         return False
-    return await square_inplace_scope.allowed(tenant_id, ref.get("appointment_id"))
+    return await deposit_moves.allowed(tenant_id, ref.get("appointment_id"))
 
 
 async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
@@ -277,7 +277,9 @@ async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
 
     # Square moves an appointment by booking a replacement row and cancelling the
     # original. A deposit is linked to the original row, so moving it here would
-    # strand the payment on a cancelled appointment. Owed or paid, it's the team's.
+    # strand the payment on a cancelled appointment. Owed or paid, it takes the
+    # in-place path instead (move_appointment -> services.square_inplace_reschedule),
+    # or the team's when deposit moves are switched off (services.deposit_moves).
     if await _has_payment(ref["appointment_id"]):
         return PAYMENT_ON_FILE
 

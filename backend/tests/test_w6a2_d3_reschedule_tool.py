@@ -454,7 +454,7 @@ async def test_G_source_changed_end_to_end_never_cancels_the_merchants_edit():
     assert op["cancel_failure_reason"] == rx.REASON_SOURCE_CHANGED
     assert w.claims                                # ownership HELD for an operator
 
-    assert text == ri.message_for(ri.SOURCE_CHANGED)
+    assert text.startswith(ri.message_for(ri.SOURCE_CHANGED))
     assert "has been moved" not in text
 
 
