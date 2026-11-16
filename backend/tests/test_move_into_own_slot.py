@@ -268,3 +268,80 @@ def test_the_tool_and_the_listing_tell_the_model_to_pass_the_ref():
     assert "moving_appointment_ref" in ca["function"]["parameters"]["properties"]
     import inspect
     assert "moving_appointment_ref" in inspect.getsource(tools._list_cancellable)
+
+
+# ═════════ 16 Nov, second call: a webhook-stamped single location ═════════════
+# Square's booking.created webhook stamps the business's one location on the
+# appointment (tenant_location_id 809e1fca…, provider L0Q8…). Offers for a
+# single-location business carry no tenant location, so every move was refused as
+# "cross-location". The same booking, the same place.
+
+def _stamp(w):
+    w.appt["tenant_location_id"] = sqd.LOC_ID
+    w.appt["provider_location_id"] = sqd.LOC_PID
+    return w
+
+
+@pytest.mark.parametrize("payments", [(), sqd.PAID], ids=["no deposit", "paid deposit"])
+async def test_a_stamped_single_location_appointment_moves_to_nine_thirty(
+        payments, no_test_window, calendar_moves_store):
+    with _stamp(sqd.SqWorld(payments=payments)).env() as w, \
+            patch("services.square_booking.free_once_moved", new=AsyncMock(return_value=True)):
+        w.offer["start_at_utc"] = sqd.z(HALF)
+        assert w.offer["tenant_location_id"] is None
+        await w.call()
+        said = await w.move()
+    assert said.startswith("Done, re-read just now"), said
+    assert len(w.updates) == 1 and w.updates[0][2] == sqd.z(HALF)
+
+
+async def test_a_stamped_deposit_appointment_moves_to_any_time(no_test_window, calendar_moves_store):
+    with _stamp(sqd.SqWorld(payments=sqd.PAID)).env() as w:
+        await w.call()
+        said = await w.move()
+    assert said.startswith("Done, re-read just now"), said
+
+
+async def test_a_stamped_appointment_reaches_the_ordinary_move(no_test_window, calendar_moves_store):
+    """No deposit, not overlapping: precheck no longer says cross-location; the
+    move reaches D1 (here stopped on purpose)."""
+    from services import reschedule as rs
+    with _stamp(sqd.SqWorld()).env() as w, \
+            patch("services.reschedule.begin_reschedule",
+                  new=AsyncMock(return_value=rs.Result(rs.NOT_ELIGIBLE))) as d1:
+        await w.call()
+        await w.move()
+    d1.assert_awaited_once()
+
+
+@pytest.mark.parametrize("case", ["multi-location", "other square location", "binding dead",
+                                  "offer names a location", "no provider id"])
+async def test_the_stamp_counts_only_for_the_one_live_location(case):
+    from services import reschedule as rs
+    tenant = {"square_appointments_enabled": True, "square_location_id": "L1"}
+    offer = {"tenant_location_id": None, "provider_location_id": "L1"}
+    src_pid, live, multi = "L1", True, False
+    if case == "multi-location":
+        multi = True
+    elif case == "other square location":
+        src_pid = "L2"
+    elif case == "binding dead":
+        live = False
+    elif case == "offer names a location":
+        offer["tenant_location_id"] = "loc-1"
+    else:
+        src_pid = ""
+    with patch("services.call_location.is_multi_location", new=AsyncMock(return_value=(multi, []))), \
+            patch("services.reschedule._binding_is_live", new=AsyncMock(return_value=live)):
+        assert not await rs.stamped_single_location(tenant, "t", "loc-1", src_pid, offer)
+    with patch("services.call_location.is_multi_location", new=AsyncMock(return_value=(False, []))), \
+            patch("services.reschedule._binding_is_live", new=AsyncMock(return_value=True)):
+        assert await rs.stamped_single_location(
+            tenant, "t", "loc-1", "L1", {"tenant_location_id": None, "provider_location_id": "L1"})
+
+
+def test_d1_normalises_the_stamp_before_its_location_gate():
+    import inspect
+    from services import reschedule as rs
+    src = inspect.getsource(rs._under_ownership)
+    assert src.index("stamped_single_location") < src.index("if not src_loc:")

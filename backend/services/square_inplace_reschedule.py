@@ -130,6 +130,8 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
     # adopted location (with a live binding) for a multi-location business.
     src_loc = str(appt.get("tenant_location_id") or "")
     src_pid = str(appt.get("provider_location_id") or "")
+    if src_loc and await reschedule.stamped_single_location(tenant, tenant_id, src_loc, src_pid, offer):
+        src_loc = ""            # the single location, stamped by its booking webhook
     if src_loc:
         if (str(offer.get("tenant_location_id") or "") != src_loc
                 or str(offer.get("provider_location_id") or "") != src_pid

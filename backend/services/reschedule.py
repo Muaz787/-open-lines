@@ -127,6 +127,8 @@ async def _under_ownership(*, claim, operation_id, idempotency_key, vapi_call_id
     src_loc = str(appt.get("tenant_location_id") or "")
     src_pid = str(appt.get("provider_location_id") or "")
     tenant = await db.get_tenant_by_id(tenant_id) or {}
+    if src_loc and await stamped_single_location(tenant, tenant_id, src_loc, src_pid, offer):
+        src_loc = ""            # the single location, stamped by its booking webhook
 
     if not src_loc:
         # No tenant location: either a single-location Square business, whose one
@@ -275,6 +277,26 @@ async def _single_location_id(tenant: dict, tenant_id: str) -> str:
         logger.warning("reschedule: location mode check failed for %s: %s", tenant_id, e)
         return ""
     return "" if multi else str(tenant.get("square_location_id") or "")
+
+
+async def stamped_single_location(tenant: dict, tenant_id: str, src_loc: str, src_pid: str,
+                                  offer: dict) -> bool:
+    """Is a location-stamped appointment at a SINGLE-location business's one place?
+
+    Since the 6 Nov routing fix, Square's booking webhook resolves a single-location
+    booking to the business's one adopted location and stamps tenant_location_id on
+    the appointment. Offers for a single-location business carry no tenant location.
+    Comparing the two ids called every such move "cross-location" (16 Nov: 9:00 ->
+    9:30 refused). They are the same place when the business has one location, the
+    offer is at its Square location, and the stamp is a live binding to that same
+    Square location."""
+    if not (src_loc and src_pid):
+        return False
+    single = await _single_location_id(tenant, tenant_id)
+    if (not single or src_pid != single or str(offer.get("tenant_location_id") or "")
+            or str(offer.get("provider_location_id") or "") != single):
+        return False
+    return await _binding_is_live(tenant_id, src_loc, src_pid)
 
 
 async def _binding_is_live(tenant_id: str, tenant_location_id: str,
