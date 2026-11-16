@@ -373,8 +373,10 @@ async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone,
     ]
 
     tail = ("" if action == "cancel" else
-            " Then check_availability for that same service at that same location, "
-            "and only call reschedule_appointment once the caller has chosen a new time.")
+            " Then check_availability for that same service at that same location, passing "
+            "moving_appointment_ref set to the reference of the appointment being moved (so its "
+            "own time doesn't block nearby times), and only call reschedule_appointment once the "
+            "caller has chosen a new time.")
 
     if len(described) == 1:
         return _result(tc_id,
@@ -642,8 +644,39 @@ def _service_matches(requested: str, service: dict) -> bool:
     return _dl.SequenceMatcher(None, req, name).ratio() >= 0.6
 
 
+async def _moving_appointment(call_id: str, tenant_id: str, caller_phone: str,
+                              ref: str) -> dict | None:
+    """The caller's own active appointment named by a listing ref, or None.
+
+    check_availability takes it as moving_appointment_ref so the appointment
+    being moved stops blocking times near itself (16 Nov: 9:00 -> 9:30)."""
+    ref = (ref or "").strip()
+    if not (ref and call_id and caller_phone):
+        return None
+    try:
+        status, row = await appointment_refs.resolve_for_cancel(
+            vapi_call_id=call_id, appointment_ref=ref, tenant_id=tenant_id, caller_phone=caller_phone)
+        if status != appointment_refs.OK or not row:
+            return None
+        appt = await db.get_appointment_by_id(row["appointment_id"]) or {}
+    except Exception as e:
+        logger.warning("tools/availability: moving ref lookup failed for %s: %s", tenant_id, e)
+        return None
+    if (str(appt.get("tenant_id")) != str(tenant_id) or str(appt.get("caller_phone") or "") != caller_phone
+            or (appt.get("status") or "") not in ("confirmed", "pending_payment")
+            or not appt.get("google_event_id")):
+        return None
+    return appt
+
+
+_MOVING_NOTE = (" Times overlapping the caller's current appointment are included where they are "
+                "free once it moves. If the time they want still isn't listed, it is genuinely "
+                "taken: say so, and if they ask why, mention their appointment's length.")
+
+
 async def _square_availability_response(
     tc_id: str, tenant: dict, tenant_id: str, args: dict, date_str: str, prefix: str,
+    caller_phone: str = "",
 ):
     """Square Appointments availability path — Square computes the slots; we map a
     spoken service/staff to Square IDs and pass through SearchAvailability."""
@@ -691,6 +724,23 @@ async def _square_availability_response(
         logger.error("tools/availability: Square availability failed for %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
+    moving = (await _moving_appointment(call_id, tenant_id, caller_phone,
+                                        args.get("moving_appointment_ref", ""))
+              if call_id and location_id else None)
+    if moving:
+        try:
+            extras = await square_booking.own_slot_extras(
+                tenant, booking_id=str(moving["google_event_id"]), date_str=date_str,
+                timezone=timezone, provider_location_id=location_id,
+                service_variation_id=chosen["square_variation_id"])
+        except Exception as e:
+            logger.warning("tools/availability: own-slot times failed for %s: %s", tenant_id, e)
+            extras = []
+        have = {r["start_at_utc"] for r in slot_rows}
+        slot_rows = sorted(slot_rows + [x for x in extras if x["start_at_utc"] not in have],
+                           key=lambda r: r["start_at_utc"])
+        slots = [r["display"] for r in slot_rows]
+
     # Weekday included: on 16 Nov the bare "November 23, 2026" came back as
     # "Tuesday, November 23" — it was a Monday.
     try:
@@ -718,7 +768,8 @@ async def _square_availability_response(
         "If the caller asked for a specific time, check this exact list: confirm it if present, "
         "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
-        + _service_length_note(chosen.get("name"), chosen.get("duration_minutes")) + move_note)
+        + _service_length_note(chosen.get("name"), chosen.get("duration_minutes")) + move_note
+        + (_MOVING_NOTE if moving else ""))
 
 
 async def _multi_location_book(
@@ -1241,7 +1292,7 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
     if tenant.get("square_appointments_enabled"):
         return await _square_availability_response(
             tc_id, tenant, tenant_id, {**args, "_call_id": _call_id}, date_str,
-            _year_correction_prefix)
+            _year_correction_prefix, caller_phone=caller_phone)
 
     refresh_token, cal_provider = _calendar_provider(tenant)
     if not refresh_token:
@@ -1302,6 +1353,8 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         slot_capacity = max(1, int(tenant.get("slot_capacity") or 1))
     booked_ranges = None
     our_event_ids = None
+    moving = await _moving_appointment(_call_id, tenant_id, caller_phone,
+                                       args.get("moving_appointment_ref", ""))
     if slot_capacity > 1 or requested_staff:
         try:
             _tz = ZoneInfo(timezone)
@@ -1312,6 +1365,8 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
             our_event_ids = set()
             booked_ranges = []
             for _a in _appts:
+                if moving and str(_a.get("id")) == str(moving["id"]):
+                    continue          # the appointment being moved doesn't block itself
                 _eid = _a.get("google_event_id")
                 if _eid:
                     our_event_ids.add(_eid)
@@ -1342,6 +1397,8 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         booked_ranges=booked_ranges,
         our_event_ids=our_event_ids,
     )
+    if moving:
+        _slot_kwargs["exclude_event_id"] = str(moving["google_event_id"])
     try:
         if cal_provider == "microsoft":
             slots = await ms_cal_svc.list_free_slots(**_slot_kwargs)
@@ -1387,6 +1444,7 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
         + _service_length_note("appointment", tenant.get("appointment_duration_minutes") or 60)
+        + (_MOVING_NOTE if moving else "")
     )
     return _result(tc_id, msg)
 

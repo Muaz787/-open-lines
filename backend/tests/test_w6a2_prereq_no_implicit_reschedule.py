@@ -331,11 +331,17 @@ def test_the_prompt_keeps_booking_moving_and_cancelling_separate():
 def test_availability_no_longer_excludes_the_callers_own_appointment():
     """That exclusion only made sense while booking replaced the old appointment.
     It doesn't any more, so the slot is simply occupied — and advertising it would
-    offer a time the booking path then refuses on capacity."""
+    offer a time the booking path then refuses on capacity.
+
+    16 Nov: the one exception is a MOVE, named explicitly. Only the appointment the
+    listing step handed out as moving_appointment_ref stops blocking itself — never
+    "whatever this phone number holds"."""
     code = _executable(tools.check_availability)
     assert "get_active_appointment_by_phone" not in code
-    assert "exclude_event_id" not in code
     assert "exclude_range" not in code
+    assert code.count("exclude_event_id") == 1
+    assert 'if moving:\n        _slot_kwargs[\'exclude_event_id\']' in code
+    assert "moving_appointment_ref" in code
 
 
 def test_availability_cancels_nothing():

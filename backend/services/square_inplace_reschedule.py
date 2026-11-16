@@ -34,7 +34,7 @@ from datetime import datetime, timedelta, timezone
 from db import calendar_moves as db_cm
 from db import supabase as db
 from services import appointment_refs, calendar_reschedule as cr, mutation_ownership
-from services import deposit_moves, relative_dates, reschedule, slot_offers, square_booking
+from services import deposit_moves, relative_dates, reschedule, slot_offers, square_booking, self_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -196,11 +196,20 @@ async def move(*, tenant: dict, tenant_id: str, vapi_call_id: str, caller_phone:
     target = _when(offer["start_at_utc"])
     if target <= relative_dates._utcnow():
         return await _give_up(SLOT_TAKEN, _MESSAGES[SLOT_TAKEN])
-    seg = await square_booking.resolve_slot(token, src_pid, src["service_variation_id"],
-                                            [src["team_member_id"]], target)
-    if (not seg or seg.get("team_member_id") != src["team_member_id"]
-            or int(seg.get("duration_minutes") or 0) != src["minutes"]):
-        return await _give_up(STAFF_UNAVAILABLE, _MESSAGES[STAFF_UNAVAILABLE])
+    if self_overlap.overlaps(target, src["minutes"], src["start"], src["minutes"]):
+        # Into its own slot (9:00 -> 9:30): Square's availability still counts the
+        # booking itself, so prove the target free once it moves, from a fresh read.
+        if not await square_booking.free_once_moved(
+                token, location_id=src_pid, variation_id=src["service_variation_id"],
+                team_member_id=src["team_member_id"], own_start=src["start"],
+                minutes=src["minutes"], target=target):
+            return await _give_up(STAFF_UNAVAILABLE, _MESSAGES[STAFF_UNAVAILABLE])
+    else:
+        seg = await square_booking.resolve_slot(token, src_pid, src["service_variation_id"],
+                                                [src["team_member_id"]], target)
+        if (not seg or seg.get("team_member_id") != src["team_member_id"]
+                or int(seg.get("duration_minutes") or 0) != src["minutes"]):
+            return await _give_up(STAFF_UNAVAILABLE, _MESSAGES[STAFF_UNAVAILABLE])
     if not await slot_offers.claim(vapi_call_id, slot_ref, tenant_id):
         return await _give_up(SLOT_TAKEN, _MESSAGES[SLOT_TAKEN])
 
