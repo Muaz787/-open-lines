@@ -913,6 +913,20 @@ async def get_payment_by_appointment_id(appointment_id: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
+async def list_lapsed_deposits(cutoff_iso: str, since_iso: str, limit: int = 100) -> list:
+    """Deposit payments whose link window ended before cutoff (and after since),
+    still unpaid, with an appointment. services.deposit_expiry decides which act."""
+    res = (
+        await run_query(get_client().table("payments").select("*")
+        .in_("status", ["pending", "expired"])
+        .lt("expires_at", cutoff_iso)
+        .gt("expires_at", since_iso)
+        .not_.is_("appointment_id", "null")
+        .order("expires_at", desc=False).limit(limit))
+    )
+    return res.data or []
+
+
 async def get_payment_by_payment_intent(payment_intent_id: str) -> dict | None:
     res = (
         await run_query(get_client().table("payments").select("*")

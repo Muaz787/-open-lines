@@ -333,6 +333,13 @@ async def _handle_assistant_request(msg: dict) -> dict:
     except Exception as e:
         logger.warning("assistant-request: service menu failed for %s: %s", tenant_id, e)
 
+    # Deposits: the per-call override REPLACES the assistant's prompt and tools, so
+    # the deposit note and request_deposit must be added here too. Until 16 Nov
+    # they were only on the pushed config and never reached a live call.
+    _deposits_on = has_calendar and vapi_svc.deposits_active(tenant)
+    if _deposits_on:
+        system_prompt += vapi_svc._DEPOSIT_NOTE
+
     system_prompt = vapi_svc.ensure_call_closing(
         vapi_svc.ensure_receptionist_style(ensure_safety_preamble(system_prompt)))
 
@@ -341,6 +348,8 @@ async def _handle_assistant_request(msg: dict) -> dict:
                                   supports_same_call_replace=can_replace,
                                   reschedule_kind=move_kind)
              if has_calendar else [build_caller_lookup_tool(tenant_id)])
+    if _deposits_on:
+        tools.append(vapi_svc.deposit_tool_for(tenant))
     tools += vapi_svc.build_routing_tools(tenant)   # dark unless routing-entitled
     # Issue #179 production validation: only the test caller, on the test
     # workspace, inside its window, is offered a place for the one-time code.

@@ -1375,33 +1375,38 @@ def with_test_code(tools: list[dict]) -> list[dict]:
 _DEPOSIT_NOTE = """
 
 DEPOSIT COLLECTION
-When a deposit is required after booking, follow this exact sequence:
-
-1. Immediately after book_appointment succeeds, say:
-   "Perfect — I've temporarily reserved your [appointment type] for [date] at [time].
-   To secure your slot, I'm sending you a secure payment link right now."
-
-2. Call request_deposit immediately — never skip or delay this step.
-
-3. Once request_deposit returns with SMS_SENT, deliver this closing naturally:
-   "I've just sent a secure payment link to your phone.
-   Once you complete the deposit, your booking will be fully confirmed —
-   you'll receive a confirmation text straight away.
-   The link expires in a couple of hours, so please check your messages when you get a chance.
-   Is there anything else I can help you with?"
-
-4. Listen for the caller's response. Then close warmly:
-   "Thank you for choosing [business name]. Have a wonderful day!"
-   Then end the call.
-
-CRITICAL RULES:
-- Never end the call immediately after book_appointment — always call request_deposit first.
-- Never read any URL or link aloud.
-- Always say "secure payment link" — never say "checkout link", "Stripe link", or "URL".
-- Never say the booking is fully confirmed until payment succeeds.
-- Never abruptly disconnect — always close with a warm farewell.
-- If request_deposit reports an SMS error, apologise professionally and offer to have the team follow up.
+This business takes a deposit when an appointment is booked.
+- book_appointment sends the secure payment link by text ITSELF, the moment the
+  booking is made. Its result tells you exactly what happened and what to say:
+  follow it word for word. Do NOT call request_deposit after a booking.
+- Call request_deposit only if the caller says the link never arrived and asks
+  for it again.
+- When the result says the time is held until the deposit is paid, say so once,
+  kindly, including how long they have to pay.
+- Never read any URL or link aloud. Always say "secure payment link", never
+  "checkout link", "Stripe link", "Square link" or "URL".
+- Never say the booking is fully confirmed until the deposit is paid, unless the
+  result says it is.
+- If the link couldn't be sent, apologise and say the team will follow up about
+  the deposit.
 """
+
+
+def deposits_active(tenant: dict) -> bool:
+    """One answer to "does this business take deposits right now?", used for the
+    pushed assistant config AND every per-call override, so the two never disagree."""
+    return bool(
+        (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))
+        or (tenant.get("square_access_token") and tenant.get("square_deposits_enabled"))
+    )
+
+
+def deposit_tool_for(tenant: dict) -> dict:
+    return build_deposit_tool(
+        tenant_id=tenant.get("id", ""),
+        amount_cents=int(tenant.get("stripe_deposit_cents") or 2500),
+        mandatory=bool(tenant.get("stripe_deposit_mandatory", True)),
+    )
 
 
 def build_deposit_tool(tenant_id: str, amount_cents: int, mandatory: bool) -> dict:
@@ -1542,22 +1547,13 @@ def build_all_tools(tenant: dict) -> list[dict]:
         tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
         or tenant.get("square_appointments_enabled")
     )
-    has_deposits  = bool(
-        (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))
-        or (tenant.get("square_access_token") and tenant.get("square_deposits_enabled"))
-    )
-
     if has_calendar:
         tools = build_calendar_tools(tenant_id)   # includes caller_lookup
     else:
         tools = [build_caller_lookup_tool(tenant_id)]
 
-    if has_deposits:
-        tools.append(build_deposit_tool(
-            tenant_id=tenant_id,
-            amount_cents=int(tenant.get("stripe_deposit_cents") or 2500),
-            mandatory=bool(tenant.get("stripe_deposit_mandatory", True)),
-        ))
+    if deposits_active(tenant):
+        tools.append(deposit_tool_for(tenant))
 
     tools += build_routing_tools(tenant)   # dark unless routing-entitled
     return tools
@@ -1594,14 +1590,10 @@ async def patch_assistant_tools(tenant: dict) -> None:
             tenant.get("google_refresh_token") or tenant.get("microsoft_refresh_token")
             or tenant.get("square_appointments_enabled")
         )
-        has_deposits = bool(
-            (tenant.get("stripe_account_id") and tenant.get("stripe_deposits_enabled"))
-            or (tenant.get("square_access_token") and tenant.get("square_deposits_enabled"))
-        )
         from routers.calendar import _CALENDAR_NOTE
         if has_calendar:
             base += _CALENDAR_NOTE
-        if has_deposits:
+        if deposits_active(tenant):
             base += _DEPOSIT_NOTE
         messages[0]["content"] = ensure_receptionist_style(base)
 
