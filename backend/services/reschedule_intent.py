@@ -304,7 +304,12 @@ async def _precheck(*, vapi_call_id: str, tenant_id: str, caller_phone: str,
     # Same-location is enforced authoritatively by D1 against the RE-READ source.
     # Refusing here too simply avoids taking ownership to say no.
     if str(offer.get("tenant_location_id") or "") != str(ref.get("tenant_location_id") or ""):
-        return CROSS_LOCATION
+        from db import supabase as db
+        tenant = await db.get_tenant_by_id(tenant_id) or {}
+        if not await reschedule.stamped_single_location(
+                tenant, tenant_id, str(ref.get("tenant_location_id") or ""),
+                str(ref.get("provider_location_id") or ""), offer):
+            return CROSS_LOCATION
 
     # Square moves an appointment by booking a replacement row and cancelling the
     # original. A deposit is linked to the original row, so moving it here would
