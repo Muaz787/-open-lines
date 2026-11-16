@@ -395,6 +395,41 @@ async def send_cancellation_email(
     return _send(to=to, subject=f"Appointment cancelled — {service or business_name}", html_body=html_body)
 
 
+async def send_reschedule_request_email(
+    *,
+    to: str,
+    business_name: str,
+    caller_name: str,
+    caller_number: str,
+    reason: str,
+    tenant_id: str = "",
+    idempotency_key: str = "",
+) -> bool:
+    """A caller asked to move an appointment that the assistant handed to the team."""
+    body = f"""
+      <p style="margin:0 0 12px;font-size:14px;color:#444;line-height:1.6">
+        A caller asked to move their appointment and the assistant couldn't do it on the
+        call. They were told the team will be in touch.</p>
+      {_kv_table({
+          "Customer": caller_name or "Customer",
+          **({"Phone": caller_number} if caller_number else {}),
+          "Request": reason,
+      })}
+      <p style="margin:12px 0 0;font-size:13px;color:{_MUTE}">
+        Nothing has been changed. Please move it yourself and confirm with
+        {_esc(caller_name or 'the customer')}.</p>
+    """
+    html_body = _layout(
+        heading="Reschedule request",
+        body_html=body,
+        cta="View in dashboard",
+        cta_url=(f"{FRONTEND_URL}/dashboard/{tenant_id}" if tenant_id else f"{FRONTEND_URL}/login"),
+        preheader=reason[:120],
+    )
+    return _send(to=to, subject=f"Reschedule request — {caller_name or business_name}",
+                 html_body=html_body, idempotency_key=idempotency_key)
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle emails to the account owner
 # ---------------------------------------------------------------------------

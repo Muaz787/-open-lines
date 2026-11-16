@@ -32,6 +32,7 @@ from services import square_booking
 from services import call_location, location_resolver, location_scope, slot_offers
 from services import booking_claims
 from services import relative_dates
+from services import reschedule_handoff
 from services import telephony
 from services.ratelimit import limiter, tenant_key
 from services.security import verify_vapi_server_secret
@@ -305,6 +306,13 @@ async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone,
     except Exception as e:
         logger.error("tools/cancel: candidate lookup failed for tenant %s: %s", tenant_id, e)
         return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
+
+    # The lookup keeps a 24-hour look-back so other callers can still find an
+    # appointment that just started. A caller choosing what to cancel or move is
+    # only ever offered ones still to come: on 7 Nov a demo that had ended eleven
+    # hours earlier was read out as "today at 12PM" and offered for moving.
+    now = relative_dates._utcnow()
+    candidates = [a for a in candidates if _still_to_come(a, now)]
 
     if not candidates:
         return _result(tc_id,
@@ -1884,6 +1892,15 @@ def _start(appt: dict, tz) -> datetime:
     return dt.astimezone(tz)
 
 
+def _still_to_come(appt: dict, now: datetime) -> bool:
+    """Starts after now. An unreadable time is kept: hiding a real appointment
+    from a caller who wants to cancel it is worse than listing it."""
+    try:
+        return _start(appt, timezone.utc) > now
+    except (TypeError, ValueError):
+        return True
+
+
 def _spoken_when(dt: datetime) -> str:
     h = dt.hour % 12 or 12
     return f"{dt.strftime('%A, %B')} {dt.day} at {h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
@@ -2624,6 +2641,12 @@ async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
                           {"tenant_id": tenant_id, "outcome": outcome,
                            "provider": "square_appointments"})
 
+    if outcome in reschedule_handoff.SQUARE_FOLLOW_UP:
+        recorded = await reschedule_handoff.record(
+            tenant=tenant, tenant_id=tenant_id, call_id=call_id, caller_phone=caller_phone,
+            appointment_ref=ref_arg, outcome=outcome, slot_ref=slot_arg)
+        message += reschedule_handoff.assistant_note(recorded)
+
     logger.info("tools/reschedule: tenant %s outcome %s", tenant_id, outcome)
     return _result(tc_id, message)
 
@@ -2646,8 +2669,12 @@ async def _calendar_move(tc_id, call_id, tenant, tenant_id, caller_phone, ref_ar
             date_phrase=args.get("date_phrase", ""))
     except Exception as e:
         logger.error("tools/reschedule[calendar]: move raised for tenant %s: %s", tenant_id, e)
+        recorded = await reschedule_handoff.record(
+            tenant=tenant, tenant_id=tenant_id, call_id=call_id, caller_phone=caller_phone,
+            appointment_ref=ref_arg, outcome="unknown", date_str=date_arg, time_str=time_arg)
         return _result(tc_id, "I couldn't confirm whether that appointment moved. Tell the caller "
-                       "the team will confirm the time with them. Do NOT try again in this call.")
+                       "the team will confirm the time with them. Do NOT try again in this call."
+                       + reschedule_handoff.assistant_note(recorded))
     if outcome == cr.COMPLETED:
         appt_ref = await appointment_refs.resolve_for_cancel(
             vapi_call_id=call_id, appointment_ref=ref_arg, tenant_id=tenant_id,
@@ -2672,6 +2699,11 @@ async def _calendar_move(tc_id, call_id, tenant, tenant_id, caller_phone, ref_ar
         analytics.capture(analytics.distinct_id_for(tenant, tenant_id), event,
                           {"tenant_id": tenant_id, "outcome": outcome,
                            "provider": _calendar_provider(tenant)[1]})
+    if outcome in reschedule_handoff.CALENDAR_FOLLOW_UP:
+        recorded = await reschedule_handoff.record(
+            tenant=tenant, tenant_id=tenant_id, call_id=call_id, caller_phone=caller_phone,
+            appointment_ref=ref_arg, outcome=outcome, date_str=date_arg, time_str=time_arg)
+        message += reschedule_handoff.assistant_note(recorded)
     logger.info("tools/reschedule[calendar]: tenant %s outcome %s", tenant_id, outcome)
     return _result(tc_id, message)
 

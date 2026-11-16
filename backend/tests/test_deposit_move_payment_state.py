@@ -409,12 +409,13 @@ def test_a_booking_event_meeting_a_confirmation_is_retried():
     assert not recon.Outcome(recon.DEFERRED_OWNED).should_retry
 
 
-# ════════════ 2. outside the validation scope: exactly as before ════════════════
+# ═══ 2. deposit moves switched off, outside the validation scope: exactly as before ═══
 
 @pytest.mark.parametrize("provider", ["stripe", "square"])
 @pytest.mark.parametrize("case", ["validation off", "run bound elsewhere", "run disabled"])
 async def test_outside_the_scope_a_confirmation_takes_no_ownership(provider, case, monkeypatch,
                                                                     inplace_runs_store):
+    monkeypatch.setenv("SQUARE_DEPOSIT_MOVES", "off")
     if case == "validation off":
         monkeypatch.delenv("SQUARE_INPLACE_TEST_CALLER_PHONE")
     else:

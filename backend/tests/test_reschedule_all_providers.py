@@ -491,7 +491,7 @@ async def test_square_single_uncertain_outcome_stops():
     with single_env(w, create=AsyncMock(side_effect=sb.BookingOutcomeUnknown("timeout"))):
         await d3.call()
         said = await d3.call("appt_1", "slot_1")
-    assert said == ri.message_for(ri.UNRESOLVED) and w.cancelled_bookings == []
+    assert said.startswith(ri.message_for(ri.UNRESOLVED)) and w.cancelled_bookings == []
 
 
 async def test_square_single_offer_at_another_location_is_refused():

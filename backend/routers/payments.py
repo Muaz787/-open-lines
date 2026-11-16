@@ -311,12 +311,12 @@ async def _send_confirmations(tenant: dict, payment: dict) -> None:
     payment_confirmation claim): no move can change the time while it holds it,
     and a move that already holds the appointment makes this leave the time out.
     Released when done; a stopped webhook's claim expires after its lease."""
-    from services import mutation_ownership, square_inplace_scope
+    from services import deposit_moves, mutation_ownership
     appointment_id = payment.get("appointment_id")
     claim = appointment = None
     tenant_id = str(tenant.get("id") or payment.get("tenant_id") or "")
-    if appointment_id and not await square_inplace_scope.allowed(tenant_id, appointment_id):
-        # Everyone outside the validation scope: exactly as before.
+    if appointment_id and not await deposit_moves.allowed(tenant_id, appointment_id):
+        # Deposit moves switched off (SQUARE_DEPOSIT_MOVES=off): exactly as before.
         try:
             appointment = await db.get_appointment_by_id(appointment_id)
         except Exception as e:
