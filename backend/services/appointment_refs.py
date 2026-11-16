@@ -159,26 +159,35 @@ async def purge_expired() -> int:
         return 0
 
 
-def describe(row: dict, location_name: str, timezone_name: str) -> str:
-    """'a Consultation in Cork on Monday, September 14 at 2:00 PM'.
+def _clock(dt: datetime) -> str:
+    h = dt.hour % 12 or 12
+    return f"{h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+
+
+def describe(row: dict, location_name: str, timezone_name: str, *, minutes=None) -> str:
+    """'a Consultation in Cork on Monday, September 14 at 2:00 PM (60 minutes,
+    until 3:00 PM)'.
 
     Location name, service, date and time — the four things a person can actually
-    tell two appointments apart by. No identifier of any kind.
+    tell two appointments apart by — plus its length when known, so the assistant
+    can answer "how long is it?". No identifier of any kind.
     """
     svc = row.get("service") or "appointment"
     when = str(row.get("start_at_utc") or "")
+    length = ""
     try:
         dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         dt = dt.astimezone(ZoneInfo(timezone_name or "UTC"))
-        h = dt.hour % 12 or 12
-        when = (f"{dt.strftime('%A, %B')} {dt.day} at "
-                f"{h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}")
+        when = f"{dt.strftime('%A, %B')} {dt.day} at {_clock(dt)}"
+        mins = int(minutes or 0)
+        if mins > 0:
+            length = f" ({mins} minutes, until {_clock(dt + timedelta(minutes=mins))})"
     except Exception:
         pass
     where = f" in {location_name}" if location_name else ""
-    return f"a {svc}{where} on {when}"
+    return f"a {svc}{where} on {when}{length}"
 
 
 def spoken_list(described: list[tuple[str, str]]) -> str:

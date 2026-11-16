@@ -271,6 +271,35 @@ def trusted_caller_phone(body: dict, args: dict) -> str:
     return ""
 
 
+def _which_service_prompt(requested: str, services: list) -> str:
+    """When the caller hasn't named a service and there is more than one, ask.
+
+    _match_square_service falls back to the first service, which on 16 Nov booked
+    Square's sample "Consultation (example service)" for a caller who never asked
+    for it."""
+    if (requested or "").strip():
+        return ""
+    from services.square_booking import _display_service_name
+    names = sorted({_display_service_name(s.get("name")) for s in services if s.get("name")})
+    if len(names) <= 1:
+        return ""
+    return (f"This business offers more than one service: {', '.join(names)}. Ask the caller "
+            "which one they want (read the names naturally), then call this tool again with "
+            "that service. Do NOT pick one for them.")
+
+
+def _service_length_note(name, minutes) -> str:
+    try:
+        mins = int(minutes or 0)
+    except (TypeError, ValueError):
+        return ""
+    if mins <= 0:
+        return ""
+    from services.square_booking import _display_service_name
+    svc = _display_service_name(name or "") or "appointment"
+    return f" Each {svc} is {mins} minutes long; say so if the caller asks how long it takes."
+
+
 def _match_square_service(requested: str, services: list) -> dict | None:
     """Resolve a spoken service name to a cached Square service variation."""
     requested = (requested or "").strip().lower()
@@ -335,9 +364,11 @@ async def _list_cancellable(tc_id, call_id, tenant, tenant_id, caller_phone,
         return _result(tc_id, "I had trouble looking up your appointment. Please call back and we'll get that sorted.")
 
     tz = tenant.get("calendar_timezone") or "UTC"
+    minutes = {str(a.get("id")): a.get("duration_minutes") for a in candidates}
     described = [
         (r["appointment_ref"],
-         appointment_refs.describe(r, names.get(str(r.get("tenant_location_id")), ""), tz))
+         appointment_refs.describe(r, names.get(str(r.get("tenant_location_id")), ""), tz,
+                                   minutes=minutes.get(str(r.get("appointment_id")))))
         for r in rows
     ]
 
@@ -620,6 +651,9 @@ async def _square_availability_response(
     if not services:
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
+    ask = _which_service_prompt(args.get("service", ""), services)
+    if ask:
+        return _result(tc_id, prefix + ask)
     chosen = _match_square_service(args.get("service", ""), services)
     team_ids = list(chosen.get("team_member_ids") or [])
 
@@ -657,8 +691,12 @@ async def _square_availability_response(
         logger.error("tools/availability: Square availability failed for %s: %s", tenant_id, e)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
+    # Weekday included: on 16 Nov the bare "November 23, 2026" came back as
+    # "Tuesday, November 23" — it was a Monday.
     try:
-        _fmt_date = date_type.fromisoformat(date_str).strftime("%B %d, %Y")
+        _d = date_type.fromisoformat(date_str)
+        _fmt_date = (f"{relative_dates.spoken_date(_d)} "
+                     f"({relative_dates.relative_label(_d, relative_dates.today_for(tenant))})")
     except ValueError:
         _fmt_date = date_str
     if not slots:
@@ -680,7 +718,7 @@ async def _square_availability_response(
         "If the caller asked for a specific time, check this exact list: confirm it if present, "
         "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
-        + move_note)
+        + _service_length_note(chosen.get("name"), chosen.get("duration_minutes")) + move_note)
 
 
 async def _multi_location_book(
@@ -839,16 +877,23 @@ async def _multi_location_book(
     await slot_offers.mark_consumed(call_id, slot_ref, booking_id)
 
     try:
-        await db.insert_appointment({
+        party_size = max(1, min(20, int(args.get("party_size") or 1)))
+    except (TypeError, ValueError):
+        party_size = 1
+    deposit_due, deposit_mandatory = _deposit_terms(tenant, party_size)
+    appt_id = None
+    try:
+        appt_id = (await db.insert_appointment({
             "tenant_id": tenant_id, "caller_name": caller_name or None, "caller_phone": caller_phone,
             "service": offer.get("service_name") or "Appointment",
             "appointment_datetime": offer["start_at_utc"],
-            "duration_minutes": offer.get("duration_minutes") or 60,
-            "status": "confirmed", "vapi_call_id": call_id,
+            "duration_minutes": offer.get("duration_minutes") or 60, "party_size": party_size,
+            "status": ("pending_payment" if deposit_mandatory and not pending else "confirmed"),
+            "vapi_call_id": call_id,
             "google_event_id": booking_id,
             "tenant_location_id": offer.get("tenant_location_id"),
             "provider_location_id": offer.get("provider_location_id"),
-        })
+        }) or {}).get("id")
     except Exception as e:
         logger.error("tools/book[multi]: appointment mirror failed for %s: %s", tenant_id, e)
 
@@ -858,7 +903,29 @@ async def _multi_location_book(
     logger.info("tools/book[multi]: booked %s at %s (booking %s, status %s)",
                 offer.get("service_name"), offer["provider_location_id"], booking_id,
                 booking.get("status"))
-    return _result(tc_id, _booked_message(offer, tenant, pending=pending, adopted=adopted))
+    local_start = _offer_local_start(offer, tenant, adopted)
+    length = (_length_phrase(local_start, offer.get("duration_minutes")) if local_start else "")
+    if deposit_due and not pending:
+        loc_name = offer.get("_loc_name") or ""
+        when = (_spoken_when(local_start) if local_start else str(offer.get("start_at_utc")))
+        dep = await _create_and_send_deposit(
+            tenant, caller_phone=caller_phone, caller_name=caller_name,
+            service=offer.get("service_name") or "appointment", appointment_id=appt_id,
+            amount_cents=_deposit_amount_cents(tenant, party_size))
+        await _unhold_if_link_not_sent(dep, appt_id, deposit_mandatory, tenant_id)
+        return _result(tc_id, _deposit_voice(
+            dep, service=offer.get("service_name") or "appointment", caller_name=caller_name,
+            friendly=f"{when}{' at ' + loc_name if loc_name else ''}",
+            business_name=tenant.get("business_name", "")) + _hold_clause(dep, deposit_mandatory) + length)
+    return _result(tc_id, _booked_message(offer, tenant, pending=pending, adopted=adopted) + length)
+
+
+def _offer_local_start(offer: dict, tenant: dict, adopted: list[dict] | None) -> datetime | None:
+    try:
+        tz = ZoneInfo(_offer_timezone(offer, tenant, adopted))
+        return datetime.fromisoformat(str(offer["start_at_utc"]).replace("Z", "+00:00")).astimezone(tz)
+    except Exception:
+        return None
 
 
 def _offer_timezone(offer: dict, tenant: dict, adopted: list[dict] | None) -> str:
@@ -922,7 +989,8 @@ async def _square_book_appointment(
     """Square Appointments booking path — writes into the merchant's Square calendar
     via CreateBooking. Square owns availability/slot allocation; we resolve the spoken
     service/staff to Square IDs, confirm the slot, and persist a mirror appointment row.
-    Deposits are left to Square's native prepayment policy (not our deposit-link flow)."""
+    Deposits follow the business's own deposit settings (_deposit_terms), as on
+    Google/Outlook: Square's native prepayment never applies to API bookings."""
     token = await square_booking.get_access_token(tenant)
     location_id = tenant.get("square_location_id") or ""
     if not token or not location_id:
@@ -940,6 +1008,9 @@ async def _square_book_appointment(
     services = await db.get_square_services(tenant_id, bookable_only=True)
     if not services:
         return _result(tc_id, _CALENDAR_ERROR_MSG)
+    ask = _which_service_prompt(service, services)
+    if ask:
+        return _result(tc_id, ask.replace("call this tool again", "check availability for it"))
     chosen = _match_square_service(service, services)
     duration = chosen.get("duration_minutes") or tenant.get("appointment_duration_minutes") or 60
 
@@ -1019,6 +1090,12 @@ async def _square_book_appointment(
     }
     if staff_name:
         appt_data["staff_name"] = staff_name
+    # The business's deposit rule applies here exactly as on Google/Outlook. Until
+    # 16 Nov this path left deposits to "Square's native prepayment policy", which
+    # never applies to bookings made through the API, so none was ever taken.
+    deposit_due, deposit_mandatory = _deposit_terms(tenant, party_size)
+    if deposit_mandatory and not pending:
+        appt_data["status"] = "pending_payment"
 
     # W6A2-prereq: booking CREATES. It never cancels an existing appointment.
     # This path used to gate on args.get("reschedule") — a field no tool schema
@@ -1038,12 +1115,14 @@ async def _square_book_appointment(
     ampm = "AM" if start_dt.hour < 12 else "PM"
     suffix = f" with {staff_name}" if staff_name else ""
     friendly = f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}{suffix}"
+    length = _length_phrase(start_dt, seg.get("duration_minutes") or duration)
 
-    # SMS confirmation (mirrors the Google/MS path).
+    # SMS confirmation (mirrors the Google/MS path). A booking held for a
+    # mandatory deposit is confirmed by text once it is paid, not now.
     try:
         sid, tok, biz = (tenant.get("twilio_subaccount_sid", ""), tenant.get("twilio_auth_token", ""),
                          tenant.get("twilio_phone_number", ""))
-        if sid and tok and biz and caller_phone:
+        if sid and tok and biz and caller_phone and not deposit_mandatory:
             greeting = f"Hi {caller_name}! " if caller_name else ""
             await telephony.send_sms(subaccount_sid=sid, subaccount_token=tok, from_number=biz,
                 to_number=caller_phone,
@@ -1052,8 +1131,18 @@ async def _square_book_appointment(
     except Exception as e:
         logger.error("tools/book[square]: SMS failed for %s: %s", tenant_id, e)
 
+    if deposit_due and not pending:
+        dep = await _create_and_send_deposit(
+            tenant, caller_phone=caller_phone, caller_name=caller_name,
+            service=chosen.get("name") or service, appointment_id=appt_id,
+            amount_cents=_deposit_amount_cents(tenant, party_size))
+        await _unhold_if_link_not_sent(dep, appt_id, deposit_mandatory, tenant_id)
+        return _result(tc_id, _deposit_voice(dep, service=service, caller_name=caller_name,
+                                             friendly=friendly, business_name=business_name)
+                       + _hold_clause(dep, deposit_mandatory) + length)
+
     # Issue #179 production validation only: one CAD $1 deposit for the test
-    # caller's code. Everyone else: None, and nothing below changes.
+    # caller's code, for a business that takes no deposit of its own.
     from services import inplace_test_deposit
     test_dep = await inplace_test_deposit.deposit_for_booking(
         tenant=tenant, tenant_id=tenant_id, vapi_call_id=call_id, metadata_phone=metadata_phone,
@@ -1070,10 +1159,11 @@ async def _square_book_appointment(
     if pending:
         return _result(tc_id,
             f"Your {service} at {business_name} is requested for {friendly}. Tell the caller the shop "
-            f"will confirm the appointment shortly and they'll get a text once it's accepted." + test_clause)
+            f"will confirm the appointment shortly and they'll get a text once it's accepted."
+            + length + test_clause)
     return _result(tc_id,
         f"Done! Your {service} at {business_name} is confirmed for {friendly}. "
-        "You'll receive a text confirmation shortly." + test_clause)
+        "You'll receive a text confirmation shortly." + length + test_clause)
 
 
 @router.post("/{tenant_id}/availability")
@@ -1296,6 +1386,7 @@ async def check_availability(request: Request, tenant_id: str, body: dict):
         "If the caller asked for a specific time, check this exact list: confirm it if present, "
         "otherwise offer the closest available times. Do NOT claim a time is unavailable unless "
         "it is genuinely absent from this list. Only read a few options aloud, not the whole list."
+        + _service_length_note("appointment", tenant.get("appointment_duration_minutes") or 60)
     )
     return _result(tc_id, msg)
 
@@ -1712,12 +1803,7 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
 
     # Conditional/group deposits: a deposit is due for ALL bookings, or only for
     # group bookings of N+ people. (Provider must be active and not already paid.)
-    _applies   = (tenant.get("deposit_applies") or "all").lower()
-    _group_min = int(tenant.get("deposit_group_min_size") or 2)
-    _deposit_due = bool(_dep_provider) and (
-        _applies != "group" or party_size >= _group_min
-    )
-    deposits_mandatory = _deposit_due and bool(tenant.get("stripe_deposit_mandatory", True))
+    _deposit_due, deposits_mandatory = _deposit_terms(tenant, party_size)
     # A deposit is only requested when due AND this booking isn't already covered
     # by the original appointment's paid deposit.
     needs_deposit = _deposit_due and not already_paid
@@ -1851,37 +1937,9 @@ async def _calendar_book(tc_id, call_id, tenant, tenant_id, args, *, caller_name
             service=service, appointment_id=appt_id,
             amount_cents=_deposit_amount_cents(tenant, party_size),
         )
-        amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
-        if dep["already_paid"]:
-            confirmation = (
-                f"Done! Your {service} at {business_name} is set for {friendly}. "
-                f"Tell the caller their deposit is already on file, so no further payment is needed. "
-                f"Do NOT call request_deposit."
-            )
-        elif dep["sms_sent"]:
-            confirmation = (
-                f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
-                f"A {amt} deposit link has ALREADY been texted to the caller. "
-                f"Tell them: 'I've just sent a secure payment link to your phone — once you pay the "
-                f"{amt} deposit your booking is fully confirmed and you'll get a confirmation text. "
-                f"The link expires in {dep['expiry_hours']} hours.' "
-                f"Do NOT call request_deposit — it has already been sent."
-            )
-        elif dep["error"] == "location_required":
-            # W7E.2: multi-location business with no location context on the
-            # deposit. The booking stands; only the deposit link was withheld.
-            confirmation = (
-                f"The {service} on {friendly} is held, but I could not send the deposit link because "
-                f"the location for it is unclear. Tell the caller: 'Your appointment is held — our "
-                f"team will follow up shortly to arrange the {amt} deposit.' Then close warmly. "
-                f"Do NOT call request_deposit."
-            )
-        else:
-            confirmation = (
-                f"The {service} on {friendly} is held, but I couldn't text the payment link just now. "
-                f"Tell the caller: 'I'm having trouble sending the link right now — our team will follow "
-                f"up shortly to arrange the {amt} deposit.' Then close warmly. Do NOT call request_deposit."
-            )
+        confirmation = _deposit_voice(dep, service=service, caller_name=caller_name,
+                                      friendly=friendly, business_name=business_name)
+    confirmation += _length_phrase(start_dt, duration_minutes)
     return _result(tc_id, confirmation), {"booked": True, "appt_id": appt_id, "event_id": event.get("id", ""), "friendly": friendly, "sms": sms_status}
 
 
@@ -1899,6 +1957,46 @@ def _still_to_come(appt: dict, now: datetime) -> bool:
         return _start(appt, timezone.utc) > now
     except (TypeError, ValueError):
         return True
+
+
+def _clock(dt: datetime) -> str:
+    h = dt.hour % 12 or 12
+    return f"{h}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+
+
+def _length_phrase(start_local: datetime, minutes) -> str:
+    """' It is 60 minutes long, 9:00 AM to 10:00 AM.' — so the assistant can
+    answer "how long is it?" instead of saying it doesn't know (16 Nov)."""
+    try:
+        mins = int(minutes or 0)
+    except (TypeError, ValueError):
+        return ""
+    if mins <= 0:
+        return ""
+    end = start_local + timedelta(minutes=mins)
+    return (f" It is {mins} minutes long, {_clock(start_local)} to {_clock(end)}; "
+            "say this if the caller asks how long it is.")
+
+
+async def _unhold_if_link_not_sent(dep: dict, appt_id, mandatory: bool, tenant_id: str) -> None:
+    """A booking is held for its deposit only while the caller actually has a link
+    to pay it. If none reached them, it stays booked (the team arranges the deposit)
+    and services.deposit_expiry never releases it."""
+    if not (mandatory and appt_id) or dep.get("sms_sent") or dep.get("already_paid"):
+        return
+    try:
+        await db.update_appointment(appt_id, {"status": "confirmed"})
+    except Exception as e:
+        logger.error("tools/book[square]: could not un-hold %s for tenant %s: %s", appt_id, tenant_id, e)
+
+
+def _hold_clause(dep: dict, mandatory: bool) -> str:
+    """With a mandatory deposit the slot is only held until it is paid."""
+    if not (mandatory and dep.get("sms_sent")):
+        return ""
+    hours = dep.get("expiry_hours") or 2
+    return (f" If the deposit isn't paid within {hours} hours the hold is released and "
+            "the time is freed up; tell the caller this once, kindly.")
 
 
 def _spoken_when(dt: datetime) -> str:
@@ -2288,6 +2386,46 @@ async def request_deposit(request: Request, tenant_id: str, body: dict):
         f"you with?' Listen for the caller's reply, then close warmly: 'Thank you for choosing "
         f"{business_name}. Have a wonderful day!' Then end the call.",
     )
+
+
+def _deposit_terms(tenant: dict, party_size: int = 1) -> tuple[bool, bool]:
+    """(due, mandatory) for a new booking, the same on every booking path.
+
+    Due when a deposit provider is active and the business asks for one on ALL
+    bookings, or on group bookings of deposit_group_min_size or more. Mandatory
+    means the booking is only held until the deposit is paid."""
+    from routers.payments import _deposit_provider
+    applies = (tenant.get("deposit_applies") or "all").lower()
+    group_min = int(tenant.get("deposit_group_min_size") or 2)
+    due = bool(_deposit_provider(tenant)) and (applies != "group" or int(party_size or 1) >= group_min)
+    return due, due and bool(tenant.get("stripe_deposit_mandatory", True))
+
+
+def _deposit_voice(dep: dict, *, service: str, caller_name: str, friendly: str,
+                   business_name: str) -> str:
+    """What the assistant is told after the server tried to send the deposit link."""
+    amt = f"{dep['amount_display']} {dep['currency_voice']}".strip()
+    if dep["already_paid"]:
+        return (f"Done! Your {service} at {business_name} is set for {friendly}. "
+                f"Tell the caller their deposit is already on file, so no further payment is needed. "
+                f"Do NOT call request_deposit.")
+    if dep["sms_sent"]:
+        return (f"BOOKING_CONFIRMED: {service} for {caller_name} on {friendly}. "
+                f"A {amt} deposit link has ALREADY been texted to the caller. "
+                f"Tell them: 'I've just sent a secure payment link to your phone — once you pay the "
+                f"{amt} deposit your booking is fully confirmed and you'll get a confirmation text. "
+                f"The link expires in {dep['expiry_hours']} hours.' "
+                f"Do NOT call request_deposit — it has already been sent.")
+    if dep["error"] == "location_required":
+        # W7E.2: multi-location business with no location context on the
+        # deposit. The booking stands; only the deposit link was withheld.
+        return (f"The {service} on {friendly} is held, but I could not send the deposit link because "
+                f"the location for it is unclear. Tell the caller: 'Your appointment is held — our "
+                f"team will follow up shortly to arrange the {amt} deposit.' Then close warmly. "
+                f"Do NOT call request_deposit.")
+    return (f"The {service} on {friendly} is held, but I couldn't text the payment link just now. "
+            f"Tell the caller: 'I'm having trouble sending the link right now — our team will follow "
+            f"up shortly to arrange the {amt} deposit.' Then close warmly. Do NOT call request_deposit.")
 
 
 def _deposit_amount_cents(tenant: dict, party_size: int = 1) -> int:

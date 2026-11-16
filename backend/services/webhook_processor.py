@@ -477,6 +477,23 @@ async def _maybe_reconcile_cancellations() -> None:
 _OVERAGE_RETRY_SECONDS = 600
 _last_overage_retry = 0.0
 
+_DEPOSIT_EXPIRY_SECONDS = 300
+_last_deposit_expiry = 0.0
+
+
+async def _maybe_expire_deposit_holds() -> None:
+    """Release Square bookings whose mandatory deposit lapsed (services.deposit_expiry)."""
+    global _last_deposit_expiry
+    now = _time.monotonic()
+    if now - _last_deposit_expiry < _DEPOSIT_EXPIRY_SECONDS:
+        return
+    _last_deposit_expiry = now
+    try:
+        from services import deposit_expiry
+        await deposit_expiry.run_once()
+    except Exception as e:
+        logger.error("Deposit hold expiry pass failed: %s", e)
+
 
 async def _maybe_retry_overage() -> None:
     global _last_overage_retry
@@ -505,6 +522,7 @@ async def _processor_loop() -> None:
 
         await _maybe_reconcile_cancellations()
         await _maybe_retry_overage()
+        await _maybe_expire_deposit_holds()
 
         if events and len(events) >= _BATCH_LIMIT:
             # Full batch — more is likely queued; drain immediately without sleeping.

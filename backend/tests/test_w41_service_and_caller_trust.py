@@ -258,9 +258,9 @@ async def test_menu_is_grouped_by_location_and_names_only():
                new=AsyncMock(return_value=(True, ADOPTED))):
         block = await square_booking.service_menu_block(TENANT)
 
-    assert "Cork: Consultation (example service), Dress Fitting" in block
-    assert "Dublin: Consultation (example service)" in block
-    assert "Dublin: Consultation (example service), Dress Fitting" not in block
+    assert "Cork: Consultation (example service) (60 min), Dress Fitting (60 min)" in block
+    assert "Dublin: Consultation (example service) (60 min)" in block
+    assert "Dress Fitting" not in block.split("Dublin:")[1].split("\n")[0]
     for leaked in (CORK_PID, DUBLIN_PID, "V-FIT", "V-CONS", "loc-cork", "variation"):
         assert leaked not in block
 

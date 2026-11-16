@@ -211,6 +211,58 @@ async def create_payment_link(
     )
 
 
+# Outcomes of reading or deleting a deposit's payment link / order.
+ORDER_PAID = "paid"
+ORDER_UNPAID = "unpaid"
+ORDER_UNKNOWN = "unknown"
+LINK_DELETED = "deleted"
+LINK_GONE = "gone"
+LINK_FAILED = "failed"
+
+
+async def order_payment_state(access_token: str, order_id: str) -> str:
+    """Has anything been paid against this order? paid / unpaid / unknown.
+
+    Paid means a tender or a COMPLETED state: money may have moved even if our
+    webhook hasn't arrived yet. Anything unreadable is unknown, never unpaid."""
+    if not order_id:
+        return ORDER_UNKNOWN
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"{_api_base()}/v2/orders/{order_id}",
+                                   headers=_sq_headers(access_token), timeout=15.0)
+    except Exception as e:
+        logger.warning("Square order read failed for %s: %s", order_id, e)
+        return ORDER_UNKNOWN
+    if not res.is_success:
+        logger.warning("Square order read %s returned %s", order_id, res.status_code)
+        return ORDER_UNKNOWN
+    order = (res.json() or {}).get("order") or {}
+    if order.get("tenders") or (order.get("state") or "").upper() == "COMPLETED":
+        return ORDER_PAID
+    return ORDER_UNPAID
+
+
+async def delete_payment_link(access_token: str, link_id: str) -> str:
+    """Delete a deposit's payment link so it can no longer be paid. Square cancels
+    its order. deleted / gone (already absent) / failed."""
+    if not link_id:
+        return LINK_FAILED
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.delete(f"{_api_base()}/v2/online-checkout/payment-links/{link_id}",
+                                      headers=_sq_headers(access_token), timeout=15.0)
+    except Exception as e:
+        logger.warning("Square payment link delete failed for %s: %s", link_id, e)
+        return LINK_FAILED
+    if res.is_success:
+        return LINK_DELETED
+    if res.status_code == 404:
+        return LINK_GONE
+    logger.warning("Square payment link delete %s returned %s: %s", link_id, res.status_code, res.text[:200])
+    return LINK_FAILED
+
+
 async def refund_payment(
     access_token: str,
     square_payment_id: str,

@@ -1131,6 +1131,21 @@ def _display_service_name(cached_name: str) -> str:
     return (cached_name or "").split(" — ")[0].strip() or (cached_name or "").strip()
 
 
+def _menu_labels(services: list) -> list[str]:
+    """'Dress Fitting (60 min)' — the spoken name plus its length, one per service."""
+    out: dict[str, str] = {}
+    for svc in services:
+        name = _display_service_name(svc.get("name"))
+        if not name or name in out:
+            continue
+        try:
+            mins = int(svc.get("duration_minutes") or 0)
+        except (TypeError, ValueError):
+            mins = 0
+        out[name] = f"{name} ({mins} min)" if mins > 0 else name
+    return [out[k] for k in sorted(out)]
+
+
 async def service_menu_block(tenant: dict) -> str:
     """Human-readable bookable services for a Square Appointments tenant.
 
@@ -1161,7 +1176,7 @@ async def service_menu_block(tenant: dict) -> str:
             for loc in eligible:
                 pid = (loc.get("_binding") or {}).get("provider_location_id") or ""
                 here = location_scope.services_at_location(services, pid)
-                names = sorted({_display_service_name(s.get("name")) for s in here if s.get("name")})
+                names = _menu_labels(here)
                 if names:
                     lines.append(f"- {loc.get('name')}: {', '.join(names)}")
             if not lines:
@@ -1178,10 +1193,13 @@ async def service_menu_block(tenant: dict) -> str:
                 "- Availability is read live from the business's own calendar."
             )
 
-        names = sorted({_display_service_name(s.get("name")) for s in services if s.get("name")})
+        names = _menu_labels(services)
         return (
             "\n\nSERVICES (Square Appointments)\n"
             f"Offer only these bookable services: {', '.join(names)}.\n"
+            "- If the caller hasn't said which service they want and there is more than one, "
+            "ask them. Never pick one for them.\n"
+            "- The length in brackets is how long each appointment lasts; use it if asked.\n"
             "- Pass the caller's chosen service in the `service` argument of check_availability.\n"
             "- Availability is read live from the business's own calendar."
         )
