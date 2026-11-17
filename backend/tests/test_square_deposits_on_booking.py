@@ -252,7 +252,10 @@ class Hold:
         self.texts.append(k["body"])
         return True
 
+    owner = None
+
     async def run(self):
+        self.owner = AsyncMock()
         ps = [patch("services.deposit_expiry._now", lambda: NOW),
               patch("db.supabase.list_lapsed_deposits", new=AsyncMock(return_value=[self.payment])),
               patch("db.supabase.get_tenant_by_id", new=AsyncMock(return_value=self.tenant)),
@@ -269,7 +272,7 @@ class Hold:
               patch("services.mutation_ownership.to_reconcile", new=AsyncMock()),
               patch("services.security.decrypt", new=lambda v: "tok"),
               patch("services.telephony.send_sms", new=AsyncMock(side_effect=self.sms)),
-              patch("services.owner_notify.send_owner_sms_whatsapp", new=AsyncMock())]
+              patch("services.owner_notify.send_owner_sms_whatsapp", new=self.owner)]
         for p in ps:
             p.start()
         try:
@@ -286,6 +289,30 @@ async def test_an_unpaid_hold_is_released_after_the_link_is_closed():
     assert h.calls == ["order", "delete", "order", ("payment", "expired"), "cancel", ("appt", "cancelled")]
     assert h.texts and "didn't receive the deposit" in h.texts[0] and "Friday, November 20 at 9:00 AM" in h.texts[0]
 
+
+
+async def test_the_owner_alert_also_goes_out_on_whatsapp(monkeypatch):
+    from services import telephony
+    monkeypatch.setattr(telephony, "TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID", "HXcancel")
+    h = Hold()
+    await h.run()
+    h.owner.assert_awaited_once()
+    kw = h.owner.await_args.kwargs
+    assert kw["event"] == "deposit_hold_released"
+    assert "Unpaid hold released" in kw["sms_body"]
+    assert kw["wa_template_sid"] == "HXcancel"
+    v = kw["wa_vars"]
+    assert set(v) == {"1", "2", "3", "4"} and all(x and "\n" not in x for x in v.values())
+    assert v["1"] == "Open Lines" and v["2"].startswith("Ricks • ")
+    assert v["3"] == "Consultation on Friday, November 20 at 9:00 AM"
+    assert "wasn't paid in time" in v["4"] and len(v["4"]) <= 120
+
+
+async def test_an_uncertain_hold_alerts_nobody():
+    h = Hold()
+    h.orders = ["paid"]
+    await h.run()
+    h.owner.assert_not_awaited()
 
 @pytest.mark.parametrize("setup,why", [
     (lambda h: setattr(h, "orders", ["paid"]), "already paid at Square"),

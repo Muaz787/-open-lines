@@ -207,11 +207,25 @@ async def _tell_people(tenant: dict, appt: dict) -> None:
     except Exception as e:
         logger.error("deposit_expiry: caller SMS failed for %s: %s", appt.get("id"), e)
     try:
+        from services import telephony
         from services.owner_notify import send_owner_sms_whatsapp
+        from services.refunds import _one_line
         who = f"{name} ({appt.get('caller_phone')})" if name else (appt.get("caller_phone") or "a caller")
+        caller_line = " • ".join(p for p in (name, appt.get("caller_phone") or "") if p) or "A caller"
+        # WhatsApp reuses the already-approved cancellation template ("Appointment
+        # cancelled — {{1}} / {{2}} / Service: {{3}} / {{4}}"): a released hold IS a
+        # cancellation, and a new template would need its own Meta approval.
         await send_owner_sms_whatsapp(
             tenant, sms_body=(f"⏱ Unpaid hold released — {who}, {service} on {when}. The deposit "
                               f"wasn't paid in time, so it was cancelled in Square. — {business}"),
-            wa_template_sid="", wa_vars={}, event="deposit_hold_released")
+            wa_template_sid=telephony.TWILIO_WHATSAPP_CANCEL_TEMPLATE_SID,
+            wa_vars={
+                "1": _one_line(business, 60),
+                "2": _one_line(caller_line, 90),
+                "3": _one_line(f"{service} on {when}", 90),
+                "4": _one_line("Deposit wasn't paid in time, so the hold was released "
+                               "and cancelled in Square.", 120),
+            },
+            event="deposit_hold_released")
     except Exception as e:
         logger.error("deposit_expiry: owner alert failed for %s: %s", appt.get("id"), e)
