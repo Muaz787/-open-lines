@@ -333,3 +333,18 @@ def inplace_runs_store(monkeypatch):
                  "for_appointment"):
         monkeypatch.setattr(_db_runs, name, getattr(store, name))
     return store
+
+
+# ── Square plan check (services/square_plan) ─────────────────────────────────
+# Never reach Square from tests. By default the booking profile can't be read, so
+# the plan is "unknown" and every path behaves exactly as before the check
+# existed. Free-plan tests patch retrieve_booking_profile themselves.
+@_pytest.fixture(autouse=True)
+def _square_plan_offline(monkeypatch):
+    from unittest.mock import AsyncMock as _AsyncMock
+    from services import square_plan
+    square_plan._cache.clear()
+    monkeypatch.setattr("services.square_booking.retrieve_booking_profile",
+                        _AsyncMock(return_value={}))
+    yield
+    square_plan._cache.clear()

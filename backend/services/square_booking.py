@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from services import square_service as sq_svc
+from services import square_plan
 from services import caller_identity
 from services import location_scope
 from services.security import decrypt
@@ -497,6 +498,8 @@ async def create_booking(
                          res.status_code, res.text[:400])
             raise BookingOutcomeUnknown(f"HTTP {res.status_code}")
         if not res.is_success:
+            if square_plan.is_plan_refusal(res.status_code, res.text):
+                square_plan.mark_no_writes(token)
             logger.warning("Square create_booking %s: %s", res.status_code, res.text[:400])
             res.raise_for_status()          # definitive rejection
         return res.json().get("booking", {})
@@ -654,6 +657,8 @@ async def cancel_booking_detailed(
             return CANCEL_UNKNOWN, booking, ""
 
         code = _first_error_code(res)
+        if square_plan.is_plan_refusal(res.status_code, res.text):
+            square_plan.mark_no_writes(token)
         logger.warning("Square cancel_booking %s (%s): %s",
                        res.status_code, code or "no code", res.text[:300])
         return CANCEL_FAILED, booking, code
@@ -698,6 +703,8 @@ async def update_booking_start(token: str, booking_id: str, *, version, start_at
         logger.error("Square update_booking %s (unknown outcome): %s", res.status_code, res.text[:300])
         return UPDATE_UNKNOWN, {}, ""
     code = _first_error_code(res)
+    if square_plan.is_plan_refusal(res.status_code, res.text):
+        square_plan.mark_no_writes(token)
     logger.warning("Square update_booking %s (%s): %s", res.status_code, code or "no code", res.text[:300])
     return UPDATE_FAILED, {}, code
 

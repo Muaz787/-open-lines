@@ -19,6 +19,7 @@ interface AppointmentsStatus {
   connected: boolean
   enabled: boolean
   bookable: boolean
+  seller_writes?: boolean | null
   synced_at?: string | null
   location_timezone?: string | null
   services: SquareService[]
@@ -173,6 +174,16 @@ export default function SquareAppointmentsCard({ tenantId }: { tenantId: string 
             </div>
           )}
 
+          {status.bookable && status.seller_writes === false && (
+            <div style={{ fontSize: 12, color: '#b45309', background: 'rgba(251,191,36,0.12)',
+              padding: '8px 10px', borderRadius: 6, marginBottom: 12, lineHeight: 1.5 }}>
+              Your Square plan doesn&apos;t let other apps add or change bookings. The AI will still
+              offer your real availability, but it will send you each booking, change or cancellation
+              as a request to confirm yourself. To let it book straight into Square, upgrade to Square
+              Appointments Plus or Premium. We&apos;ll notice within about 10 minutes.
+            </div>
+          )}
+
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--db-text-2)', marginBottom: 6 }}>
             Services ({services.length})
           </div>
@@ -219,8 +230,11 @@ export default function SquareAppointmentsCard({ tenantId }: { tenantId: string 
 
           {status.enabled && (
             <div style={{ fontSize: 12, color: 'var(--db-muted)', marginTop: 12, lineHeight: 1.5 }}>
-              Bookings, reschedules and cancellations flow into your Square calendar. Deposits are handled
-              by your Square Appointments prepayment settings (not Open Lines&apos; deposit collection).
+              {status.seller_writes === false
+                ? <>Booking, reschedule and cancellation requests are sent to you to confirm in Square.</>
+                : <>Bookings, reschedules and cancellations flow into your Square calendar.</>}
+              {' '}Deposits follow your Open Lines deposit settings and are collected with a Square payment
+              link.
             </div>
           )}
         </div>

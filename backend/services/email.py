@@ -430,6 +430,44 @@ async def send_reschedule_request_email(
                  html_body=html_body, idempotency_key=idempotency_key)
 
 
+async def send_square_request_email(
+    *,
+    to: str,
+    business_name: str,
+    title: str,
+    caller_name: str,
+    caller_number: str,
+    reason: str,
+    tenant_id: str = "",
+    idempotency_key: str = "",
+) -> bool:
+    """The seller's Square plan doesn't accept bookings from apps, so the assistant
+    took the request and handed it to the team."""
+    body = f"""
+      <p style="margin:0 0 12px;font-size:14px;color:#444;line-height:1.6">
+        A caller asked for this on the phone. Your Square plan doesn't let apps add or change
+        bookings, so the assistant passed it to you and told them the team will confirm.</p>
+      {_kv_table({
+          "Customer": caller_name or "Customer",
+          **({"Phone": caller_number} if caller_number else {}),
+          "Request": reason,
+      })}
+      <p style="margin:12px 0 0;font-size:13px;color:{_MUTE}">
+        Nothing has been changed in Square. Please make the change and confirm with
+        {_esc(caller_name or 'the customer')}. To let the assistant book directly, upgrade to
+        Square Appointments Plus or Premium.</p>
+    """
+    html_body = _layout(
+        heading=title,
+        body_html=body,
+        cta="View in dashboard",
+        cta_url=(f"{FRONTEND_URL}/dashboard/{tenant_id}" if tenant_id else f"{FRONTEND_URL}/login"),
+        preheader=reason[:120],
+    )
+    return _send(to=to, subject=f"{title} — {caller_name or business_name}",
+                 html_body=html_body, idempotency_key=idempotency_key)
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle emails to the account owner
 # ---------------------------------------------------------------------------
