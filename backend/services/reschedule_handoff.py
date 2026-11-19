@@ -27,14 +27,17 @@ logger = logging.getLogger(__name__)
 # Outcome values (strings shared by services.reschedule_intent,
 # services.square_inplace_reschedule and services.calendar_reschedule) whose
 # message tells the caller the team will follow up.
+PLAN_NO_WRITES = "plan_no_writes"   # seller's Square plan refuses app writes
+
 SQUARE_FOLLOW_UP = frozenset({
-    "payment_on_file", "handoff", "policy_window", "not_eligible", "unresolved",
+    PLAN_NO_WRITES, "payment_on_file", "handoff", "policy_window", "not_eligible", "unresolved",
     "source_changed", "cancel_failed", "cross_location", "temporary", "busy",
     "unknown", "local_pending",
 })
 CALENDAR_FOLLOW_UP = frozenset({"unknown", "local_pending", "not_eligible"})
 
 _WHY = {
+    PLAN_NO_WRITES: "the business's Square plan doesn't let the assistant change bookings",
     "payment_on_file": "it has a deposit and deposit moves are switched off",
     "handoff": "it couldn't be confirmed safe to move automatically",
     "policy_window": "its paid deposit is already inside your cancellation window",

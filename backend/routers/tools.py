@@ -21,6 +21,7 @@ from services import appointment_cancellation
 from services import appointment_refs
 from services import mutation_ownership
 from services import reschedule_intent
+from services import square_plan
 from db import mutation_claims as db_mc
 from services import caller_identity
 from services import customer_identity
@@ -1032,6 +1033,31 @@ def _booked_message(offer: dict, tenant: dict, *, pending: bool, again: bool = F
     return f"Done! Your {svc}{where} is confirmed for {when}."
 
 
+def _request_when(start_dt: datetime, staff_name: str | None = None) -> str:
+    h = start_dt.hour % 12 or 12
+    ampm = "AM" if start_dt.hour < 12 else "PM"
+    suffix = f" with {staff_name}" if staff_name else ""
+    return f"{start_dt.strftime('%A, %B')} {start_dt.day} at {h}:{start_dt.minute:02d} {ampm}{suffix}"
+
+
+async def _square_booking_request(tc_id: str, call_id: str, tenant: dict, tenant_id: str, *,
+                                  caller_name: str, caller_phone: str, service: str,
+                                  start_dt: datetime, staff_name: str | None):
+    """The seller's Square plan won't accept the booking: record it for the team."""
+    friendly = _request_when(start_dt, staff_name)
+    service_name = (service or "appointment").split(" — ")[0]
+    recorded = await square_plan.record_request(
+        tenant=tenant, tenant_id=tenant_id, call_id=call_id, kind=square_plan.KIND_BOOK,
+        caller_name=caller_name, caller_phone=caller_phone,
+        detail=f"{service_name} on {friendly}")
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "booking_request_handed_off",
+                      {"tenant_id": tenant_id, "provider": "square_appointments",
+                       "reason": "plan_no_writes"})
+    return _result(tc_id, square_plan.booking_message(
+        service=service_name, friendly=friendly,
+        business_name=tenant.get("business_name") or "The business", recorded=recorded))
+
+
 async def _square_book_appointment(
     tc_id: str, call_id: str, tenant: dict, tenant_id: str, args: dict, *,
     caller_name: str, caller_phone: str, service: str, date_str: str,
@@ -1096,6 +1122,15 @@ async def _square_book_appointment(
     team_member_id = seg["team_member_id"]
     staff_name = requested_name or staff_by_id.get(team_member_id)
 
+    # FREE SQUARE PLAN: Square refuses bookings from apps unless the seller pays for
+    # Appointments Plus or Premium. Hand the request to the team instead of
+    # creating a Square customer and then failing with a generic calendar error.
+    if await square_plan.seller_writes(token) is False:
+        return await _square_booking_request(
+            tc_id, call_id, tenant, tenant_id, caller_name=caller_name,
+            caller_phone=caller_phone, service=chosen.get("name") or service,
+            start_dt=start_dt, staff_name=staff_name)
+
     # RESCHEDULE, ONLY WHEN THE CALLER ASKED FOR ONE.
     #
     # This used to cancel any active appointment whose phone number matched, on the
@@ -1124,6 +1159,12 @@ async def _square_book_appointment(
         )
     except Exception as e:
         logger.error("tools/book[square]: create_booking failed for %s: %s", tenant_id, e)
+        resp = getattr(e, "response", None)
+        if resp is not None and square_plan.is_plan_refusal(resp.status_code, resp.text):
+            return await _square_booking_request(
+                tc_id, call_id, tenant, tenant_id, caller_name=caller_name,
+                caller_phone=caller_phone, service=chosen.get("name") or service,
+                start_dt=start_dt, staff_name=staff_name)
         return _result(tc_id, _CALENDAR_ERROR_MSG)
 
     booking_id = booking.get("id", "")
@@ -2757,6 +2798,21 @@ async def _create_and_send_deposit(
 # POST /tools/{tenant_id}/reschedule
 # ---------------------------------------------------------------------------
 
+async def _square_plan_move_handoff(tc_id, call_id, tenant, tenant_id, caller_phone,
+                                    ref_arg, slot_arg):
+    recorded = await reschedule_handoff.record(
+        tenant=tenant, tenant_id=tenant_id, call_id=call_id, caller_phone=caller_phone,
+        appointment_ref=ref_arg, outcome=reschedule_handoff.PLAN_NO_WRITES, slot_ref=slot_arg)
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "reschedule_handoff",
+                      {"tenant_id": tenant_id, "outcome": reschedule_handoff.PLAN_NO_WRITES,
+                       "provider": "square_appointments"})
+    return _result(tc_id,
+        "NOT MOVED YET. This business's booking system only lets the team move "
+        "appointments, so nothing has changed. Tell the caller you've passed on the new "
+        "time they want and the team will confirm it with them. Do not say it has moved."
+        + reschedule_handoff.assistant_note(recorded))
+
+
 @router.post("/{tenant_id}/reschedule")
 @limiter.limit("10/minute", key_func=tenant_key)
 async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
@@ -2825,9 +2881,20 @@ async def reschedule_appointment(request: Request, tenant_id: str, body: dict):
     analytics.capture(analytics.distinct_id_for(tenant, tenant_id),
                       "reschedule_requested", {"tenant_id": tenant_id})
 
+    # FREE SQUARE PLAN: Square won't accept a move from an app, so the request
+    # (with the time the caller picked) goes to the team. Same after the fact if
+    # the move was refused for that reason before we knew the plan.
+    if await square_plan.tenant_writes(tenant) is False:
+        return await _square_plan_move_handoff(tc_id, call_id, tenant, tenant_id,
+                                               caller_phone, ref_arg, slot_arg)
+
     outcome, message = await reschedule_intent.move_appointment(
         vapi_call_id=call_id, tenant_id=tenant_id, caller_phone=caller_phone,
         appointment_ref=ref_arg, slot_ref=slot_arg)
+    if (outcome == reschedule_intent.CREATE_FAILED
+            and await square_plan.tenant_writes(tenant) is False):
+        return await _square_plan_move_handoff(tc_id, call_id, tenant, tenant_id,
+                                               caller_phone, ref_arg, slot_arg)
 
     # Success analytics fire ONLY on a proven completion. An uncertain outcome is
     # not a quieter success, and counting it as one would hide exactly the cases
@@ -2917,6 +2984,25 @@ async def _calendar_move(tc_id, call_id, tenant, tenant_id, caller_phone, ref_ar
 # POST /tools/{tenant_id}/cancel
 # ---------------------------------------------------------------------------
 
+async def _square_plan_cancel_handoff(tc_id, call_id, tenant, tenant_id, caller_phone, ref):
+    from services import relative_dates
+    appt = await db.get_appointment_by_id(ref.get("appointment_id")) or {}
+    if (str(appt.get("tenant_id")) != str(tenant_id)
+            or str(appt.get("caller_phone") or "") != caller_phone):
+        return _result(tc_id, "I couldn't verify that appointment. Please call back and we'll get that sorted.")
+    when = reschedule_handoff._spoken(reschedule_handoff._parse(appt.get("appointment_datetime")),
+                                      relative_dates.tenant_tz(tenant)) or "its booked time"
+    service = (appt.get("service") or "appointment").split(" — ")[0]
+    recorded = await square_plan.record_request(
+        tenant=tenant, tenant_id=tenant_id, call_id=call_id, kind=square_plan.KIND_CANCEL,
+        caller_name=appt.get("caller_name") or "", caller_phone=caller_phone,
+        detail=f"cancel {service} on {when}")
+    analytics.capture(analytics.distinct_id_for(tenant, tenant_id), "cancel_request_handed_off",
+                      {"tenant_id": tenant_id, "provider": "square_appointments",
+                       "reason": "plan_no_writes"})
+    return _result(tc_id, square_plan.cancel_message(recorded=recorded))
+
+
 @router.post("/{tenant_id}/cancel")
 @limiter.limit("10/minute", key_func=tenant_key)
 async def cancel_appointment(request: Request, tenant_id: str, body: dict):
@@ -2973,6 +3059,13 @@ async def cancel_appointment(request: Request, tenant_id: str, body: dict):
         return _result(tc_id,
             "That appointment has already been cancelled. Tell the caller it is "
             "done and do not cancel it again.")
+
+    # FREE SQUARE PLAN: Square won't accept a cancellation from an app. Pass it to
+    # the team rather than claiming the appointment and failing at Square.
+    if (tenant.get("square_appointments_enabled")
+            and await square_plan.tenant_writes(tenant) is False):
+        return await _square_plan_cancel_handoff(tc_id, call_id, tenant, tenant_id,
+                                                 caller_phone, ref)
 
     # C3: GLOBAL OWNERSHIP, before any authoritative validation.
     #

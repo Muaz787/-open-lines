@@ -397,6 +397,13 @@ async def appointments_enable(tenant_id: str, body: dict, authorization: Annotat
     return {"enabled": enabled}
 
 
+async def _seller_writes(tenant: dict) -> bool | None:
+    if not tenant.get("square_access_token"):
+        return None
+    from services import square_plan
+    return await square_plan.tenant_writes(tenant)
+
+
 @router.get("/appointments/{tenant_id}")
 async def appointments_status(tenant_id: str, authorization: Annotated[str | None, Header()] = None):
     await verify_tenant_owner(tenant_id, authorization)
@@ -411,6 +418,9 @@ async def appointments_status(tenant_id: str, authorization: Annotated[str | Non
         "connected":   bool(tenant.get("square_access_token")),
         "enabled":     bool(tenant.get("square_appointments_enabled")),
         "bookable":    bool(tenant.get("square_appointments_bookable")),
+        # True / False from Square's booking profile (paid Appointments plan or
+        # not); None when not connected or Square couldn't be read.
+        "seller_writes": await _seller_writes(tenant),
         "synced_at":   tenant.get("square_booking_synced_at"),
         "location_timezone": tenant.get("square_location_timezone"),
         "services":    await db.get_square_services(tenant_id, bookable_only=False),
