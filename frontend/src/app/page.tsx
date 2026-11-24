@@ -590,6 +590,11 @@ export default function Home() {
             </AnimatePresence>
           </div>
 
+          <div className="tab-row">
+            <Link className="tab" href="/courier">Courier &amp; delivery</Link>
+            <Link className="tab" href="/home-services">Home services</Link>
+          </div>
+
           {/* Other industries strip */}
           <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--text-3)', paddingTop: 6 }}>Also available for:</span>
@@ -693,6 +698,11 @@ export default function Home() {
             <Link href="/pricing">
               <button className="btn-ghost" style={{ marginTop: 20, fontSize: 13 }}>See pricing →</button>
             </Link>
+            <p style={{ marginTop: 12 }}>
+              <Link href="/compare" style={{ color: 'var(--text)', textDecoration: 'underline' }}>
+                Compare AI receptionist options
+              </Link>
+            </p>
           </div>
 
           {/* Right: table */}
